@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>session-list — Option 3: Sidebar + preview</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117; color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column;
+    }
+    .layout { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+    .app-chrome {
+      padding: 12px 24px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+    .wordmark { font: var(--font-weight-semibold) var(--font-size-base) var(--font-sans); letter-spacing: -0.03em; }
+    .wordmark .dot { color: var(--color-accent); }
+    .org-chip {
+      padding: 4px 10px; background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      font: var(--font-size-sm) var(--font-sans); color: var(--color-text-secondary);
+    }
+    .org-chip strong { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .chrome-spacer { flex: 1; }
+    .chrome-chip {
+      display: inline-flex; gap: 6px; align-items: center;
+      padding: 5px 10px; border-radius: var(--radius-md);
+      background: var(--color-bg-tertiary); color: var(--color-text-secondary);
+      font: var(--font-size-xs)/1 var(--font-mono);
+      border: 1px solid var(--color-border); cursor: pointer;
+    }
+    .new-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; background: var(--color-bg-inverse);
+      color: var(--color-text-inverse); border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--author-2);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 12px var(--font-mono);
+    }
+
+    .body {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      flex: 1; min-height: 0;
+    }
+
+    /* LEFT: list */
+    .list-pane {
+      border-right: 1px solid var(--color-border);
+      display: flex; flex-direction: column; overflow: hidden;
+      background: var(--color-bg-secondary);
+    }
+    .list-head {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .list-head h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .list-head p {
+      margin: 0 0 12px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-xs);
+    }
+    .filters {
+      display: flex; gap: 4px;
+      overflow-x: auto;
+    }
+    .filter-chip {
+      padding: 4px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: transparent;
+      color: var(--color-text-secondary);
+      font: var(--font-size-xs) var(--font-sans); cursor: pointer;
+      white-space: nowrap;
+    }
+    .filter-chip.active {
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      border-color: var(--color-bg-inverse);
+    }
+    .filter-chip .count { margin-left: 4px; font: 10px var(--font-mono); opacity: 0.7; }
+
+    .list-scroll { flex: 1; overflow-y: auto; }
+    .list-item {
+      padding: 12px 18px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      border-bottom: 1px solid var(--color-border);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .list-item:hover { background: var(--color-bg-tertiary); }
+    .list-item.selected {
+      background: var(--color-accent-muted);
+      border-left-color: var(--color-accent);
+    }
+    .list-item.new { border-left-color: var(--color-accent); }
+    .list-item.ended { opacity: 0.55; }
+    .list-item-top {
+      display: flex; gap: 8px; align-items: baseline; justify-content: space-between;
+    }
+    .list-item h4 {
+      margin: 0;
+      font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      flex: 1;
+    }
+    .list-item .recency {
+      font: 10px var(--font-mono); color: var(--color-text-tertiary);
+      flex-shrink: 0;
+    }
+    .list-item .recency .live { color: var(--color-success); font-weight: var(--font-weight-medium); }
+    .list-item-bottom {
+      display: flex; gap: 8px; align-items: center;
+      font: 10px var(--font-mono); color: var(--color-text-tertiary);
+    }
+    .list-item-bottom .members { display: flex; align-items: center; }
+    .list-item-bottom .members .a {
+      width: 14px; height: 14px; border-radius: 50%;
+      box-shadow: 0 0 0 1px var(--color-bg-secondary);
+      margin-right: -3px;
+    }
+    .list-item-bottom .members .a:last-child { margin-right: 0; }
+    .list-item.selected .list-item-bottom .members .a {
+      box-shadow: 0 0 0 1px var(--color-accent-muted);
+    }
+    .badge-mini {
+      padding: 0 5px; border-radius: 2px;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .badge-mini.new { background: var(--color-accent); color: var(--color-text-inverse); }
+    .badge-mini.finalizing { background: var(--color-warning-muted); color: var(--color-warning); }
+    .badge-mini.ended { background: var(--color-bg-tertiary); color: var(--color-text-tertiary); border: 1px solid var(--color-border); }
+
+    /* RIGHT: preview */
+    .preview-pane {
+      overflow-y: auto;
+      padding: 40px 48px;
+      max-width: 800px;
+    }
+    .preview-eyebrow {
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-tertiary);
+      margin-bottom: 6px;
+    }
+    .preview-pane h1 {
+      margin: 0 0 8px;
+      font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .preview-pane .goal {
+      margin: 0 0 24px;
+      font-size: var(--font-size-lg);
+      color: var(--color-text-secondary);
+      line-height: 1.55;
+    }
+    .preview-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px 32px;
+      padding: 20px 0;
+      border-top: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .meta-row { display: flex; flex-direction: column; gap: 4px; }
+    .meta-row .l {
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-text-tertiary);
+    }
+    .meta-row .v { font-size: var(--font-size-sm); color: var(--color-text-primary); }
+    .meta-row .v code {
+      font: 12px var(--font-mono);
+      background: var(--color-bg-tertiary);
+      padding: 1px 5px; border-radius: 3px;
+    }
+    .author-strip { display: flex; align-items: center; }
+    .author-strip .a {
+      width: 24px; height: 24px; border-radius: 50%;
+      box-shadow: 0 0 0 2px var(--color-bg-primary);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 10px var(--font-mono);
+      margin-right: -6px;
+    }
+    .author-strip .a:last-child { margin-right: 0; }
+
+    .preview-actions {
+      margin-top: 28px;
+      display: flex; gap: 10px;
+    }
+    .preview-btn {
+      padding: 10px 20px;
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-secondary); color: var(--color-text-primary);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .preview-btn.primary {
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      border-color: var(--color-bg-inverse);
+    }
+
+    .recent-list { margin-top: 32px; }
+    .recent-list h3 {
+      margin: 0 0 12px;
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-tertiary);
+    }
+    .recent-item {
+      padding: 8px 12px; border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      display: flex; gap: 10px; align-items: center;
+    }
+    .recent-item .who { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .recent-item .when { margin-left: auto; font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+    .recent-item .icon { color: var(--color-text-tertiary); flex-shrink: 0; }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 3 — Sidebar + preview</strong>
+    <span>Left compact list (~320px) of session names; right preview pane shows full detail of the currently-selected session. Best when N is large or you want to scan without clicking in.</span>
+    <div class="controls">
+      <button onclick="document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')">toggle theme</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="app-chrome">
+      <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+      <span class="org-chip">org · <strong>kindred-labs</strong></span>
+      <div class="chrome-spacer"></div>
+      <span class="chrome-chip">◐ system theme</span>
+      <button class="new-btn">+ New session</button>
+      <span class="avatar" title="you">e</span>
+    </div>
+
+    <div class="body">
+      <aside class="list-pane">
+        <div class="list-head">
+          <h1>Sessions</h1>
+          <p>Sort by recent activity</p>
+          <div class="filters">
+            <button class="filter-chip active">All <span class="count">7</span></button>
+            <button class="filter-chip">Active <span class="count">4</span></button>
+            <button class="filter-chip">Finalizing <span class="count">1</span></button>
+            <button class="filter-chip">Ended <span class="count">2</span></button>
+          </div>
+        </div>
+        <div class="list-scroll">
+          <div class="list-item new selected" onclick="select(event, 'auth')">
+            <div class="list-item-top">
+              <h4>Auth design refresh</h4>
+              <span class="recency"><span class="live">●</span> 2m</span>
+            </div>
+            <div class="list-item-bottom">
+              <span class="badge-mini new">new</span>
+              <span class="members">
+                <span class="a" style="background: var(--author-1)"></span>
+                <span class="a" style="background: var(--author-2)"></span>
+                <span class="a" style="background: var(--author-4)"></span>
+              </span>
+              <span>3 · 47 commits</span>
+            </div>
+          </div>
+          <div class="list-item" onclick="select(event, 'sync')">
+            <div class="list-item-top">
+              <h4>Sync engine v2 design</h4>
+              <span class="recency"><span class="live">●</span> 14m</span>
+            </div>
+            <div class="list-item-bottom">
+              <span class="members">
+                <span class="a" style="background: var(--author-3)"></span>
+                <span class="a" style="background: var(--author-5)"></span>
+                <span class="a" style="background: var(--author-6)"></span>
+                <span class="a" style="background: var(--author-7)"></span>
+                <span class="a" style="background: var(--author-8)"></span>
+              </span>
+              <span>5 · 132 commits</span>
+            </div>
+          </div>
+          <div class="list-item" onclick="select(event, 'conflict')">
+            <div class="list-item-top">
+              <h4>Conflict resolver UX spec</h4>
+              <span class="recency">38m</span>
+            </div>
+            <div class="list-item-bottom">
+              <span class="members">
+                <span class="a" style="background: var(--author-1)"></span>
+                <span class="a" style="background: var(--author-3)"></span>
+                <span class="a" style="background: var(--author-7)"></span>
+              </span>
+              <span>3 · 18 commits</span>
+            </div>
+          </div>
+          <div class="list-item" onclick="select(event, 'obs')">
+            <div class="list-item-top">
+              <h4>Pre-flight observability</h4>
+              <span class="recency">3h</span>
+            </div>
+            <div class="list-item-bottom">
+              <span class="members">
+                <span class="a" style="background: var(--author-5)"></span>
+                <span class="a" style="background: var(--author-6)"></span>
+                <span class="a" style="background: var(--author-8)"></span>
+                <span class="a" style="background: var(--author-3)"></span>
+              </span>
+              <span>4 · 64 commits</span>
+            </div>
+          </div>
+          <div class="list-item" onclick="select(event, 'onboarding')">
+            <div class="list-item-top">
+              <h4>Onboarding doc rewrite</h4>
+              <span class="recency">1d</span>
+            </div>
+            <div class="list-item-bottom">
+              <span class="badge-mini finalizing">finalizing</span>
+              <span class="members">
+                <span class="a" style="background: var(--author-2)"></span>
+                <span class="a" style="background: var(--author-1)"></span>
+              </span>
+              <span>2 · 28 commits</span>
+            </div>
+          </div>
+          <div class="list-item ended" onclick="select(event, 'webhooks')">
+            <div class="list-item-top">
+              <h4>Webhook contract update</h4>
+              <span class="recency">3d</span>
+            </div>
+            <div class="list-item-bottom">
+              <span class="badge-mini ended">ended</span>
+              <span class="members">
+                <span class="a" style="background: var(--author-2)"></span>
+                <span class="a" style="background: var(--author-4)"></span>
+                <span class="a" style="background: var(--author-8)"></span>
+              </span>
+              <span>3 · 22 commits</span>
+            </div>
+          </div>
+          <div class="list-item ended" onclick="select(event, 'q3')">
+            <div class="list-item-top">
+              <h4>Q3 roadmap refinement</h4>
+              <span class="recency">3w</span>
+            </div>
+            <div class="list-item-bottom">
+              <span class="badge-mini ended">ended</span>
+              <span class="members">
+                <span class="a" style="background: var(--author-1)"></span>
+                <span class="a" style="background: var(--author-2)"></span>
+                <span class="a" style="background: var(--author-4)"></span>
+              </span>
+              <span>7 · 89 commits</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="preview-pane">
+        <div class="preview-eyebrow">Active · just invited</div>
+        <h1>Auth design refresh</h1>
+        <p class="goal">Tighten the session-token flow before it lands in epic-portal-foundation. Document the OAuth callback contract and the magic-link "binding expired" error path.</p>
+
+        <div class="preview-meta-grid">
+          <div class="meta-row">
+            <span class="l">Members</span>
+            <span class="v">
+              <div class="author-strip">
+                <span class="a" style="background: var(--author-1)">a</span>
+                <span class="a" style="background: var(--author-2)">b</span>
+                <span class="a" style="background: var(--author-4)">c</span>
+              </div>
+            </span>
+          </div>
+          <div class="meta-row">
+            <span class="l">Default mode</span>
+            <span class="v"><code>sync</code></span>
+          </div>
+          <div class="meta-row">
+            <span class="l">Scope</span>
+            <span class="v"><code>docs/auth/**</code></span>
+          </div>
+          <div class="meta-row">
+            <span class="l">Commits</span>
+            <span class="v">47 across 3 refs</span>
+          </div>
+          <div class="meta-row">
+            <span class="l">Created</span>
+            <span class="v">2026-05-14 by bob</span>
+          </div>
+          <div class="meta-row">
+            <span class="l">Last activity</span>
+            <span class="v">2m ago — bob committed</span>
+          </div>
+        </div>
+
+        <div class="preview-actions">
+          <button class="preview-btn primary">Open session →</button>
+          <button class="preview-btn">View tree only</button>
+        </div>
+
+        <div class="recent-list">
+          <h3>Recent activity</h3>
+          <div class="recent-item"><span class="icon">●</span> <span class="who">bob</span> committed "Add structured error..." <span class="when">2m ago</span></div>
+          <div class="recent-item"><span class="icon">⇈</span> auto-merger merged bob's c5a83e2 + alice's f02ac41 <span class="when">2m ago</span></div>
+          <div class="recent-item"><span class="icon">💬</span> <span class="who">bob</span> replied to <span class="who">alice</span> on oauth-callback.md:23 <span class="when">4m ago</span></div>
+          <div class="recent-item"><span class="icon">●</span> <span class="who">alice</span> committed "Document callback drift" <span class="when">12m ago</span></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    function select(e, _id) {
+      document.querySelectorAll('.list-item').forEach(x => x.classList.remove('selected'));
+      e.currentTarget.classList.add('selected');
+      // Preview pane content stays static in this mock; in production this would re-render.
+    }
+    document.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
+      document.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+    }));
+  </script>
+</body>
+</html>

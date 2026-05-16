@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>session-list — Option 4: Dense table</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117; color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+    }
+
+    .app-chrome {
+      padding: 14px 32px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .wordmark { font: var(--font-weight-semibold) var(--font-size-lg) var(--font-sans); letter-spacing: -0.03em; }
+    .wordmark .dot { color: var(--color-accent); }
+    .org-chip {
+      padding: 4px 10px; background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      font: var(--font-size-sm) var(--font-sans); color: var(--color-text-secondary);
+    }
+    .org-chip strong { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .chrome-spacer { flex: 1; }
+    .chrome-chip {
+      display: inline-flex; gap: 6px; align-items: center;
+      padding: 5px 10px; border-radius: var(--radius-md);
+      background: var(--color-bg-tertiary); color: var(--color-text-secondary);
+      font: var(--font-size-xs)/1 var(--font-mono);
+      border: 1px solid var(--color-border); cursor: pointer;
+    }
+    .new-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; background: var(--color-bg-inverse);
+      color: var(--color-text-inverse); border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--author-2);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 12px var(--font-mono);
+    }
+
+    main { padding: 32px 32px 80px; max-width: 1400px; margin: 0 auto; }
+
+    .page-header {
+      margin-bottom: 20px;
+      display: flex; align-items: baseline; justify-content: space-between; gap: 24px;
+    }
+    .page-header h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .page-header p { margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+    .search-input {
+      padding: 8px 12px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      font: var(--font-size-sm) var(--font-sans);
+      color: var(--color-text-primary);
+      width: 280px;
+    }
+    .search-input::placeholder { color: var(--color-text-tertiary); }
+
+    .filters {
+      display: flex; gap: 6px;
+      margin-bottom: 12px;
+    }
+    .filter-chip {
+      padding: 5px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: transparent;
+      color: var(--color-text-secondary);
+      font: var(--font-size-sm) var(--font-sans); cursor: pointer;
+    }
+    .filter-chip.active {
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      border-color: var(--color-bg-inverse);
+    }
+    .filter-chip .count { margin-left: 6px; font: var(--font-weight-medium) 11px var(--font-mono); opacity: 0.7; }
+
+    .table-wrap {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+    }
+    thead {
+      background: var(--color-bg-tertiary);
+      border-bottom: 1px solid var(--color-border);
+    }
+    th {
+      padding: 10px 16px;
+      text-align: left;
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    th:hover { color: var(--color-text-primary); }
+    th.sorted::after {
+      content: ' ↓';
+      color: var(--color-accent);
+      font-weight: var(--font-weight-bold);
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--color-border);
+      cursor: pointer;
+    }
+    tbody tr:last-child { border-bottom: 0; }
+    tbody tr:hover { background: var(--color-bg-tertiary); }
+    tbody tr.new { background: var(--color-accent-muted); }
+    tbody tr.new:hover { background: rgba(31, 107, 112, 0.18); }
+    [data-theme="dark"] tbody tr.new:hover { background: rgba(108, 193, 198, 0.22); }
+    @media (prefers-color-scheme: dark) { tbody tr.new:hover { background: rgba(108, 193, 198, 0.22); } }
+    tbody tr.ended { opacity: 0.55; }
+    td {
+      padding: 12px 16px;
+      vertical-align: middle;
+    }
+
+    .status-cell {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.active { background: var(--color-success); }
+    .status-dot.finalizing { background: var(--color-warning); }
+    .status-dot.ended { background: var(--color-text-tertiary); }
+    .status-cell .label {
+      font: var(--font-weight-medium) 11px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-text-secondary);
+    }
+    .new-pill {
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 1px 6px; border-radius: var(--radius-sm);
+      background: var(--color-accent); color: var(--color-text-inverse);
+      margin-left: 6px;
+    }
+    .name-cell h4 {
+      margin: 0; font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      color: var(--color-text-primary);
+      letter-spacing: -0.01em;
+    }
+    .name-cell .goal {
+      margin: 2px 0 0; font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      max-width: 460px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .members-cell {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .members-cell .strip { display: flex; align-items: center; }
+    .members-cell .a {
+      width: 20px; height: 20px; border-radius: 50%;
+      box-shadow: 0 0 0 2px var(--color-bg-secondary);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 9px var(--font-mono);
+      margin-right: -6px;
+    }
+    tbody tr.new .members-cell .a { box-shadow: 0 0 0 2px var(--color-accent-muted); }
+    .members-cell .a:last-child { margin-right: 0; }
+    .members-cell .count {
+      font: 11px var(--font-mono); color: var(--color-text-tertiary);
+    }
+    .num-cell {
+      font: var(--font-weight-medium) 13px var(--font-mono);
+      color: var(--color-text-primary);
+      text-align: right;
+    }
+    .scope-cell {
+      font: 11px var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .scope-cell code {
+      background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px;
+    }
+    .when-cell {
+      font: 11px var(--font-mono);
+      color: var(--color-text-tertiary);
+      white-space: nowrap;
+    }
+    .when-cell .live { color: var(--color-success); font-weight: var(--font-weight-medium); }
+    .mode-cell {
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 2px 8px; border-radius: var(--radius-sm);
+      background: var(--color-accent-muted); color: var(--color-accent);
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 4 — Dense table</strong>
+    <span>Sortable columns: Status / Name / Mode / Members / Commits / Scope / Last activity. Most info-dense; trades visual warmth for density. Best for power users with many sessions.</span>
+    <div class="controls">
+      <button onclick="document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')">toggle theme</button>
+    </div>
+  </header>
+
+  <div class="app-chrome">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <span class="org-chip">org · <strong>kindred-labs</strong></span>
+    <div class="chrome-spacer"></div>
+    <span class="chrome-chip">◐ system theme</span>
+    <button class="new-btn">+ New session</button>
+    <span class="avatar" title="you">e</span>
+  </div>
+
+  <main>
+    <div class="page-header">
+      <div>
+        <h1>Your sessions</h1>
+        <p>7 sessions visible · sort by activity</p>
+      </div>
+      <input type="search" class="search-input" placeholder="Search sessions, goals, or scope...">
+    </div>
+
+    <div class="filters">
+      <button class="filter-chip active">All <span class="count">7</span></button>
+      <button class="filter-chip">Active <span class="count">4</span></button>
+      <button class="filter-chip">Finalizing <span class="count">1</span></button>
+      <button class="filter-chip">Ended <span class="count">2</span></button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 90px;">Status</th>
+            <th>Name</th>
+            <th style="width: 90px;">Mode</th>
+            <th style="width: 130px;">Members</th>
+            <th style="width: 90px;" class="num-cell-head">Commits</th>
+            <th style="width: 240px;">Scope</th>
+            <th style="width: 110px;" class="sorted">Last activity</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="new">
+            <td>
+              <div class="status-cell"><span class="status-dot active"></span><span class="label">active</span></div>
+            </td>
+            <td class="name-cell">
+              <h4>Auth design refresh <span class="new-pill">new</span></h4>
+              <p class="goal">Tighten the session-token flow before it lands in epic-portal-foundation.</p>
+            </td>
+            <td><span class="mode-cell">sync</span></td>
+            <td class="members-cell">
+              <div class="strip">
+                <span class="a" style="background: var(--author-1)">a</span>
+                <span class="a" style="background: var(--author-2)">b</span>
+                <span class="a" style="background: var(--author-4)">c</span>
+              </div>
+              <span class="count">3</span>
+            </td>
+            <td class="num-cell">47</td>
+            <td class="scope-cell"><code>docs/auth/**</code></td>
+            <td class="when-cell"><span class="live">●</span> 2m ago</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="status-cell"><span class="status-dot active"></span><span class="label">active</span></div>
+            </td>
+            <td class="name-cell">
+              <h4>Sync engine v2 design</h4>
+              <p class="goal">Replace the long-poll fallback in the sync engine with WebSocket-only push.</p>
+            </td>
+            <td><span class="mode-cell">sync</span></td>
+            <td class="members-cell">
+              <div class="strip">
+                <span class="a" style="background: var(--author-3)">d</span>
+                <span class="a" style="background: var(--author-5)">e</span>
+                <span class="a" style="background: var(--author-6)">f</span>
+                <span class="a" style="background: var(--author-7)">g</span>
+                <span class="a" style="background: var(--author-8)">h</span>
+              </div>
+              <span class="count">5</span>
+            </td>
+            <td class="num-cell">132</td>
+            <td class="scope-cell"><code>docs/sync/**</code> <code>internal/sync/**</code></td>
+            <td class="when-cell"><span class="live">●</span> 14m ago</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="status-cell"><span class="status-dot active"></span><span class="label">active</span></div>
+            </td>
+            <td class="name-cell">
+              <h4>Conflict resolver UX spec</h4>
+              <p class="goal">Pin down the in-session UX for auto-merger conflict events.</p>
+            </td>
+            <td><span class="mode-cell">sync</span></td>
+            <td class="members-cell">
+              <div class="strip">
+                <span class="a" style="background: var(--author-1)">a</span>
+                <span class="a" style="background: var(--author-3)">d</span>
+                <span class="a" style="background: var(--author-7)">g</span>
+              </div>
+              <span class="count">3</span>
+            </td>
+            <td class="num-cell">18</td>
+            <td class="scope-cell"><code>docs/conflicts/**</code></td>
+            <td class="when-cell">38m ago</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="status-cell"><span class="status-dot active"></span><span class="label">active</span></div>
+            </td>
+            <td class="name-cell">
+              <h4>Pre-flight observability</h4>
+              <p class="goal">Metrics, traces, and structured logs the portal binary emits before the first hosted deploy.</p>
+            </td>
+            <td><span class="mode-cell">sync</span></td>
+            <td class="members-cell">
+              <div class="strip">
+                <span class="a" style="background: var(--author-5)">e</span>
+                <span class="a" style="background: var(--author-6)">f</span>
+                <span class="a" style="background: var(--author-8)">h</span>
+                <span class="a" style="background: var(--author-3)">d</span>
+              </div>
+              <span class="count">4</span>
+            </td>
+            <td class="num-cell">64</td>
+            <td class="scope-cell"><code>internal/obs/**</code></td>
+            <td class="when-cell">3h ago</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="status-cell"><span class="status-dot finalizing"></span><span class="label" style="color: var(--color-warning);">finalizing</span></div>
+            </td>
+            <td class="name-cell">
+              <h4>Onboarding doc rewrite</h4>
+              <p class="goal">Restructure the getting-started guide into role-based paths. Cherry-pick plan generated yesterday.</p>
+            </td>
+            <td><span class="mode-cell">sync</span></td>
+            <td class="members-cell">
+              <div class="strip">
+                <span class="a" style="background: var(--author-2)">b</span>
+                <span class="a" style="background: var(--author-1)">a</span>
+              </div>
+              <span class="count">2</span>
+            </td>
+            <td class="num-cell">28</td>
+            <td class="scope-cell"><code>docs/getting-started/**</code></td>
+            <td class="when-cell">1d ago</td>
+          </tr>
+          <tr class="ended">
+            <td>
+              <div class="status-cell"><span class="status-dot ended"></span><span class="label">ended</span></div>
+            </td>
+            <td class="name-cell">
+              <h4>Webhook contract update</h4>
+              <p class="goal">Migrate the v3 webhook payloads to include the new event-kind enum. Shipped as v0.4.2.</p>
+            </td>
+            <td><span class="mode-cell" style="background: var(--color-bg-tertiary); color: var(--color-text-tertiary);">sync</span></td>
+            <td class="members-cell">
+              <div class="strip">
+                <span class="a" style="background: var(--author-2)">b</span>
+                <span class="a" style="background: var(--author-4)">c</span>
+                <span class="a" style="background: var(--author-8)">h</span>
+              </div>
+              <span class="count">3</span>
+            </td>
+            <td class="num-cell">22</td>
+            <td class="scope-cell"><code>docs/api/webhooks/**</code></td>
+            <td class="when-cell">3d ago</td>
+          </tr>
+          <tr class="ended">
+            <td>
+              <div class="status-cell"><span class="status-dot ended"></span><span class="label">ended</span></div>
+            </td>
+            <td class="name-cell">
+              <h4>Q3 roadmap refinement</h4>
+              <p class="goal">Iterate on the Q3 roadmap. Closed last quarter; reference in docs/roadmap/q3.md.</p>
+            </td>
+            <td><span class="mode-cell" style="background: var(--color-bg-tertiary); color: var(--color-text-tertiary);">sync</span></td>
+            <td class="members-cell">
+              <div class="strip">
+                <span class="a" style="background: var(--author-1)">a</span>
+                <span class="a" style="background: var(--author-2)">b</span>
+                <span class="a" style="background: var(--author-4)">c</span>
+                <span class="a" style="background: var(--author-3)">d</span>
+                <span class="a" style="background: var(--author-5)">e</span>
+              </div>
+              <span class="count">7</span>
+            </td>
+            <td class="num-cell">89</td>
+            <td class="scope-cell"><code>docs/roadmap/**</code></td>
+            <td class="when-cell">3w ago</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    document.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
+      document.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+    }));
+  </script>
+</body>
+</html>

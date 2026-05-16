@@ -52,6 +52,28 @@ new-session-creation wizard itself (see Decomposition risks).
   with `epic-cc-plugin` and `epic-portal-api` (which owns the create
   endpoint).
 
+## Mockups
+
+- Screens: `.mockups/screens/epic-portal-ui-session-list/index.html`
+- Selected: **option-1 (row cards, large)** — 2026-05-16
+- Rationale: matches the journey direction already locked in the onboarding
+  flow's step 3. Full context per row reads well at the expected scale
+  (5-15 active sessions per user). Filter chips group by status; freshly-
+  invited session gets an accent border. Per-row contents include scope
+  chips, member strip, mode pill, commit count, and live recency.
+
+**Layout primitives this commits to:**
+
+- Single-column vertical stack of row cards under a sticky page chrome
+  (wordmark, org chip, theme chip, "New session" button, avatar)
+- Filter chips (All / Active / Finalizing / Ended) with counts
+- Per-row content blocks: left side carries name + status pill + goal text
+  + meta strip (mode pill, member count, commit count, scope chips);
+  right side carries author strip + live recency
+- Status pills inline with the session name (e.g., `finalizing`, `ended`)
+- "Just invited" sessions get an accent border + `new` badge
+- Ended sessions render at reduced opacity with `bg-tertiary`
+
 <!-- Feature-design will fill in component structure, data fetching, and
 the new-session-flow resolution when /agile-workflow:feature-design runs
-on this. -->
+on this. Feature stays at stage: drafting per --mocks-only pass. -->

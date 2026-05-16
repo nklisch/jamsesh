@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>session-list — Option 1: Row cards (large)</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117; color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+    }
+
+    .app-chrome {
+      padding: 14px 32px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      position: sticky; top: 40px; background: var(--color-bg-primary); z-index: 5;
+    }
+    .wordmark { font: var(--font-weight-semibold) var(--font-size-lg) var(--font-sans); letter-spacing: -0.03em; }
+    .wordmark .dot { color: var(--color-accent); }
+    .org-chip {
+      padding: 4px 10px; background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      font: var(--font-size-sm) var(--font-sans); color: var(--color-text-secondary);
+    }
+    .org-chip strong { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .chrome-spacer { flex: 1; }
+    .chrome-chip {
+      display: inline-flex; gap: 6px; align-items: center;
+      padding: 5px 10px; border-radius: var(--radius-md);
+      background: var(--color-bg-tertiary); color: var(--color-text-secondary);
+      font: var(--font-size-xs)/1 var(--font-mono);
+      border: 1px solid var(--color-border); cursor: pointer;
+    }
+    .new-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; background: var(--color-bg-inverse);
+      color: var(--color-text-inverse); border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .new-btn .plus { opacity: 0.7; }
+    .avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--author-2);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 12px var(--font-mono);
+    }
+
+    main { padding: 32px 32px 80px; max-width: 1180px; margin: 0 auto; }
+
+    .page-header { margin-bottom: 24px; }
+    .page-header h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .page-header p { margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+
+    .filters {
+      display: flex; gap: 6px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .filter-chip {
+      padding: 6px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: transparent;
+      color: var(--color-text-secondary);
+      font: var(--font-size-sm) var(--font-sans); cursor: pointer;
+    }
+    .filter-chip.active {
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      border-color: var(--color-bg-inverse);
+    }
+    .filter-chip .count { margin-left: 6px; font: var(--font-weight-medium) 11px var(--font-mono); opacity: 0.7; }
+
+    .session-list { display: flex; flex-direction: column; gap: 10px; }
+    .session-row {
+      display: grid; grid-template-columns: 1fr auto; gap: 20px;
+      padding: 18px 22px;
+      background: var(--color-bg-secondary); border: 1px solid var(--color-border);
+      border-radius: var(--radius-md); cursor: pointer;
+      transition: border-color 0.1s;
+      text-decoration: none; color: inherit;
+    }
+    .session-row:hover { border-color: var(--color-border-strong); }
+    .session-row.new {
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 1px var(--color-accent);
+    }
+    .session-row.ended { opacity: 0.6; background: var(--color-bg-tertiary); }
+    .session-row.ended h3 { color: var(--color-text-secondary); }
+
+    .session-main h3 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.01em;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .new-badge {
+      padding: 2px 8px; background: var(--color-accent-muted); color: var(--color-accent);
+      border-radius: var(--radius-sm);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .status-pill {
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 2px 8px; border-radius: var(--radius-sm);
+    }
+    .status-pill.finalizing { background: var(--color-warning-muted); color: var(--color-warning); }
+    .status-pill.ended {
+      background: var(--color-bg-secondary); color: var(--color-text-tertiary);
+      border: 1px solid var(--color-border);
+    }
+    .session-main .goal {
+      margin: 0 0 12px; color: var(--color-text-secondary);
+      font-size: var(--font-size-sm); max-width: 640px;
+    }
+    .meta-strip {
+      display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+      color: var(--color-text-tertiary); font-size: var(--font-size-sm);
+    }
+    .meta-strip .scope { font: 11px var(--font-mono); color: var(--color-text-secondary); }
+    .meta-strip .scope code {
+      background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px;
+      font-family: var(--font-mono);
+    }
+    .meta-strip .mode-pill {
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 2px 8px; border-radius: var(--radius-sm);
+      background: var(--color-accent-muted); color: var(--color-accent);
+    }
+    .meta-strip .mode-pill.isolated { background: var(--color-warning-muted); color: var(--color-warning); }
+
+    .session-right {
+      display: flex; flex-direction: column; gap: 10px;
+      align-items: flex-end; justify-content: space-between;
+    }
+    .author-strip { display: flex; align-items: center; }
+    .author-strip .a {
+      width: 24px; height: 24px; border-radius: 50%;
+      box-shadow: 0 0 0 2px var(--color-bg-secondary);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 10px var(--font-mono);
+      margin-right: -8px;
+    }
+    .author-strip .a:last-child { margin-right: 0; }
+    .last-activity { font: 11px var(--font-mono); color: var(--color-text-tertiary); }
+    .last-activity .live { color: var(--color-success); font-weight: var(--font-weight-medium); }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 1 — Row cards (large)</strong>
+    <span>Vertical stack of expanded rows. Goal text wraps; full author strip and scope chips per row. Best when N is small (~5-15) and you want full context per session.</span>
+    <div class="controls">
+      <button onclick="document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')">toggle theme</button>
+    </div>
+  </header>
+
+  <div class="app-chrome">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <span class="org-chip">org · <strong>kindred-labs</strong></span>
+    <div class="chrome-spacer"></div>
+    <span class="chrome-chip">◐ system theme</span>
+    <button class="new-btn"><span class="plus">+</span> New session</button>
+    <span class="avatar" title="you">e</span>
+  </div>
+
+  <main>
+    <div class="page-header">
+      <h1>Your sessions</h1>
+      <p>Sessions you've joined or created. Most recent activity first.</p>
+    </div>
+
+    <div class="filters">
+      <button class="filter-chip active">All <span class="count">7</span></button>
+      <button class="filter-chip">Active <span class="count">4</span></button>
+      <button class="filter-chip">Finalizing <span class="count">1</span></button>
+      <button class="filter-chip">Ended <span class="count">2</span></button>
+    </div>
+
+    <div class="session-list">
+      <a class="session-row new" href="#">
+        <div class="session-main">
+          <h3>Auth design refresh <span class="new-badge">just invited</span></h3>
+          <p class="goal">Tighten the session-token flow before it lands in epic-portal-foundation. Document the OAuth callback contract and the magic-link "binding expired" error path.</p>
+          <div class="meta-strip">
+            <span class="mode-pill">sync</span>
+            <span>3 members</span>
+            <span>·</span>
+            <span>47 commits</span>
+            <span>·</span>
+            <span class="scope">scope: <code>docs/auth/**</code></span>
+          </div>
+        </div>
+        <div class="session-right">
+          <div class="author-strip">
+            <span class="a" style="background: var(--author-1)" title="alice">a</span>
+            <span class="a" style="background: var(--author-2)" title="bob">b</span>
+            <span class="a" style="background: var(--author-4)" title="carol">c</span>
+          </div>
+          <span class="last-activity"><span class="live">●</span> active 2m ago</span>
+        </div>
+      </a>
+
+      <a class="session-row" href="#">
+        <div class="session-main">
+          <h3>Sync engine v2 design</h3>
+          <p class="goal">Replace the long-poll fallback in the sync engine with WebSocket-only push. Document the reconnection backoff in the spec.</p>
+          <div class="meta-strip">
+            <span class="mode-pill">sync</span>
+            <span>5 members</span>
+            <span>·</span>
+            <span>132 commits</span>
+            <span>·</span>
+            <span class="scope">scope: <code>docs/sync/**</code> <code>internal/sync/**</code></span>
+          </div>
+        </div>
+        <div class="session-right">
+          <div class="author-strip">
+            <span class="a" style="background: var(--author-3)" title="dave">d</span>
+            <span class="a" style="background: var(--author-5)" title="eve">e</span>
+            <span class="a" style="background: var(--author-6)" title="frank">f</span>
+            <span class="a" style="background: var(--author-7)" title="grace">g</span>
+            <span class="a" style="background: var(--author-8)" title="heidi">h</span>
+          </div>
+          <span class="last-activity"><span class="live">●</span> 14m ago</span>
+        </div>
+      </a>
+
+      <a class="session-row" href="#">
+        <div class="session-main">
+          <h3>Conflict resolver UX spec</h3>
+          <p class="goal">Pin down the in-session UX for auto-merger conflict events. Inline-anchored comment display chosen; resolution affordances still open.</p>
+          <div class="meta-strip">
+            <span class="mode-pill">sync</span>
+            <span>3 members</span>
+            <span>·</span>
+            <span>18 commits</span>
+            <span>·</span>
+            <span class="scope">scope: <code>docs/conflicts/**</code></span>
+          </div>
+        </div>
+        <div class="session-right">
+          <div class="author-strip">
+            <span class="a" style="background: var(--author-1)" title="alice">a</span>
+            <span class="a" style="background: var(--author-3)" title="dave">d</span>
+            <span class="a" style="background: var(--author-7)" title="grace">g</span>
+          </div>
+          <span class="last-activity">38m ago</span>
+        </div>
+      </a>
+
+      <a class="session-row" href="#">
+        <div class="session-main">
+          <h3>Pre-flight observability</h3>
+          <p class="goal">Define the metrics, traces, and structured logs the portal binary emits before the first hosted deploy. Honest dashboards from day one.</p>
+          <div class="meta-strip">
+            <span class="mode-pill">sync</span>
+            <span>4 members</span>
+            <span>·</span>
+            <span>64 commits</span>
+            <span>·</span>
+            <span class="scope">scope: <code>internal/obs/**</code></span>
+          </div>
+        </div>
+        <div class="session-right">
+          <div class="author-strip">
+            <span class="a" style="background: var(--author-5)" title="eve">e</span>
+            <span class="a" style="background: var(--author-6)" title="frank">f</span>
+            <span class="a" style="background: var(--author-8)" title="heidi">h</span>
+            <span class="a" style="background: var(--author-3)" title="dave">d</span>
+          </div>
+          <span class="last-activity">3h ago</span>
+        </div>
+      </a>
+
+      <a class="session-row" href="#">
+        <div class="session-main">
+          <h3>Onboarding doc rewrite <span class="status-pill finalizing">finalizing</span></h3>
+          <p class="goal">Restructure the getting-started guide into role-based paths. Curation in progress; cherry-pick plan generated yesterday.</p>
+          <div class="meta-strip">
+            <span class="mode-pill">sync</span>
+            <span>2 members</span>
+            <span>·</span>
+            <span>28 commits</span>
+            <span>·</span>
+            <span class="scope">scope: <code>docs/getting-started/**</code></span>
+          </div>
+        </div>
+        <div class="session-right">
+          <div class="author-strip">
+            <span class="a" style="background: var(--author-2)" title="bob">b</span>
+            <span class="a" style="background: var(--author-1)" title="alice">a</span>
+          </div>
+          <span class="last-activity">1d ago</span>
+        </div>
+      </a>
+
+      <a class="session-row ended" href="#">
+        <div class="session-main">
+          <h3>Webhook contract update <span class="status-pill ended">ended</span></h3>
+          <p class="goal">Migrate the v3 webhook payloads to include the new event-kind enum. Shipped as v0.4.2.</p>
+          <div class="meta-strip">
+            <span>3 members</span>
+            <span>·</span>
+            <span>22 commits</span>
+            <span>·</span>
+            <span class="scope">scope: <code>docs/api/webhooks/**</code></span>
+          </div>
+        </div>
+        <div class="session-right">
+          <div class="author-strip">
+            <span class="a" style="background: var(--author-2)" title="bob">b</span>
+            <span class="a" style="background: var(--author-4)" title="carol">c</span>
+            <span class="a" style="background: var(--author-8)" title="heidi">h</span>
+          </div>
+          <span class="last-activity">3d ago</span>
+        </div>
+      </a>
+
+      <a class="session-row ended" href="#">
+        <div class="session-main">
+          <h3>Q3 roadmap refinement <span class="status-pill ended">ended</span></h3>
+          <p class="goal">Iterate on the Q3 roadmap document. Closed last quarter; reference in docs/roadmap/q3.md.</p>
+          <div class="meta-strip">
+            <span>7 members</span>
+            <span>·</span>
+            <span>89 commits</span>
+            <span>·</span>
+            <span class="scope">scope: <code>docs/roadmap/**</code></span>
+          </div>
+        </div>
+        <div class="session-right">
+          <div class="author-strip">
+            <span class="a" style="background: var(--author-1)" title="alice">a</span>
+            <span class="a" style="background: var(--author-2)" title="bob">b</span>
+            <span class="a" style="background: var(--author-4)" title="carol">c</span>
+            <span class="a" style="background: var(--author-3)" title="dave">d</span>
+            <span class="a" style="background: var(--author-5)" title="eve">e</span>
+          </div>
+          <span class="last-activity">3w ago</span>
+        </div>
+      </a>
+    </div>
+  </main>
+
+  <script>
+    document.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
+      document.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+    }));
+  </script>
+</body>
+</html>
