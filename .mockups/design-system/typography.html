@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Typography — jamsesh (Geist)</title>
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+    }
+    nav.toc {
+      position: sticky; top: 0; z-index: 10;
+      padding: 14px 32px;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      display: flex; gap: 24px; align-items: baseline;
+      border-bottom: 1px solid var(--color-border);
+    }
+    nav.toc strong { font-weight: 600; letter-spacing: -0.01em; }
+    nav.toc .meta {
+      margin-left: auto;
+      opacity: 0.7; font-size: 12px;
+      font-family: var(--font-mono);
+    }
+    .intro {
+      padding: 32px 32px 16px;
+      max-width: 920px;
+    }
+    .intro h1 {
+      margin: 0 0 8px;
+      font-size: var(--font-size-2xl);
+      letter-spacing: -0.02em;
+    }
+    .intro p {
+      margin: 8px 0;
+      color: var(--color-text-secondary);
+    }
+    section.option {
+      padding: 24px 32px 40px;
+      border-top: 1px solid var(--color-border);
+    }
+    section.option > header {
+      display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+    section.option h2 {
+      margin: 0;
+      font-size: var(--font-size-xl);
+      letter-spacing: -0.02em;
+    }
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 9px; border-radius: var(--radius-sm);
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-primary);
+      font: var(--font-weight-semibold) 10px/1 var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    p.rationale {
+      margin: 0 0 24px;
+      max-width: 760px;
+      color: var(--color-text-secondary);
+    }
+    h3.sub {
+      margin: 24px 0 12px;
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-text-secondary);
+    }
+    .stack-code {
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      font: 12px/1.5 var(--font-mono);
+      white-space: pre; overflow-x: auto;
+    }
+    .scale {
+      display: grid;
+      grid-template-columns: 80px 80px 1fr;
+      gap: 8px 20px;
+      align-items: baseline;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .scale .label { font: 11px var(--font-mono); color: var(--color-text-secondary); }
+    .scale .size  { font: 11px var(--font-mono); color: var(--color-text-secondary); }
+    .scale .sample { letter-spacing: -0.01em; }
+    .weights {
+      padding: 16px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .weights .row {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 16px; align-items: baseline;
+      padding: 6px 0;
+    }
+    .weights .row .l { font: 11px var(--font-mono); color: var(--color-text-secondary); }
+    .weights .row .s { font-size: 16px; line-height: 1.5; }
+    .sample-section { padding: 24px 0 0; }
+    .sample-section h4 {
+      margin: 0 0 12px;
+      font: 11px var(--font-mono);
+      color: var(--color-text-secondary);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .sample-pane {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 24px 28px;
+      max-width: 760px;
+    }
+    .sample-pane h3 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .sample-pane .meta {
+      margin: 0 0 16px;
+      font: 12px var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .sample-pane p {
+      margin: 0 0 12px;
+      font-size: 15px; line-height: 1.6;
+    }
+    .sample-pane .quote {
+      margin: 12px 0;
+      padding: 10px 14px;
+      border-left: 3px solid var(--color-border-strong);
+      background: var(--color-bg-tertiary);
+      font-style: italic;
+    }
+    .sample-pane .code-block {
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      margin: 14px 0;
+      font: 13px/1.55 var(--font-mono);
+      overflow-x: auto;
+    }
+    .sample-pane .code-block .kw { color: #c2a4ff; }
+    .sample-pane .code-block .str { color: #87d6a8; }
+    .sample-pane .code-block .cmt { color: #9095a1; font-style: italic; }
+    .sample-pane .commit-row {
+      display: grid;
+      grid-template-columns: 16px 1fr auto;
+      gap: 12px; align-items: center;
+      padding: 6px 0;
+    }
+    .sample-pane .commit-row .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--author-1);
+    }
+    .sample-pane .commit-row .sha {
+      font: 12px var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <nav class="toc">
+    <strong>jamsesh typography — Geist + Geist Mono</strong>
+    <span class="meta">locked 2026-05-16 · .mockups/design-system/typography.html</span>
+  </nav>
+
+  <div class="intro">
+    <h1>Geist + Geist Mono (locked)</h1>
+    <p>Modern, neutral, geometric. Vercel's house typeface paired with Geist Mono
+       for code and SHAs. Contemporary without being faddish. Avoids the Inter-default
+       trap — Inter remains in the fallback chain only.</p>
+    <p>Both faces loaded via Google Fonts. Full system-stack fallback declared so
+       offline rendering degrades cleanly.</p>
+  </div>
+
+  <section class="option">
+    <header>
+      <h2>Type reference</h2>
+      <span class="badge">Modern · neutral</span>
+    </header>
+    <p class="rationale">
+      Full scale, weight set, and a jamsesh-domain sample paragraph below. The sample
+      shows the stack across body text, code blocks, mono SHAs, and a quoted comment
+      — every shape the portal will produce.
+    </p>
+
+    <h3 class="sub">Stack</h3>
+    <pre class="stack-code">--font-sans: 'Geist', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+--font-mono: 'Geist Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;</pre>
+
+    <h3 class="sub">Scale</h3>
+    <div class="scale"><div class="label">3xl</div><div class="size">30px</div><div class="sample" style="font-size: 30px; font-weight: 600;">Session display header</div></div>
+    <div class="scale"><div class="label">2xl</div><div class="size">24px</div><div class="sample" style="font-size: 24px; font-weight: 600;">Session goal title</div></div>
+    <div class="scale"><div class="label">xl</div><div class="size">20px</div><div class="sample" style="font-size: 20px; font-weight: 600;">Section heading</div></div>
+    <div class="scale"><div class="label">lg</div><div class="size">17px</div><div class="sample" style="font-size: 17px; font-weight: 500;">Subheading</div></div>
+    <div class="scale"><div class="label">base</div><div class="size">14px</div><div class="sample" style="font-size: 14px;">Body text — the resting size for the portal UI.</div></div>
+    <div class="scale"><div class="label">sm</div><div class="size">13px</div><div class="sample" style="font-size: 13px;">Secondary descriptions, captions, helper text.</div></div>
+    <div class="scale"><div class="label">xs</div><div class="size">11px</div><div class="sample" style="font-size: 11px;">Smallest tertiary labels and SHAs.</div></div>
+
+    <h3 class="sub">Weights</h3>
+    <div class="weights">
+      <div class="row"><div class="l">regular / 400</div><div class="s">Most body text and field labels sit at regular weight.</div></div>
+      <div class="row"><div class="l">medium / 500</div><div class="s">Emphasis, button labels, mode badge text.</div></div>
+      <div class="row"><div class="l">semibold / 600</div><div class="s">Headings, session-goal title, primary calls to action.</div></div>
+    </div>
+
+    <div class="sample-section">
+      <h4>Domain sample</h4>
+      <div class="sample-pane">
+        <h3>Auth design refresh</h3>
+        <div class="meta">jam/auth-design-refresh · 4 members · 47 commits · sync default</div>
+        <p>
+          We're tightening the session-token flow before it lands in
+          <code>epic-portal-foundation</code>. The OAuth callback contract has drifted
+          from what's in <code>docs/PROTOCOL.md</code> and the magic-link path is missing
+          a structured error for "binding expired."
+        </p>
+        <div class="quote">
+          @bob/main — proposing we drop the static client-id from the manifest and
+          register dynamically on first contact. Want a second pair of eyes on this
+          before I write the spec.
+        </div>
+        <div class="code-block"><span class="cmt">// jamsesh hook user-prompt-submit</span>
+<span class="kw">func</span> Digest(ctx context.Context, since uint64) (Block, error) {
+  fetch := store.FetchPeerRefs(ctx, session.ID)
+  events := portal.EventsSince(ctx, session.ID, since)
+  <span class="kw">return</span> format.As(<span class="str">"additionalContext"</span>, fetch, events)
+}</div>
+        <div class="commit-row"><div class="dot"></div><div>Add refresh-token revocation endpoint</div><div class="sha">a3f912c</div></div>
+        <div class="commit-row"><div class="dot"></div><div>Spike: device-code flow for headless self-host</div><div class="sha">8e2d101</div></div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

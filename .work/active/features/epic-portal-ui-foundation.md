@@ -1,0 +1,61 @@
+---
+id: epic-portal-ui-foundation
+kind: feature
+stage: drafting
+tags: [ui]
+parent: epic-portal-ui
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-16
+updated: 2026-05-16
+---
+
+# Portal UI — Foundation
+
+## Brief
+
+The plumbing every other portal-UI feature depends on. Establishes the Svelte 5
++ Vite project, routing, embedded-static-assets integration into the portal Go
+binary, the OAuth + magic-link login UI (the visual surface only — the
+backend handlers live in `epic-portal-foundation`), browser-side token
+persistence, and the WebSocket client wrapper + reactive state primitives
+(Svelte runes) that every consuming feature uses for live updates.
+
+This feature delivers the login screen as its first concrete UI surface and
+ships the empty session-list shell (without sessions populated — that lands
+in `epic-portal-ui-session-list`). Once it's done, a user can sign in via
+OAuth or magic-link and reach an empty post-login state.
+
+Does NOT cover: the design system (`epic-portal-ui-design-system`), any
+session-view surfaces (`epic-portal-ui-session-view-shell` and downstream).
+
+## Epic context
+
+- Parent epic: `epic-portal-ui`
+- Position in epic: foundation feature — every other portal-UI feature
+  depends on this for routing, the WebSocket primitive, and the post-login
+  shell.
+
+## Foundation references
+
+- `docs/SPEC.md` — Stack > Portal frontend (Svelte 5 + Vite locked, embedded
+  in Go binary)
+- `docs/ARCHITECTURE.md` — Portal UI WebSocket gateway, session_id in MCP
+  calls
+- `docs/PROTOCOL.md` — REST API > Auth section, WebSocket event envelope
+- `docs/SECURITY.md` — User authentication, Token lifetime and renewal
+- `docs/UX.md` — Flow: joining a session
+- `.mockups/design-system/tokens.css` — locked palette + typography
+- `.mockups/flows/onboarding/02-sign-in.html` — locked login screen design
+
+## Decomposition risks (carried from epic pre-mortem)
+
+- Routing-library choice is locked here (svelte-spa-router / hand-rolled /
+  hash-based) and affects every other feature. Pin during design.
+- The WebSocket client wrapper here becomes the cross-cutting subscription
+  pattern; every other feature uses it. Feature-design must lock the
+  subscription API shape to avoid drift.
+
+<!-- Feature-design will fill in interfaces, signatures, and implementation
+units when /agile-workflow:feature-design runs on this. -->

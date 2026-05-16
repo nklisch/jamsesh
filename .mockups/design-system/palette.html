@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Palette — jamsesh (Quiet Slate)</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: var(--font-size-base)/1.5 var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+    }
+    nav.toc {
+      position: sticky; top: 0; z-index: 10;
+      padding: 14px 32px;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      display: flex; gap: 24px; align-items: baseline;
+      border-bottom: 1px solid var(--color-border);
+    }
+    nav.toc strong { font-weight: 600; letter-spacing: -0.01em; }
+    nav.toc .meta {
+      margin-left: auto;
+      opacity: 0.7; font-size: 12px;
+      font-family: var(--font-mono);
+    }
+    .intro {
+      padding: 32px 32px 16px;
+      max-width: 920px;
+    }
+    .intro h1 {
+      margin: 0 0 8px;
+      font-size: var(--font-size-2xl);
+      letter-spacing: -0.02em;
+    }
+    .intro p {
+      margin: 8px 0;
+      color: var(--color-text-secondary);
+    }
+    section.option {
+      padding: 24px 32px 40px;
+      border-top: 1px solid var(--color-border);
+    }
+    section.option > header {
+      display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+    section.option h2 {
+      margin: 0;
+      font-size: var(--font-size-xl);
+      letter-spacing: -0.02em;
+    }
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 9px; border-radius: var(--radius-sm);
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-primary);
+      font: var(--font-weight-semibold) 10px/1 var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    p.rationale {
+      margin: 0 0 24px;
+      max-width: 760px;
+      color: var(--color-text-secondary);
+    }
+    h3.sub {
+      margin: 24px 0 12px;
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-text-secondary);
+    }
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 8px;
+    }
+    .swatch {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--color-bg-secondary);
+    }
+    .swatch .color { height: 44px; }
+    .swatch .meta {
+      padding: 6px 9px;
+      font: 11px/1.3 var(--font-mono);
+    }
+    .swatch .meta .name {
+      display: block;
+      color: var(--color-text-primary);
+    }
+    .swatch .meta .hex {
+      color: var(--color-text-tertiary);
+    }
+    .demo-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px;
+    }
+    .demo-pane {
+      padding: 20px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      position: relative;
+    }
+    .demo-pane .mode-label {
+      position: absolute; top: 10px; right: 14px;
+      font: 10px/1 var(--font-mono);
+      color: var(--color-text-tertiary);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .demo-pane h4 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+    }
+    .demo-pane p.sub {
+      margin: 0 0 14px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+    }
+    .demo-card {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      margin: 12px 0;
+    }
+    .commit-row {
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      gap: 10px; align-items: center;
+      padding: 6px 0;
+    }
+    .commit-row .author-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      box-shadow: 0 0 0 2px var(--color-bg-secondary), 0 0 0 3px var(--color-border);
+    }
+    .commit-row .commit-msg { font-size: var(--font-size-sm); }
+    .commit-row .commit-sha {
+      font: 11px var(--font-mono);
+      color: var(--color-text-tertiary);
+    }
+    .mode-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: var(--radius-sm);
+      font: 600 10px/1.4 var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .mode-badge.sync {
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+    }
+    .mode-badge.isolated {
+      background: var(--color-warning-muted);
+      color: var(--color-warning);
+    }
+    .demo-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .demo-btn.primary {
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+    }
+    .demo-btn.ghost {
+      background: transparent;
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border-strong);
+    }
+    .demo-link {
+      color: var(--color-text-link);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--color-text-link);
+      font-size: var(--font-size-sm);
+    }
+    .demo-code {
+      font: 12px/1.5 var(--font-mono);
+      background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      margin: 10px 0;
+      color: var(--color-text-primary);
+      overflow-x: auto;
+    }
+    .demo-code .kw { color: var(--color-accent); font-weight: 500; }
+    .demo-code .str { color: var(--color-success); }
+    .demo-comment-anchor {
+      background: var(--color-accent-muted);
+      border-left: 2px solid var(--color-accent);
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      margin: 6px 0;
+    }
+    .demo-comment-anchor strong {
+      color: var(--color-text-primary);
+      font-weight: 500;
+    }
+    .conflict-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px; border-radius: var(--radius-sm);
+      background: var(--color-danger-muted);
+      color: var(--color-danger);
+      font: 600 10px/1.2 var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .author-strip-demo {
+      display: flex; gap: 6px; margin-top: 14px; padding-top: 12px;
+      border-top: 1px solid var(--color-border);
+    }
+    .author-strip-demo .a-dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 3px var(--color-border);
+    }
+    .contrast {
+      margin-top: 20px;
+      padding: 14px 18px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font: 12px/1.6 var(--font-mono);
+    }
+    .contrast h3 {
+      margin: 0 0 8px;
+      font: 11px var(--font-sans);
+      font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-text-secondary);
+    }
+    .contrast .row {
+      display: grid;
+      grid-template-columns: 1fr 100px 100px;
+      gap: 10px;
+      padding: 4px 0;
+      align-items: center;
+    }
+    .contrast .row.head {
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: 6px; margin-bottom: 2px;
+    }
+    .pass { color: var(--color-success); font-weight: 500; }
+    .fail { color: var(--color-danger); font-weight: 600; }
+    .warn { color: var(--color-warning); font-weight: 500; }
+
+    /* Side-by-side demo: override tokens within each pane via data-theme */
+    .demo-pane[data-theme="light"] {
+      --color-bg-primary: #fafafa; --color-bg-secondary: #ffffff; --color-bg-tertiary: #f2f3f5; --color-bg-inverse: #14161a;
+      --color-text-primary: #14161a; --color-text-secondary: #52555e; --color-text-tertiary: #8b8f99; --color-text-inverse: #fafafa;
+      --color-text-link: #1f6b70; --color-text-link-hover: #155256;
+      --color-border: #e4e5ea; --color-border-strong: #c8cbd3;
+      --color-accent: #1f6b70; --color-accent-hover: #155256; --color-accent-muted: rgba(31,107,112,0.10);
+      --color-success: #4a8c5c; --color-warning: #946523; --color-warning-muted: rgba(148,101,35,0.10);
+      --color-danger: #a14a4a; --color-danger-muted: rgba(161,74,74,0.10); --color-info: #1f6b70;
+      --author-1: #b45f4a; --author-4: #4f6e92;
+    }
+    .demo-pane[data-theme="dark"] {
+      --color-bg-primary: #0f1115; --color-bg-secondary: #16181d; --color-bg-tertiary: #1d2026; --color-bg-inverse: #fafafa;
+      --color-text-primary: #e6e7ea; --color-text-secondary: #9095a1; --color-text-tertiary: #5b5f6b; --color-text-inverse: #0f1115;
+      --color-text-link: #6cc1c6; --color-text-link-hover: #8ad3d7;
+      --color-border: #25282f; --color-border-strong: #3a3e47;
+      --color-accent: #6cc1c6; --color-accent-hover: #8ad3d7; --color-accent-muted: rgba(108,193,198,0.14);
+      --color-success: #7fb58e; --color-warning: #d9aa63; --color-warning-muted: rgba(217,170,99,0.14);
+      --color-danger: #d08080; --color-danger-muted: rgba(208,128,128,0.14); --color-info: #6cc1c6;
+      --author-1: #d8826e; --author-4: #7993b8;
+    }
+  </style>
+</head>
+<body>
+  <nav class="toc">
+    <strong>jamsesh palette — Quiet Slate</strong>
+    <span class="meta">locked 2026-05-16 · .mockups/design-system/palette.html</span>
+  </nav>
+
+  <div class="intro">
+    <h1>Quiet Slate (locked)</h1>
+    <p>Cool monochromatic neutrals with a muted teal accent. The work is what's loud,
+       not the chrome. Primary buttons are <code>bg-inverse</code> (not accent) so contrast
+       stays strong without making teal shouty. Linear-adjacent calm; built for dense,
+       glanceable surfaces.</p>
+    <p>Tokens defined in <code>tokens.css</code>. Toggle mechanism: system
+       (<code>prefers-color-scheme</code>) by default, <code>[data-theme="dark"|"light"]</code>
+       on <code>&lt;html&gt;</code> for explicit override.</p>
+  </div>
+
+  <section class="option">
+    <header>
+      <h2>Token reference</h2>
+      <span class="badge">Calm · Linear-adjacent</span>
+    </header>
+    <p class="rationale">
+      Both light and dark token sets shown below for direct visual comparison. Author
+      colors (1–8) chosen as muted earth tones — distinguishable when adjacent in the
+      git DAG, calm enough not to compete with the chrome.
+    </p>
+
+    <h3 class="sub">Light tokens</h3>
+    <div class="swatches" data-tokens="light"></div>
+
+    <h3 class="sub">Dark tokens</h3>
+    <div class="swatches" data-tokens="dark"></div>
+
+    <h3 class="sub">Composition (light vs dark)</h3>
+    <div class="demo-row">
+      <div class="demo-pane" data-theme="light">
+        <span class="mode-label">Light</span>
+        <h4>Auth design refresh</h4>
+        <p class="sub">Tighten the session-token flow & document the OAuth callback contract.</p>
+        <div class="demo-card">
+          <div class="commit-row">
+            <span class="author-dot" style="background: var(--author-1)"></span>
+            <span class="commit-msg">Add refresh-token revocation endpoint <span class="mode-badge sync">sync</span></span>
+            <span class="commit-sha">a3f912c</span>
+          </div>
+          <div class="commit-row">
+            <span class="author-dot" style="background: var(--author-4)"></span>
+            <span class="commit-msg">Spike: device-code flow for headless self-host <span class="mode-badge isolated">isolated</span></span>
+            <span class="commit-sha">8e2d101</span>
+          </div>
+        </div>
+        <div class="demo-comment-anchor">
+          <strong>@alice/main</strong> · should this also clear the refresh token when access expires?
+        </div>
+        <div class="demo-code">
+<span class="kw">func</span> RevokeToken(ctx context.Context, tok <span class="kw">string</span>) error {
+  <span class="kw">return</span> store.Revoke(ctx, tok, <span class="str">"user-initiated"</span>)
+}</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px;">
+          <button class="demo-btn primary">Open session</button>
+          <button class="demo-btn ghost">Browse tree</button>
+          <a href="#" class="demo-link">View 3 unresolved comments</a>
+          <span class="conflict-pill">⚡ conflict</span>
+        </div>
+      </div>
+      <div class="demo-pane" data-theme="dark">
+        <span class="mode-label">Dark</span>
+        <h4>Auth design refresh</h4>
+        <p class="sub">Tighten the session-token flow & document the OAuth callback contract.</p>
+        <div class="demo-card">
+          <div class="commit-row">
+            <span class="author-dot" style="background: var(--author-1)"></span>
+            <span class="commit-msg">Add refresh-token revocation endpoint <span class="mode-badge sync">sync</span></span>
+            <span class="commit-sha">a3f912c</span>
+          </div>
+          <div class="commit-row">
+            <span class="author-dot" style="background: var(--author-4)"></span>
+            <span class="commit-msg">Spike: device-code flow for headless self-host <span class="mode-badge isolated">isolated</span></span>
+            <span class="commit-sha">8e2d101</span>
+          </div>
+        </div>
+        <div class="demo-comment-anchor">
+          <strong>@alice/main</strong> · should this also clear the refresh token when access expires?
+        </div>
+        <div class="demo-code">
+<span class="kw">func</span> RevokeToken(ctx context.Context, tok <span class="kw">string</span>) error {
+  <span class="kw">return</span> store.Revoke(ctx, tok, <span class="str">"user-initiated"</span>)
+}</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px;">
+          <button class="demo-btn primary">Open session</button>
+          <button class="demo-btn ghost">Browse tree</button>
+          <a href="#" class="demo-link">View 3 unresolved comments</a>
+          <span class="conflict-pill">⚡ conflict</span>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="sub">Author palette (8 distinct, both modes)</h3>
+    <div class="demo-row">
+      <div class="demo-pane" data-theme="light">
+        <span class="mode-label">Light</span>
+        <div class="author-strip-demo" style="border: 0; padding: 0; margin: 8px 0 0;">
+          <span class="a-dot" style="background: #b45f4a" title="author-1 / clay"></span>
+          <span class="a-dot" style="background: #7a8c4f" title="author-2 / olive"></span>
+          <span class="a-dot" style="background: #8b5a8f" title="author-3 / plum"></span>
+          <span class="a-dot" style="background: #4f6e92" title="author-4 / denim"></span>
+          <span class="a-dot" style="background: #b57a4a" title="author-5 / terracotta"></span>
+          <span class="a-dot" style="background: #5a6e8b" title="author-6 / slate-blue"></span>
+          <span class="a-dot" style="background: #b47a8b" title="author-7 / dusty-rose"></span>
+          <span class="a-dot" style="background: #4f8b85" title="author-8 / teal-stone"></span>
+        </div>
+      </div>
+      <div class="demo-pane" data-theme="dark">
+        <span class="mode-label">Dark</span>
+        <div class="author-strip-demo" style="border: 0; padding: 0; margin: 8px 0 0;">
+          <span class="a-dot" style="background: #d8826e" title="author-1 / clay"></span>
+          <span class="a-dot" style="background: #a8b975" title="author-2 / olive"></span>
+          <span class="a-dot" style="background: #b585bb" title="author-3 / plum"></span>
+          <span class="a-dot" style="background: #7993b8" title="author-4 / denim"></span>
+          <span class="a-dot" style="background: #d89e72" title="author-5 / terracotta"></span>
+          <span class="a-dot" style="background: #8294b3" title="author-6 / slate-blue"></span>
+          <span class="a-dot" style="background: #d89faf" title="author-7 / dusty-rose"></span>
+          <span class="a-dot" style="background: #7cb5af" title="author-8 / teal-stone"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="contrast" data-contrast="opt-1"></div>
+  </section>
+
+  <script>
+    const TOKENS = {
+      light: {
+        '--color-bg-primary': '#fafafa', '--color-bg-secondary': '#ffffff', '--color-bg-tertiary': '#f2f3f5', '--color-bg-inverse': '#14161a',
+        '--color-text-primary': '#14161a', '--color-text-secondary': '#52555e', '--color-text-tertiary': '#8b8f99', '--color-text-inverse': '#fafafa',
+        '--color-text-link': '#1f6b70', '--color-text-link-hover': '#155256',
+        '--color-border': '#e4e5ea', '--color-border-strong': '#c8cbd3',
+        '--color-accent': '#1f6b70', '--color-accent-hover': '#155256', '--color-accent-muted': 'rgba(31,107,112,0.10)',
+        '--color-success': '#4a8c5c', '--color-warning': '#946523', '--color-danger': '#a14a4a', '--color-info': '#1f6b70'
+      },
+      dark: {
+        '--color-bg-primary': '#0f1115', '--color-bg-secondary': '#16181d', '--color-bg-tertiary': '#1d2026', '--color-bg-inverse': '#fafafa',
+        '--color-text-primary': '#e6e7ea', '--color-text-secondary': '#9095a1', '--color-text-tertiary': '#5b5f6b', '--color-text-inverse': '#0f1115',
+        '--color-text-link': '#6cc1c6', '--color-text-link-hover': '#8ad3d7',
+        '--color-border': '#25282f', '--color-border-strong': '#3a3e47',
+        '--color-accent': '#6cc1c6', '--color-accent-hover': '#8ad3d7', '--color-accent-muted': 'rgba(108,193,198,0.14)',
+        '--color-success': '#7fb58e', '--color-warning': '#d9aa63', '--color-danger': '#d08080', '--color-info': '#6cc1c6'
+      },
+    };
+
+    document.querySelectorAll('.swatches[data-tokens]').forEach(host => {
+      const key = host.dataset.tokens;
+      const tokens = TOKENS[key];
+      const isDark = key === 'dark';
+      for (const [name, value] of Object.entries(tokens)) {
+        const swatch = document.createElement('div');
+        swatch.className = 'swatch';
+        if (isDark) swatch.style.background = '#1a1d22';
+        swatch.innerHTML = `
+          <div class="color" style="background: ${value}"></div>
+          <div class="meta" style="${isDark ? 'color: #e0e0e3; background: #1a1d22;' : ''}">
+            <span class="name">${name.replace('--color-', '')}</span>
+            <span class="hex">${value}</span>
+          </div>
+        `;
+        host.appendChild(swatch);
+      }
+    });
+
+    function parseColor(c) {
+      if (c.startsWith('#')) {
+        const hex = c.slice(1);
+        return [parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16), 1];
+      }
+      if (c.startsWith('rgba')) {
+        const m = c.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
+        return m ? [+m[1], +m[2], +m[3], +m[4]] : [0,0,0,1];
+      }
+      return [0,0,0,1];
+    }
+    function srgbToLinear(c) {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    }
+    function luminance(r, g, b) {
+      return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
+    }
+    function contrastRatio(fg, bg) {
+      const [r1,g1,b1,a1] = parseColor(fg);
+      const [r2,g2,b2,_] = parseColor(bg);
+      const r = Math.round(r1*a1 + r2*(1-a1));
+      const g = Math.round(g1*a1 + g2*(1-a1));
+      const b = Math.round(b1*a1 + b2*(1-a1));
+      const L1 = luminance(r,g,b);
+      const L2 = luminance(r2,g2,b2);
+      return (Math.max(L1,L2) + 0.05) / (Math.min(L1,L2) + 0.05);
+    }
+    function tag(r) {
+      if (r >= 4.5) return `<span class="pass">${r.toFixed(2)} ✓ AA</span>`;
+      if (r >= 3.0) return `<span class="warn">${r.toFixed(2)} large only</span>`;
+      return `<span class="fail">${r.toFixed(2)} ✗ fail</span>`;
+    }
+
+    const PAIRS = [
+      { label: 'text-primary on bg-primary', fg: '--color-text-primary', bg: '--color-bg-primary' },
+      { label: 'text-secondary on bg-primary', fg: '--color-text-secondary', bg: '--color-bg-primary' },
+      { label: 'text-inverse on accent', fg: '--color-text-inverse', bg: '--color-accent' },
+      { label: 'accent on bg-primary', fg: '--color-accent', bg: '--color-bg-primary' },
+      { label: 'text-inverse on bg-inverse (primary button)', fg: '--color-text-inverse', bg: '--color-bg-inverse' },
+    ];
+
+    document.querySelectorAll('.contrast[data-contrast]').forEach(host => {
+      const L = TOKENS.light, D = TOKENS.dark;
+      let html = '<h3>WCAG contrast (AA threshold: 4.5:1)</h3>';
+      html += '<div class="row head"><div>Pair</div><div>Light</div><div>Dark</div></div>';
+      for (const p of PAIRS) {
+        const lr = contrastRatio(L[p.fg], L[p.bg]);
+        const dr = contrastRatio(D[p.fg], D[p.bg]);
+        html += `<div class="row"><div>${p.label}</div><div>${tag(lr)}</div><div>${tag(dr)}</div></div>`;
+      }
+      host.innerHTML = html;
+    });
+  </script>
+</body>
+</html>

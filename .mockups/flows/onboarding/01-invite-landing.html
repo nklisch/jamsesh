@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Onboarding · invite landing — jamsesh</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .flow-meta {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 10px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      font: 13px/1.4 var(--font-sans);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .flow-meta a {
+      color: #8aa9ff; text-decoration: none;
+      padding: 4px 8px; border-radius: var(--radius-sm);
+    }
+    .flow-meta a:hover { background: rgba(255,255,255,0.08); }
+    .flow-meta .center { font-weight: 600; }
+    .flow-meta .center small {
+      opacity: 0.6; font-weight: 400; margin-left: 8px;
+      font-family: var(--font-mono);
+    }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+    }
+
+    .app-chrome {
+      padding: 16px 32px;
+      display: flex; align-items: center; gap: 16px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-lg) var(--font-sans);
+      letter-spacing: -0.03em;
+      color: var(--color-text-primary);
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .chrome-spacer { flex: 1; }
+    .theme-chip {
+      display: inline-flex; gap: 6px; align-items: center;
+      padding: 5px 10px; border-radius: var(--radius-md);
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-secondary);
+      font: var(--font-size-xs)/1 var(--font-mono);
+      border: 1px solid var(--color-border);
+    }
+
+    main {
+      display: flex; justify-content: center; align-items: flex-start;
+      padding: 80px 24px 120px;
+    }
+    .invite-card {
+      width: 100%; max-width: 560px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 40px 40px 32px;
+    }
+    .invite-card .eyebrow {
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-accent);
+      margin-bottom: 12px;
+    }
+    .invite-card h1 {
+      margin: 0 0 6px;
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .invite-card .inviter {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      margin-bottom: 28px;
+    }
+    .invite-card .inviter strong {
+      color: var(--color-text-primary);
+      font-weight: var(--font-weight-medium);
+    }
+
+    .session-preview {
+      background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 20px 22px;
+      margin-bottom: 28px;
+    }
+    .session-preview h2 {
+      margin: 0 0 6px;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.01em;
+    }
+    .session-preview .goal {
+      margin: 0 0 16px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      line-height: 1.55;
+    }
+    .session-preview .goal code {
+      font: 12px var(--font-mono);
+      background: var(--color-bg-secondary);
+      padding: 1px 5px;
+      border-radius: 3px;
+      border: 1px solid var(--color-border);
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px 24px;
+      padding-top: 14px;
+      border-top: 1px solid var(--color-border);
+    }
+    .meta-grid .row { display: flex; flex-direction: column; gap: 4px; }
+    .meta-grid .row .l {
+      font: 10px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-tertiary);
+    }
+    .meta-grid .row .v { font-size: var(--font-size-sm); color: var(--color-text-primary); }
+    .scope-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+    .scope-chip {
+      font: 11px var(--font-mono);
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+      padding: 2px 7px; border-radius: var(--radius-sm);
+    }
+    .mode-pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: var(--radius-sm);
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .author-strip {
+      display: flex; align-items: center; gap: -6px;
+    }
+    .author-strip .a {
+      width: 26px; height: 26px; border-radius: 50%;
+      box-shadow: 0 0 0 2px var(--color-bg-tertiary);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 10px var(--font-mono);
+      margin-right: -6px;
+    }
+    .author-strip .a:last-child { margin-right: 0; }
+    .author-strip .plus {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border-strong);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--color-text-secondary);
+      font: var(--font-weight-medium) 11px var(--font-mono);
+    }
+
+    .cta {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 22px;
+      border: 0; border-radius: var(--radius-md);
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      font: var(--font-weight-medium) var(--font-size-base) var(--font-sans);
+      cursor: pointer;
+      width: 100%;
+      justify-content: center;
+    }
+    .cta:hover { background: #2a2d34; }
+    .small-note {
+      margin-top: 16px;
+      text-align: center;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-tertiary);
+    }
+    .small-note a {
+      color: var(--color-text-link);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--color-text-link);
+    }
+  </style>
+</head>
+<body>
+  <header class="flow-meta">
+    <a href="index.html">← overview</a>
+    <span class="center">onboarding <small>· step 1/4 · invite-landing</small></span>
+    <a href="02-sign-in.html">next →</a>
+  </header>
+
+  <div class="app-chrome">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <div class="chrome-spacer"></div>
+    <span class="theme-chip">◐ system theme</span>
+  </div>
+
+  <main>
+    <div class="invite-card">
+      <div class="eyebrow">Invitation</div>
+      <h1>You've been invited to join a jam</h1>
+      <p class="inviter"><strong>Bob Martinez</strong> invited you to collaborate.
+         Sign in to accept.</p>
+
+      <div class="session-preview">
+        <h2>Auth design refresh</h2>
+        <p class="goal">
+          Tighten the session-token flow before it lands in
+          <code>epic-portal-foundation</code>. The OAuth callback contract has drifted
+          from <code>docs/PROTOCOL.md</code>; the magic-link path is missing a structured
+          error for "binding expired."
+        </p>
+        <div class="meta-grid">
+          <div class="row">
+            <span class="l">Default mode</span>
+            <span class="v"><span class="mode-pill">sync</span></span>
+          </div>
+          <div class="row">
+            <span class="l">Members (3)</span>
+            <span class="v">
+              <div class="author-strip">
+                <span class="a" style="background: var(--author-1)" title="alice">a</span>
+                <span class="a" style="background: var(--author-2)" title="bob">b</span>
+                <span class="a" style="background: var(--author-4)" title="carol">c</span>
+              </div>
+            </span>
+          </div>
+          <div class="row" style="grid-column: 1 / -1;">
+            <span class="l">Writable scope</span>
+            <span class="v">
+              <div class="scope-chips">
+                <span class="scope-chip">docs/auth/**</span>
+                <span class="scope-chip">specs/auth/**</span>
+                <span class="scope-chip">internal/auth/**</span>
+              </div>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <button class="cta">Sign in to accept</button>
+      <p class="small-note">
+        This invitation expires in 7 days.
+        <a href="#">What is jamsesh?</a>
+      </p>
+    </div>
+  </main>
+</body>
+</html>

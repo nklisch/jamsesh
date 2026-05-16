@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui
 kind: epic
-stage: drafting
+stage: implementing
 tags: [ui]
 parent: null
 depends_on: [epic-portal-api]
@@ -52,24 +52,93 @@ it does NOT cover the finalize curation view (`epic-finalize-flow`).
 - `docs/PROTOCOL.md` — WebSocket event types, Comment schema, Conflict
   event schema
 
-## Anticipated child features
+## Mockups
 
-Provisional — actual decomposition lands when this epic is designed.
+- Design system: `.mockups/design-system/`
+  - Palette: Quiet Slate (cool monochromatic + muted teal accent, Linear-adjacent)
+  - Typography: Geist + Geist Mono (modern, neutral, geometric)
+  - Tokens locked: 2026-05-16
+  - Toggle: `prefers-color-scheme` by default, `[data-theme="dark"|"light"]`
+    on `<html>` for explicit override
+- Preview pages (trimmed to chosen direction):
+  - `.mockups/design-system/palette.html`
+  - `.mockups/design-system/typography.html`
+- Author colors: 8 distinct earth-tone hues defined as `--author-1`..`--author-8`,
+  each with light and dark variants for the git DAG renderer.
+- Onboarding flow: `.mockups/flows/onboarding/index.html` (4 steps)
+  - 01-invite-landing → 02-sign-in → 03-session-list → 04-session-view
+  - Polished, desktop-first, uses locked tokens.css
+  - Signed off: 2026-05-16
 
-- Frontend skeleton (Svelte 5 + Vite project scaffolding, routing
-  choice, build wiring, static-asset embedding into the Go binary)
-- Design system tokens (run `/ux-ui-design:palette` first; lock typography
-  + palette)
-- Session list view
-- Session view shell (layout, navigation between panes)
-- Tree pane (git DAG rendering colored by author, mode badges)
-- Artifact pane (file viewer with line-range selection for comments)
-- Comment display (inline anchors, threaded ordering by anchor)
-- Comment composer (overlay, addressing UX, kind selection)
-- Activity feed
-- Presence panel
-- Mode badges + switch action
-- Fork action
-- WebSocket subscription + event handling
+## Design decisions
 
-<!-- Design pass on each child feature will fill in specifics. -->
+Locked during the epic-design pass:
+
+- **Theme:** both light and dark, with toggle. Default behavior follows
+  `prefers-color-scheme`; explicit `[data-theme="dark"|"light"]` on
+  `<html>` overrides the system preference and is persisted client-side.
+- **Auth UX shape:** OAuth and magic-link are equally prominent on the
+  sign-in card. Neither is the fallback; both are first-class entry
+  points.
+- **Comment display style:** inline anchored to the line (GitHub PR style).
+  Comments expand the file view directly below their commented line.
+
+## Decomposition
+
+The decomposition splits by capability, not by layer. `foundation` and
+`design-system` are independent infrastructure features that run in
+parallel from day one. `session-list` and `session-view-shell` are the
+two user-facing surfaces, both depending on foundation + design-system.
+`artifact-and-comments` and `ref-actions` slot into the session-view-shell
+container as the two interaction surfaces inside it.
+
+The mockup phase delivered the locked design system at
+`.mockups/design-system/` (palette + typography + tokens.css with both
+color modes) and the locked onboarding journey at
+`.mockups/flows/onboarding/` (login → session list → session view, polished
+desktop-first). Per-feature screen alternatives via `/ux-ui-design:screens`
+fire at feature-design time for surfaces that warrant exploration.
+
+### Child features
+
+- `epic-portal-ui-foundation` — Svelte 5 + Vite scaffold, routing,
+  embedded-static-assets, OAuth + magic-link login UI, WebSocket client
+  wrapper, reactive state primitives — depends on: `[]`
+- `epic-portal-ui-design-system` — tokens.css import pipeline, theme
+  toggle, base components (Button, Input, Card, Badge, Pill, AuthorDot,
+  InlineCode) — depends on: `[]`
+- `epic-portal-ui-session-list` — session list view with filter chips and
+  status grouping; WebSocket subscription for live session updates —
+  depends on: `[epic-portal-ui-foundation, epic-portal-ui-design-system]`
+- `epic-portal-ui-session-view-shell` — three-column session view layout,
+  session header, tree pane (git DAG renderer), activity feed, presence
+  panel; central artifact-pane slot for downstream feature —
+  depends on: `[epic-portal-ui-foundation, epic-portal-ui-design-system]`
+- `epic-portal-ui-artifact-and-comments` — read-only artifact viewer,
+  line-range selection, inline-anchored comment display, comment composer
+  overlay with addressing autocomplete and kind selector —
+  depends on: `[epic-portal-ui-session-view-shell]`
+- `epic-portal-ui-ref-actions` — per-ref mode switch (sync ↔ isolated)
+  and fork action (replace ref or create sibling under user's namespace) —
+  depends on: `[epic-portal-ui-session-view-shell]`
+
+### Decomposition risks
+
+- **Git DAG renderer is the highest-risk piece in the epic.** SVG-based,
+  multi-branch, author-colored, live-updating via WebSocket. Lives inside
+  `epic-portal-ui-session-view-shell` initially; feature-design may split
+  it into a sibling feature if the implementation surface warrants.
+- **WebSocket subscription pattern is cross-cutting.** The shared
+  abstraction lives in `epic-portal-ui-foundation`. Every other feature
+  that displays live data uses it. Feature-design must enforce a single
+  consistent subscription API to prevent per-feature drift.
+- **Routing-library choice** (svelte-spa-router / hand-rolled / hash-based)
+  is locked at `foundation`-design time and affects every consuming feature.
+- **"New session" button's boundary is unresolved** between epic-portal-ui
+  (button + dialog?), epic-portal-api (create endpoint), and epic-cc-plugin
+  (the `/jamsesh:create` slash command). Feature-design on `session-list`
+  picks an answer and documents the boundary with the other two epics.
+
+<!-- Design pass on each child feature will fill in interfaces,
+component APIs, signatures, and test approach. -->
+

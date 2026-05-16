@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Onboarding · session view — jamsesh</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .flow-meta {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 10px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      font: 13px/1.4 var(--font-sans);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .flow-meta a {
+      color: #8aa9ff; text-decoration: none;
+      padding: 4px 8px; border-radius: var(--radius-sm);
+    }
+    .flow-meta a:hover { background: rgba(255,255,255,0.08); }
+    .flow-meta .center { font-weight: 600; }
+    .flow-meta .center small {
+      opacity: 0.6; font-weight: 400; margin-left: 8px;
+      font-family: var(--font-mono);
+    }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+    }
+
+    .app-chrome {
+      padding: 10px 24px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-base) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .breadcrumb {
+      display: flex; gap: 6px; align-items: center;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .breadcrumb .sep { color: var(--color-text-tertiary); }
+    .breadcrumb .here {
+      color: var(--color-text-primary);
+      font-weight: var(--font-weight-medium);
+    }
+    .chrome-spacer { flex: 1; }
+    .theme-chip {
+      display: inline-flex; gap: 6px; align-items: center;
+      padding: 4px 9px; border-radius: var(--radius-md);
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-secondary);
+      font: 11px/1 var(--font-mono);
+      border: 1px solid var(--color-border);
+    }
+    .avatar-sm {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--author-2);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 11px var(--font-mono);
+    }
+
+    .session-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--color-border);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 20px;
+      align-items: start;
+    }
+    .session-header h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .session-header .goal {
+      margin: 0 0 10px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      max-width: 720px;
+    }
+    .session-header .meta-strip {
+      display: flex; gap: 14px; align-items: center;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      font-family: var(--font-mono);
+    }
+    .session-header .meta-strip code {
+      background: var(--color-bg-tertiary);
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: var(--color-text-secondary);
+    }
+    .header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .header-btn {
+      padding: 7px 14px;
+      background: var(--color-bg-secondary);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .header-btn.primary {
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      border-color: var(--color-bg-inverse);
+    }
+
+    /* Three-column layout */
+    .session-body {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr) 320px;
+      height: calc(100vh - 40px - 50px - 110px);
+      min-height: 600px;
+    }
+
+    /* LEFT — tree pane */
+    .tree-pane {
+      border-right: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+      overflow-y: auto;
+    }
+    .pane-head {
+      padding: 10px 14px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+      position: sticky; top: 0;
+      background: var(--color-bg-primary);
+      z-index: 1;
+    }
+    .ref-group { padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+    .ref-group:last-child { border-bottom: 0; }
+    .ref-header {
+      padding: 6px 14px;
+      display: flex; gap: 8px; align-items: center;
+      font: var(--font-size-xs) var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .ref-header .author-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+    .ref-header .branch-name {
+      color: var(--color-text-primary);
+      font-weight: var(--font-weight-medium);
+    }
+    .mode-mini {
+      margin-left: auto;
+      padding: 1px 6px; border-radius: 3px;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .mode-mini.sync { background: var(--color-accent-muted); color: var(--color-accent); }
+    .mode-mini.isolated { background: var(--color-warning-muted); color: var(--color-warning); }
+
+    .commit-list { list-style: none; padding: 0; margin: 0; }
+    .commit-item {
+      padding: 5px 14px 5px 30px;
+      position: relative;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .commit-item:hover { background: var(--color-bg-tertiary); }
+    .commit-item.selected {
+      background: var(--color-accent-muted);
+      border-left: 2px solid var(--color-accent);
+      padding-left: 28px;
+    }
+    .commit-item::before {
+      content: ''; position: absolute;
+      left: 18px; top: 12px;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--commit-color, var(--color-text-tertiary));
+    }
+    .commit-item .msg {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-primary);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .commit-item .sha {
+      font: 10px var(--font-mono);
+      color: var(--color-text-tertiary);
+    }
+    .commit-item.merge .msg::before {
+      content: '⇈ ';
+      color: var(--color-accent);
+    }
+
+    /* CENTER — artifact pane */
+    .artifact-pane {
+      overflow-y: auto;
+      background: var(--color-bg-primary);
+      display: flex; flex-direction: column;
+    }
+    .artifact-head {
+      padding: 10px 18px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      position: sticky; top: 0;
+      background: var(--color-bg-primary);
+      z-index: 1;
+    }
+    .file-path {
+      font: var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-primary);
+    }
+    .file-path .dir { color: var(--color-text-secondary); }
+    .artifact-actions { display: flex; gap: 6px; align-items: center; }
+    .small-btn {
+      padding: 4px 10px;
+      background: transparent;
+      color: var(--color-text-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font: 11px var(--font-mono);
+      cursor: pointer;
+    }
+    .small-btn:hover {
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-primary);
+    }
+
+    .file-viewer {
+      flex: 1;
+      padding: 18px 0;
+      font: 13px/1.55 var(--font-mono);
+    }
+    .line {
+      display: grid;
+      grid-template-columns: 50px 1fr;
+      gap: 16px;
+      padding: 0 18px;
+    }
+    .line .num {
+      color: var(--color-text-tertiary);
+      text-align: right;
+      user-select: none;
+      font-size: 12px;
+    }
+    .line .code {
+      color: var(--color-text-primary);
+      white-space: pre;
+    }
+    .line.h { background: var(--color-accent-muted); }
+
+    .kw { color: #b9518e; }
+    [data-theme="dark"] .kw, body.dark .kw { color: #d896c5; }
+    @media (prefers-color-scheme: dark) { .kw { color: #d896c5; } }
+    .str { color: var(--color-success); }
+    .cmt { color: var(--color-text-tertiary); font-style: italic; }
+
+    .inline-comment {
+      grid-column: 2;
+      margin: 6px 0 6px 0;
+      padding: 10px 14px;
+      background: var(--color-accent-muted);
+      border-left: 2px solid var(--color-accent);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      font: var(--font-size-sm)/1.55 var(--font-sans);
+      color: var(--color-text-primary);
+      max-width: 580px;
+    }
+    .inline-comment .comment-head {
+      display: flex; gap: 8px; align-items: center;
+      margin-bottom: 4px;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+    }
+    .inline-comment .comment-head strong {
+      color: var(--color-text-primary);
+      font-weight: var(--font-weight-medium);
+    }
+    .inline-comment .kind {
+      padding: 1px 6px; border-radius: 3px;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-secondary);
+    }
+    .inline-comment .kind.question { background: var(--color-accent-muted); color: var(--color-accent); }
+    .inline-comment .kind.suggestion { background: var(--color-warning-muted); color: var(--color-warning); }
+    .inline-comment .body { color: var(--color-text-primary); }
+    .inline-comment .reply-link {
+      margin-top: 6px;
+      font: var(--font-size-xs) var(--font-sans);
+      color: var(--color-text-link);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--color-text-link);
+    }
+
+    /* RIGHT — activity feed + presence */
+    .right-pane {
+      border-left: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+      overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+    .presence-section {
+      padding: 14px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .presence-section h3 {
+      margin: 0 0 10px;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .presence-row {
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      gap: 10px; align-items: center;
+      padding: 5px 0;
+      font-size: var(--font-size-sm);
+    }
+    .presence-row .author-dot {
+      width: 18px; height: 18px; border-radius: 50%;
+      position: relative;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+    }
+    .presence-row .author-dot.online::after {
+      content: ''; position: absolute;
+      right: -2px; bottom: -2px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--color-success);
+      border: 2px solid var(--color-bg-primary);
+    }
+    .presence-row .name { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .presence-row .where { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+
+    .feed-section { padding: 14px; flex: 1; }
+    .feed-section h3 {
+      margin: 0 0 10px;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .feed-list { display: flex; flex-direction: column; gap: 4px; }
+    .feed-item {
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      line-height: 1.45;
+    }
+    .feed-item:hover { background: var(--color-bg-tertiary); }
+    .feed-item .who { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .feed-item .when { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+    .feed-item.conflict {
+      background: var(--color-danger-muted);
+      color: var(--color-danger);
+    }
+    .feed-item.conflict .who { color: var(--color-danger); }
+    .feed-item .icon { display: inline-block; width: 14px; color: var(--color-text-tertiary); }
+    .feed-item.conflict .icon { color: var(--color-danger); }
+  </style>
+</head>
+<body>
+  <header class="flow-meta">
+    <a href="03-session-list.html">← prev</a>
+    <span class="center">onboarding <small>· step 4/4 · session-view</small></span>
+    <a href="index.html">done ↗</a>
+  </header>
+
+  <div class="app-chrome">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <span class="breadcrumb">
+      <span>kindred-labs</span>
+      <span class="sep">/</span>
+      <span class="here">Auth design refresh</span>
+    </span>
+    <div class="chrome-spacer"></div>
+    <span class="theme-chip">◐ system theme</span>
+    <span class="avatar-sm" title="you">e</span>
+  </div>
+
+  <div class="session-header">
+    <div>
+      <h1>Auth design refresh</h1>
+      <p class="goal">
+        Tighten the session-token flow before it lands in
+        <code style="font-family: var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px;">epic-portal-foundation</code>.
+        Document the OAuth callback contract and the magic-link "binding expired" error path.
+      </p>
+      <div class="meta-strip">
+        <span>scope <code>docs/auth/**</code></span>
+        <span>·</span>
+        <span>default mode <code>sync</code></span>
+        <span>·</span>
+        <span>3 members</span>
+        <span>·</span>
+        <span>47 commits</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="header-btn">Comment</button>
+      <button class="header-btn primary">Finalize</button>
+    </div>
+  </div>
+
+  <div class="session-body">
+    <!-- TREE PANE -->
+    <aside class="tree-pane">
+      <div class="pane-head">tree</div>
+
+      <div class="ref-group">
+        <div class="ref-header">
+          <span class="author-dot" style="background: var(--author-1)"></span>
+          <span class="branch-name">alice/main</span>
+          <span class="mode-mini sync">sync</span>
+        </div>
+        <ul class="commit-list">
+          <li class="commit-item" style="--commit-color: var(--author-1)">
+            <span class="msg">Add refresh-token revocation endpoint</span>
+            <span class="sha">a3f912c</span>
+          </li>
+          <li class="commit-item selected" style="--commit-color: var(--author-1)">
+            <span class="msg">Document callback contract drift</span>
+            <span class="sha">f02ac41</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="ref-group">
+        <div class="ref-header">
+          <span class="author-dot" style="background: var(--author-2)"></span>
+          <span class="branch-name">bob/main</span>
+          <span class="mode-mini sync">sync</span>
+        </div>
+        <ul class="commit-list">
+          <li class="commit-item" style="--commit-color: var(--author-2)">
+            <span class="msg">Add structured error for binding-expired</span>
+            <span class="sha">c5a83e2</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="ref-group">
+        <div class="ref-header">
+          <span class="author-dot" style="background: var(--author-4)"></span>
+          <span class="branch-name">carol/explore</span>
+          <span class="mode-mini isolated">isolated</span>
+        </div>
+        <ul class="commit-list">
+          <li class="commit-item" style="--commit-color: var(--author-4)">
+            <span class="msg">Spike: device-code flow for headless</span>
+            <span class="sha">8e2d101</span>
+          </li>
+          <li class="commit-item" style="--commit-color: var(--author-4)">
+            <span class="msg">Draft auth-discovery .well-known shape</span>
+            <span class="sha">3b8c44f</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="ref-group">
+        <div class="ref-header">
+          <span class="author-dot" style="background: var(--color-accent)"></span>
+          <span class="branch-name">draft</span>
+          <span class="mode-mini sync" style="background: var(--color-bg-tertiary); color: var(--color-text-secondary);">auto-merged</span>
+        </div>
+        <ul class="commit-list">
+          <li class="commit-item merge" style="--commit-color: var(--color-accent)">
+            <span class="msg">Bob's binding-expired + Alice's callback doc</span>
+            <span class="sha">7a9e2b1</span>
+          </li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- ARTIFACT PANE -->
+    <main class="artifact-pane">
+      <div class="artifact-head">
+        <span class="file-path"><span class="dir">docs/auth/</span>oauth-callback.md</span>
+        <div class="artifact-actions">
+          <span class="small-btn">at f02ac41</span>
+          <button class="small-btn">Comment on line</button>
+        </div>
+      </div>
+      <div class="file-viewer">
+        <div class="line"><span class="num">12</span><span class="code"><span class="cmt"># Callback contract</span></span></div>
+        <div class="line"><span class="num">13</span><span class="code"></span></div>
+        <div class="line"><span class="num">14</span><span class="code">The OAuth callback endpoint receives <span class="kw">code</span> and <span class="kw">state</span> as query</span></div>
+        <div class="line"><span class="num">15</span><span class="code">parameters. It exchanges the code for an access token, validates</span></div>
+        <div class="line h"><span class="num">16</span><span class="code">the <span class="kw">state</span> against the stored session, and issues a refresh token.</span></div>
+        <div class="line">
+          <div class="inline-comment">
+            <div class="comment-head">
+              <strong>@alice/main</strong>
+              <span class="kind question">question</span>
+              <span>· 12m ago</span>
+            </div>
+            <div class="body">Should this also clear the previous refresh token when access expires?
+            The current spec doesn't say either way.</div>
+            <a href="#" class="reply-link">2 replies</a>
+          </div>
+        </div>
+        <div class="line"><span class="num">17</span><span class="code"></span></div>
+        <div class="line"><span class="num">18</span><span class="code"><span class="cmt">## Error responses</span></span></div>
+        <div class="line"><span class="num">19</span><span class="code"></span></div>
+        <div class="line"><span class="num">20</span><span class="code">| code | meaning |</span></div>
+        <div class="line"><span class="num">21</span><span class="code">|------|---------|</span></div>
+        <div class="line"><span class="num">22</span><span class="code">| <span class="str">invalid_code</span> | code was unknown or already redeemed |</span></div>
+        <div class="line h"><span class="num">23</span><span class="code">| <span class="str">binding_expired</span> | magic-link binding aged out before exchange |</span></div>
+        <div class="line">
+          <div class="inline-comment">
+            <div class="comment-head">
+              <strong>@bob/main</strong>
+              <span class="kind suggestion">suggestion</span>
+              <span>· 4m ago</span>
+            </div>
+            <div class="body">I added <code style="font-family: var(--font-mono);">binding_expired</code> in c5a83e2 — should
+            be picked up by the auto-merger any second. Maybe link it from the magic-link doc too.</div>
+            <a href="#" class="reply-link">reply</a>
+          </div>
+        </div>
+        <div class="line"><span class="num">24</span><span class="code">| <span class="str">state_mismatch</span> | callback state didn't match stored session |</span></div>
+      </div>
+    </main>
+
+    <!-- RIGHT PANE -->
+    <aside class="right-pane">
+      <div class="presence-section">
+        <h3>Presence (2 online)</h3>
+        <div class="presence-row">
+          <span class="author-dot online" style="background: var(--author-1)">a</span>
+          <div>
+            <div class="name">alice</div>
+            <div class="where">on alice/main @ f02ac41</div>
+          </div>
+        </div>
+        <div class="presence-row">
+          <span class="author-dot online" style="background: var(--author-2)">b</span>
+          <div>
+            <div class="name">bob</div>
+            <div class="where">on bob/main @ c5a83e2 · turn ended 30s ago</div>
+          </div>
+        </div>
+        <div class="presence-row">
+          <span class="author-dot" style="background: var(--author-4); opacity: 0.5;">c</span>
+          <div>
+            <div class="name" style="color: var(--color-text-secondary);">carol</div>
+            <div class="where">offline · last active 2h ago</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feed-section">
+        <h3>Activity</h3>
+        <div class="feed-list">
+          <div class="feed-item">
+            <span class="icon">●</span> <span class="who">bob</span> committed
+            <em style="color: var(--color-text-primary); font-style: normal;">"Add structured error for binding-expired"</em>
+            <div class="when">2m ago</div>
+          </div>
+          <div class="feed-item">
+            <span class="icon">⇈</span> auto-merger merged
+            <em style="color: var(--color-text-primary); font-style: normal;">bob's c5a83e2 + alice's f02ac41</em> into draft
+            <div class="when">2m ago</div>
+          </div>
+          <div class="feed-item">
+            <span class="icon">💬</span> <span class="who">bob</span> replied to
+            <span class="who">alice</span>'s comment on
+            <em style="color: var(--color-text-primary); font-style: normal;">oauth-callback.md:23</em>
+            <div class="when">4m ago</div>
+          </div>
+          <div class="feed-item">
+            <span class="icon">●</span> <span class="who">alice</span> committed
+            <em style="color: var(--color-text-primary); font-style: normal;">"Document callback contract drift"</em>
+            <div class="when">12m ago</div>
+          </div>
+          <div class="feed-item">
+            <span class="icon">💬</span> <span class="who">alice</span> commented on
+            <em style="color: var(--color-text-primary); font-style: normal;">oauth-callback.md:16</em>
+            <div class="when">12m ago</div>
+          </div>
+          <div class="feed-item conflict">
+            <span class="icon">⚡</span> <span class="who">carol/explore</span> conflict
+            <em style="color: var(--color-danger); font-style: normal;">vs draft on auth-discovery.md</em>
+            <div class="when">36m ago</div>
+          </div>
+          <div class="feed-item">
+            <span class="icon">⤴</span> <span class="who">carol</span> forked
+            <em style="color: var(--color-text-primary); font-style: normal;">carol/explore</em> from draft@7a9e2b1
+            <div class="when">2h ago</div>
+          </div>
+          <div class="feed-item">
+            <span class="icon">▶</span> <span class="who">carol</span> went isolated on
+            <em style="color: var(--color-text-primary); font-style: normal;">carol/explore</em>
+            <div class="when">2h ago</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</body>
+</html>
