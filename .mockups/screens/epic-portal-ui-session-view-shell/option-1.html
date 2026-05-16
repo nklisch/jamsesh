@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>session-view-shell — Option 1: Three-column classic</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117;
+      color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .mock-meta button:hover { background: #161b22; }
+
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column;
+    }
+    .layout { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+    /* App chrome */
+    .app-chrome {
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-base) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .breadcrumb {
+      display: flex; gap: 6px; align-items: center;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .breadcrumb .sep { color: var(--color-text-tertiary); }
+    .breadcrumb .here {
+      color: var(--color-text-primary);
+      font-weight: var(--font-weight-medium);
+    }
+    .chrome-spacer { flex: 1; }
+    .chrome-chip {
+      display: inline-flex; gap: 6px; align-items: center;
+      padding: 4px 9px; border-radius: var(--radius-md);
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-secondary);
+      font: 11px/1 var(--font-mono);
+      border: 1px solid var(--color-border);
+      cursor: pointer;
+    }
+    .avatar-sm {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--author-2);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 11px var(--font-mono);
+    }
+
+    /* Session header */
+    .session-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 20px; align-items: start;
+      flex-shrink: 0;
+    }
+    .session-header h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .session-header .goal {
+      margin: 0 0 10px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      max-width: 680px;
+    }
+    .session-header .meta-strip {
+      display: flex; gap: 14px; align-items: center;
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+      font-family: var(--font-mono);
+    }
+    .session-header .meta-strip code {
+      background: var(--color-bg-tertiary);
+      padding: 1px 5px; border-radius: 3px;
+      color: var(--color-text-secondary);
+    }
+    .header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .header-btn {
+      padding: 7px 14px;
+      background: var(--color-bg-secondary);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .header-btn.primary {
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      border-color: var(--color-bg-inverse);
+    }
+
+    /* Three-column body */
+    .body {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr) 300px;
+      flex: 1; min-height: 0;
+    }
+    .pane {
+      overflow: hidden;
+      display: flex; flex-direction: column;
+      background: var(--color-bg-primary);
+    }
+    .pane.tree { border-right: 1px solid var(--color-border); }
+    .pane.right { border-left: 1px solid var(--color-border); }
+    .pane-head {
+      padding: 10px 14px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+      flex-shrink: 0;
+    }
+    .pane-scroll { flex: 1; overflow-y: auto; }
+
+    /* Tree pane */
+    .ref-group { padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+    .ref-group:last-child { border-bottom: 0; }
+    .ref-header {
+      padding: 6px 14px;
+      display: flex; gap: 8px; align-items: center;
+      font: var(--font-size-xs) var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .ref-header .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+    .ref-header .name {
+      color: var(--color-text-primary);
+      font-weight: var(--font-weight-medium);
+    }
+    .mode-mini {
+      margin-left: auto;
+      padding: 1px 6px; border-radius: 3px;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .mode-mini.sync { background: var(--color-accent-muted); color: var(--color-accent); }
+    .mode-mini.isolated { background: var(--color-warning-muted); color: var(--color-warning); }
+    .mode-mini.draft { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+    .commit-list { list-style: none; padding: 0; margin: 0; }
+    .commit-item {
+      padding: 5px 14px 5px 30px;
+      position: relative;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px; align-items: center;
+    }
+    .commit-item:hover { background: var(--color-bg-tertiary); }
+    .commit-item.selected {
+      background: var(--color-accent-muted);
+      border-left: 2px solid var(--color-accent);
+      padding-left: 28px;
+    }
+    .commit-item::before {
+      content: ''; position: absolute;
+      left: 18px; top: 12px;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--commit-color);
+    }
+    .commit-item .msg {
+      font-size: var(--font-size-sm);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .commit-item .sha {
+      font: 10px var(--font-mono);
+      color: var(--color-text-tertiary);
+    }
+    .commit-item.merge .msg::before {
+      content: '⇈ '; color: var(--color-accent);
+    }
+
+    /* Artifact pane */
+    .artifact-head {
+      padding: 10px 18px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .file-path { font: var(--font-size-sm) var(--font-mono); }
+    .file-path .dir { color: var(--color-text-secondary); }
+    .artifact-actions { display: flex; gap: 6px; }
+    .small-btn {
+      padding: 4px 10px;
+      background: transparent;
+      color: var(--color-text-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font: 11px var(--font-mono);
+      cursor: pointer;
+    }
+    .file-viewer {
+      flex: 1; overflow-y: auto;
+      padding: 18px 0;
+      font: 13px/1.55 var(--font-mono);
+    }
+    .line { display: grid; grid-template-columns: 50px 1fr; gap: 16px; padding: 0 18px; }
+    .line .num { color: var(--color-text-tertiary); text-align: right; font-size: 12px; user-select: none; }
+    .line .code { color: var(--color-text-primary); white-space: pre; }
+    .line.h { background: var(--color-accent-muted); }
+    .kw { color: #b9518e; }
+    @media (prefers-color-scheme: dark) { .kw { color: #d896c5; } }
+    [data-theme="dark"] .kw { color: #d896c5; }
+    .str { color: var(--color-success); }
+    .cmt { color: var(--color-text-tertiary); font-style: italic; }
+    .inline-comment {
+      grid-column: 2; margin: 6px 0;
+      padding: 10px 14px;
+      background: var(--color-accent-muted);
+      border-left: 2px solid var(--color-accent);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      font: var(--font-size-sm)/1.5 var(--font-sans);
+      max-width: 560px;
+    }
+    .inline-comment .head {
+      display: flex; gap: 8px; align-items: center; margin-bottom: 4px;
+      font-size: var(--font-size-xs); color: var(--color-text-secondary);
+    }
+    .inline-comment .head strong { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .kind {
+      padding: 1px 6px; border-radius: 3px;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      background: var(--color-bg-tertiary); color: var(--color-text-secondary);
+    }
+    .kind.question { background: var(--color-accent-muted); color: var(--color-accent); }
+    .kind.suggestion { background: var(--color-warning-muted); color: var(--color-warning); }
+
+    /* Right pane */
+    .presence-section, .feed-section { padding: 14px; }
+    .presence-section { border-bottom: 1px solid var(--color-border); }
+    .section-title {
+      margin: 0 0 10px;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .presence-row {
+      display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: center;
+      padding: 5px 0; font-size: var(--font-size-sm);
+    }
+    .presence-row .ad {
+      width: 18px; height: 18px; border-radius: 50%; position: relative;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 9px var(--font-mono);
+    }
+    .presence-row .ad.online::after {
+      content: ''; position: absolute; right: -2px; bottom: -2px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--color-success);
+      border: 2px solid var(--color-bg-primary);
+    }
+    .presence-row .name { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .presence-row .where { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+    .feed-list { display: flex; flex-direction: column; gap: 4px; }
+    .feed-item {
+      padding: 8px 10px; border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      line-height: 1.45;
+    }
+    .feed-item:hover { background: var(--color-bg-tertiary); }
+    .feed-item .who { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .feed-item .when { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+    .feed-item.conflict { background: var(--color-danger-muted); color: var(--color-danger); }
+    .feed-item.conflict .who { color: var(--color-danger); }
+    .feed-item .icon { display: inline-block; width: 14px; color: var(--color-text-tertiary); }
+    .feed-item.conflict .icon { color: var(--color-danger); }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 1 — Three-column classic</strong>
+    <span>Tree · artifact · activity+presence. Everything visible always; the reference direction from the onboarding flow.</span>
+    <div class="controls">
+      <button onclick="document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')">toggle theme</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="app-chrome">
+      <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+      <span class="breadcrumb">
+        <span>kindred-labs</span>
+        <span class="sep">/</span>
+        <span class="here">Auth design refresh</span>
+      </span>
+      <div class="chrome-spacer"></div>
+      <span class="chrome-chip">◐ system theme</span>
+      <span class="avatar-sm" title="you">e</span>
+    </div>
+
+    <div class="session-header">
+      <div>
+        <h1>Auth design refresh</h1>
+        <p class="goal">Tighten the session-token flow before it lands in
+          <code style="font-family: var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px;">epic-portal-foundation</code>.
+          Document the OAuth callback contract and the magic-link "binding expired" error path.</p>
+        <div class="meta-strip">
+          <span>scope <code>docs/auth/**</code></span>
+          <span>·</span>
+          <span>default mode <code>sync</code></span>
+          <span>·</span>
+          <span>3 members</span>
+          <span>·</span>
+          <span>47 commits</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="header-btn">Comment</button>
+        <button class="header-btn primary">Finalize</button>
+      </div>
+    </div>
+
+    <div class="body">
+      <aside class="pane tree">
+        <div class="pane-head">tree</div>
+        <div class="pane-scroll">
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--author-1)"></span>
+              <span class="name">alice/main</span>
+              <span class="mode-mini sync">sync</span>
+            </div>
+            <ul class="commit-list">
+              <li class="commit-item" style="--commit-color: var(--author-1)">
+                <span class="msg">Add refresh-token revocation endpoint</span>
+                <span class="sha">a3f912c</span>
+              </li>
+              <li class="commit-item selected" style="--commit-color: var(--author-1)">
+                <span class="msg">Document callback contract drift</span>
+                <span class="sha">f02ac41</span>
+              </li>
+            </ul>
+          </div>
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--author-2)"></span>
+              <span class="name">bob/main</span>
+              <span class="mode-mini sync">sync</span>
+            </div>
+            <ul class="commit-list">
+              <li class="commit-item" style="--commit-color: var(--author-2)">
+                <span class="msg">Add structured error for binding-expired</span>
+                <span class="sha">c5a83e2</span>
+              </li>
+            </ul>
+          </div>
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--author-4)"></span>
+              <span class="name">carol/explore</span>
+              <span class="mode-mini isolated">isolated</span>
+            </div>
+            <ul class="commit-list">
+              <li class="commit-item" style="--commit-color: var(--author-4)">
+                <span class="msg">Spike: device-code flow for headless</span>
+                <span class="sha">8e2d101</span>
+              </li>
+              <li class="commit-item" style="--commit-color: var(--author-4)">
+                <span class="msg">Draft auth-discovery .well-known shape</span>
+                <span class="sha">3b8c44f</span>
+              </li>
+            </ul>
+          </div>
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--color-accent)"></span>
+              <span class="name">draft</span>
+              <span class="mode-mini draft">auto-merged</span>
+            </div>
+            <ul class="commit-list">
+              <li class="commit-item merge" style="--commit-color: var(--color-accent)">
+                <span class="msg">Bob's binding-expired + Alice's callback doc</span>
+                <span class="sha">7a9e2b1</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+
+      <main class="pane artifact">
+        <div class="artifact-head">
+          <span class="file-path"><span class="dir">docs/auth/</span>oauth-callback.md</span>
+          <div class="artifact-actions">
+            <button class="small-btn">at f02ac41</button>
+            <button class="small-btn">Comment on line</button>
+          </div>
+        </div>
+        <div class="file-viewer">
+          <div class="line"><span class="num">12</span><span class="code"><span class="cmt"># Callback contract</span></span></div>
+          <div class="line"><span class="num">13</span><span class="code"></span></div>
+          <div class="line"><span class="num">14</span><span class="code">The OAuth callback endpoint receives <span class="kw">code</span> and <span class="kw">state</span> as query</span></div>
+          <div class="line"><span class="num">15</span><span class="code">parameters. It exchanges the code for an access token, validates</span></div>
+          <div class="line h"><span class="num">16</span><span class="code">the <span class="kw">state</span> against the stored session, and issues a refresh token.</span></div>
+          <div class="line">
+            <div class="inline-comment">
+              <div class="head"><strong>@alice/main</strong> <span class="kind question">question</span> <span>· 12m ago</span></div>
+              Should this also clear the previous refresh token when access expires?
+              The current spec doesn't say either way.
+            </div>
+          </div>
+          <div class="line"><span class="num">17</span><span class="code"></span></div>
+          <div class="line"><span class="num">18</span><span class="code"><span class="cmt">## Error responses</span></span></div>
+          <div class="line"><span class="num">19</span><span class="code"></span></div>
+          <div class="line"><span class="num">20</span><span class="code">| code | meaning |</span></div>
+          <div class="line"><span class="num">21</span><span class="code">|------|---------|</span></div>
+          <div class="line"><span class="num">22</span><span class="code">| <span class="str">invalid_code</span> | code was unknown or already redeemed |</span></div>
+          <div class="line h"><span class="num">23</span><span class="code">| <span class="str">binding_expired</span> | magic-link binding aged out before exchange |</span></div>
+          <div class="line">
+            <div class="inline-comment">
+              <div class="head"><strong>@bob/main</strong> <span class="kind suggestion">suggestion</span> <span>· 4m ago</span></div>
+              I added <code style="font-family: var(--font-mono);">binding_expired</code> in c5a83e2 — auto-merger should pick it up. Maybe link from the magic-link doc too.
+            </div>
+          </div>
+          <div class="line"><span class="num">24</span><span class="code">| <span class="str">state_mismatch</span> | callback state didn't match stored session |</span></div>
+        </div>
+      </main>
+
+      <aside class="pane right">
+        <div class="presence-section">
+          <h3 class="section-title">Presence (2 online)</h3>
+          <div class="presence-row">
+            <span class="ad online" style="background: var(--author-1)">a</span>
+            <div><div class="name">alice</div><div class="where">alice/main @ f02ac41</div></div>
+          </div>
+          <div class="presence-row">
+            <span class="ad online" style="background: var(--author-2)">b</span>
+            <div><div class="name">bob</div><div class="where">bob/main @ c5a83e2 · turn ended 30s</div></div>
+          </div>
+          <div class="presence-row">
+            <span class="ad" style="background: var(--author-4); opacity: 0.5;">c</span>
+            <div><div class="name" style="color: var(--color-text-secondary);">carol</div><div class="where">offline · 2h ago</div></div>
+          </div>
+        </div>
+        <div class="feed-section">
+          <h3 class="section-title">Activity</h3>
+          <div class="feed-list">
+            <div class="feed-item"><span class="icon">●</span> <span class="who">bob</span> committed <em style="color: var(--color-text-primary); font-style: normal;">"Add structured error..."</em><div class="when">2m ago</div></div>
+            <div class="feed-item"><span class="icon">⇈</span> auto-merger merged <em style="color: var(--color-text-primary); font-style: normal;">bob's c5a83e2 + alice's f02ac41</em><div class="when">2m ago</div></div>
+            <div class="feed-item"><span class="icon">💬</span> <span class="who">bob</span> replied to <span class="who">alice</span> on <em style="color: var(--color-text-primary); font-style: normal;">oauth-callback.md:23</em><div class="when">4m ago</div></div>
+            <div class="feed-item"><span class="icon">●</span> <span class="who">alice</span> committed <em style="color: var(--color-text-primary); font-style: normal;">"Document callback drift"</em><div class="when">12m ago</div></div>
+            <div class="feed-item conflict"><span class="icon">⚡</span> <span class="who">carol/explore</span> conflict <em style="color: var(--color-danger); font-style: normal;">vs draft on auth-discovery.md</em><div class="when">36m ago</div></div>
+            <div class="feed-item"><span class="icon">⤴</span> <span class="who">carol</span> forked <em style="color: var(--color-text-primary); font-style: normal;">carol/explore</em> from draft<div class="when">2h ago</div></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>

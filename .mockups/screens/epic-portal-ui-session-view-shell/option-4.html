@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>session-view-shell — Option 4: Focus mode</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117; color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; display: flex; gap: 8px; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .mock-meta button:hover { background: #161b22; }
+
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column;
+    }
+    .layout { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+
+    .app-chrome {
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+    .wordmark { font: var(--font-weight-semibold) var(--font-size-base) var(--font-sans); letter-spacing: -0.03em; }
+    .wordmark .dot { color: var(--color-accent); }
+    .breadcrumb { display: flex; gap: 6px; align-items: center; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .breadcrumb .sep { color: var(--color-text-tertiary); }
+    .breadcrumb .here { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .chrome-spacer { flex: 1; }
+    .chrome-chip {
+      display: inline-flex; gap: 6px; align-items: center;
+      padding: 4px 9px; border-radius: var(--radius-md);
+      background: var(--color-bg-tertiary); color: var(--color-text-secondary);
+      font: 11px/1 var(--font-mono); border: 1px solid var(--color-border); cursor: pointer;
+    }
+    .presence-button {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px 3px 4px; border-radius: 9999px;
+      background: var(--color-bg-tertiary); border: 1px solid var(--color-border);
+      cursor: pointer; position: relative;
+    }
+    .presence-button .presence-strip {
+      display: flex; align-items: center;
+    }
+    .presence-button .ad {
+      width: 22px; height: 22px; border-radius: 50%;
+      box-shadow: 0 0 0 1px var(--color-bg-tertiary);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 9px var(--font-mono);
+      margin-right: -6px;
+    }
+    .presence-button .ad:last-of-type { margin-right: 0; }
+    .presence-button .label { font: 11px var(--font-mono); color: var(--color-text-secondary); padding-left: 4px; }
+
+    .presence-popover {
+      position: absolute; top: 100%; right: 0; margin-top: 6px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 8px 0;
+      width: 240px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+      display: none;
+      z-index: 50;
+    }
+    .presence-popover.open { display: block; }
+    .presence-row {
+      display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: center;
+      padding: 6px 14px; font-size: var(--font-size-sm);
+    }
+    .presence-row .ad {
+      width: 20px; height: 20px; border-radius: 50%; position: relative;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 9px var(--font-mono);
+    }
+    .presence-row .ad.online::after {
+      content: ''; position: absolute; right: -2px; bottom: -2px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--color-success);
+      border: 2px solid var(--color-bg-secondary);
+    }
+    .presence-row .name { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .presence-row .where { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+
+    .avatar-sm {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--author-2);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 11px var(--font-mono);
+    }
+
+    .session-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 20px; align-items: start;
+      flex-shrink: 0;
+    }
+    .session-header h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .session-header .goal {
+      margin: 0 0 10px; color: var(--color-text-secondary);
+      font-size: var(--font-size-sm); max-width: 680px;
+    }
+    .session-header .meta-strip {
+      display: flex; gap: 14px; align-items: center;
+      font-size: 11px; color: var(--color-text-tertiary);
+      font-family: var(--font-mono);
+    }
+    .session-header .meta-strip code {
+      background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px;
+      color: var(--color-text-secondary);
+    }
+    .header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .header-btn {
+      padding: 7px 14px;
+      background: var(--color-bg-secondary); color: var(--color-text-primary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .header-btn.primary {
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      border-color: var(--color-bg-inverse);
+    }
+
+    /* Body: thin tree rail + dominant artifact + bottom ticker */
+    .body {
+      display: grid;
+      grid-template-columns: 56px minmax(0, 1fr);
+      flex: 1; min-height: 0;
+    }
+    .pane { overflow: hidden; display: flex; flex-direction: column; background: var(--color-bg-primary); }
+    .pane.tree-rail {
+      border-right: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .tree-rail-head {
+      padding: 8px 0;
+      text-align: center;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-tertiary);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .rail-refs { display: flex; flex-direction: column; padding: 6px 0; flex: 1; overflow-y: auto; }
+    .rail-ref { padding: 6px 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .rail-ref-head {
+      writing-mode: vertical-lr; text-orientation: mixed;
+      font: 10px var(--font-mono); color: var(--color-text-secondary);
+      padding: 4px 0; transform: rotate(180deg);
+    }
+    .rail-commits { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+    .rail-commit {
+      width: 14px; height: 14px; border-radius: 50%;
+      cursor: pointer; position: relative;
+      box-shadow: 0 0 0 2px var(--color-bg-secondary);
+    }
+    .rail-commit:hover { transform: scale(1.2); transition: transform 0.1s; }
+    .rail-commit.selected {
+      box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 4px var(--color-bg-secondary);
+    }
+    .rail-mode {
+      font: 600 8px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 1px 4px; border-radius: 2px;
+      writing-mode: vertical-lr; transform: rotate(180deg);
+    }
+    .rail-mode.sync { background: var(--color-accent-muted); color: var(--color-accent); }
+    .rail-mode.isolated { background: var(--color-warning-muted); color: var(--color-warning); }
+
+    /* Artifact dominant */
+    .pane.artifact { background: var(--color-bg-primary); }
+    .artifact-head {
+      padding: 12px 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .file-path { font: var(--font-size-base) var(--font-mono); }
+    .file-path .dir { color: var(--color-text-secondary); }
+    .artifact-actions { display: flex; gap: 6px; }
+    .small-btn {
+      padding: 4px 10px;
+      background: transparent; color: var(--color-text-secondary);
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      font: 11px var(--font-mono); cursor: pointer;
+    }
+    .file-viewer { flex: 1; overflow-y: auto; padding: 24px 0; font: 14px/1.6 var(--font-mono); }
+    .line { display: grid; grid-template-columns: 60px 1fr; gap: 20px; padding: 0 32px; }
+    .line .num { color: var(--color-text-tertiary); text-align: right; font-size: 12px; user-select: none; }
+    .line .code { color: var(--color-text-primary); white-space: pre; }
+    .line.h { background: var(--color-accent-muted); }
+    .kw { color: #b9518e; }
+    @media (prefers-color-scheme: dark) { .kw { color: #d896c5; } }
+    [data-theme="dark"] .kw { color: #d896c5; }
+    .str { color: var(--color-success); }
+    .cmt { color: var(--color-text-tertiary); font-style: italic; }
+    .inline-comment {
+      grid-column: 2; margin: 8px 0;
+      padding: 12px 16px;
+      background: var(--color-accent-muted);
+      border-left: 3px solid var(--color-accent);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      font: var(--font-size-base)/1.5 var(--font-sans);
+      max-width: 640px;
+    }
+    .inline-comment .head { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+    .inline-comment .head strong { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .kind {
+      padding: 1px 6px; border-radius: 3px;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      background: var(--color-bg-tertiary); color: var(--color-text-secondary);
+    }
+    .kind.question { background: var(--color-accent-muted); color: var(--color-accent); }
+    .kind.suggestion { background: var(--color-warning-muted); color: var(--color-warning); }
+
+    /* Bottom activity ticker */
+    .ticker {
+      flex-shrink: 0;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+      max-height: 40px;
+      overflow: hidden;
+      transition: max-height 0.2s ease;
+    }
+    .ticker.expanded { max-height: 280px; }
+    .ticker-head {
+      padding: 10px 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer;
+    }
+    .ticker-head h3 {
+      margin: 0;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .ticker-latest {
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      flex: 1; padding: 0 16px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ticker-latest .who { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .ticker-latest .live-dot {
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--color-success); margin-right: 6px;
+      animation: pulse 1.5s ease infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .ticker-toggle {
+      font: 10px var(--font-mono); color: var(--color-text-secondary);
+      padding: 4px 10px; background: transparent;
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .ticker-body { padding: 0 24px 14px; overflow-y: auto; max-height: 240px; }
+    .feed-list { display: flex; flex-direction: column; gap: 4px; }
+    .feed-item {
+      padding: 8px 10px; border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      line-height: 1.45;
+    }
+    .feed-item:hover { background: var(--color-bg-tertiary); }
+    .feed-item .who { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .feed-item .when { font: 10px var(--font-mono); color: var(--color-text-tertiary); margin-left: auto; }
+    .feed-item.conflict { background: var(--color-danger-muted); color: var(--color-danger); }
+    .feed-item.conflict .who { color: var(--color-danger); }
+    .feed-item .icon { display: inline-block; width: 14px; color: var(--color-text-tertiary); }
+    .feed-item.conflict .icon { color: var(--color-danger); }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 4 — Focus mode</strong>
+    <span>Artifact dominant (full width minus a 56px tree rail). Tree as colored dots only — hover for message, click to select. Bottom activity ticker (click to expand). Presence as a chrome popover (click avatars cluster). Maximizes reading space.</span>
+    <div class="controls">
+      <button onclick="document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')">toggle theme</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="app-chrome">
+      <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+      <span class="breadcrumb">
+        <span>kindred-labs</span>
+        <span class="sep">/</span>
+        <span class="here">Auth design refresh</span>
+      </span>
+      <div class="chrome-spacer"></div>
+      <span class="chrome-chip">◐ system theme</span>
+      <div style="position: relative;">
+        <button class="presence-button" onclick="togglePresence()">
+          <span class="presence-strip">
+            <span class="ad" style="background: var(--author-1); position: relative;">a<span style="content: ''; position: absolute; right: -1px; bottom: -1px; width: 6px; height: 6px; border-radius: 50%; background: var(--color-success); border: 1px solid var(--color-bg-tertiary);"></span></span>
+            <span class="ad" style="background: var(--author-2); position: relative;">b<span style="content: ''; position: absolute; right: -1px; bottom: -1px; width: 6px; height: 6px; border-radius: 50%; background: var(--color-success); border: 1px solid var(--color-bg-tertiary);"></span></span>
+            <span class="ad" style="background: var(--author-4); opacity: 0.5;">c</span>
+          </span>
+          <span class="label">2 online</span>
+        </button>
+        <div class="presence-popover" id="presence-popover">
+          <div class="presence-row">
+            <span class="ad online" style="background: var(--author-1)">a</span>
+            <div><div class="name">alice</div><div class="where">alice/main @ f02ac41</div></div>
+          </div>
+          <div class="presence-row">
+            <span class="ad online" style="background: var(--author-2)">b</span>
+            <div><div class="name">bob</div><div class="where">bob/main @ c5a83e2 · 30s</div></div>
+          </div>
+          <div class="presence-row">
+            <span class="ad" style="background: var(--author-4); opacity: 0.5;">c</span>
+            <div><div class="name" style="color: var(--color-text-secondary);">carol</div><div class="where">offline · 2h ago</div></div>
+          </div>
+        </div>
+      </div>
+      <span class="avatar-sm" title="you">e</span>
+    </div>
+
+    <div class="session-header">
+      <div>
+        <h1>Auth design refresh</h1>
+        <p class="goal">Tighten the session-token flow before it lands in
+          <code style="font-family: var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px;">epic-portal-foundation</code>.
+          Document the OAuth callback contract and the magic-link "binding expired" error path.</p>
+        <div class="meta-strip">
+          <span>scope <code>docs/auth/**</code></span>
+          <span>·</span>
+          <span>default mode <code>sync</code></span>
+          <span>·</span>
+          <span>3 members</span>
+          <span>·</span>
+          <span>47 commits</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="header-btn">Comment</button>
+        <button class="header-btn primary">Finalize</button>
+      </div>
+    </div>
+
+    <div class="body">
+      <aside class="pane tree-rail">
+        <div class="tree-rail-head">tree</div>
+        <div class="rail-refs">
+          <div class="rail-ref" title="alice/main · sync · 2 commits">
+            <span class="rail-mode sync">a/main</span>
+            <div class="rail-commits">
+              <div class="rail-commit" style="background: var(--author-1)" title="a3f912c — Add refresh-token revocation endpoint"></div>
+              <div class="rail-commit selected" style="background: var(--author-1)" title="f02ac41 — Document callback contract drift (selected)"></div>
+            </div>
+          </div>
+          <div class="rail-ref" title="bob/main · sync · 1 commit">
+            <span class="rail-mode sync">b/main</span>
+            <div class="rail-commits">
+              <div class="rail-commit" style="background: var(--author-2)" title="c5a83e2 — Add structured error for binding-expired"></div>
+            </div>
+          </div>
+          <div class="rail-ref" title="carol/explore · isolated · 2 commits">
+            <span class="rail-mode isolated">c/expl</span>
+            <div class="rail-commits">
+              <div class="rail-commit" style="background: var(--author-4)" title="8e2d101 — Spike: device-code flow"></div>
+              <div class="rail-commit" style="background: var(--author-4)" title="3b8c44f — Draft auth-discovery .well-known shape"></div>
+            </div>
+          </div>
+          <div class="rail-ref" title="draft · auto-merged · 12 merges">
+            <span class="rail-mode sync" style="background: var(--color-bg-tertiary); color: var(--color-text-secondary);">draft</span>
+            <div class="rail-commits">
+              <div class="rail-commit" style="background: var(--color-accent)" title="7a9e2b1 — Bob's binding-expired + Alice's callback doc"></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="pane artifact">
+        <div class="artifact-head">
+          <span class="file-path"><span class="dir">docs/auth/</span>oauth-callback.md</span>
+          <div class="artifact-actions">
+            <button class="small-btn">at f02ac41 · alice/main</button>
+            <button class="small-btn">Comment on line</button>
+          </div>
+        </div>
+        <div class="file-viewer">
+          <div class="line"><span class="num">12</span><span class="code"><span class="cmt"># Callback contract</span></span></div>
+          <div class="line"><span class="num">13</span><span class="code"></span></div>
+          <div class="line"><span class="num">14</span><span class="code">The OAuth callback endpoint receives <span class="kw">code</span> and <span class="kw">state</span> as query</span></div>
+          <div class="line"><span class="num">15</span><span class="code">parameters. It exchanges the code for an access token, validates</span></div>
+          <div class="line h"><span class="num">16</span><span class="code">the <span class="kw">state</span> against the stored session, and issues a refresh token.</span></div>
+          <div class="line">
+            <div class="inline-comment">
+              <div class="head"><strong>@alice/main</strong> <span class="kind question">question</span> <span>· 12m ago</span></div>
+              Should this also clear the previous refresh token when access expires? The current spec doesn't say either way.
+            </div>
+          </div>
+          <div class="line"><span class="num">17</span><span class="code"></span></div>
+          <div class="line"><span class="num">18</span><span class="code"><span class="cmt">## Error responses</span></span></div>
+          <div class="line"><span class="num">19</span><span class="code"></span></div>
+          <div class="line"><span class="num">20</span><span class="code">| code | meaning |</span></div>
+          <div class="line"><span class="num">21</span><span class="code">|------|---------|</span></div>
+          <div class="line"><span class="num">22</span><span class="code">| <span class="str">invalid_code</span> | code was unknown or already redeemed |</span></div>
+          <div class="line h"><span class="num">23</span><span class="code">| <span class="str">binding_expired</span> | magic-link binding aged out before exchange |</span></div>
+          <div class="line">
+            <div class="inline-comment">
+              <div class="head"><strong>@bob/main</strong> <span class="kind suggestion">suggestion</span> <span>· 4m ago</span></div>
+              I added <code style="font-family: var(--font-mono);">binding_expired</code> in c5a83e2 — auto-merger should pick it up any moment. Maybe link this from the magic-link doc too.
+            </div>
+          </div>
+          <div class="line"><span class="num">24</span><span class="code">| <span class="str">state_mismatch</span> | callback state didn't match stored session |</span></div>
+        </div>
+      </main>
+    </div>
+
+    <div class="ticker" id="ticker">
+      <div class="ticker-head" onclick="toggleTicker()">
+        <h3>Activity</h3>
+        <div class="ticker-latest"><span class="live-dot"></span> <span class="who">bob</span> committed "Add structured error..." · auto-merged into draft · 2m ago</div>
+        <button class="ticker-toggle" onclick="event.stopPropagation(); toggleTicker()">expand ↑</button>
+      </div>
+      <div class="ticker-body">
+        <div class="feed-list">
+          <div class="feed-item"><span class="icon">●</span> <span class="who">bob</span> committed "Add structured error..." <span class="when">2m ago</span></div>
+          <div class="feed-item"><span class="icon">⇈</span> auto-merger merged <em style="color: var(--color-text-primary); font-style: normal;">bob's c5a83e2 + alice's f02ac41</em> into draft <span class="when">2m ago</span></div>
+          <div class="feed-item"><span class="icon">💬</span> <span class="who">bob</span> replied to <span class="who">alice</span> on <em style="color: var(--color-text-primary); font-style: normal;">oauth-callback.md:23</em> <span class="when">4m ago</span></div>
+          <div class="feed-item"><span class="icon">●</span> <span class="who">alice</span> committed "Document callback drift" <span class="when">12m ago</span></div>
+          <div class="feed-item conflict"><span class="icon">⚡</span> <span class="who">carol/explore</span> conflict <em style="color: var(--color-danger); font-style: normal;">vs draft on auth-discovery.md</em> <span class="when">36m ago</span></div>
+          <div class="feed-item"><span class="icon">⤴</span> <span class="who">carol</span> forked carol/explore from draft <span class="when">2h ago</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleTicker() {
+      document.getElementById('ticker').classList.toggle('expanded');
+    }
+    function togglePresence() {
+      document.getElementById('presence-popover').classList.toggle('open');
+    }
+    // Close presence on outside click
+    document.addEventListener('click', (e) => {
+      const pop = document.getElementById('presence-popover');
+      if (!e.target.closest('.presence-button') && !e.target.closest('#presence-popover')) {
+        pop.classList.remove('open');
+      }
+    });
+  </script>
+</body>
+</html>

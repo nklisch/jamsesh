@@ -69,6 +69,45 @@ Does NOT cover: the artifact viewer or inline comments
   Verify the API shape supports per-event-type filtering without
   duplicating connections.
 
+## Mockups
+
+- Screens: `.mockups/screens/epic-portal-ui-session-view-shell/index.html`
+- Selected: **option-5 (hybrid)** — 2026-05-16
+- Rationale: focus-mode artifact dominance gives reading room; the tree
+  rail expands on demand (collapsed → expanded → wide cycle); the bottom
+  panel carries Activity and Comments as tabs (not a third column); presence
+  absorbs into the tree as small online indicators on author dots. No
+  separate presence panel — the tree IS the presence surface.
+
+**Layout primitives this commits to:**
+
+- Three layout states for the tree pane: `tree-collapsed` (56px rail, dots
+  only), `tree-expanded` (~280px, full ref groups with mode badges and
+  commit titles), `tree-wide` (~40% width, same content as expanded). The
+  cycle button (⇔) is the primary toggle in v1; resizable drag-divider
+  is a v2 follow-up.
+- Bottom panel is sticky 44px collapsed (showing the latest activity item
+  with a live-dot pulse) or expandable to ~280px with the active tab body.
+- Bottom tabs: **Activity** (chronological event feed) and **Comments**
+  (grid of comment cards across the session, each clickable to navigate the
+  artifact to its anchor).
+- Presence: every ref's author dot in the tree has an `.online` modifier
+  that adds a small green indicator. No presence panel as a separate
+  surface.
+
+**Implementation implications (recorded for feature-design later):**
+
+- The tree-state cycle (collapsed/expanded/wide) is local UI state — a
+  per-session persisted preference (last cycle value remembered when the
+  user returns to this session).
+- The comments tab is essentially a flat list of all comments in the
+  session, surfaceable independent of the artifact pane. Could be powered
+  by `query_session_state({ include: ['unresolved_comments'] })` per
+  PROTOCOL.md.
+- Bottom-panel expansion-on-tab-click is the right default; collapsing
+  the panel hides everything but the latest-event strip.
+
 <!-- Feature-design will fill in layout slots, subscription wiring, DAG
 renderer interface, and decompose further if needed when
-/agile-workflow:feature-design runs on this. -->
+/agile-workflow:feature-design runs on this. Feature stays at
+stage: drafting until then. -->
