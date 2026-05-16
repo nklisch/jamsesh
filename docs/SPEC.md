@@ -37,7 +37,10 @@ Technical boundaries and decisions for jamsesh. Present truth, not roadmap.
   from local state on each MCP connection).
 
 **Portal frontend**
-- Tech choice deferred. Svelte 5 is the leading candidate.
+- Svelte 5 + Vite. SPA only (no SvelteKit, no SSR — the portal UI is an
+  authenticated app with no SEO needs). Runes (`$state`, `$derived`,
+  `$effect`) carry the WS-driven reactive surface. Static build output is
+  embedded into the portal Go binary alongside the rest of the server.
 
 ## Hard constraints
 

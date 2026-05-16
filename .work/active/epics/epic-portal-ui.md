@@ -19,9 +19,10 @@ The web frontend humans glance at while their agents work. Optimized for
 "glance" over "work" — most actual work happens in CC; the UI is awareness
 and lightweight social acts.
 
-Implementation tech: Svelte 5 (per the open thread carried in from
-ideation; final lock-in happens as the first child feature). Per UX.md,
-the primary surfaces are:
+Implementation tech: **Svelte 5 + Vite**. SPA only (no SvelteKit, no SSR
+— this is an authenticated app with no SEO needs). Runes carry the
+WS-driven reactive surface. Static build output is embedded into the
+portal Go binary. Per UX.md, the primary surfaces are:
 
 - **Session list** — grouped by status (active, finalizing, ended).
 - **Session view** (the main work surface):
@@ -55,8 +56,8 @@ it does NOT cover the finalize curation view (`epic-finalize-flow`).
 
 Provisional — actual decomposition lands when this epic is designed.
 
-- Frontend tech lock-in and skeleton (Svelte 5 confirmation, project
-  scaffolding, routing, build wiring)
+- Frontend skeleton (Svelte 5 + Vite project scaffolding, routing
+  choice, build wiring, static-asset embedding into the Go binary)
 - Design system tokens (run `/ux-ui-design:palette` first; lock typography
   + palette)
 - Session list view
