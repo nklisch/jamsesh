@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-ci-workflow
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-testcontainers-fixtures, epic-e2e-tests-infrastructure-ccdriver, epic-e2e-tests-infrastructure-playwright-bootstrap]
@@ -96,3 +96,16 @@ Design decisions:
 - `timeout-minutes: 20` provides headroom for cold cache runs while preventing runaway jobs
 - Playwright trace artifact uses `if-no-files-found: ignore` to avoid a spurious failure when the reporter didn't emit (e.g. Go-only failure)
 - No `services:` block — Testcontainers-Go drives Docker directly on the runner
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- No `concurrency:` group — multiple rapid PR updates would run e2e in parallel. For a small project that's fine; if traffic grows, add `concurrency: group: e2e-${{ github.ref }}` with `cancel-in-progress: true`.
+- No per-step `timeout-minutes` — only the job-level 20m. A hung `make test-portal-image` would consume the full budget.
+- `restore-keys: ${{ runner.os }}-go-` is a broad fallback that could restore a stale cache. Acceptable trade-off for cold-start speed.
+
+**Notes**: The workflow is well-structured — explicit cache layers (Go modules, npm packages, Playwright browsers), `cache: false` on `setup-go` so the manual cache key can span both `go.sum` files, `if-no-files-found: ignore` on the trace artifact to avoid spurious failure on Go-only test failures. SELF_HOST.md gained a concise section 12 (CI) naming this workflow as the canonical e2e gate — clean rolling-forward update.
