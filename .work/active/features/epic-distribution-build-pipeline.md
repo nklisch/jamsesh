@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-build-pipeline
 kind: feature
-stage: implementing
+stage: review
 tags: [infra]
 parent: epic-distribution
 depends_on: []
@@ -443,3 +443,25 @@ and `String()` round-trips.
   true` could be a temporary measure but masks real failures —
   prefer "expected failures during sequencing" and a checklist note
   on the story.
+
+## Implementation summary
+
+Single child story advanced to `stage: review`:
+
+| Story | Status | Notes |
+|---|---|---|
+| `build-pipeline-release-workflow` | review | Full GitHub Actions workflow + `internal/buildinfo` package + 4 unit tests |
+
+### Refinements landed (over the design sketch)
+- **Cosign**: pinned `sigstore/cosign-installer@v4.1.0` with `cosign-release: v3.0.6` (instead of the design's `@v3`); single `*.sigstore.json` bundle per artifact (modern format) rather than split `.sig` + `.pem` (legacy)
+- **`COSIGN_EXPERIMENTAL`** removed — unnecessary in v3
+- **SLSA `attest-build-provenance` subject-path**: scoped to `dist/portal-*` + `dist/jamsesh-*` globs explicitly (excludes signing artifacts from attestation)
+
+### Expected sequencing gap
+The workflow's matrix jobs will fail until `cmd/portal` (provided by `http-skeleton-config-tls-and-entry` — landed in same orchestrator run) and `cmd/jamsesh` (provided by `epic-cc-plugin-binary-foundation` — not yet shipped). The workflow itself is correct; first real `v*` tag will fully exercise it once both binaries exist.
+
+### Verification
+- `actionlint .github/workflows/release.yml` clean
+- `go test ./internal/buildinfo/...` green (4/4)
+- Matrix expansion = 10 jobs verified
+- Permissions correctly scoped per-job
