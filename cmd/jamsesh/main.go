@@ -41,9 +41,7 @@ func main() {
 }
 
 // hookCommand returns the "hook" parent command with all six CC lifecycle-hook
-// subcommands registered. session-start, user-prompt-submit, post-tool-use,
-// and stop are stubs until the sibling story
-// (epic-cc-plugin-hooks-fetch-push-and-stop-hooks) lands.
+// subcommands registered.
 func hookCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "hook",
@@ -51,12 +49,12 @@ func hookCommand() *cli.Command {
 		Commands: []*cli.Command{
 			{
 				Name:   "session-start",
-				Usage:  "Fired once when a CC session begins (stub)",
+				Usage:  "Fired once when a CC session begins; emits session context as additionalContext",
 				Action: hooks.SessionStart,
 			},
 			{
 				Name:   "user-prompt-submit",
-				Usage:  "Fired before each agent turn (stub)",
+				Usage:  "Fired before each agent turn; fetches, drains retry queue, emits digest",
 				Action: hooks.UserPromptSubmit,
 			},
 			{
@@ -66,12 +64,12 @@ func hookCommand() *cli.Command {
 			},
 			{
 				Name:   "post-tool-use",
-				Usage:  "Fires after each Bash call; pushes git commits (stub)",
+				Usage:  "Fires after each Bash call; pushes git commits with retry",
 				Action: hooks.PostToolUse,
 			},
 			{
 				Name:   "stop",
-				Usage:  "Fires when the agent yields to the human (stub)",
+				Usage:  "Fires when the agent yields to the human; auto-commits and pushes",
 				Action: hooks.Stop,
 			},
 			{
