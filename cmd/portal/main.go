@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -234,6 +235,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// shutdownClock records the moment ctx is cancelled so we can derive a
+	// shared drain budget across all subsystems. It is written exactly once by
+	// the goroutine below and read only after server.Run returns — no mutex
+	// needed because server.Run blocks until ctx is cancelled (or a listen
+	// error), creating the necessary happens-before relationship.
+	var shutdownStart time.Time
+	var shutdownOnce sync.Once
+	go func() {
+		<-ctx.Done()
+		shutdownOnce.Do(func() { shutdownStart = time.Now() })
+	}()
 
 	// Open the database and run migrations. Translate config.DBConfig into
 	// db.PoolConfig at the call site to avoid an import cycle (internal/db
@@ -487,17 +500,57 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Drain the auto-merger worker after the HTTP server stops accepting requests.
-	// Give it up to 10 seconds to finish in-flight merges.
-	stopCtx, cancelStop := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancelStop()
-	if err := mergerWorker.Stop(stopCtx); err != nil {
-		slog.Warn("auto-merger worker stop timed out", "err", err)
-	}
+	// Drain subsystems within the remaining grace budget.
+	//
+	// server.Run blocks until ctx is cancelled (graceful path) or a listen
+	// error occurs (error path, already handled above). On the graceful path,
+	// shutdownStart was set when ctx fired, and server.Run consumed some of the
+	// budget draining in-flight HTTP requests. We log the HTTP step elapsed time
+	// and compute how much of the shared budget remains for the auto-merger and
+	// WS gateway.
+	//
+	// On the listen-error path server.Run exits immediately without ctx being
+	// cancelled, so shutdownStart is zero — skip the drain in that case.
+	if !shutdownStart.IsZero() {
+		httpElapsed := time.Since(shutdownStart)
+		slog.Info("shutdown", "shutdown_step", "http", "elapsed_ms", httpElapsed.Milliseconds())
 
-	// Stop the WebSocket gateway — unsubscribes from the event log.
-	// In-flight connections are already draining because ctx was cancelled above.
-	wsGateway.Stop()
+		// Compute remaining budget; enforce a 1s floor so callers always get
+		// at least a minimal window even if HTTP draining consumed most of it.
+		grace := time.Duration(cfg.ShutdownGraceSeconds) * time.Second
+		remaining := grace - httpElapsed
+		if remaining < 1*time.Second {
+			remaining = 1 * time.Second
+		}
+
+		// Drain the auto-merger and WS gateway in parallel so neither waits on
+		// the other. Both share the same remaining budget context.
+		stopCtx, cancelStop := context.WithTimeout(context.Background(), remaining)
+		defer cancelStop()
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			if err := mergerWorker.Stop(stopCtx); err != nil {
+				slog.Warn("auto-merger stop timed out", "err", err)
+			}
+			slog.Info("shutdown", "shutdown_step", "automerger",
+				"elapsed_ms", time.Since(start).Milliseconds())
+		}()
+
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			wsGateway.Stop()
+			slog.Info("shutdown", "shutdown_step", "wsgateway",
+				"elapsed_ms", time.Since(start).Milliseconds())
+		}()
+
+		wg.Wait()
+	}
 
 	slog.Info("portal stopped cleanly")
 }

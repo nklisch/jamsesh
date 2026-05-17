@@ -58,6 +58,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.DB.ConnMaxLifetime != 30*time.Minute {
 		t.Errorf("DB.ConnMaxLifetime: got %v, want 30m", cfg.DB.ConnMaxLifetime)
 	}
+	if cfg.ShutdownGraceSeconds != 30 {
+		t.Errorf("ShutdownGraceSeconds default: got %d, want 30", cfg.ShutdownGraceSeconds)
+	}
 }
 
 func TestGitMaxPackBytesEnvOverride(t *testing.T) {
@@ -358,6 +361,62 @@ db:
 	}
 }
 
+// TestShutdownGraceSecondsDefault verifies the default value is 30.
+func TestShutdownGraceSecondsDefault(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ShutdownGraceSeconds != 30 {
+		t.Errorf("ShutdownGraceSeconds default: got %d, want 30", cfg.ShutdownGraceSeconds)
+	}
+}
+
+// TestShutdownGraceSecondsEnvOverride verifies JAMSESH_SHUTDOWN_GRACE_S is applied.
+func TestShutdownGraceSecondsEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_SHUTDOWN_GRACE_S", "60")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ShutdownGraceSeconds != 60 {
+		t.Errorf("ShutdownGraceSeconds: got %d, want 60", cfg.ShutdownGraceSeconds)
+	}
+}
+
+// TestShutdownGraceSecondsYAML verifies the shutdown_grace_s YAML key is parsed.
+func TestShutdownGraceSecondsYAML(t *testing.T) {
+	clearEnv(t)
+	yamlContent := "shutdown_grace_s: 45\n"
+	path := writeTempConfig(t, yamlContent)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ShutdownGraceSeconds != 45 {
+		t.Errorf("ShutdownGraceSeconds: got %d, want 45", cfg.ShutdownGraceSeconds)
+	}
+}
+
+// TestShutdownGraceSecondsValidation verifies that zero and negative values are rejected.
+func TestShutdownGraceSecondsValidation(t *testing.T) {
+	clearEnv(t)
+
+	for _, bad := range []string{"0", "-1", "-30"} {
+		t.Run("grace_s="+bad, func(t *testing.T) {
+			t.Setenv("JAMSESH_SHUTDOWN_GRACE_S", bad)
+			_, err := config.Load("")
+			if err == nil {
+				t.Errorf("expected validation error for JAMSESH_SHUTDOWN_GRACE_S=%s, got nil", bad)
+			}
+		})
+	}
+}
+
 // clearEnv unsets all JAMSESH_ environment variables for test isolation.
 func clearEnv(t *testing.T) {
 	t.Helper()
@@ -370,6 +429,7 @@ func clearEnv(t *testing.T) {
 		"JAMSESH_OAUTH_GITHUB_BASE_URL",
 		"JAMSESH_DB_MAX_OPEN_CONNS", "JAMSESH_DB_MAX_IDLE_CONNS",
 		"JAMSESH_DB_CONN_MAX_LIFETIME",
+		"JAMSESH_SHUTDOWN_GRACE_S",
 	}
 	for _, v := range vars {
 		t.Setenv(v, "") // t.Setenv restores on cleanup; set to "" to clear

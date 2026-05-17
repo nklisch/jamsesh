@@ -9,7 +9,8 @@
 //	oauth.github.client_id, oauth.github.client_secret,
 //	oauth.github.base_url,
 //	git.max_pack_bytes,
-//	db.max_open_conns, db.max_idle_conns, db.conn_max_lifetime
+//	db.max_open_conns, db.max_idle_conns, db.conn_max_lifetime,
+//	shutdown_grace_s
 //
 // Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
@@ -30,7 +31,8 @@
 //	JAMSESH_GIT_MAX_PACK_BYTES,
 //	JAMSESH_DB_MAX_OPEN_CONNS,
 //	JAMSESH_DB_MAX_IDLE_CONNS,
-//	JAMSESH_DB_CONN_MAX_LIFETIME
+//	JAMSESH_DB_CONN_MAX_LIFETIME,
+//	JAMSESH_SHUTDOWN_GRACE_S
 //
 // Secret env vars with _FILE variants (file contents take precedence):
 //
@@ -71,6 +73,11 @@ type Config struct {
 	OAuth     OAuthConfig `yaml:"oauth"`
 	Git       GitConfig   `yaml:"git"`
 	DB        DBConfig    `yaml:"db"`
+	// ShutdownGraceSeconds is the total wall-clock budget for graceful shutdown,
+	// shared across HTTP draining, auto-merger stop, and WS gateway stop.
+	// Default: 30 (matches k8s terminationGracePeriodSeconds). Must be positive.
+	// Env: JAMSESH_SHUTDOWN_GRACE_S
+	ShutdownGraceSeconds int `yaml:"shutdown_grace_s"`
 }
 
 // DBConfig holds database connection pool settings.
@@ -253,6 +260,7 @@ func defaults() Config {
 			MaxIdleConns:    5,
 			ConnMaxLifetime: 30 * time.Minute,
 		},
+		ShutdownGraceSeconds: 30,
 	}
 }
 
@@ -273,6 +281,9 @@ func (c Config) validate() error {
 		// valid
 	default:
 		return fmt.Errorf("config: db_driver must be \"sqlite\" or \"postgres\", got %q", c.DBDriver)
+	}
+	if c.ShutdownGraceSeconds <= 0 {
+		return fmt.Errorf("config: shutdown_grace_s must be a positive integer, got %d", c.ShutdownGraceSeconds)
 	}
 	return nil
 }
@@ -325,6 +336,11 @@ func applyEnv(c *Config) error {
 	}
 	applyGitEnv(&c.Git)
 	applyDBEnv(&c.DB)
+	if v := os.Getenv("JAMSESH_SHUTDOWN_GRACE_S"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.ShutdownGraceSeconds = n
+		}
+	}
 	return nil
 }
 
