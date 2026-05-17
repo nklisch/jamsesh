@@ -3,6 +3,7 @@ package sessioncmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +24,20 @@ func setupJoinEnv(t *testing.T, srvURL string) string {
 		t.Fatalf("writing token: %v", err)
 	}
 	return dir
+}
+
+// writeMeJSON writes a /api/me response as raw JSON to avoid
+// openapi_types.Email marshal validation failures.
+func writeMeJSON(w http.ResponseWriter, accountID string, orgIDs ...string) {
+	w.Header().Set("Content-Type", "application/json")
+	orgs := ""
+	for i, id := range orgIDs {
+		if i > 0 {
+			orgs += ","
+		}
+		orgs += fmt.Sprintf(`{"id":%q,"name":"Org %s","role":"member","slug":"org"}`, id, id)
+	}
+	fmt.Fprintf(w, `{"id":%q,"display_name":"Test","email":"test@example.com","orgs":[%s]}`, accountID, orgs)
 }
 
 func TestParseSessionArg_bareID(t *testing.T) {
@@ -91,14 +106,7 @@ func TestJoinAction_happy(t *testing.T) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
-		resp := openapi.MeResponse{
-			Id: accountID,
-			Orgs: []openapi.MeOrgMembership{
-				{Id: orgID, Name: "Test Org"},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		writeMeJSON(w, accountID, orgID)
 	})
 
 	mux.HandleFunc("/api/orgs/"+orgID+"/sessions/"+sessionID, func(w http.ResponseWriter, r *http.Request) {
@@ -184,11 +192,7 @@ func TestJoinAction_inviteURL(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openapi.MeResponse{
-			Id:   accountID,
-			Orgs: []openapi.MeOrgMembership{{Id: orgID}},
-		})
+		writeMeJSON(w, accountID, orgID)
 	})
 	mux.HandleFunc("/api/orgs/"+orgID+"/sessions/"+sessionID+"/invites/"+inviteID+"/accept",
 		func(w http.ResponseWriter, r *http.Request) {

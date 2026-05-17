@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,23 +32,26 @@ func StatusCommand() *cli.Command {
 
 // statusOutput is the structured form emitted by --json.
 type statusOutput struct {
-	SessionID string           `json:"session_id"`
-	Name      string           `json:"name"`
-	Goal      string           `json:"goal"`
-	Mode      string           `json:"mode"`
-	YourRef   string           `json:"your_ref"`
-	Refs      []openapi.Ref    `json:"refs"`
+	SessionID string            `json:"session_id"`
+	Name      string            `json:"name"`
+	Goal      string            `json:"goal"`
+	Mode      string            `json:"mode"`
+	YourRef   string            `json:"your_ref"`
+	Refs      []openapi.Ref     `json:"refs"`
 	Comments  []openapi.Comment `json:"unresolved_comments"`
 }
 
 func statusAction(ctx context.Context, cmd *cli.Command) error {
 	asJSON := cmd.Bool("json")
 
-	// Resolve current session.
-	sessionID, orgID, yourRef, err := resolveCurrentSession()
+	// Resolve the current session ID via the shared helper in session.go.
+	sessionID, err := resolveSession()
 	if err != nil {
 		return fmt.Errorf("resolving current session: %w", err)
 	}
+
+	// Read orgID and your ref from per-session state files.
+	orgID, yourRef := readSessionState(sessionID)
 
 	portalURL, err := state.ReadPortalURL()
 	if err != nil {
@@ -63,7 +65,7 @@ func statusAction(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("fetching account info: %w", err)
 	}
 
-	// If orgID is empty, discover it.
+	// If orgID is empty (not stored in state), discover it from user's orgs.
 	if orgID == "" {
 		orgID, err = findOrgForSession(ctx, pc, me, sessionID)
 		if err != nil {
@@ -138,88 +140,22 @@ func statusAction(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-// resolveCurrentSession finds the active session ID, orgID, and your current
-// ref by consulting JAMSESH_SESSION_ID env or scanning the sessions/ state dir.
-// It returns ("", "", "", err) if no session is found.
-func resolveCurrentSession() (sessionID, orgID, yourRef string, err error) {
-	// 1. Check explicit env override.
-	if sid := os.Getenv("JAMSESH_SESSION_ID"); sid != "" {
-		sessionID = sid
-	}
-
-	// 2. Match by CLAUDE_SESSION_ID instance_id stored in state.
-	instanceID := os.Getenv("CLAUDE_SESSION_ID")
-
+// readSessionState reads orgID and your ref from the per-session state directory.
+// Missing files silently return empty strings; callers must handle empty orgID.
+func readSessionState(sessionID string) (orgID, yourRef string) {
 	dir, err := state.PluginDataDir()
 	if err != nil {
-		if sessionID != "" {
-			// We have a session ID; proceed without orgID — caller will discover it.
-			return sessionID, "", "", nil
-		}
-		return "", "", "", err
+		return "", ""
 	}
+	sessDir := filepath.Join(dir, "sessions", sessionID)
 
-	sessionsDir := filepath.Join(dir, "sessions")
-	entries, err := os.ReadDir(sessionsDir)
-	if err != nil {
-		if sessionID != "" {
-			return sessionID, "", "", nil
-		}
-		if err2, ok := err.(*fs.PathError); ok && strings.Contains(err2.Error(), "no such file") {
-			return "", "", "", fmt.Errorf("no sessions found; run `jamsesh join` first")
-		}
-		return "", "", "", fmt.Errorf("reading sessions dir: %w", err)
+	if data, err := os.ReadFile(filepath.Join(sessDir, "org_id")); err == nil {
+		orgID = strings.TrimSpace(string(data))
 	}
-
-	// If CLAUDE_SESSION_ID is set, look for a matching instance_id.
-	if instanceID != "" && sessionID == "" {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			iidPath := filepath.Join(sessionsDir, e.Name(), "instance_id")
-			data, rerr := os.ReadFile(iidPath)
-			if rerr != nil {
-				continue
-			}
-			if strings.TrimSpace(string(data)) == instanceID {
-				sessionID = e.Name()
-				break
-			}
-		}
+	if data, err := os.ReadFile(filepath.Join(sessDir, "ref")); err == nil {
+		yourRef = strings.TrimSpace(string(data))
 	}
-
-	// If still no session ID, fall back to the most recently modified session dir.
-	if sessionID == "" {
-		var latestEntry os.DirEntry
-		var latestTime int64
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			info, rerr := e.Info()
-			if rerr != nil {
-				continue
-			}
-			if info.ModTime().Unix() > latestTime {
-				latestTime = info.ModTime().Unix()
-				latestEntry = e
-			}
-		}
-		if latestEntry == nil {
-			return "", "", "", fmt.Errorf("no sessions found; run `jamsesh join` first")
-		}
-		sessionID = latestEntry.Name()
-	}
-
-	// Read ref and orgID from state files.
-	refData, _ := os.ReadFile(filepath.Join(sessionsDir, sessionID, "ref"))
-	yourRef = strings.TrimSpace(string(refData))
-
-	orgData, _ := os.ReadFile(filepath.Join(sessionsDir, sessionID, "org_id"))
-	orgID = strings.TrimSpace(string(orgData))
-
-	return sessionID, orgID, yourRef, nil
+	return orgID, yourRef
 }
 
 // truncate shortens s to at most n runes, appending "…" if truncated.
