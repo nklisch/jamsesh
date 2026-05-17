@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-e2e-asserts
 kind: story
-stage: review
+stage: done
 tags: [portal, testing]
 parent: portal-dep-failure-error-codes
 depends_on:
@@ -264,3 +264,46 @@ ok    jamsesh/tests/e2e/failure    21.967s
 ```
 
 Confirmed stable across `-count=2`.
+
+## Review
+
+**Verdict:** Approve.
+
+**Summary.** All three Category-2 sub-tests tightened cleanly per the
+design: 503 + `Content-Type: application/json` (prefix-matched to
+tolerate the `; charset=utf-8` suffix) + decoded `{error, message}`
+envelope + per-taxonomy `Retry-After` (5 SMTP / 2 DB / 10 OAuth).
+Package doc comment reflects the NOW contract — the stale "plain-text
+500" line is gone. The `oauthCallback` helper was preserved as a thin
+shim around the new header-aware variant, keeping unaffected callers
+untouched. `go vet ./failure/...` clean.
+
+**Verified against source.**
+- `httperr.go` constructors confirm Retry-After taxonomy (5/2/10);
+  git_subprocess_failed intentionally omits it — out of scope here.
+- `tokens.BearerMiddleware` default branch does write
+  `httperr.ErrInternal(err)` directly (middleware.go:37), bypassing
+  `WriteFromError` — the parked backlog item is well-formed and
+  describes a real gap.
+
+**Test-routing workaround judgment.** Switching the DB sub-test from
+`GET /api/me` to `POST /api/auth/magic-link/request` is the right call
+for this story. The magic-link request path flows through the strict
+handler's `ResponseErrorHandlerFunc` (where `WrapDBIfTransient` runs),
+so the assertion actually validates the documented contract end-to-end.
+The added rejection of 204 (the magic-link happy path) keeps the
+"didn't silently succeed" guard honest. The middleware fix and a
+follow-up DB-dep assertion through `GET /me` belong in the parked
+backlog item, not in this test-only story.
+
+**Bearer-middleware gap.** Real product issue, correctly parked at
+`.work/backlog/portal-bearer-middleware-dep-translate.md` with the
+proposed fix (route through `WriteFromError` with
+`WrapDBIfTransient`). Not a blocker for this story — the dep
+translator's coverage claim is documented as incomplete on auth-gated
+endpoints until that backlog item lands. Worth a follow-up sweep for
+other direct `httperr.Write(...ErrInternal(err))` call sites as the
+parked item notes.
+
+**Findings count.** Blockers: 0. Important: 0 (the bearer-middleware
+gap is already parked). Nits: 0.
