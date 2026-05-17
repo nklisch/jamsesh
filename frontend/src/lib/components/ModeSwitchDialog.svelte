@@ -1,6 +1,7 @@
 <script lang="ts">
   import { client } from '$lib/api/client';
   import Button from './Button.svelte';
+  import Modal from './Modal.svelte';
 
   let {
     orgId,
@@ -49,121 +50,65 @@
   let shortRef = $derived(ref.split('/').slice(-2).join('/'));
 </script>
 
-<div class="modal-overlay" role="presentation">
-  <div
-    class="modal"
-    role="dialog"
-    aria-label="Switch ref mode"
-    aria-modal="true"
-  >
-    <div class="modal-header">
-      <h2 class="modal-title">Switch mode</h2>
-      <button class="close-btn" onclick={() => onclose?.()} aria-label="Close">×</button>
+<Modal open={true} title="Switch mode" ariaLabel="Switch ref mode" size="sm" {onclose}>
+  <form class="modal-body" onsubmit={handleSubmit}>
+    <div class="field">
+      <span class="label">Ref</span>
+      <code class="mono-value" title={ref}>{shortRef}</code>
     </div>
 
-    <form class="modal-body" onsubmit={handleSubmit}>
-      <div class="field">
-        <span class="label">Ref</span>
-        <code class="mono-value" title={ref}>{shortRef}</code>
-      </div>
+    <div class="field">
+      <span class="label">Current mode</span>
+      <span class="mode-badge mode-{currentMode ?? 'unknown'}">{currentMode ?? '—'}</span>
+    </div>
 
-      <div class="field">
-        <span class="label">Current mode</span>
-        <span class="mode-badge mode-{currentMode ?? 'unknown'}">{currentMode ?? '—'}</span>
-      </div>
+    <fieldset class="mode-fieldset">
+      <legend class="legend">New mode</legend>
+      <label class="radio-label">
+        <input
+          type="radio"
+          name="mode"
+          value="sync"
+          bind:group={selectedMode}
+        />
+        <span class="radio-text">
+          <strong>sync</strong>
+          <span class="desc">Auto-merge peer commits into this ref.</span>
+        </span>
+      </label>
+      <label class="radio-label">
+        <input
+          type="radio"
+          name="mode"
+          value="isolated"
+          bind:group={selectedMode}
+        />
+        <span class="radio-text">
+          <strong>isolated</strong>
+          <span class="desc">No auto-merge; this ref stays independent.</span>
+        </span>
+      </label>
+    </fieldset>
 
-      <fieldset class="mode-fieldset">
-        <legend class="legend">New mode</legend>
-        <label class="radio-label">
-          <input
-            type="radio"
-            name="mode"
-            value="sync"
-            bind:group={selectedMode}
-          />
-          <span class="radio-text">
-            <strong>sync</strong>
-            <span class="desc">Auto-merge peer commits into this ref.</span>
-          </span>
-        </label>
-        <label class="radio-label">
-          <input
-            type="radio"
-            name="mode"
-            value="isolated"
-            bind:group={selectedMode}
-          />
-          <span class="radio-text">
-            <strong>isolated</strong>
-            <span class="desc">No auto-merge; this ref stays independent.</span>
-          </span>
-        </label>
-      </fieldset>
+    {#if submitError}
+      <p class="error" role="alert">{submitError}</p>
+    {/if}
 
-      {#if submitError}
-        <p class="error" role="alert">{submitError}</p>
-      {/if}
-
-      <div class="actions">
-        <Button variant="ghost" size="sm" onclick={() => onclose?.()}>Cancel</Button>
-        <Button
-          variant="accent"
-          size="sm"
-          type="submit"
-          disabled={submitting || selectedMode === currentMode}
-        >
-          {submitting ? 'Switching…' : 'Switch mode'}
-        </Button>
-      </div>
-    </form>
-  </div>
-</div>
+    <div class="actions">
+      <Button variant="ghost" size="sm" onclick={() => onclose?.()}>Cancel</Button>
+      <Button
+        variant="accent"
+        size="sm"
+        type="submit"
+        disabled={submitting || selectedMode === currentMode}
+      >
+        {submitting ? 'Switching…' : 'Switch mode'}
+      </Button>
+    </div>
+  </form>
+</Modal>
 
 <style>
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 200;
-  }
-
-  .modal {
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    min-width: 340px;
-    max-width: 460px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
-  }
-
-  .modal-header {
-    display: flex;
-    align-items: center;
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .modal-title {
-    flex: 1;
-    margin: 0;
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
-  }
-
-  .close-btn {
-    background: transparent;
-    border: 0;
-    color: var(--color-text-secondary);
-    font-size: 20px;
-    cursor: pointer;
-    padding: 0 2px;
-    line-height: 1;
-  }
-
   .modal-body {
     padding: 16px;
     display: flex;

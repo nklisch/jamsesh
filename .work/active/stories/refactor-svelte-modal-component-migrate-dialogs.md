@@ -1,7 +1,7 @@
 ---
 id: refactor-svelte-modal-component-migrate-dialogs
 kind: story
-stage: implementing
+stage: review
 tags: [refactor, ui]
 parent: refactor-svelte-modal-component
 depends_on: [refactor-svelte-modal-component-define]
@@ -51,3 +51,15 @@ fails, the regression is local and easy to bisect.
 
 `git revert` per file. The two dialogs are independent; one rollback does
 not affect the other.
+
+## Implementation notes
+
+- **ForkDialog.svelte**: -44 lines (284 → 240). Scaffold markup and 5 CSS rule
+  blocks removed; `<Modal open={true} title="Fork ref" size="md" {onclose}>` added.
+- **ModeSwitchDialog.svelte**: -46 lines (272 → 226). Same pattern; uses
+  `size="sm"` (matching the original 340–460 px range) and passes
+  `ariaLabel="Switch ref mode"` to preserve the `aria-label` the test asserts on.
+- **`<Modal>` API extension**: none required. The `ariaLabel` prop already existed
+  on `Modal`; no new API surface was needed.
+- **Tests**: `ModeSwitchDialog.test.ts` — all 11 tests pass. `ForkDialog.test.ts`
+  does not exist. Full suite: 286/286 passed.

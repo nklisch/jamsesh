@@ -1,6 +1,7 @@
 <script lang="ts">
   import { auth } from '$lib/auth.svelte';
   import Button from './Button.svelte';
+  import Modal from './Modal.svelte';
 
   let {
     sessionId,
@@ -127,103 +128,47 @@
   }
 </script>
 
-<div class="modal-overlay" role="presentation">
-  <div
-    class="modal"
-    role="dialog"
-    aria-label="Fork ref"
-    aria-modal="true"
-  >
-    <div class="modal-header">
-      <h2 class="modal-title">Fork ref</h2>
-      <button class="close-btn" onclick={() => onclose?.()} aria-label="Close">×</button>
+<Modal open={true} title="Fork ref" size="md" {onclose}>
+  <form class="modal-body" onsubmit={handleSubmit}>
+    <div class="field">
+      <label class="label" for="fork-source">Source ref</label>
+      <code class="mono-value">{sourceRef.split('/').slice(-2).join('/')}</code>
     </div>
 
-    <form class="modal-body" onsubmit={handleSubmit}>
-      <div class="field">
-        <label class="label" for="fork-source">Source ref</label>
-        <code class="mono-value">{sourceRef.split('/').slice(-2).join('/')}</code>
-      </div>
+    <div class="field">
+      <label class="label" for="fork-target">Target ref</label>
+      <input
+        id="fork-target"
+        class="text-input"
+        type="text"
+        bind:value={targetRef}
+        placeholder="refs/heads/jam/<session>/<user>/<branch>"
+        aria-label="Target ref name"
+      />
+    </div>
 
-      <div class="field">
-        <label class="label" for="fork-target">Target ref</label>
-        <input
-          id="fork-target"
-          class="text-input"
-          type="text"
-          bind:value={targetRef}
-          placeholder="refs/heads/jam/<session>/<user>/<branch>"
-          aria-label="Target ref name"
-        />
-      </div>
+    <div class="field">
+      <label class="label" for="fork-mode">Mode</label>
+      <select id="fork-mode" class="select" bind:value={mode} aria-label="Fork mode">
+        <option value="sync">sync</option>
+        <option value="isolated">isolated</option>
+      </select>
+    </div>
 
-      <div class="field">
-        <label class="label" for="fork-mode">Mode</label>
-        <select id="fork-mode" class="select" bind:value={mode} aria-label="Fork mode">
-          <option value="sync">sync</option>
-          <option value="isolated">isolated</option>
-        </select>
-      </div>
+    {#if submitError}
+      <p class="error" role="alert">{submitError}</p>
+    {/if}
 
-      {#if submitError}
-        <p class="error" role="alert">{submitError}</p>
-      {/if}
-
-      <div class="actions">
-        <Button variant="ghost" size="sm" onclick={() => onclose?.()}>Cancel</Button>
-        <Button variant="accent" size="sm" type="submit" disabled={submitting || !targetRef.trim()}>
-          {submitting ? 'Forking…' : 'Fork'}
-        </Button>
-      </div>
-    </form>
-  </div>
-</div>
+    <div class="actions">
+      <Button variant="ghost" size="sm" onclick={() => onclose?.()}>Cancel</Button>
+      <Button variant="accent" size="sm" type="submit" disabled={submitting || !targetRef.trim()}>
+        {submitting ? 'Forking…' : 'Fork'}
+      </Button>
+    </div>
+  </form>
+</Modal>
 
 <style>
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 200;
-  }
-
-  .modal {
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    min-width: 360px;
-    max-width: 500px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
-  }
-
-  .modal-header {
-    display: flex;
-    align-items: center;
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .modal-title {
-    flex: 1;
-    margin: 0;
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
-  }
-
-  .close-btn {
-    background: transparent;
-    border: 0;
-    color: var(--color-text-secondary);
-    font-size: 20px;
-    cursor: pointer;
-    padding: 0 2px;
-    line-height: 1;
-  }
-
   .modal-body {
     padding: 16px;
     display: flex;
