@@ -1,7 +1,7 @@
 ---
 id: backlog-replace-gobwas-glob
 kind: story
-stage: review
+stage: done
 tags: [security, portal, prereceive, dependency]
 parent: null
 depends_on: []
@@ -99,3 +99,26 @@ dependency (zero transitive dependencies of its own).
 
 **`docs-scope-glob-validation-rules` backlog:** no glob syntax changes visible
 to users — patterns are normalized transparently. No doc update needed.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `Match` silently ignores `doublestar.Match`'s error return (`if err == nil && matched`). This is defensible since `CompileScope` already calls `ValidatePattern` on every pattern, so a runtime `Match` error is unreachable for any pattern that survived compilation. No action needed; flagging only because future readers might wonder.
+- `normalizeForDoublestar` is correct for the test contract (`**.ext`, `src/**.ext`, `docs/**`, plain `**`). Unusual inputs like `***.md` or `**foo**` produce normalized strings the new library will interpret in doublestar's native (segment-aware) semantics, which may surprise a future maintainer — but those shapes aren't in the test contract and the fuzz harness covers panic-safety regardless. No action needed.
+
+**Notes**:
+- Library choice: `github.com/bmatcuk/doublestar/v4 v4.10.0`. Well-maintained, validates at compile time, supports `**` with `/` separator. Zero transitive deps.
+- The clever bit: `normalizeForDoublestar` adapts gobwas/glob's "**.ext matches any nested .ext file" semantics to doublestar's strict-segment semantics by rewriting any `**` followed by a non-`/` character into `**/<rest>`. Pure normalization at compile time; transparent to callers. The struct comment and function doc both explain the rationale clearly.
+- All 17 `TestScopeMatcher_Match` cases pass without modification. All 5 `TestCompileScope` cases (including the 3 malformed-pattern regression cases for `"0{"`, `"a{"`, `"src/{"`) pass without modification. That's strong evidence the contract is preserved.
+- Fuzz harness: 30s primary run + 5s spot-check during review, ~2.2M total iterations, 0 failures. Panic-safety contract verified.
+- Internal API: `ScopeMatcher.globs` field renamed to `patterns`. Field is unexported; the only in-tree user (`commits.go:94`) was updated in the same commit. Exported `(*ScopeMatcher).Match` and `CompileScope` signatures unchanged.
+- Foundation docs: `docs/SPEC.md:109` and `docs/UX.md:37` reference glob syntax (`docs/**`, `docs/auth/**`) — the swap preserves that syntax verbatim. No rolling-forward needed.
+- `go.mod` and `go.sum` are clean of `gobwas/glob`. `doublestar/v4` added with no transitive deps.
+
+## What's now possible
+
+The pre-receive validator now uses a maintained library that validates patterns at compile time. `probeGlob` and its byte-prefix probe-set heuristic are gone — there's no longer a workaround whose probe set could be incomplete against a future library internal change. The security contract (no panics on malformed input, path-traversal payloads rejected) is upheld by the library itself rather than a defense-in-depth wrapper.
