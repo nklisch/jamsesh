@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-ci-workflow
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-testcontainers-fixtures, epic-e2e-tests-infrastructure-ccdriver, epic-e2e-tests-infrastructure-playwright-bootstrap]
@@ -80,3 +80,19 @@ jobs:
   Playwright browsers under `~/.cache/ms-playwright`
 - Don't add `--no-verify` or similar bypasses; if the suite is
   flaky, fix the suite, not the workflow
+
+## Implementation notes
+
+Files created / modified:
+
+- `.github/workflows/e2e.yml` — new workflow; runs on PR and push to main
+- `docs/SELF_HOST.md` — added section 12 (CI) naming the e2e workflow as the canonical e2e gate
+
+Design decisions:
+- `go-version: 'stable'` instead of `go-version-file` to satisfy both root `go.mod` (1.25.7) and `tests/e2e/go.mod` (1.26) without pinning a specific version
+- `cache: false` on `setup-go` and a manual `actions/cache@v4` step so the key covers both `go.sum` files (root + tests/e2e)
+- Node cache uses `setup-node` built-in `cache: 'npm'` with dual `cache-dependency-path` covering frontend and playwright lockfiles
+- Playwright browsers cached separately under `~/.cache/ms-playwright` keyed on playwright `package-lock.json`
+- `timeout-minutes: 20` provides headroom for cold cache runs while preventing runaway jobs
+- Playwright trace artifact uses `if-no-files-found: ignore` to avoid a spurious failure when the reporter didn't emit (e.g. Go-only failure)
+- No `services:` block — Testcontainers-Go drives Docker directly on the runner

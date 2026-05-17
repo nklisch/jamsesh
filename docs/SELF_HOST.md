@@ -474,6 +474,14 @@ Common codes and what they mean operationally:
 See [docs/PROTOCOL.md](PROTOCOL.md) for the full HTTP error contract and the
 complete list of error codes.
 
+---
+
+## 12. CI
+
+The `e2e` GitHub Actions workflow runs the full end-to-end suite on every PR and push to main — see `.github/workflows/e2e.yml`. It is the canonical e2e gate: Go fixture tests (Testcontainers-Go), ccdriver integration, and Playwright browser tests all run in a single `make test-e2e` invocation. Playwright traces are uploaded as artifacts on failure for debugging.
+
+---
+
 ### Common setup issues
 
 **Portal starts but `/healthz` returns connection refused**:
