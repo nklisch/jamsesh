@@ -15,7 +15,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
-	"jamsesh/internal/portal/tokens"
+	"jamsesh/internal/portal/handlerauth"
 )
 
 const (
@@ -49,14 +49,9 @@ func (h *Handler) ListOrgMembers(ctx context.Context, req openapi.ListOrgMembers
 // CreateOrgInvite implements POST /api/orgs/{orgID}/invites.
 // RequireOrgRole(creator) middleware must be upstream.
 func (h *Handler) CreateOrgInvite(ctx context.Context, req openapi.CreateOrgInviteRequestObject) (openapi.CreateOrgInviteResponseObject, error) {
-	inviter, ok := tokens.AccountFromContext(ctx)
+	inviter, fail, ok := handlerauth.RequireAccount(ctx)
 	if !ok {
-		return openapi.CreateOrgInvite401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
+		return createOrgInviteFail(fail), nil
 	}
 
 	raw, hash, err := generateInviteToken()
@@ -109,14 +104,9 @@ func (h *Handler) CreateOrgInvite(ctx context.Context, req openapi.CreateOrgInvi
 // AcceptOrgInvite implements POST /api/orgs/{orgID}/invites/{inviteID}/accept.
 // BearerMiddleware must be upstream (no org-role gate — the user is joining).
 func (h *Handler) AcceptOrgInvite(ctx context.Context, req openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
+	acc, fail, ok := handlerauth.RequireAccount(ctx)
 	if !ok {
-		return openapi.AcceptOrgInvite401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
+		return acceptOrgInviteFail(fail), nil
 	}
 
 	invite, err := h.store.GetOrgInviteByID(ctx, req.InviteID)
@@ -229,4 +219,24 @@ func generateInviteToken() (raw, hash string, err error) {
 func hashInviteToken(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
+}
+
+// ---------------------------------------------------------------------------
+// Per-handler auth-fail wrappers
+// ---------------------------------------------------------------------------
+
+// createOrgInviteFail wraps an AuthFail for CreateOrgInvite. The upstream
+// RequireOrgRole middleware handles 403, so only 401 is expected here, but we
+// include the 403 branch for belt-and-suspenders correctness.
+func createOrgInviteFail(f handlerauth.AuthFail) openapi.CreateOrgInviteResponseObject {
+	if f.Status == 401 {
+		return openapi.CreateOrgInvite401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.CreateOrgInvite403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+// acceptOrgInviteFail wraps an AuthFail for AcceptOrgInvite. RequireAccount
+// only returns 401, so no 403 branch is needed.
+func acceptOrgInviteFail(f handlerauth.AuthFail) openapi.AcceptOrgInviteResponseObject {
+	return openapi.AcceptOrgInvite401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
 }

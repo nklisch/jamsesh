@@ -32,6 +32,8 @@ func NewHandler(svc Service) *Handler {
 // RefreshToken implements POST /api/auth/refresh.
 // This endpoint is PUBLIC — the refresh token in the request body is the
 // credential. No Bearer middleware is applied upstream.
+// auth flow: body-based refresh token (not bearer); no handlerauth migration
+// needed or possible. see refactor-handler-auth-guards-accounts-tokens
 func (h *Handler) RefreshToken(ctx context.Context, req openapi.RefreshTokenRequestObject) (openapi.RefreshTokenResponseObject, error) {
 	pair, err := h.svc.Refresh(ctx, req.Body.RefreshToken)
 	if err != nil {
@@ -49,11 +51,15 @@ func (h *Handler) RefreshToken(ctx context.Context, req openapi.RefreshTokenRequ
 // This endpoint requires a valid Bearer token; BearerMiddleware is applied
 // upstream and attaches the *store.Account to the request context.
 // revokeAll: true revokes every token for the authenticated account.
+//
+// auth flow: handlerauth cannot be used here because handlerauth imports this
+// package (tokens) for AccountFromContext, creating a cycle. AccountFromContext
+// is called directly instead. see refactor-handler-auth-guards-accounts-tokens
 func (h *Handler) RevokeToken(ctx context.Context, req openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
+	// Belt-and-suspenders: BearerMiddleware should have blocked unauthenticated
+	// requests before they reach here, but guard explicitly.
 	_, ok := AccountFromContext(ctx)
 	if !ok {
-		// Belt-and-suspenders: BearerMiddleware should have blocked unauthenticated
-		// requests before they reach here, but guard explicitly.
 		return openapi.RevokeToken401JSONResponse{
 			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
 				Error:   "auth.invalid_token",

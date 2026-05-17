@@ -1,7 +1,7 @@
 ---
 id: refactor-handler-auth-guards-accounts-tokens
 kind: story
-stage: implementing
+stage: review
 tags: [refactor, portal]
 parent: refactor-handler-auth-guards
 depends_on: [refactor-handler-auth-guards-helpers-and-sessions]
@@ -54,3 +54,41 @@ LOW.
 ## Rollback
 
 `git revert` each file independently.
+
+## Implementation notes
+
+### Handlers migrated
+
+**`internal/portal/accounts/handlers.go`**
+- `GetMe` — `tokens.AccountFromContext` → `handlerauth.RequireAccount`. The
+  `store.GetOrgMember` loop inside GetMe is retained as-is; it is a data-load
+  (building the memberships list), not an auth guard.
+- `CreateOrg` — `tokens.AccountFromContext` → `handlerauth.RequireAccount`.
+
+**`internal/portal/accounts/orgs.go`**
+- `CreateOrgInvite` — `tokens.AccountFromContext` → `handlerauth.RequireAccount`.
+- `AcceptOrgInvite` — `tokens.AccountFromContext` → `handlerauth.RequireAccount`.
+- `ListOrgMembers` — no inline auth guard; relies entirely on upstream
+  middleware. Nothing to migrate.
+
+Per-handler fail wrappers added in both files following the sessions pattern.
+
+### Handlers deliberately not migrated
+
+**`internal/portal/tokens/handlers.go` — `RefreshToken`**
+PUBLIC endpoint; auth credential is the refresh token in the request body, not
+a bearer access token. There is no bearer account in context, so `handlerauth`
+is inapplicable. Annotated with `// auth flow: body-based refresh token...`
+comment pointing at this story.
+
+**`internal/portal/tokens/handlers.go` — `RevokeToken`**
+Import-cycle blocker: `handlerauth` imports the `tokens` package
+(`tokens.AccountFromContext`). Importing `handlerauth` back into `tokens` would
+create a cycle. `AccountFromContext` is called directly (same package) as it
+was before. Annotated with a multi-line comment pointing at this story.
+
+### LoC delta (approximate)
+
+`accounts/handlers.go`: -12 / +20 (replaced inline 401 blocks with helper calls + wrapper funcs)
+`accounts/orgs.go`: -14 / +26 (same pattern × 2 handlers + wrapper funcs)
+`tokens/handlers.go`: net +6 (added explanatory comments; logic unchanged)

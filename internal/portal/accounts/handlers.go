@@ -11,8 +11,8 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/auth"
+	"jamsesh/internal/portal/handlerauth"
 	"jamsesh/internal/portal/senders"
-	"jamsesh/internal/portal/tokens"
 )
 
 // Handler implements the openapi.StrictServerInterface methods for the
@@ -33,14 +33,9 @@ func New(s store.Store, sender senders.Sender, portalURL string) *Handler {
 // It requires BearerMiddleware upstream to have placed the *store.Account in
 // the request context.
 func (h *Handler) GetMe(ctx context.Context, _ openapi.GetMeRequestObject) (openapi.GetMeResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
+	acc, fail, ok := handlerauth.RequireAccount(ctx)
 	if !ok {
-		return openapi.GetMe401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
+		return getMeFail(fail), nil
 	}
 
 	orgs, err := h.store.ListOrgsForAccount(ctx, acc.ID)
@@ -49,6 +44,8 @@ func (h *Handler) GetMe(ctx context.Context, _ openapi.GetMeRequestObject) (open
 	}
 
 	// Build memberships by loading each org_member row.
+	// Note: GetOrgMember here is NOT an auth guard — it loads role data for the
+	// response body. It is intentionally not migrated through handlerauth.
 	memberships := make([]openapi.MeOrgMembership, 0, len(orgs))
 	for _, org := range orgs {
 		m, err := h.store.GetOrgMember(ctx, store.GetOrgMemberParams{
@@ -79,14 +76,9 @@ func (h *Handler) GetMe(ctx context.Context, _ openapi.GetMeRequestObject) (open
 // the request context. The authenticated account becomes the creator of the
 // new org.
 func (h *Handler) CreateOrg(ctx context.Context, req openapi.CreateOrgRequestObject) (openapi.CreateOrgResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
+	acc, fail, ok := handlerauth.RequireAccount(ctx)
 	if !ok {
-		return openapi.CreateOrg401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
+		return createOrgFail(fail), nil
 	}
 
 	now := time.Now().UTC()
@@ -109,4 +101,18 @@ func (h *Handler) CreateOrg(ctx context.Context, req openapi.CreateOrgRequestObj
 		Name: org.Name,
 		Slug: org.Slug,
 	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Per-handler auth-fail wrappers
+// ---------------------------------------------------------------------------
+
+// getMeFail wraps an AuthFail for GetMe. RequireAccount only returns 401, so
+// no 403 branch is needed.
+func getMeFail(f handlerauth.AuthFail) openapi.GetMeResponseObject {
+	return openapi.GetMe401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+}
+
+func createOrgFail(f handlerauth.AuthFail) openapi.CreateOrgResponseObject {
+	return openapi.CreateOrg401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
 }
