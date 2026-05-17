@@ -1,0 +1,53 @@
+---
+id: refactor-svelte-modal-component-migrate-dialogs
+kind: story
+stage: implementing
+tags: [refactor, ui]
+parent: refactor-svelte-modal-component
+depends_on: [refactor-svelte-modal-component-define]
+release_binding: null
+gate_origin: refactor-design
+created: 2026-05-17
+updated: 2026-05-17
+---
+
+# Modal — Migrate ForkDialog and ModeSwitchDialog
+
+Replace the hand-rolled modal scaffold in both dialogs with `<Modal>`.
+
+## Files
+
+- Modify: `frontend/src/lib/components/ForkDialog.svelte`
+- Modify: `frontend/src/lib/components/ModeSwitchDialog.svelte`
+
+## What to remove from each consumer
+
+- `<div class="modal-overlay">` and `<div class="modal" …>` wrappers
+- `.modal-header` markup + close button
+- All CSS for `.modal-overlay`, `.modal`, `.modal-header`, `.modal-title`,
+  `.close-btn`
+
+## What to keep
+
+- Form body + `.actions` footer + dialog-specific CSS (fields, mode-badge,
+  radio-fieldset, etc.)
+
+## Acceptance
+
+- [ ] `ForkDialog.svelte` and `ModeSwitchDialog.svelte` each shrink by
+      40-60 lines
+- [ ] Both files import `Modal` from `./Modal.svelte` and use `<Modal>`
+- [ ] No `.modal-overlay`, `.modal-header`, or `.close-btn` CSS rules remain
+      in either file
+- [ ] `ForkDialog.test.ts` and `ModeSwitchDialog.test.ts` pass unchanged
+- [ ] Dev-server visual check: both dialogs render identically to before
+
+## Risk
+
+LOW-MEDIUM. The dialog tests pin the click/ESC/submit behavior; if any test
+fails, the regression is local and easy to bisect.
+
+## Rollback
+
+`git revert` per file. The two dialogs are independent; one rollback does
+not affect the other.
