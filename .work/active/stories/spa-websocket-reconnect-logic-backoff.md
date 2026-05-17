@@ -1,7 +1,7 @@
 ---
 id: spa-websocket-reconnect-logic-backoff
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: spa-websocket-reconnect-logic
 depends_on: []
@@ -221,3 +221,46 @@ changes. Zero new errors or warnings introduced.
 None. The story spec is implemented as written; the parent feature's
 broader scope (replay-from cursor, status banner component, e2e
 helpers) is deferred to the sibling stories as required.
+
+## Review
+
+**Verdict:** Approve.
+
+**Cross-check against spec (commit `613aed8`):**
+
+- Backoff constants (`RECONNECT_BASE_MS=1000`, `RECONNECT_CAP_MS=30_000`,
+  `RECONNECT_MULT=1.6`, `RECONNECT_JITTER=0.25`) match the design verbatim.
+  Jitter formula `1 - JITTER + Math.random() * (2 * JITTER)` is the correct
+  uniform sampling on `[1 - JITTER, 1 + JITTER]`.
+- `shouldReconnect(code)` exactly matches the parent feature's close-code
+  policy: false for `1000`, `1003`, `1007`, `1008`, and `[4000, 5000)`;
+  true otherwise. Predicate tests directly exercise each clean/fatal code
+  and a representative sample of transient codes (`1001`, `1006`, `1011`,
+  `1012`, `1013`, `1014`).
+- `wsStatus` rune store follows the wrapper-object pattern: private
+  `$state` object, exported plain object with a `for(sessionId)` accessor.
+  The shape differs from `auth.svelte.ts:21` (parameterised lookup vs.
+  getter) but the principle holds — no raw `$state` is exported.
+- Reconnect loop in the `'close'` listener implements the spec's flow
+  one-for-one. `close(sessionId)` cancels any pending `reconnectTimer`
+  and clears the status to `null`. `'open'` resets `attempt = 0`.
+
+**Tests:** `cd frontend && npm test -- --run src/lib/ws.test.ts` →
+33/33 pass. Three new describe blocks (predicate / loop / status rune)
+cover all six acceptance criteria. The cap test (`backoff is capped at
+30_000ms`) is the most fragile but correctly verifies the cap holds by
+advancing 29 999 ms vs. 2 ms past the boundary on the high-attempt
+socket.
+
+**Findings:**
+
+- Blockers: 0
+- Important: 0
+- Nits: 1 (not filed — implementation-notes "27 tests total" is stale;
+  the actual file count is 33 because pre-existing tests also live in
+  `ws.test.ts`. Pure documentation drift inside the story body; git
+  history is the audit trail.)
+
+**Acceptance criteria:** all six satisfied.
+
+Advancing `review → done`.
