@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-metrics
 kind: story
-stage: review
+stage: done
 tags: [infra, portal]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: []
@@ -142,3 +142,21 @@ Initial portal-specific metrics:
 Router and logging tests unaffected. Pre-existing `db.Open` signature failures
 in many test packages are a wave-level issue from a parallel story; they existed
 before this story and are not caused by these changes.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `events.Log` field `metrics *metrics.Registry` shadows the imported package name `metrics`. Compiles cleanly because the type reference is qualified, but slightly confusing. A `registry` or `metricsReg` field name would read better.
+- Histogram buckets diverge from the design hint (`ExponentialBuckets(0.005, 2, 12)` ≈ 5ms→10s rather than `prometheus.DefBuckets`). Well-justified, well-documented; not a finding.
+
+**Notes**: Implementation is cleanly designed. Isolated `*prometheus.Registry` (not the global default — important for test hygiene). `New()` registers GoCollector + ProcessCollector so standard runtime metrics show up at `/metrics` without further wiring. All instrumentation sites guard `if X.Metrics != nil` (`Applier`, `Worker`, `Handler`, `Log`), preserving nil-safety for tests and partial deployments.
+
+Cardinality safety is the critical design risk and it's handled correctly: route labels come from `chi.RouteContext(r.Context()).RoutePattern()` extracted AFTER `next.ServeHTTP` returns (so the pattern is resolved), with `"unknown"` sentinel for unmatched routes. The `TestRoutePatternLabelUsesChiPattern` test (per implementation notes) exercises this explicitly.
+
+`logging.Access` signature change (`func(http.Handler) http.Handler` → `func(*metrics.Registry) func(http.Handler) http.Handler`) is package-internal API; all call sites updated (router.go, logging_test.go).
+
+`/metrics` and the new `github.com/prometheus/client_golang` dependency aren't yet in SELF_HOST.md or SPEC.md — belongs to the sibling docs story.
