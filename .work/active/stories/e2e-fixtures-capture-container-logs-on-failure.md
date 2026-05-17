@@ -1,7 +1,7 @@
 ---
 id: e2e-fixtures-capture-container-logs-on-failure
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: null
 depends_on: []
@@ -112,3 +112,30 @@ useful, but not load-bearing today.
 to the in-flight failure-mode test work — the helper is straight
 forward enough that it'll show up the first time any container-
 backed test fails in CI.
+
+## Review
+
+**Verdict: Approve.**
+
+- Helper API (`DumpAndTerminate(ctx, t, c, name)`) is clear, has both
+  package-level and function-level GoDoc, sets `t.Helper()`, and
+  carries a `name` prefix on every emitted line for source
+  attribution.
+- `t.Failed()` guard correctly gates the log read so passing tests
+  stay quiet. Empty-data guard avoids emitting a bare header when a
+  container produced no output.
+- All log-read failure paths go through `t.Logf`, never `t.Errorf` /
+  `t.Fatal`, so capture errors cannot mask the original test
+  failure. Termination runs unconditionally and termination errors
+  are also `t.Logf`'d.
+- `dumpLogs` is nil-safe on `c`; `TerminateContainer` handles nil
+  internally per testcontainers-go's convention.
+- Postgres skip rationale (sync.Once-shared container) is verified
+  against `tests/e2e/fixtures/postgres/postgres.go` and documented
+  in both the helper's package doc and the story body.
+- AC 1-3 satisfied. AC 4 (purpose-built failure test) explicitly
+  deferred — accepted, since the helper is small enough that any
+  legitimate failure will exercise it, and the failure-mode test
+  work is already in flight to provide that natural coverage.
+
+No blockers, no important findings, no nits worth filing.
