@@ -36,6 +36,7 @@ import (
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/githttp"
 	"jamsesh/internal/portal/logging"
+	"jamsesh/internal/portal/mcpendpoint"
 	portaloauth "jamsesh/internal/portal/oauth"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
@@ -234,6 +235,16 @@ func main() {
 	commentsSvc := &comments.Service{Store: dbStore, Log: eventLog}
 	commentsHandler := comments.NewHandler(commentsSvc)
 
+	// Build the MCP endpoint. Auth is handled by the SDK's
+	// auth.RequireBearerToken middleware wired inside Handler().
+	mcpEndpoint := &mcpendpoint.Endpoint{
+		Store:    dbStore,
+		Tokens:   tokenSvc,
+		Storage:  storageSvc,
+		Log:      eventLog,
+		Comments: commentsSvc,
+	}
+
 	// Build and start the auto-merger worker. It subscribes to commit.arrived
 	// events and runs merge + apply in per-session goroutines.
 	portalHost := cfg.PortalURL
@@ -315,6 +326,7 @@ func main() {
 		TrustProxyHeaders: cfg.TLS.Mode == "behind_proxy",
 		MountUI:           uiHandler,
 		MountGit:          gitHandler.Mount,
+		MountMCP:          mcpEndpoint.Handler(),
 		MountWS:           wsGateway.Handler(),
 		MountAPI: func(r chi.Router) {
 			// Public auth endpoints — no Bearer middleware.
