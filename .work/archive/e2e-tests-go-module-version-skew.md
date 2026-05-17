@@ -1,7 +1,7 @@
 ---
 id: e2e-tests-go-module-version-skew
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, documentation]
 parent: null
 depends_on: []
@@ -111,3 +111,23 @@ session for `e2e-fixtures-capture-container-logs-on-failure`).
       `1.22.x` to `1.26.x`
 - [x] A `go.work` workspace file is considered — omitted with
       rationale documented above
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Cross-checks all pass — `go.mod` and `tests/e2e/go.mod` both
+declare `go 1.26`; `e2e.yml` pins `1.26.x`; `release.yml` GO_VERSION
+bumped from a 4-version-stale `1.22.x` to `1.26.x` (correctly flagged as a
+side fix in the implementation notes — release builds had been running on
+an unsupported Go since the e2e bump); `quickstart.yml` auto-tracks via
+`go-version-file: go.mod`. `go build ./...` from repo root is clean.
+Stale "distroless image used in production" phrasing in `tests/e2e/README.md`
+replaced with the correct alpine+git description. Decision rationale for
+choosing option 2 over options 1 and 3 is well-reasoned, and the `go.work`
+omission is documented with a clear revisit trigger. Acceptance criteria
+all satisfied. Item moves to archive (no release_binding, no active parent).
