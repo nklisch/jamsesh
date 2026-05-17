@@ -1,0 +1,19 @@
+@import './lib/styles/tokens.css';
+
+/* Global resets */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}

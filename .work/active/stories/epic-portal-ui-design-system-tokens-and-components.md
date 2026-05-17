@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-design-system-tokens-and-components
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-portal-ui-design-system
 depends_on: []
@@ -89,3 +89,61 @@ contracts can be authored and committed independently; running
 component tests requires foundation's toolchain. Implementation
 notes should record whether foundation was landed at implement
 time, and which acceptance-criteria validations were deferred.
+
+## Implementation notes
+
+**Landed at**: 2026-05-16
+
+**Foundation status at implement time**: NOT yet landed (`epic-portal-ui-foundation`
+running in parallel). Component tests are inert — Vitest config not yet present.
+Will activate automatically once foundation lands.
+
+### Files delivered
+
+- `frontend/src/lib/styles/tokens.css` — verbatim copy; verified
+  byte-identical to `.mockups/design-system/tokens.css` via `cmp`
+- `frontend/src/app.css` — `@import './lib/styles/tokens.css';` plus
+  minimal global resets (box-sizing, body font/bg/color)
+- `frontend/src/lib/styles/theme-bootstrap.ts` — pre-paint helper
+  reads `jamsesh.theme` from localStorage and sets `data-theme` on
+  `<html>` before Svelte hydration
+
+**Components** (all in `frontend/src/lib/components/`):
+
+- `Button.svelte` + `Button.test.ts`
+- `Input.svelte` + `Input.test.ts`
+- `Card.svelte` + `Card.test.ts`
+- `Badge.svelte` + `Badge.test.ts`
+- `ModePill.svelte` + `ModePill.test.ts` — wrapper over Badge, variant=mode
+- `ConflictPill.svelte` + `ConflictPill.test.ts` — wrapper over Badge, variant="conflict"
+- `AuthorDot.svelte` + `AuthorDot.test.ts`
+- `InlineCode.svelte` + `InlineCode.test.ts`
+- `ThemeToggle.svelte` + `ThemeToggle.test.ts`
+
+### Svelte 5 compliance verified
+
+All components use `<script lang="ts">`, `$props()`, `$state()`, `$derived()`
+runes, and `{@render children()}` for snippet composition. No `<slot>`,
+no `export let`, no `on:click`, no `$:` reactive statements.
+
+### Deviations from spec
+
+- **Button ghost variant**: uses `--color-border-strong` for the ghost border
+  (vs bare `--color-border` in the spec sketch) — matches `palette.html`
+  `.demo-btn.ghost` which uses `border: 1px solid var(--color-border-strong)`.
+- **InlineCode**: added `border: 1px solid var(--color-border)` to match the
+  `demo-code` block styling from `palette.html`; improves visual definition.
+- **app.css**: includes minimal global resets beyond the required token import
+  to match the baseline `palette.html` sets (box-sizing, body font/bg/color).
+- **ThemeToggle cycle**: implemented as a `Record<Theme, Theme>` lookup table
+  (`CYCLE`) over nested ternary — identical behavior, cleaner code.
+
+### Acceptance criteria status
+
+- [x] `tokens.css` byte-identical to `.mockups/design-system/tokens.css`
+- [x] All 9 component `.svelte` files exist with correct prop signatures
+- [x] Components are valid Svelte 5 (runes + snippets, no Svelte 4 syntax)
+- [x] Co-located `*.test.ts` per component authored (inert until foundation lands Vitest)
+- [x] `theme-bootstrap.ts` reads localStorage and sets `data-theme` before paint
+- [x] AuthorDot hash is deterministic (djb2-style polynomial, same input → same `--author-N`)
+- [x] ThemeToggle cycles `system → light → dark → system`, persists localStorage, applies `data-theme`
