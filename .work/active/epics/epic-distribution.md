@@ -1,7 +1,7 @@
 ---
 id: epic-distribution
 kind: epic
-stage: drafting
+stage: implementing
 tags: [infra]
 parent: null
 depends_on: []
@@ -69,18 +69,73 @@ per VISION.md self-host-first stance).
   stabilizes. Apache-2.0-licensed source, multi-arch binaries, Docker
   image, Sigstore signatures, checksums published with every tagged release.
 
-## Anticipated child features
+Locked at epic-design time (this pass):
 
-Provisional — actual decomposition lands when this epic is designed.
+- **Sigstore approach**: keyless OIDC via the GitHub Actions workflow's
+  OIDC token. No key management; trust anchor is the workflow identity.
+  Standard practice for OSS Go projects in 2026.
+- **Container registry**: GHCR only for v0.x. Free for public repos,
+  integrated with GitHub Actions and the marketplace. Docker Hub adds
+  operational overhead with limited benefit (users can pull from GHCR
+  directly).
+- **Marketplace repo shape**: separate repo (`jamsesh-cc-plugin` or
+  equivalent) per CC's marketplace convention. Source lives in the main
+  `jamsesh` repo (under `epic-cc-plugin-packaging`'s scope); the release
+  pipeline pushes built plugin artifacts to the marketplace repo on
+  every tag.
+- **Supply-chain attestations**: SLSA Build Level 3 via GitHub-hosted
+  runners' provenance attestation + SBOM via Syft. Both off-the-shelf
+  actions; minimal incremental cost; baseline supply-chain expectation
+  for 2026 OSS.
+- **Self-host docs location**: `README.md` (quick-start) + `docs/
+  SELF_HOST.md` (full operator guide).
 
-- Portal binary multi-arch builds (Linux/macOS/Windows × amd64/arm64)
-- Plugin binary multi-arch builds (same matrix; per-platform `jamsesh`
-  binary in marketplace package)
-- Portal Docker image (multi-arch via buildx)
-- CC marketplace repo setup (plugin manifest, structure, README)
-- Plugin versioning + release process (semver bumps, changelog, tag-driven
-  releases)
-- Reproducible builds + Sigstore signing for all artifacts
-- Self-host docs (install, config reference, TLS, backup, OAuth setup)
+## Decomposition
 
-<!-- Design pass on each child feature will fill in specifics. -->
+Four child features. `build-pipeline` is the foundation — every other
+release artifact derives from its outputs. `docker-image` and
+`marketplace` are sibling consumers (different distribution channels).
+`self-host-docs` is independent — it's documentation, sequenced
+whenever the portal binary is buildable.
+
+Critical path: `build-pipeline → {docker-image || marketplace}`, with
+`self-host-docs` running in parallel.
+
+### Child features
+
+- `epic-distribution-build-pipeline` — GitHub Actions tag-triggered
+  release workflow, multi-arch matrix (5 targets × 2 binaries),
+  reproducible flags, Sigstore signing, SLSA + SBOM attestations,
+  release artifact attaching — depends on: `[]`
+- `epic-distribution-docker-image` — multi-arch (linux/amd64 + arm64)
+  Docker image from distroless base, COPYs portal binary from
+  build-pipeline output, pushes to GHCR with Sigstore signature —
+  depends on: `[epic-distribution-build-pipeline]`
+- `epic-distribution-marketplace` — `jamsesh-cc-plugin` GitHub repo
+  populated by the release pipeline on every tag (manifest, per-arch
+  plugin binaries, skills, hooks, .mcp.json) — depends on:
+  `[epic-distribution-build-pipeline]`
+- `epic-distribution-self-host-docs` — `README.md` + `docs/SELF_HOST.md`
+  with install / config / TLS / OAuth / DB / email / backup /
+  monitoring / upgrade / security / troubleshooting sections —
+  depends on: `[]`
+
+### Decomposition risks
+
+- **Reproducibility across runner image updates.** Hosted-runner OS
+  images change periodically; reproducible-build guarantees depend on
+  pinned Go version + `-trimpath`. Mitigation: pin Go version
+  explicitly in the workflow YAML; document local reproduction.
+- **Sigstore OIDC trust anchor.** Keyless OIDC ties signature trust to
+  the GitHub Actions workflow identity. A compromise of the main
+  branch's workflow file could yield trusted-signed malicious builds.
+  Mitigation: document the trust assumption in SELF_HOST.md and
+  SECURITY.md; require code review on workflow changes via branch
+  protection (operator concern, flagged for awareness).
+- **CC marketplace conventions are evolving.** The manifest format
+  and discovery mechanics could change. Mitigation: keep publishing
+  tooling lightweight and re-runnable.
+- **Self-host docs drift.** Operators rely on these for production
+  setups; config-flag changes without doc updates cause real outages.
+  Mitigation: tested-quickstart CI job keeps the install steps honest;
+  the gate-docs skill at release-deploy time catches drift.
