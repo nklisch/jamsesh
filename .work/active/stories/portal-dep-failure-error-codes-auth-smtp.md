@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-auth-smtp
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -104,3 +104,84 @@ already promising.
 ## Rollback
 
 `git revert`; restores the `_Returns500` plain-text assertion.
+
+## Implementation notes
+
+### Files touched
+
+- `internal/portal/auth/magic_link.go` — added `deperr` import; the
+  `RequestMagicLink` `sender.Send` failure path is now wrapped with
+  `deperr.WrapSMTP(fmt.Errorf("magic-link: send email: %w", err))`.
+  Operator log still carries the original context; the translator
+  surfaces the typed envelope. The `Clock` interface threading from
+  `portal-test-clock-advance-endpoint-clock-abstraction` was preserved
+  untouched.
+- `internal/portal/accounts/orgs.go` — same wrap on the
+  `CreateOrgInvite` `h.sender.Send` call site.
+- `internal/portal/sessions/invites.go` — same wrap on the
+  `InviteToSession` `h.sender.Send` call site.
+
+### Test updates
+
+- `internal/portal/auth/magic_link_test.go`:
+  - Magic-link strict handlers (both `newMagicLinkTestEnv` and the
+    inline expired-token env) now use `NewStrictHandlerWithOptions`
+    with `ResponseErrorHandlerFunc: httperr.WriteFromError` and
+    `RequestErrorHandlerFunc: httperr.WriteBadRequest`, mirroring
+    production wiring in `cmd/portal/main.go`. Without this the
+    default oapi-codegen plain-text 500 path swallows the dep
+    sentinel.
+  - `TestRequestMagicLink_SenderError_Returns500` renamed to
+    `TestRequestMagicLink_SenderError_Returns503DepSMTPUnavailable`
+    and now asserts HTTP 503, `Content-Type: application/json;
+    charset=utf-8`, `Retry-After: 5`, and `error =
+    dep.smtp_unavailable` in the decoded body.
+
+- `internal/portal/accounts/orgs_test.go`:
+  - `captureSenderOrgs` gained an injectable `err` field.
+  - `newOrgsMembersTestEnv` now wires `WriteFromError` /
+    `WriteBadRequest` via `NewStrictHandlerWithOptions`. The
+    `ServerInterfaceWrapper`'s path-param `ErrorHandlerFunc` now routes
+    through `httperr.WriteBadRequest` too for consistency.
+  - Added `TestCreateOrgInvite_SenderError_Returns503DepSMTPUnavailable`.
+
+- `internal/portal/sessions/handler_test.go`:
+  - `stubSender` gained an injectable `err` field; `testEnv` exposes
+    the `sender` pointer.
+  - `newTestEnv` uses `NewStrictHandlerWithOptions` with the same
+    wiring.
+- `internal/portal/sessions/invites_test.go`:
+  - Added `TestInviteToSession_SenderError_Returns503DepSMTPUnavailable`.
+
+### Provider sentinel audit
+
+Verified every in-tree `senders` provider correctly wraps with
+`senders.ErrTransient` / `senders.ErrAuth` / `senders.ErrPermanent`:
+
+- `senders/smtp.go` — `classifySMTPError` maps 535 -> ErrAuth,
+  4xx -> ErrTransient, 5xx -> ErrPermanent, network -> ErrTransient.
+  Client-init failures map to ErrAuth, address-validation to ErrPermanent.
+- `senders/resend.go` — `classifyResendError` falls back to ErrTransient
+  for non-classifiable errors and maps the rate-limit sentinel.
+- `senders/postmark.go` — `classifyPostmarkErrorCode` maps the canonical
+  Postmark codes to the three sentinels, with sensible fallbacks for the
+  generic 4xx/5xx ranges.
+- `senders/sendgrid.go` — `classifySendGridStatus` maps 401/403 to ErrAuth,
+  429/5xx to ErrTransient, other 4xx to ErrPermanent.
+
+No sentinel gaps to park — every provider returns sentinel-wrapped errors
+on every failure path.
+
+### Test results
+
+`go test ./internal/portal/auth/... ./internal/portal/accounts/...
+./internal/portal/sessions/...` — all three packages PASS.
+`go build ./...` and `go vet ./internal/portal/...` — clean.
+
+The three new sender-failure tests assert end-to-end: stub Sender
+returns `senders.ErrTransient`-wrapped error -> handler wraps with
+`deperr.WrapSMTP` -> strict handler routes through
+`httperr.WriteFromError` -> response is HTTP 503 with `Content-Type:
+application/json; charset=utf-8`, `Retry-After: 5`, and body
+`{"error":"dep.smtp_unavailable","message":"email delivery is
+currently unavailable"}`.

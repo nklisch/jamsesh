@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/senders"
 )
 
 // ---------------------------------------------------------------------------
@@ -141,6 +144,45 @@ func TestInviteToSession_SessionNotFound_Returns404(t *testing.T) {
 		token, body)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+// TestInviteToSession_SenderError_Returns503DepSMTPUnavailable verifies
+// the session-invite path wraps Sender failures into the typed dep
+// envelope (HTTP 503, error=dep.smtp_unavailable, Retry-After:5).
+func TestInviteToSession_SenderError_Returns503DepSMTPUnavailable(t *testing.T) {
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator-fail@example.com")
+	org := seedOrg(t, env.s, "FailOrg", "fail-org-invite")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	// Inject a transient sender failure. The handler must wrap with
+	// deperr.WrapSMTP so the translator surfaces the typed envelope.
+	env.sender.err = fmt.Errorf("%w: forced", senders.ErrTransient)
+
+	token := env.bearerToken(t, creator.ID)
+	body := map[string]any{"email": "invitee@example.com"}
+
+	resp := postJSON(t, env.srv,
+		"/api/orgs/"+org.ID+"/sessions/"+sess.ID+"/invites",
+		token, body)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("Content-Type: want application/json; charset=utf-8, got %q", ct)
+	}
+	if ra := resp.Header.Get("Retry-After"); ra != "5" {
+		t.Errorf("Retry-After: want 5, got %q", ra)
+	}
+	var env2 map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&env2); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if code, _ := env2["error"].(string); code != "dep.smtp_unavailable" {
+		t.Errorf("error code: want dep.smtp_unavailable, got %q", code)
 	}
 }
 

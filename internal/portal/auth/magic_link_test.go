@@ -16,6 +16,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/portal/auth"
+	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/tokens"
 )
@@ -86,8 +87,16 @@ func newMagicLinkTestEnv(t *testing.T) *magicLinkTestEnv {
 	handler := auth.NewMagicLinkHandler(s, tokenSvc, sender, "https://portal.example.com")
 
 	// Build a full strict server that satisfies the openapi interface.
+	// Wire the dep-failure envelope translator on the strict handler so
+	// sender errors surface as the typed dep.smtp_unavailable envelope
+	// instead of the default oapi-codegen plain-text 500 (mirrors
+	// cmd/portal/main.go's production wiring).
 	fullHandler := &magicLinkOnlyStrict{MagicLinkHandler: handler}
-	strictAPI := openapi.NewStrictHandler(fullHandler, nil)
+	strictAPI := openapi.NewStrictHandlerWithOptions(fullHandler, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
 
 	r := chi.NewRouter()
 	r.Post("/api/auth/magic-link/request", strictAPI.RequestMagicLink)
@@ -313,15 +322,30 @@ func TestRequestMagicLink_SentBodyContainsURL(t *testing.T) {
 	}
 }
 
-func TestRequestMagicLink_SenderError_Returns500(t *testing.T) {
+// TestRequestMagicLink_SenderError_Returns503DepSMTPUnavailable verifies
+// that a transient sender failure is translated into the typed dep
+// envelope: HTTP 503 + JSON {"error":"dep.smtp_unavailable",...} +
+// Retry-After: 5. Asserts the contract documented in
+// docs/PROTOCOL.md > HTTP error contract.
+func TestRequestMagicLink_SenderError_Returns503DepSMTPUnavailable(t *testing.T) {
 	env := newMagicLinkTestEnv(t)
 	env.sender.err = fmt.Errorf("%w: test transient error", senders.ErrTransient)
 
 	resp := postJSONBody(t, env.srv, "/api/auth/magic-link/request",
 		map[string]string{"email": "fail@example.com"})
 
-	if resp.StatusCode != http.StatusInternalServerError {
-		t.Fatalf("want 500 on sender error, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 on sender error, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("Content-Type: want application/json; charset=utf-8, got %q", ct)
+	}
+	if ra := resp.Header.Get("Retry-After"); ra != "5" {
+		t.Errorf("Retry-After: want 5, got %q", ra)
+	}
+	body := decodeJSONResponse(t, resp)
+	if code, _ := body["error"].(string); code != "dep.smtp_unavailable" {
+		t.Errorf("error code: want dep.smtp_unavailable, got %q", code)
 	}
 }
 
@@ -453,7 +477,11 @@ func TestExchangeMagicLink_ExpiredToken_Returns401WithExpiredCode(t *testing.T) 
 		s, tokenSvc, sender, "https://portal.example.com", clk)
 
 	fullHandler := &magicLinkOnlyStrict{MagicLinkHandler: handler}
-	strictAPI := openapi.NewStrictHandler(fullHandler, nil)
+	strictAPI := openapi.NewStrictHandlerWithOptions(fullHandler, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
 
 	r := chi.NewRouter()
 	r.Post("/api/auth/magic-link/request", strictAPI.RequestMagicLink)

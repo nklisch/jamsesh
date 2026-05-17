@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -17,8 +18,10 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
-	portalauth "jamsesh/internal/portal/auth"
 	"jamsesh/internal/portal/accounts"
+	portalauth "jamsesh/internal/portal/auth"
+	"jamsesh/internal/portal/httperr"
+	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -27,12 +30,14 @@ import (
 // ---------------------------------------------------------------------------
 
 // captureSenderOrgs captures Send calls for asserting invite email delivery.
+// Set err to inject a failure for dep-failure-envelope tests.
 type captureSenderOrgs struct {
 	mu        sync.Mutex
 	recipient string
 	subject   string
 	body      string
 	calls     int
+	err       error
 }
 
 func (c *captureSenderOrgs) Send(_ context.Context, recipient, subject, body string) error {
@@ -42,7 +47,7 @@ func (c *captureSenderOrgs) Send(_ context.Context, recipient, subject, body str
 	c.subject = subject
 	c.body = body
 	c.calls++
-	return nil
+	return c.err
 }
 
 func (c *captureSenderOrgs) lastRecipient() string {
@@ -71,14 +76,18 @@ func newOrgsMembersTestEnv(t *testing.T) *orgsMembersTestEnv {
 	svc := tokens.New(s)
 	sender := &captureSenderOrgs{}
 	h := accounts.New(s, sender, "https://portal.example.com")
-	strictHandler := openapi.NewStrictHandler(&accountsOnlyStrict{h}, nil)
+	// Wire the dep-failure translator so sender errors surface as the
+	// typed dep.smtp_unavailable envelope (mirrors cmd/portal/main.go).
+	strictHandler := openapi.NewStrictHandlerWithOptions(&accountsOnlyStrict{h}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
 
 	// Build an api wrapper for path-param routes.
 	apiWrapper := &openapi.ServerInterfaceWrapper{
-		Handler: strictHandler,
-		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		},
+		Handler:          strictHandler,
+		ErrorHandlerFunc: httperr.WriteBadRequest,
 	}
 
 	r := chi.NewRouter()
@@ -240,6 +249,44 @@ func TestCreateOrgInvite_NonCreator_Returns403(t *testing.T) {
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
+// TestCreateOrgInvite_SenderError_Returns503DepSMTPUnavailable verifies
+// the org-invite path wraps Sender failures into the dep envelope
+// (HTTP 503, error=dep.smtp_unavailable, Retry-After:5).
+func TestCreateOrgInvite_SenderError_Returns503DepSMTPUnavailable(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	creator := seedAccount(t, env.s, "boss-fail@example.com")
+	org := seedOrg(t, env.s, "FailOrg", "failorg")
+	seedMember(t, env.s, org.ID, creator.ID, "creator")
+
+	// Inject a transient sender failure. The handler must wrap it with
+	// deperr.WrapSMTP so the translator surfaces the typed envelope.
+	env.sender.mu.Lock()
+	env.sender.err = fmt.Errorf("%w: forced", senders.ErrTransient)
+	env.sender.mu.Unlock()
+
+	tok := env.bearerToken(t, creator.ID)
+	resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/invites", tok,
+		map[string]any{"email": "invitee@example.com"})
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("Content-Type: want application/json; charset=utf-8, got %q", ct)
+	}
+	if ra := resp.Header.Get("Retry-After"); ra != "5" {
+		t.Errorf("Retry-After: want 5, got %q", ra)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if code, _ := body["error"].(string); code != "dep.smtp_unavailable" {
+		t.Errorf("error code: want dep.smtp_unavailable, got %q", code)
 	}
 }
 
