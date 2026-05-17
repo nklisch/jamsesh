@@ -54,3 +54,15 @@ body pointing at the relevant `.mockups/` paths.
 structure, behind-the-scenes refactors, or feature-level UI that cleanly
 reuses existing components and patterns. Mock new surfaces, design-system
 shifts, and multi-screen epics.
+
+
+When running tests, writing tests or doing tests in general. Make sure to file a backlog for all real production bugs. Fix bad tests during the session. Once all tests are fixed, if the production bug is small enough pick up the backlog with a scope, design, impelement pass.
+Never make tests pass just to make test pass, it's ok for test to fail if they are documented why they are failing.
+
+## Commit discipline
+
+Always use `git add <explicit-path>` for every file. Never use `git add .`,
+`git add -A`, or `git commit -a` — these sweep untracked files into unrelated
+commits and have caused real noise in commit history (see story
+`posttooluse-hook-over-stages-untracked-files`). This applies to all agents,
+sub-agents, and orchestrators: stage only the files your current task touched.
