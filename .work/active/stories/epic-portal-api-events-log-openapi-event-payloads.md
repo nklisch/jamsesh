@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-events-log-openapi-event-payloads
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-api-events-log
 depends_on: []
@@ -197,3 +197,13 @@ in the generated union type.
 adapters — unrelated to this story's openapi-only changes. The openapi
 package itself compiles cleanly. Full build will pass once both stories
 in this wave are merged.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: 12 payload schemas + EventEnvelope + 3 shared sub-schemas (ConflictFileRange, ConflictFile, CommentAnchor). Deviation table from task-description fields to PROTOCOL.md canonical fields is well-documented; PROTOCOL.md remained authoritative throughout. The generated EventEnvelope_Payload Go shape (json.RawMessage with As/From/Merge accessors) is the standard oapi-codegen oneOf pattern.

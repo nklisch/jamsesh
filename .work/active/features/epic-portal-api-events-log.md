@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-events-log
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-foundation-data-layer]
@@ -344,3 +344,21 @@ Story-level scope: read PROTOCOL.md's event catalog, transcribe each payload's f
   etc.); each adapter implements it by opening a Tx on its
   underlying conn and wrapping the same Queries against the Tx.
   Document this as a non-breaking additive change.
+
+## Implementation summary
+
+Both child stories at done. Event log persistence + typed openapi event-payload contracts landed in parallel.
+
+### Verification
+- `go build ./...` clean
+- `go test ./...` green
+- `make generate && git diff --exit-code` green
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+
+**Notes**: Capability complete. Foundation for the API epic + auto-merger outcomes/worker chain. Downstream consumers (websocket-gateway, sessions-rest, comments-rest, mcp-endpoint, outcomes, worker) can now emit + read events via the typed contract.

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-events-log-schema-queries-emit
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-api-events-log
 depends_on: []
@@ -136,3 +136,13 @@ declares typed schemas for consumers.
 - `TestLog_UpdatePresence`: upserts presence and emits presence.updated event
 - `TestLog_ListSince_Cursor`: sinceSeq=2 returns events [3,4,5]
 - `TestLog_ListSince_Limit`: limit=2 caps result to 2 events
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Solid foundation. Monotonic per-session seq via UPDATE...RETURNING pattern is the right primitive. 10-goroutine concurrent emit test verifies the lock contract. WithTx is a clean Store-interface extension; both adapters wrap their generated Queries against the Tx. The named shared-cache SQLite trick in the test is a thoughtful adaptation to SQLite's per-connection :memory: model.
