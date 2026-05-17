@@ -13,6 +13,29 @@ updated: 2026-05-17
 
 # Cloud-Native Deploy — Operational Polish
 
+## Epic context
+
+- Parent epic: `epic-cloud-native-deploy`
+- Position in epic: phase-1 foundation feature. Ships standalone with
+  standalone value (improves any deploy, single-instance or future
+  clustered). Routing-layer and lease-fencing both depend on this for
+  `/readyz` and the migration-lock primitive.
+
+## Foundation references
+
+- `docs/SPEC.md` — "Deployment shape" (current single-binary shape this
+  feature reinforces) and "Hard constraints / Self-host-capable" (the
+  must-not-regress invariant).
+- `docs/SELF_HOST.md` — §1 Install, §2 Configuration (env vars table
+  this feature extends), §8 Monitoring (mentions `/metrics` as future
+  work — this feature delivers it), §9 Upgrade procedure (graceful
+  shutdown is the missing primitive there).
+- `internal/portal/config/config.go` — existing config pattern this
+  feature extends (env-overlay-over-YAML, `JAMSESH_<SECTION>_<KEY>`
+  naming).
+- `internal/portal/server/server.go` — existing 25-second graceful-
+  shutdown skeleton this feature firms up.
+
 ## Brief
 
 The cloud-operability primitives that make the existing single-instance
@@ -37,10 +60,12 @@ In:
   portal-specific counters (HTTP request rates, push counts, auto-merger
   results, event-log throughput). Currently listed as "future" in
   `docs/SELF_HOST.md` §8.
-- `JAMSESH_PUBLIC_URL` config — overrides bind-derived URL construction
-  for OAuth callbacks and any other case where the portal needs its own
-  externally-visible address. Required behind any LB / ingress / Cloud
-  Run service.
+- `JAMSESH_PORTAL_URL` already exists in `internal/portal/config/`. This
+  feature audits every place where the portal constructs an externally-
+  visible URL (OAuth callback, MCP discovery, future router probe URL)
+  and ensures all of them honor the configured `PortalURL` instead of
+  deriving from `Bind`. Documents the var in `docs/SELF_HOST.md` §2 as
+  required behind any LB / ingress / Cloud Run service.
 - `JAMSESH_*_FILE` variants for every secret-bearing env var (DB DSN,
   OAuth client secret, future SMTP creds, etc.). Reads the file at the
   given path on startup; lets operators mount Secret Manager / k8s
@@ -66,9 +91,11 @@ Out:
 - Log shipping integrations (operators wire their own; structured JSON
   logs already exist).
 
-## Strategic decisions
+## Design decisions
 
-Inherited from epic. No feature-local strategic ambiguities.
+Inherited from epic. No feature-local ambiguities surfaced during
+epic-design `--only-questions`. Feature design pass may surface design-
+level choices (e.g., Prometheus client lib vs hand-rolled OpenMetrics).
 
 ## Foundation-doc impact
 

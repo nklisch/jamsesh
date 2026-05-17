@@ -37,7 +37,11 @@ same binary runs both shapes; clustered behavior activates when
 `JAMSESH_OBJECT_STORAGE_URL` (or equivalent) is set. Everything that runs
 single-instance keeps running single-instance, unchanged.
 
-## Strategic decisions
+## Design decisions
+
+Captured during scope (the first six) and epic-design `--only-questions`
+pass (the last four). These constrain every child feature's later design
+pass.
 
 - **Audience: both, phased.** Self-hosters are primary; the scalable
   deployment is also supported. Operational-polish (phase 1) ships
@@ -60,6 +64,31 @@ single-instance keeps running single-instance, unchanged.
 - **Fencing tokens are non-negotiable.** Split-brain corruption of bare
   repos is unacceptable. Every object-storage write carries a fencing
   token; stale writes from a former lease holder are rejected.
+- **Activation: explicit `JAMSESH_DEPLOY_MODE=single|clustered` flag**
+  (defaults to `single`). Clustered-mode subsystem configs
+  (`JAMSESH_OBJECT_STORAGE_URL`, lease tuning, etc.) only take effect
+  when mode is `clustered` — lets operators stage-test by setting the
+  URL but keeping mode=single while validating the bucket.
+- **Object-storage providers: native-where-clean + S3-compat fallback.**
+  Ship native SDK implementations for AWS S3, GCS, and Azure Blob where
+  the official Go SDK is ergonomic and provides real value (workload
+  identity, managed credential rotation). Research each SDK before
+  adopting; if a given SDK requires too much glue to fit our patterns,
+  roll a thin client against the provider's REST API instead. S3-
+  compatible interface covers MinIO / R2 / B2 / self-hosted Ceph. URL
+  scheme (`s3://`, `gs://`, `azblob://`, `s3-compatible://`) picks
+  the implementation at startup.
+- **Lease boundary: per-session.** One Postgres advisory lock per
+  `session_id`. Matches the per-session bare-repo boundary already in
+  code. Org-scoped leases would simplify routing but lose load balance
+  for large tenants — declined.
+- **Lease acquisition: pull-with-soft-coordinator.** Pods self-acquire
+  via `pg_try_advisory_lock` on first request for a session
+  (`hashtext(session_id)` as the lock key). The routing service
+  maintains a soft cache of "which pod recently acquired session X" and
+  uses it as a routing hint overlaid on the consistent-hash ring. No
+  separate coordinator process. Failed acquisition returns 503
+  Retry-After; the router re-dispatches.
 
 ## Architecture (target, clustered mode)
 
@@ -120,29 +149,82 @@ arrow doesn't exist, and the single pod's local disk is system of record.
   convenience, not correctness. Sticky-routing failover that drops a WS
   connection is recoverable by clients.
 
-## Phased delivery
+## Decomposition
 
-**Phase 1 — single-instance polish (ship independently).**
-- `epic-cloud-native-deploy-operational-polish`
+Decomposition was performed during `/agile-workflow:scope` (the source
+conversation contained sufficient design intent to split immediately).
+This epic ran `/agile-workflow:epic-design --only-questions` to capture
+the strategic ambiguities listed above; the decomposition itself was
+not re-run.
 
-**Phase 2 — clustered-mode primitives (opt-in).**
-- `epic-cloud-native-deploy-routing-layer`
-- `epic-cloud-native-deploy-lease-fencing`
-- `epic-cloud-native-deploy-object-storage-sync`
-- `epic-cloud-native-deploy-hydration-handoff`
+Split by capability + phase, not by layer. Phase 1 has standalone value
+and a clear ship boundary — operational-polish lands cloud-operability
+primitives that help both deploy shapes. Phase 2 features build on each
+other and ship together as the opt-in clustered-mode capability.
 
-Dependency graph:
+### Child features
 
-```
-operational-polish
-├── routing-layer
-└── lease-fencing
-    └── object-storage-sync
-        └── hydration-handoff   (also depends on routing-layer)
-```
+- `epic-cloud-native-deploy-operational-polish` — cloud-operability
+  primitives (`/readyz`, `/metrics`, `_FILE` secrets, migration
+  advisory lock, graceful shutdown, PG pool tuning) — depends on: `[]`
+- `epic-cloud-native-deploy-routing-layer` — small Go consistent-hash
+  reverse proxy with soft-coordinator hint cache — depends on:
+  `[epic-cloud-native-deploy-operational-polish]`
+- `epic-cloud-native-deploy-lease-fencing` — per-session Postgres
+  advisory-lock leases with monotonic fencing tokens — depends on:
+  `[epic-cloud-native-deploy-operational-polish]`
+- `epic-cloud-native-deploy-object-storage-sync` — continuous mirror
+  of bare-repo writes to GCS/S3/Azure/S3-compat; system of record in
+  clustered mode — depends on:
+  `[epic-cloud-native-deploy-lease-fencing]`
+- `epic-cloud-native-deploy-hydration-handoff` — lease-acquisition
+  hydration from object storage; cache eviction on lease loss /
+  shutdown — depends on:
+  `[epic-cloud-native-deploy-object-storage-sync,
+  epic-cloud-native-deploy-lease-fencing,
+  epic-cloud-native-deploy-routing-layer]`
 
-Phase 1 has standalone value and a clear ship boundary. Phase 2 features
-build on each other and ship together as the clustered-mode capability.
+### Decomposition risks
+
+- **operational-polish risks underclaiming scope.** The feature must
+  serve both single-instance and clustered deploy shapes. Designers
+  must keep configs opt-in and avoid baking clustered-mode assumptions
+  into universally-loaded code paths.
+- **lease-fencing and object-storage-sync are tightly coupled** — fencing
+  only matters because of split-brain risk on object storage writes. If
+  designers split them too cleanly, the contract between them (fencing
+  token format, validation responsibility) may drift. Keep designer
+  attention on the interface between these two features.
+- **hydration-handoff's three-way dependency** is unusual for an
+  agile-workflow feature. Designers may be tempted to ship parts of it
+  alongside object-storage-sync; resist that — the eviction half is
+  meaningless without hydration, and shipping them together keeps the
+  lifecycle test surface coherent.
+
+## Codebase findings (Phase 3 explore)
+
+Surfaced during the epic-design read pass so feature designers don't
+re-discover them:
+
+- **`JAMSESH_PORTAL_URL` already exists** in `internal/portal/config/`.
+  Operational-polish should leverage it, not invent
+  `JAMSESH_PUBLIC_URL`. (Original scope draft used the latter name —
+  corrected during alignment.)
+- **`storage.Service.RepoPath()` has 11 call sites** across automerger,
+  githttp (3), sessions (2), mcpendpoint (2), finalize. Object-storage
+  sync wraps the Service; all 11 consumers continue to use the local
+  path — sync happens underneath.
+- **`internal/portal/postreceive/Emitter.EmitForUpdates()`** is the clean
+  tap point for the sync hook. Called from
+  `githttp/receive_pack.go:203-204` after pre-receive validation.
+- **`events.Log` has 2 subscribers** (automerger, wsgateway) and 16
+  emitters. Replacing in-process channels with a `Bus` interface
+  (local + Postgres LISTEN/NOTIFY impls) has a bounded blast radius.
+- **`finalize_locks` table exists** for finalize-flow state (different
+  purpose). Confirms Postgres-as-coordinator pattern is already in use;
+  no naming or schema conflict with new session-lease advisory locks.
+- **No naming collisions** in `internal/` for `lease`, `sync`,
+  `object-storage`, `fencing`, `advisory`.
 
 ## Non-goals (in this epic)
 

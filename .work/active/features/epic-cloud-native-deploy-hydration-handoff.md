@@ -13,6 +13,27 @@ updated: 2026-05-17
 
 # Cloud-Native Deploy — Hydration + Handoff
 
+## Epic context
+
+- Parent epic: `epic-cloud-native-deploy`
+- Position in epic: phase-2 capstone. Closes the loop on clustered
+  mode by making sessions migratable between pods on demand. Depends
+  on lease-fencing (lifecycle hooks), object-storage-sync (the source
+  to hydrate from), and routing-layer (the trigger surface — handoff
+  is observable to clients as a brief 503 + re-dispatch).
+
+## Foundation references
+
+- `docs/ARCHITECTURE.md` — "Data flow: a turn" (request lifecycle
+  gains hydration-on-first-request in clustered mode).
+- `docs/SPEC.md` — "Recovery" section (handoff is a new failure-and-
+  recovery mode the spec needs to acknowledge when this lands).
+- `docs/PRINCIPLES.md` — "Recovery is `git fetch`" (justifies the
+  best-effort handoff: clients re-fetch and re-sync on the next push,
+  so a few-seconds-stale hydration is acceptable).
+- `internal/portal/storage/service.go` — the local-disk write surface
+  hydration fills before serving.
+
 ## Brief
 
 The lifecycle glue that makes the clustered-mode topology actually work
@@ -69,7 +90,9 @@ Out:
   likely to move there soon"). Cute idea; out of scope for v1.
 - Active warm-pool of pre-hydrated sessions. v1 hydrates on demand.
 
-## Strategic decisions
+## Design decisions
+
+Inherited from epic. Feature-local:
 
 - **Eager full-repo hydration in v1.** Lazy / per-object fetch is
   elegant but adds a layer of complexity (custom go-git Storer + fault
@@ -82,6 +105,12 @@ Out:
   Operators who want stickier behavior can tune the retention window.
 - **`git fsck` on hydration completion.** Adds a few hundred ms but
   catches corruption before clients see it. Worth it.
+- **503 + `Retry-After` is the handoff client contract.** A pod that
+  receives a request for a session it doesn't lease (and hasn't
+  hydrated) returns 503 with a `Retry-After` header sized to typical
+  hydration time; the routing service (which already retries on 503)
+  re-dispatches transparently. Clients see at most a brief retry
+  loop, no error surface.
 
 ## Foundation-doc impact
 

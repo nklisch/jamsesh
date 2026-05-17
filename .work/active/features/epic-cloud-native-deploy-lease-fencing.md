@@ -13,6 +13,29 @@ updated: 2026-05-17
 
 # Cloud-Native Deploy — Lease + Fencing
 
+## Epic context
+
+- Parent epic: `epic-cloud-native-deploy`
+- Position in epic: phase-2 coordination primitive. Independent of
+  routing-layer (parallel design / implementation possible). The
+  primitive consumed by object-storage-sync (fencing token gates
+  every object-storage write) and hydration-handoff (lease lifecycle
+  triggers hydration on acquire and eviction on loss).
+
+## Foundation references
+
+- `docs/SPEC.md` — "Multi-tenant by design / Self-host-capable" hard
+  constraints (the SQLite path needs a no-op shim so single-instance
+  doesn't pay the coordination cost).
+- `docs/ARCHITECTURE.md` — "Data layer (multi-tenancy)" (this feature
+  adds a new `leases` table to the schema following the org_id-in-WHERE
+  convention).
+- `internal/db/store/` and `internal/db/migrations/` — sqlc query
+  patterns and migration conventions this feature follows.
+- `internal/portal/finalize/lock_acquire.go` — pre-existing Postgres-
+  coordinator pattern in the codebase (different purpose, but
+  validates the approach).
+
 ## Brief
 
 The distributed coordination primitive that lets multiple portal pods
@@ -71,20 +94,30 @@ Out:
 - The router's "which pod has the lease?" hint — router uses
   consistent hashing in v1; a hint table is future work.
 
-## Strategic decisions
+## Design decisions
 
-- **Postgres advisory locks over a dedicated coordinator.** Decided at
-  epic level. The locks are session-scoped (`pg_try_advisory_lock(int64)`
-  with `hashtext(session_id)` as key) and release automatically on
-  Postgres session loss, which gives us the "lease died with the
-  holder" semantics for free.
+Inherited from epic (per-session lease boundary; pull-with-soft-
+coordinator acquisition; fencing tokens non-negotiable; Postgres
+advisory locks over a dedicated coordinator). Feature-local:
+
+- **Advisory-lock key formula: `pg_try_advisory_lock(hashtext($session_id))`.**
+  PG advisory locks take int64 keys; `hashtext` gives us deterministic
+  mapping from session_id strings. Collision risk on hashtext is
+  negligible at session-cardinality scales, but feature design should
+  document detection (compare session_id stored in our `leases` table
+  before assuming we own a lock).
 - **Fencing tokens come from a Postgres sequence, not a clock.** Clocks
   drift; sequences are monotonic and globally ordered. Cost is one
   extra round-trip on lease acquisition.
 - **Lease-loss is fail-stop, not fail-over.** A pod that loses its
   lease must stop serving — it does not try to re-acquire mid-flight.
   The router observes 503 and re-routes; the new pod (which may be the
-  same pod a moment later) acquires fresh. This avoids ABA-style bugs.
+  same pod a moment later) acquires fresh. Avoids ABA-style bugs.
+- **No-op shim for single-instance.** A `NoopManager` returns a handle
+  with token=0 and never blocks. Selected when
+  `JAMSESH_DEPLOY_MODE` is `single` (default). Keeps the call-site
+  pattern identical across both modes — feature lands as a clean
+  interface insertion, not a conditional.
 
 ## Foundation-doc impact
 

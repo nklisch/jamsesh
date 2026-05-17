@@ -13,6 +13,31 @@ updated: 2026-05-17
 
 # Cloud-Native Deploy — Routing Layer
 
+## Epic context
+
+- Parent epic: `epic-cloud-native-deploy`
+- Position in epic: phase-2 clustered-mode component. Independent of
+  lease-fencing and object-storage-sync (can be designed and
+  implemented in parallel with lease-fencing once operational-polish
+  lands). Becomes operationally meaningful only when paired with
+  lease-fencing; the soft-coordinator hint cache integrates with
+  lease-acquisition events from lease-fencing.
+
+## Foundation references
+
+- `docs/ARCHITECTURE.md` — "System overview" diagram (router becomes
+  the new front-door component in clustered mode).
+- `docs/SPEC.md` — "Deployment shape" (router is the new optional
+  component this feature introduces).
+- `docs/SELF_HOST.md` — clustered deploy recipe section this feature
+  authors.
+- `internal/portal/router/` and `internal/portal/server/server.go` —
+  the chi router and HTTP server entry points the router service
+  reverse-proxies to.
+- `cmd/jamsesh/` (the local plugin binary) — the `mcp-headers`
+  subcommand that needs to emit `Jam-Session-Id` to support MCP
+  routing.
+
 ## Brief
 
 A small consistent-hashing reverse proxy that routes every request to the
@@ -60,19 +85,28 @@ Out:
   later iterations may add a hint table for stickiness across ring
   rebalances.
 
-## Strategic decisions
+## Design decisions
 
-- **Standalone Go service** (decided at epic level), not a config recipe
-  for Envoy / Caddy / HAProxy. Reasons: MCP's session-id-in-header
-  pattern is novel enough that a generic L7 proxy needs custom Lua /
-  config glue; the routing service can grow lease-aware behavior in
-  later iterations; ownership stays in this repo. Operators who prefer
-  to roll their own may, but we ship a default.
+Inherited from epic (lease acquisition = pull-with-soft-coordinator;
+routing as a separate small Go service). Feature-local:
+
+- **Soft-coordinator hint cache lives in the router.** When a pod
+  responds 200 to a session request, the router caches `session_id →
+  pod` for a short TTL (default 60s). Subsequent requests for the same
+  session within the TTL skip the consistent-hash ring and go straight
+  to the cached pod. Cache invalidates on 503 from the cached pod or
+  on TTL expiry. No persistence — restart loses the cache, falls back
+  to consistent hashing. Avoids a coordinator process while still
+  giving "hot" sessions stickiness across ring rebalances.
 - **Consistent hashing over leader-election.** The ring is the
-  authoritative routing decision in v1. A pod that doesn't currently
-  hold the lease for a session it's been routed to acquires it on
-  demand (lease layer handles this). Cheaper and simpler than running
-  an external service-discovery DB.
+  authoritative routing fallback. A pod routed a session it doesn't
+  currently lease tries `pg_try_advisory_lock` on demand; success →
+  serve, failure → 503 with `Retry-After`, router re-dispatches.
+- **MCP coordination via `Jam-Session-Id` header**, not body
+  inspection. The local `jamsesh mcp-headers` subcommand (already
+  emits the auth header) is extended to also emit `Jam-Session-Id`
+  based on the current bound session. Small coordinated change
+  documented in this feature.
 
 ## Foundation-doc impact
 

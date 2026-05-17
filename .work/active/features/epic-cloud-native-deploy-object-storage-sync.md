@@ -13,6 +13,28 @@ updated: 2026-05-17
 
 # Cloud-Native Deploy — Object-Storage Sync
 
+## Epic context
+
+- Parent epic: `epic-cloud-native-deploy`
+- Position in epic: phase-2 durability layer. Consumes the lease +
+  fencing primitive from lease-fencing. Consumed by hydration-handoff
+  (which reads from object storage on lease acquisition).
+
+## Foundation references
+
+- `docs/SPEC.md` — "Deployment shape" (clustered mode adds object
+  storage as a system-of-record constraint).
+- `docs/ARCHITECTURE.md` — "Portal / Data store" and the bare-repo
+  storage description (this feature adds the dual-layer working-
+  cache + object-store-truth model).
+- `docs/SECURITY.md` — operator responsibilities and supply-chain
+  model (this feature adds a new persistence boundary with its own
+  IAM/auth surface; SECURITY needs a row).
+- `internal/portal/storage/service.go` — the `Service` interface this
+  feature wraps without changing.
+- `internal/portal/postreceive/emitter.go` — the
+  `Emitter.EmitForUpdates()` tap point for the sync trigger.
+
 ## Brief
 
 In clustered mode, makes object storage (GCS / S3 / Azure Blob / any
@@ -84,18 +106,24 @@ Out:
   to a cheaper storage class (Glacier / Coldline / Archive), but
   initial implementation just deletes from hot object storage.
 
-## Strategic decisions
+## Design decisions
+
+Inherited from epic (object storage = system of record; native-where-
+clean + S3-compat fallback provider strategy; fencing tokens on every
+write). Feature-local:
 
 - **Object storage is mirror, not async backup.** A push doesn't ack
   to the client until the corresponding objects + ref updates are
   durable in object storage. RPO = 0 for acknowledged pushes. This is
   the only safe contract given the client treats acked pushes as
   durable.
-- **S3-compatible API as the lowest common denominator.** Native SDK
-  per provider gives better auth integration (workload identity,
-  managed service auth), but S3-compat covers MinIO / R2 / B2 /
-  self-hosted Ceph. Ship native SDKs for the big three (AWS, GCS,
-  Azure) plus a generic S3-compatible mode for everyone else.
+- **Research-then-decide on each provider SDK.** Per epic-level
+  decision: research AWS S3 SDK v2, Google Cloud Storage SDK, and
+  Azure Blob SDK for fit-with-our-patterns before committing. If a
+  given SDK is awkward (dependency-heavy, fights our Storer
+  abstraction, awkward auth wiring), roll a thin REST client for
+  that provider instead. Spawn a `/agile-workflow:research` stride
+  per provider during this feature's design pass.
 - **Pack manifest as the read-side index.** Object storage listings
   are eventually consistent on some providers; a manifest object
   written with conditional writes is the linearizable source.
