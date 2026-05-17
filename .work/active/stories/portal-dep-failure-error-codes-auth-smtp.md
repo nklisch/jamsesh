@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-auth-smtp
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -185,3 +185,41 @@ returns `senders.ErrTransient`-wrapped error -> handler wraps with
 application/json; charset=utf-8`, `Retry-After: 5`, and body
 `{"error":"dep.smtp_unavailable","message":"email delivery is
 currently unavailable"}`.
+
+## Review (2026-05-17)
+
+**Verdict: Approve.**
+
+Cross-checked production wraps in `magic_link.go:111-112`,
+`accounts/orgs.go:94-95`, and `sessions/invites.go:122-123` — all three
+`Sender.Send` failures wrap with `deperr.WrapSMTP(fmt.Errorf(...))`.
+Operator-log context preserved via inner `fmt.Errorf`.
+
+Grep audit confirms exactly 3 non-test, non-sender `.Send(` call sites
+in `internal/portal/` — all covered. No other unwrapped Sender call
+sites exist.
+
+Provider sentinel audit verified directly: all four sender impls
+(`smtp.go`, `resend.go`, `postmark.go`, `sendgrid.go`) wrap every
+failure path with `ErrTransient`/`ErrAuth`/`ErrPermanent` via the
+canonical `fmt.Errorf("%w: ...", senders.Err*, ...)` pattern. No
+provider-gap backlog needed.
+
+Three new `_SenderError_Returns503DepSMTPUnavailable` tests assert the
+full envelope contract (status, Content-Type, Retry-After, error code).
+Strict-handler test envs in all three packages correctly wire
+`httperr.WriteFromError` via `NewStrictHandlerWithOptions`.
+
+`go test ./internal/portal/{auth,accounts,sessions}/...` — green
+(cached).
+
+**Split-commit note (no penalty):** Production wraps landed in
+`ce0de70` (swept into the sibling db story's commit during a wave-2b
+parallel-agent race); tests + story body landed in recovery commit
+`2bd489a`. Substrate state is correct — story's own acceptance criteria
+are all met. The race itself is a workflow concern outside this story's
+scope.
+
+Findings: blockers 0, important 0, nits 0. No items parked.
+
+Advancing review -> done.
