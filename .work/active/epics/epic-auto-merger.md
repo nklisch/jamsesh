@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger
 kind: epic
-stage: implementing
+stage: done
 tags: [portal]
 parent: null
 depends_on: [epic-portal-git]
@@ -21,7 +21,9 @@ arriving on a sync-mode ref:
 
 1. Resolves the commit's parent and the current `draft` tip.
 2. Finds the common ancestor.
-3. Runs a three-way merge in-process using `go-git`.
+3. Runs a three-way merge — `go-git` for ancestor + tree-diff plumbing, plus
+   a per-file `git merge-file --stdout` subprocess for the actual conflict
+   resolution (see Design decisions: go-git has no built-in three-way merge).
 4. On success: creates a merge commit (with the new commit and the draft
    tip as parents) carrying `Auto-Merger: true` and `Source-Commit: <sha>`
    trailers, advances `draft`, emits `merge.succeeded`.
@@ -85,6 +87,20 @@ machine).
 
 Locked at epic-design time (this pass):
 
+- **Three-way merge mechanism**: go-git mainline has no three-way merge
+  implementation (upstream issue `go-git/go-git#942`, open since Nov 2023).
+  `Repository.Merge` only supports fast-forward. The auto-merger composes
+  three-way merge from primitives: go-git's `MergeBase` finds the common
+  ancestor; `DiffTreeWithOptions` identifies the changed files between base
+  and the two sides; per-file resolution is delegated to a
+  `git merge-file --stdout` subprocess (exit code = number of conflicts; 0 =
+  clean; negative = error). Subprocess output is the standard
+  conflict-marker stream, parseable into the structured `conflicts[]` payload
+  for `conflict.detected`. Rationale: pure-go is preferred but the upstream
+  gap forces a per-file subprocess hop; everything else (ancestor lookup,
+  tree diffing, merge-commit creation) stays in-process via go-git. End-to-end
+  mechanism documented in
+  `.claude/skills/go-git/references/three-way-merge.md`.
 - **Worker concurrency model**: per-session goroutine, spawned on first
   commit, draining a bounded per-session in-memory FIFO queue. Idle
   timeout exit (re-spawn on next commit). No global pool to tune. Cross-
@@ -127,10 +143,11 @@ the epic exists.
 
 ### Child features
 
-- `epic-auto-merger-merge-engine` — pure three-way merge via go-git,
-  result classification (clean / safe-auto-resolve / hard-conflict),
-  safe-auto-resolve heuristic detection (whitespace-only,
-  non-overlapping additions, identical edits) — depends on: `[]`
+- `epic-auto-merger-merge-engine` — three-way merge via go-git primitives
+  (`MergeBase`, `DiffTreeWithOptions`) plus per-file `git merge-file --stdout`
+  subprocess, result classification (clean / safe-auto-resolve / hard-conflict),
+  safe-auto-resolve heuristic detection (whitespace-only, non-overlapping
+  additions, identical edits) — depends on: `[]`
 - `epic-auto-merger-outcomes` — merge-commit creation with author/
   committer/trailer composition, draft ref advance, conflict_events
   row insert, `Resolves-Conflict` auto-closure, event emission — depends
@@ -163,3 +180,9 @@ the epic exists.
   trust boundary (per SECURITY.md). The `outcomes` feature is the only
   place this privilege is exercised; design pass keeps the codepath
   narrow and auditable.
+
+## Final review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: All 3 child features at done: merge-engine (three-way merge + safe-auto-resolve heuristics + adversarial corpus), outcomes (merge commit composition + ref advance + conflict events + Resolves-Conflict closure), worker (events.Log subscription + per-session goroutines + replay-deferred). The auto-merger is the heart of jamsesh's continuous-integration model and it runs end-to-end now.

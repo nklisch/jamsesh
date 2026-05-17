@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger-worker-manager-and-subscriber
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-auto-merger-worker
 depends_on: []
@@ -61,3 +61,12 @@ The replay-on-startup scan is intentionally skipped in v1 (`replayScan` returns 
 ### SQLite test isolation
 
 Worker tests use a named shared-cache in-memory SQLite (`file:worker_test_N?mode=memory&cache=shared`) with `SetMaxOpenConns(1)` to ensure all goroutines (including the worker goroutine) share the same migrated schema. Plain `:memory:` DSN is not safe for concurrent goroutines because `database/sql` may open additional connections to fresh, empty in-memory databases.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**: Replay-on-startup gap documented but real. Filed as v0.x post-launch follow-up — push a no-op commit recovers any missed events.
+
+**Notes**: Subscribe primitive on events.Log is the right cross-feature addition. Non-blocking fanOut with drop-on-full pairs with the (deferred) replay scan. Per-session goroutine + idle-timeout pattern is clean. Named shared-cache SQLite trick for test isolation reused.

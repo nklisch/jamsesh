@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger-worker
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-auto-merger
 depends_on: [epic-auto-merger-merge-engine, epic-auto-merger-outcomes, epic-portal-api-events-log, epic-portal-git-storage]
@@ -193,3 +193,11 @@ Single story.
 
 - **Channel-drop subscriber semantics**: dropping events is fine because the replay scan on next startup catches them, BUT in a long-running session a missed event could lag indefinitely. Mitigation: log every drop at Warn level; consider a periodic resync pass in v0.x.
 - **Per-session goroutine churn**: many short-lived sessions could spawn/exit frequently. The 30s idle timeout amortizes; if profiling shows issues, switch to a fixed worker pool.
+
+## Implementation summary
+
+Single child story done. The orchestration layer is live: subscribes to events.Log, fans events to per-session goroutines, calls merge-engine + outcomes.Apply for each sync-mode commit.
+
+## Review
+
+**Verdict**: Approve. Auto-merger epic has all 3 features done (merge-engine, outcomes, worker). The auto-merger runs end-to-end.
