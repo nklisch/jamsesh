@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path-collab-merge
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-golden-path
 depends_on: [epic-e2e-tests-golden-path-session-lifecycle]
@@ -103,3 +103,15 @@ returns `additionalContext` containing the comment text.
   Authorization header via the transport's `RequestEditorFn`.
 - For comment addressing semantics see
   `docs/PROTOCOL.md > Comment schema`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The bootstrap-draft-from-base behavior in `receive_pack.go` has no focused unit test in `internal/portal/githttp/`; the e2e tests exercise it implicitly. A targeted unit test would be defence in depth.
+- `mcpclient` rolls its own SSE handshake rather than using the official Go MCP SDK client. The rationale (lighter dep, full control for fuzz reuse) makes sense but a package-comment note would be helpful.
+
+**Notes**: The receive-pack fix is surgical (22 lines, idempotent — checks if draft already exists, breaks after the base-update is found). Auto-merger now has a guaranteed starting point for newly-created sessions. The journey specs exercise the full auto-merger + MCP-tools + addressed-comment-digest path end-to-end; both pass in ~12-15s. The 397-line mcpclient is a substantial fixture but well-organized (one method per tool + shared transport setup).
