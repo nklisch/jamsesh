@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>artifact-and-comments — Option 3: Inline marker + parallel column</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117; color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column;
+    }
+    .layout { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+    .context-strip {
+      padding: 8px 20px;
+      display: flex; align-items: center; gap: 12px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+      font: 12px var(--font-mono);
+      color: var(--color-text-tertiary);
+      flex-shrink: 0;
+    }
+    .context-strip .here { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .context-strip .sep { opacity: 0.5; }
+
+    .artifact-head {
+      padding: 12px 20px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+    .file-path { font: var(--font-size-base) var(--font-mono); }
+    .file-path .dir { color: var(--color-text-secondary); }
+    .artifact-actions { display: flex; gap: 6px; }
+    .small-btn {
+      padding: 4px 10px;
+      background: transparent; color: var(--color-text-secondary);
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      font: 11px var(--font-mono); cursor: pointer;
+    }
+
+    /* Two-column inside artifact pane: file (60%) | comments column (40%) */
+    .artifact-body {
+      flex: 1; overflow-y: auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+      gap: 0;
+    }
+
+    .file-viewer {
+      padding: 24px 0 40px;
+      font: 13px/1.7 var(--font-mono);
+      border-right: 1px solid var(--color-border);
+    }
+    .comments-col {
+      padding: 24px 16px 40px;
+      background: var(--color-bg-secondary);
+    }
+    .comments-col .empty-hint {
+      font: 11px var(--font-mono); color: var(--color-text-tertiary);
+      padding: 0 4px 12px;
+      border-bottom: 1px dashed var(--color-border);
+      margin-bottom: 12px;
+    }
+
+    .line {
+      display: grid; grid-template-columns: 50px 32px 1fr;
+      gap: 12px; padding: 0 20px;
+      position: relative;
+    }
+    .line:hover { background: var(--color-bg-tertiary); }
+    .line .num { color: var(--color-text-tertiary); text-align: right; font-size: 12px; user-select: none; padding-top: 1px; }
+    .line .marker-slot { display: flex; align-items: flex-start; padding-top: 4px; }
+    .line .code { color: var(--color-text-primary); white-space: pre; }
+    .line.h { background: var(--color-accent-muted); }
+    .kw { color: #b9518e; }
+    @media (prefers-color-scheme: dark) { .kw { color: #d896c5; } }
+    [data-theme="dark"] .kw { color: #d896c5; }
+    .str { color: var(--color-success); }
+    .cmt { color: var(--color-text-tertiary); font-style: italic; }
+
+    /* Small inline marker beside commented lines */
+    .marker-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--color-accent);
+      cursor: pointer;
+      box-shadow: 0 0 0 2px var(--color-bg-primary);
+      margin-top: 6px;
+    }
+    .marker-dot.suggestion { background: var(--color-warning); }
+    .marker-dot.composer { background: transparent; border: 2px dashed var(--color-accent); box-sizing: border-box; }
+
+    /* Right column: comment cards aligned to anchor lines via top margin */
+    .comment-card {
+      padding: 14px 16px;
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font: var(--font-size-sm)/1.5 var(--font-sans);
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .comment-card.connector::before {
+      content: ''; position: absolute;
+      left: -16px; top: 18px;
+      width: 14px; height: 1px;
+      background: var(--color-border);
+    }
+    .comment-card .head {
+      display: flex; gap: 8px; align-items: center; margin-bottom: 6px;
+      font-size: var(--font-size-xs); color: var(--color-text-secondary);
+    }
+    .comment-card .head strong { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .comment-card .anchor {
+      margin-left: auto; font: 10px var(--font-mono); color: var(--color-text-tertiary);
+    }
+    .kind {
+      padding: 1px 6px; border-radius: 3px;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .kind.question { background: var(--color-accent-muted); color: var(--color-accent); }
+    .kind.suggestion { background: var(--color-warning-muted); color: var(--color-warning); }
+    .comment-card .body { color: var(--color-text-primary); }
+    .comment-card .reply-row {
+      margin-top: 8px;
+      display: flex; gap: 12px; align-items: center;
+      font-size: var(--font-size-xs);
+    }
+    .comment-card .reply-row a {
+      color: var(--color-text-link); text-decoration: none;
+      border-bottom: 1px dotted var(--color-text-link);
+    }
+    .comment-card .resolve {
+      margin-left: auto; color: var(--color-text-secondary); cursor: pointer;
+    }
+
+    /* Composer in mid-state */
+    .composer {
+      padding: 0;
+      background: var(--color-bg-primary);
+      border: 2px solid var(--color-accent);
+      border-radius: var(--radius-md);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .composer-head {
+      padding: 8px 12px;
+      display: flex; align-items: center; gap: 10px;
+      background: var(--color-accent-muted);
+      border-bottom: 1px solid var(--color-accent);
+      font-size: var(--font-size-xs); color: var(--color-text-secondary);
+    }
+    .composer-head .anchor { font: 11px var(--font-mono); color: var(--color-accent); font-weight: var(--font-weight-medium); }
+    .composer-controls {
+      padding: 8px 12px;
+      display: flex; gap: 8px; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .composer-control {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px;
+      background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font: 11px var(--font-mono);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+    .composer-control.kind-suggestion {
+      background: var(--color-warning-muted);
+      color: var(--color-warning);
+      border-color: var(--color-warning);
+    }
+    .addressing-row {
+      padding: 8px 12px;
+      display: flex; align-items: center; gap: 6px;
+      border-bottom: 1px solid var(--color-border);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      position: relative;
+    }
+    .addressing-row .label { font: 11px var(--font-mono); color: var(--color-text-tertiary); }
+    .addressing-input {
+      padding: 2px 6px; background: transparent;
+      border: 0; outline: 0;
+      font: 12px var(--font-mono); color: var(--color-text-primary);
+      min-width: 100px;
+    }
+    .autocomplete {
+      position: absolute; top: 100%; left: 30px;
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.10);
+      padding: 4px 0;
+      z-index: 30;
+      min-width: 220px;
+      font: 12px var(--font-mono);
+    }
+    .autocomplete .item {
+      padding: 6px 12px;
+      display: flex; align-items: center; gap: 8px;
+      cursor: pointer;
+    }
+    .autocomplete .item.highlighted { background: var(--color-accent-muted); }
+    .autocomplete .item:hover { background: var(--color-bg-tertiary); }
+    .autocomplete .item .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .autocomplete .item .name { color: var(--color-text-primary); }
+    .autocomplete .item .meta { margin-left: auto; color: var(--color-text-tertiary); font-size: 10px; }
+
+    .composer-body {
+      padding: 12px;
+      font: var(--font-size-sm)/1.5 var(--font-sans);
+      color: var(--color-text-primary);
+      min-height: 60px; outline: none;
+    }
+    .composer-body .cursor {
+      display: inline-block; width: 1px; height: 14px;
+      background: var(--color-accent);
+      vertical-align: text-bottom;
+      animation: blink 1s steps(2) infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+    .composer-actions {
+      padding: 8px 12px;
+      display: flex; gap: 8px; justify-content: space-between; align-items: center;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-tertiary);
+    }
+    .composer-actions .hint { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+    .composer-actions .hint .kbd {
+      display: inline-block; background: var(--color-bg-primary);
+      padding: 0 5px; border-radius: 2px; border: 1px solid var(--color-border);
+    }
+    .composer-btn {
+      padding: 5px 12px; border-radius: var(--radius-sm);
+      font: var(--font-weight-medium) 12px var(--font-sans);
+      cursor: pointer;
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-bg-primary); color: var(--color-text-primary);
+    }
+    .composer-btn.post {
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      border-color: var(--color-bg-inverse);
+    }
+    .btns { display: flex; gap: 6px; }
+
+    .hover-action {
+      opacity: 0; transition: opacity 0.1s;
+      font: 10px var(--font-mono); color: var(--color-text-secondary);
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      padding: 2px 8px; border-radius: var(--radius-sm);
+      cursor: pointer; align-self: start;
+      white-space: nowrap; margin-top: 1px;
+      position: absolute; right: 12px;
+    }
+    .line:hover .hover-action { opacity: 1; }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 3 — Inline marker + parallel column</strong>
+    <span>Small marker dot inline at the anchor; comments live in a right column INSIDE the artifact pane, aligned vertically to their anchored lines. Read file + comments simultaneously, Google-Docs / Stripe-Press style.</span>
+    <div class="controls">
+      <button onclick="document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')">toggle theme</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="context-strip">
+      <span>kindred-labs</span><span class="sep">/</span>
+      <span class="here">Auth design refresh</span><span class="sep">→</span>
+      <span>tree</span><span class="sep">·</span>
+      <span class="here">alice/main @ f02ac41</span>
+    </div>
+
+    <div class="artifact-head">
+      <span class="file-path"><span class="dir">docs/auth/</span>oauth-callback.md</span>
+      <div class="artifact-actions">
+        <button class="small-btn">at f02ac41 · alice/main</button>
+        <button class="small-btn">Comment on line</button>
+      </div>
+    </div>
+
+    <div class="artifact-body">
+      <div class="file-viewer">
+        <div class="line"><span class="num">12</span><span class="marker-slot"></span><span class="code"><span class="cmt"># Callback contract</span></span></div>
+        <div class="line"><span class="num">13</span><span class="marker-slot"></span><span class="code"></span></div>
+        <div class="line"><span class="num">14</span><span class="marker-slot"></span><span class="code">The OAuth callback endpoint receives <span class="kw">code</span> and <span class="kw">state</span> as query</span></div>
+        <div class="line"><span class="num">15</span><span class="marker-slot"></span><span class="code">parameters. It exchanges the code for an access token, validates</span></div>
+        <div class="line h"><span class="num">16</span><span class="marker-slot"><span class="marker-dot"></span></span><span class="code">the <span class="kw">state</span> against the stored session, and issues a refresh token.</span></div>
+        <div class="line"><span class="num">17</span><span class="marker-slot"></span><span class="code"></span></div>
+        <div class="line"><span class="num">18</span><span class="marker-slot"></span><span class="code"><span class="cmt">## Error responses</span></span>
+          <button class="hover-action">+ comment</button>
+        </div>
+        <div class="line"><span class="num">19</span><span class="marker-slot"></span><span class="code"></span></div>
+        <div class="line h" style="background: var(--color-warning-muted);"><span class="num">20</span><span class="marker-slot"><span class="marker-dot composer"></span></span><span class="code">| code | meaning |</span></div>
+        <div class="line"><span class="num">21</span><span class="marker-slot"></span><span class="code">|------|---------|</span></div>
+        <div class="line"><span class="num">22</span><span class="marker-slot"></span><span class="code">| <span class="str">invalid_code</span> | code was unknown or already redeemed |</span></div>
+        <div class="line h"><span class="num">23</span><span class="marker-slot"><span class="marker-dot suggestion"></span></span><span class="code">| <span class="str">binding_expired</span> | magic-link binding aged out before exchange |</span></div>
+        <div class="line"><span class="num">24</span><span class="marker-slot"></span><span class="code">| <span class="str">state_mismatch</span> | callback state didn't match stored session |</span></div>
+      </div>
+
+      <aside class="comments-col">
+        <div class="empty-hint">3 anchors · 2 comments · 1 composer · aligned to lines</div>
+
+        <!-- Aligned to line 16 (4 lines down from file viewer top) -->
+        <div style="margin-top: 60px;">
+          <div class="comment-card connector">
+            <div class="head"><strong>@alice/main</strong> <span class="kind question">question</span> <span class="anchor">line 16 · 12m</span></div>
+            <div class="body">Should this also clear the previous refresh token when access expires? The current spec doesn't say either way.</div>
+            <div class="reply-row">
+              <a href="#">2 replies</a>
+              <a href="#">reply</a>
+              <span class="resolve">resolve</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Aligned to line 20 (the composer) -->
+        <div style="margin-top: 24px;">
+          <div class="composer">
+            <div class="composer-head">
+              <span class="anchor">@ line 20</span>
+              <span>— 1 line selected</span>
+            </div>
+            <div class="composer-controls">
+              <span class="composer-control kind-suggestion">suggestion <span style="opacity: 0.6;">▾</span></span>
+            </div>
+            <div class="addressing-row">
+              <span class="label">@</span>
+              <input class="addressing-input" value="al" />
+              <div class="autocomplete">
+                <div class="item highlighted">
+                  <span class="dot" style="background: var(--author-1)"></span>
+                  <span class="name">@alice</span>
+                  <span class="meta">human</span>
+                </div>
+                <div class="item">
+                  <span class="dot" style="background: var(--author-1)"></span>
+                  <span class="name">@alice/main</span>
+                  <span class="meta">agent</span>
+                </div>
+                <div class="item">
+                  <span class="dot" style="background: var(--author-1)"></span>
+                  <span class="name">@alice/explore</span>
+                  <span class="meta">agent</span>
+                </div>
+                <div class="item">
+                  <span class="dot" style="background: var(--color-text-tertiary)"></span>
+                  <span class="name">@all-agents</span>
+                  <span class="meta">broadcast</span>
+                </div>
+              </div>
+            </div>
+            <div class="composer-body" contenteditable="true">Maybe collapse rows 20-24 into a single table with a `Trigger` column<span class="cursor"></span></div>
+            <div class="composer-actions">
+              <span class="hint"><span class="kbd">⌘↵</span> post · <span class="kbd">esc</span> cancel</span>
+              <div class="btns">
+                <button class="composer-btn">Cancel</button>
+                <button class="composer-btn post">Post</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Aligned to line 23 -->
+        <div style="margin-top: 16px;">
+          <div class="comment-card connector">
+            <div class="head"><strong>@bob/main</strong> <span class="kind suggestion">suggestion</span> <span class="anchor">line 23 · 4m</span></div>
+            <div class="body">I added <code style="font-family: var(--font-mono);">binding_expired</code> in c5a83e2 — auto-merger should pick it up. Maybe link this from the magic-link doc too.</div>
+            <div class="reply-row">
+              <a href="#">reply</a>
+              <span class="resolve">resolve</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>

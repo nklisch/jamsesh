@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>artifact-and-comments — pick a treatment</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; }
+    header { padding: 16px 24px; display: flex; align-items: baseline; gap: 16px; }
+    header h1 { margin: 0; font-weight: 500; font-size: 18px; }
+    header .meta { color: #8b949e; font-size: 13px; font-family: ui-monospace, monospace; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 8px;
+      padding: 0 8px 8px;
+      height: calc(100vh - 60px);
+      box-sizing: border-box;
+    }
+    .cell {
+      background: #fff; border-radius: 4px; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .cell h2 {
+      margin: 0; padding: 10px 14px;
+      font-size: 13px; font-weight: 600;
+      background: #222; color: #eee;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .cell h2 .desc { font-weight: 400; color: #8b949e; font-size: 12px; margin-left: 12px; flex: 1; }
+    .cell iframe { border: 0; flex: 1; width: 100%; }
+    .cell a { color: #6cf; text-decoration: none; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>artifact-and-comments — pick a comment treatment</h1>
+    <span class="meta">.mockups/screens/epic-portal-ui-artifact-and-comments/</span>
+  </header>
+  <div class="grid">
+    <div class="cell">
+      <h2>
+        Option 1 — Always-expanded inline
+        <span class="desc">every comment inline · most dense</span>
+        <a href="option-1.html" target="_blank">open ↗</a>
+      </h2>
+      <iframe src="option-1.html"></iframe>
+    </div>
+    <div class="cell">
+      <h2>
+        Option 2 — Collapsed marker + popover
+        <span class="desc">badge inline · click for floating popover</span>
+        <a href="option-2.html" target="_blank">open ↗</a>
+      </h2>
+      <iframe src="option-2.html"></iframe>
+    </div>
+    <div class="cell">
+      <h2>
+        Option 3 — Inline marker + parallel column
+        <span class="desc">dot inline · comments in margin column</span>
+        <a href="option-3.html" target="_blank">open ↗</a>
+      </h2>
+      <iframe src="option-3.html"></iframe>
+    </div>
+    <div class="cell">
+      <h2>
+        Option 4 — GitHub-PR style
+        <span class="desc">collapsed strip · click to expand inline</span>
+        <a href="option-4.html" target="_blank">open ↗</a>
+      </h2>
+      <iframe src="option-4.html"></iframe>
+    </div>
+  </div>
+</body>
+</html>

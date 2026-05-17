@@ -56,9 +56,63 @@ surface in the activity feed and via comments).
 - `docs/PROTOCOL.md` — MCP `post_comment` / `resolve_comment`, Comment
   schema (with addressing metadata), Anchor (commit, file, line range)
 - `docs/ARCHITECTURE.md` — Comments data layer
-- `.mockups/flows/onboarding/04-session-view.html` — locked design
-  showing inline comment treatment
+- `.mockups/flows/onboarding/04-session-view.html` — locked journey
+  showing where this surface lives inside the session view shell
+
+## Mockups
+
+- Screens: `.mockups/screens/epic-portal-ui-artifact-and-comments/index.html`
+- Selected: **option-4 (GitHub-PR style)** — 2026-05-16
+- Rationale: sharpens the epic-design Phase 4.7 lock ("inline anchored to
+  the line") with the specific expand/collapse mechanic. Collapsed-by-
+  default strip below the line shows kind + author + preview + recency;
+  click to expand inline into the full thread. Keeps the file view scannable
+  while making the comment count visible at every anchor. Composer is also
+  inline. Familiar to anyone who's reviewed a GitHub PR.
+
+**Layout primitives this commits to:**
+
+- **Comment-strip (collapsed default)** — a thin row below the commented
+  line: `[kind badge] @author preview-text recency [expand ↓]`. Strip
+  inherits the kind's color (question = accent, suggestion = warning,
+  etc.). Click toggles to expanded form.
+- **Comment-expanded (inline)** — full card directly below the line with
+  the same data as the collapsed strip, plus reply count, "reply" link,
+  "mark resolved" action. Click the head to collapse back.
+- **Line affordance** — commented lines get an `inset 3px 0 0 <kind-color>`
+  left border to mark their state without color-flooding the line.
+- **Composer (inline, mid-state shown in mock)** — opens below the
+  selected line with: anchor indicator ("@ line 20 · 1 line selected"),
+  kind control (defaults to fyi; click to swap), addressing input with
+  autocomplete suggesting human/agent identities + broadcast targets,
+  body field, post/cancel actions, keyboard hint (`⌘↵` to post, `esc`
+  to cancel).
+- **Composer entry mechanisms** (all universal):
+  - Hover any line → "+ comment" button appears with `c` keyboard shortcut
+  - Select a line range → "Comment on selection" pill anchored above
+  - "Comment on line" button in artifact-head (selects current scroll
+    position by default)
+  - Keyboard: `c` on the focused line
+- **Expand-all** — head action lets the human flip all collapsed strips
+  to expanded in one click ("expand all comments (N)"); useful when
+  reviewing for sign-off.
+
+**Implementation implications (recorded for feature-design later):**
+
+- Collapsed strip + expanded form share data; toggling is local UI state.
+- Reading a long file with many comments doesn't force the human to
+  scroll past full comment cards — they see strips and decide what to
+  expand. The opt-in expansion is the difference from option-1 (always
+  expanded).
+- Comment threading: replies are inline under the parent comment when
+  expanded. The "2 replies" link in the expanded form is the affordance
+  to see the rest.
+- Addressing autocomplete must include the literal `@` recipients from
+  PROTOCOL.md: `@<user>`, `@<user>/<branch>`, `@all-humans`,
+  `@all-agents`, `@everyone`, `@auto-merger`. The data source is
+  `query_session_state({ include: ['members', 'refs'] })`.
 
 <!-- Feature-design will fill in the file-viewer rendering strategy,
 line-range selection mechanic, composer overlay interaction, and addressing
-autocomplete data shape when /agile-workflow:feature-design runs on this. -->
+autocomplete data shape when /agile-workflow:feature-design runs on this.
+Feature stays at stage: drafting per --mocks-only pass. -->
