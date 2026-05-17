@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-failure-mode
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-infrastructure]
@@ -176,3 +176,38 @@ Wave 2 (parallel — both depend on rest-validation):
   story body.
 
 Risks documented; no spike unit needed.
+
+## Implementation summary (2026-05-17)
+
+All 4 child stories at `stage: review` after 2 waves under
+implement-orchestrator. Wave 1 (parallel): `rest-validation`,
+`spa-error-states`. Wave 2 (parallel): `config-and-deps`,
+`interrupted-ops` (alongside golden-path's `session-lifecycle`).
+
+**Production bugs found and fixed during implementation**:
+- `logging.Access` middleware: `statusRecorder` missing `Unwrap()`
+  broke WebSocket upgrade (returns 501). Fixed in
+  `internal/portal/logging/logging.go`.
+- `sessions.status` CHECK constraint missing `'finalizing'` — added
+  migration `00012_sessions_finalizing_status` for both Postgres and
+  SQLite.
+
+**Production bugs filed to backlog**:
+- `portal-docker-image-missing-git-binary` — distroless image lacks
+  git; CreateSession failed. Worked around with `Dockerfile.e2e`.
+- `portal-test-clock-advance-endpoint` — TTL tests need a clock-
+  injection endpoint behind a build tag.
+- `portal-dep-failure-error-codes` — documented `dep.*` codes not
+  actually implemented; failures surface as plain-text 500.
+
+**Test-side bugs fixed in session** (per user directive on test
+handling): authflow regex didn't decode quoted-printable; ccdriver
+env test was tautological; onboarding emails not randomized.
+
+**Coverage**:
+- REST validation: 13 subtests (invalid input + boundary + permissions)
+- Config and deps: 6 subtests (missing config startup failures + runtime dep failures)
+- Interrupted ops: 2 subtests passing + 2 documented-skip with backlog references
+- SPA error states: 6 Playwright tests + 2 documented-skip
+
+**Next**: `/agile-workflow:review epic-e2e-tests-failure-mode` once the user is ready.
