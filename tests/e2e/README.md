@@ -5,10 +5,16 @@ infrastructure (database, OIDC provider, etc.) spun up via Testcontainers-Go.
 
 ## Prerequisites
 
-- **Docker** running locally (`docker info` must succeed)
-- **Portal e2e image** built: `make test-portal-image`
-  - This compiles a static Linux binary and packages it into the distroless
-    image used in production, tagged `jamsesh/portal:e2e`.
+- **Go 1.26 or newer.** Both the root module (`go.mod`) and this module
+  (`tests/e2e/go.mod`) require Go 1.26. CI pins `go-version: '1.26.x'`
+  explicitly (in `.github/workflows/e2e.yml` and `release.yml`) rather
+  than floating on `stable`, so local builds and CI builds use the same
+  toolchain.
+- **Docker** running locally (`docker info` must succeed).
+- **Portal e2e image** built: `make test-portal-image`.
+  - This compiles a static Linux binary and packages it into the unified
+    production image (alpine:3.21 + git + ca-certificates), tagged
+    `jamsesh/portal:e2e`.
   - Re-run after any change to the portal binary or its Dockerfile.
 
 ## How to run
