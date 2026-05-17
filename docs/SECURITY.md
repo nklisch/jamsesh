@@ -201,8 +201,15 @@ Mitigation:
 - The `jamsesh` binary is built reproducibly from public source and
   distributed via the marketplace repo with cryptographic checksums.
 - The portal binary likewise.
-- Releases are signed (Sigstore or equivalent); the marketplace and self-host
-  install process verifies signatures.
+- Releases are signed with Sigstore cosign in keyless mode (GitHub OIDC).
+  Signatures are verified at install time by both the marketplace and the
+  self-host install flows using `--certificate-identity-regexp` pinned to the
+  jamsesh release workflow and
+  `--certificate-oidc-issuer https://token.actions.githubusercontent.com`.
+- The keyless-signing trust anchor is the release workflow's identity. A
+  compromise of `.github/workflows/release.yml` on the `main` branch would
+  produce "valid" signatures, so the workflow file and the `main` branch
+  carry branch-protection rules requiring code-owner review for any change.
 - Dependencies are pinned; security advisories are watched and patched
   promptly.
 

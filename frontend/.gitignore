@@ -1,2 +1,6 @@
 node_modules/
 dist/
+
+# Test artifacts
+jamsesh
+jamsesh.db
