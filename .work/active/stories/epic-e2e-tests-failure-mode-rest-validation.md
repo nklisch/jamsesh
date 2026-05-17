@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-failure-mode-rest-validation
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-failure-mode
 depends_on: []
@@ -193,3 +193,15 @@ follow-on for the deferred subtests.
 3. `POST /api/auth/magic-link/request` has no 400 response in the OpenAPI
    spec (only 204 and 500). Missing / invalid email is silently accepted
    (email privacy). No invalid-input subtest is possible for that endpoint.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `MagicLinkTokenRE` and `InviteTokenRE` regexes are identical — could be unified.
+- Deferred subtests (git-trailer validation, ref-namespace permission) are now unblock-able now that `gitclient` exists from `session-lifecycle`. Worth a follow-on item to revive them.
+
+**Notes**: The discoveries about the actual error-envelope shape (`error` field, not `code`) and the plain-text-500 path for malformed JSON were caught at implementation time and documented in implementation notes. The auth-helpers extraction is clean — golden_test successfully migrated to import authflow; the QP-decode fix I applied later worked against this extraction. 13 subtests is the right granularity for the three categories.
