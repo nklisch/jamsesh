@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-accounts-org-members-and-invites
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation-accounts
 depends_on: [epic-portal-foundation-accounts-me-and-org-create]
@@ -63,3 +63,13 @@ create invite, accept invite.
 - `cmd/portal/main.go` — `accounts.New(...)` updated; `ServerInterfaceWrapper` used for path-param routes; 3 new routes with appropriate role gates
 - `internal/portal/accounts/orgs_test.go` — 7 tests covering all acceptance criteria
 - Existing test stubs updated (magic_link_test, oauth_test, tokens/handlers_test, accounts/handlers_test) to satisfy the expanded `StrictServerInterface`
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Three-endpoint surface clean: list (read role), create (creator only), accept (Bearer only — the user is joining). Token model mirrors magic-link (raw in email, hash at rest). Atomic Tx for MarkAccepted + AddOrgMember prevents race where a second accept arrives between mark and bind.

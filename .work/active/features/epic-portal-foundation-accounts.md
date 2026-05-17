@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-accounts
 kind: feature
-stage: implementing
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation
 depends_on: [epic-portal-foundation-auth-flows]
@@ -194,3 +194,21 @@ None new. Uses existing senders, openapi, store, tokens.
 
 - **Slug collisions at high concurrency**: same email-prefix from two simultaneous POST /api/orgs calls. Mitigation: retry on unique-violation with suffix re-roll.
 - **Invite email phishing**: standard for email-based invites. The link MUST be HTTPS in production; SELF_HOST.md already documents this.
+
+## Implementation summary
+
+Both child stories done. Five endpoints + RequireOrgRole middleware + org_invites schema landed.
+
+### Verification
+- `go build ./...` clean
+- `go test ./...` green
+- `make generate && git diff --exit-code` green
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+
+**Notes**: Capability complete. The foundation epic's 5th and final feature lands here. epic-portal-foundation can now advance to done — all 5 children (data-layer, http-skeleton, tokens, auth-flows, accounts) are at done.

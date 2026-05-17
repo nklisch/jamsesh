@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation
 kind: epic
-stage: implementing
+stage: done
 tags: [portal, security]
 parent: null
 depends_on: []
@@ -148,3 +148,12 @@ materially consumes the previous one's contract.
   Google/OIDC are explicit forward paths. The `Provider` interface must
   accommodate OIDC's discovery-document model without GitHub baking in
   assumptions.
+
+## Final review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+
+**Notes**: All 5 child features at done: data-layer (sqlc dual-dialect + org_id discipline), http-skeleton (chi + httperr + openapi pipeline + config + TLS), tokens (Service + middleware + refresh/revoke endpoints), auth-flows (OAuth + magic-link + Sender abstraction + auto-provisioning), accounts (/api/me + org create + invites). The portal foundation is complete. The portal-api epic and the cc-plugin/finalize-flow chains can now build on this substrate end-to-end.

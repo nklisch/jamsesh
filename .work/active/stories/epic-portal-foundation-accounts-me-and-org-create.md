@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-accounts-me-and-org-create
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation-accounts
 depends_on: []
@@ -63,3 +63,13 @@ manual-org-creation endpoint.
 - `RequireOrgRole` errors are always `auth.insufficient_permission` 403; no distinction between "not a member" and "wrong role" (prevents membership enumeration)
 - `OrgMemberFromContext` is provided as a convenience for future org-scoped handlers that want to skip a redundant store lookup
 - `accounts.Handler` uses named field (`AccountsHandler`) in `combinedHandler` to avoid Go embedded-field name collision with `tokens.Handler`; delegate methods are 2 lines each
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: RequireOrgRole middleware injecting OrgMember into context is a thoughtful detail — saves a redundant lookup in handlers. Same 403 for non-member and wrong-role correctly prevents membership enumeration. Slug helper factoring into auth/slug.go is clean refactor. /api/me now feeds the SPA's loadCurrentUser.
