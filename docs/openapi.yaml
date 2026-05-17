@@ -123,6 +123,406 @@ components:
           type: string
           description: Raw magic-link token from the URL query parameter
 
+    # ---------------------------------------------------------------------------
+    # WebSocket event envelope + per-event-type payload schemas
+    #
+    # Every event pushed over the portal WebSocket shares the EventEnvelope
+    # wrapper. The `type` field is the discriminator; the `payload` field is a
+    # oneOf over the 12 payload schemas below.
+    #
+    # Discriminator semantics (OpenAPI 3.0.3):
+    #   The discriminator lives on EventEnvelope, with propertyName: "type".
+    #   The mapping keys are the string values of `type`; the mapping values
+    #   point at the corresponding payload schema. oapi-codegen v2 generates
+    #   an `AsXxxPayload() (XxxPayload, error)` accessor per oneOf variant plus
+    #   a `Discriminator() string` method on the envelope's Payload union type.
+    #   TypeScript consumers get a discriminated union on `payload` keyed by
+    #   the sibling `type` field via openapi-typescript's oneOf expansion.
+    # ---------------------------------------------------------------------------
+
+    EventEnvelope:
+      type: object
+      required: [seq, version, type, payload, timestamp, session_id]
+      properties:
+        seq:
+          type: integer
+          format: int64
+          description: Monotonic per-session sequence number
+        version:
+          type: integer
+          enum: [1]
+          description: Envelope version; always 1
+        type:
+          type: string
+          description: Event type; used as discriminator for payload
+          enum:
+            - commit.arrived
+            - merge.succeeded
+            - conflict.detected
+            - conflict.resolved
+            - comment.added
+            - comment.resolved
+            - ref.forked
+            - mode.changed
+            - turn.ended
+            - presence.updated
+            - session.finalizing
+            - session.ended
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp of event emission
+        session_id:
+          type: string
+          description: Session this event belongs to
+        payload:
+          oneOf:
+            - $ref: '#/components/schemas/CommitArrivedPayload'
+            - $ref: '#/components/schemas/MergeSucceededPayload'
+            - $ref: '#/components/schemas/ConflictDetectedPayload'
+            - $ref: '#/components/schemas/ConflictResolvedPayload'
+            - $ref: '#/components/schemas/CommentAddedPayload'
+            - $ref: '#/components/schemas/CommentResolvedPayload'
+            - $ref: '#/components/schemas/RefForkedPayload'
+            - $ref: '#/components/schemas/ModeChangedPayload'
+            - $ref: '#/components/schemas/TurnEndedPayload'
+            - $ref: '#/components/schemas/PresenceUpdatedPayload'
+            - $ref: '#/components/schemas/SessionFinalizingPayload'
+            - $ref: '#/components/schemas/SessionEndedPayload'
+      discriminator:
+        propertyName: type
+        mapping:
+          commit.arrived: '#/components/schemas/CommitArrivedPayload'
+          merge.succeeded: '#/components/schemas/MergeSucceededPayload'
+          conflict.detected: '#/components/schemas/ConflictDetectedPayload'
+          conflict.resolved: '#/components/schemas/ConflictResolvedPayload'
+          comment.added: '#/components/schemas/CommentAddedPayload'
+          comment.resolved: '#/components/schemas/CommentResolvedPayload'
+          ref.forked: '#/components/schemas/RefForkedPayload'
+          mode.changed: '#/components/schemas/ModeChangedPayload'
+          turn.ended: '#/components/schemas/TurnEndedPayload'
+          presence.updated: '#/components/schemas/PresenceUpdatedPayload'
+          session.finalizing: '#/components/schemas/SessionFinalizingPayload'
+          session.ended: '#/components/schemas/SessionEndedPayload'
+
+    # --- Payload schemas (PROTOCOL.md field names are canonical) ---
+
+    CommitArrivedPayload:
+      type: object
+      description: >
+        A commit was pushed to a session ref. PROTOCOL.md canonical fields:
+        ref, sha, author_id, summary.
+      required: [ref, sha, author_id, summary]
+      properties:
+        ref:
+          type: string
+          description: The session ref the commit landed on (e.g. jam/<session>/<user>/<branch>)
+        sha:
+          type: string
+          description: The commit SHA that arrived
+        author_id:
+          type: string
+          description: Account ID of the commit author
+        summary:
+          type: string
+          description: One-line summary of the commit message
+
+    MergeSucceededPayload:
+      type: object
+      description: >
+        Auto-merger successfully merged a source commit into the draft tip.
+        PROTOCOL.md canonical fields: source_sha, draft_sha, merge_commit_sha.
+      required: [source_sha, draft_sha, merge_commit_sha]
+      properties:
+        source_sha:
+          type: string
+          description: The source commit SHA that was merged
+        draft_sha:
+          type: string
+          description: The draft tip SHA after the merge
+        merge_commit_sha:
+          type: string
+          description: The merge commit SHA created by the auto-merger
+
+    ConflictFileRange:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          type: integer
+          description: Start line (1-indexed) of the conflict range
+        end:
+          type: integer
+          description: End line (1-indexed) of the conflict range
+
+    ConflictFile:
+      type: object
+      required: [file, ranges]
+      properties:
+        file:
+          type: string
+          description: File path within the repository
+        ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConflictFileRange'
+          description: Line ranges in conflict within this file
+
+    ConflictDetectedPayload:
+      type: object
+      description: >
+        Auto-merger detected a three-way merge conflict. Payload is the full
+        conflict event per PROTOCOL.md conflict event schema.
+        PROTOCOL.md canonical fields: id, session_id, source_commit_sha,
+        source_ref, draft_tip_sha, ancestor_sha, conflicts, addressed_to,
+        status, resolving_commit_sha, resolved_at, created_at.
+      required: [id, session_id, source_commit_sha, source_ref, draft_tip_sha, ancestor_sha, conflicts, addressed_to, status, created_at]
+      properties:
+        id:
+          type: string
+          description: Conflict event ID (UUID)
+        session_id:
+          type: string
+          description: Session the conflict belongs to
+        source_commit_sha:
+          type: string
+          description: The commit that could not be merged
+        source_ref:
+          type: string
+          description: The ref the source commit came from
+        draft_tip_sha:
+          type: string
+          description: The draft tip at the time of the failed merge attempt
+        ancestor_sha:
+          type: string
+          description: The common ancestor commit SHA
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConflictFile'
+          description: Per-file conflict details
+        addressed_to:
+          type: array
+          items:
+            type: string
+          description: Addressing tokens for impacted participants (e.g. "@user/branch")
+        status:
+          type: string
+          enum: [open, resolved, abandoned]
+          description: Current status of this conflict
+        resolving_commit_sha:
+          type: string
+          nullable: true
+          description: Set when a Resolves-Conflict trailer matches this event
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO-8601 timestamp when the conflict was resolved
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the conflict was detected
+
+    ConflictResolvedPayload:
+      type: object
+      description: >
+        A conflict has been resolved via a commit with a matching
+        Resolves-Conflict trailer.
+        PROTOCOL.md canonical fields: event_id, resolving_commit_sha.
+      required: [event_id, resolving_commit_sha]
+      properties:
+        event_id:
+          type: string
+          description: The conflict event ID that was resolved
+        resolving_commit_sha:
+          type: string
+          description: The commit SHA that resolved the conflict
+
+    CommentAnchor:
+      type: object
+      required: [commit_sha]
+      properties:
+        commit_sha:
+          type: string
+          description: The commit being commented on
+        file_path:
+          type: string
+          nullable: true
+          description: File within the commit's tree; null for commit-level comments
+        line_range:
+          nullable: true
+          description: 1-indexed line range; null for file-level or commit-level comments
+          allOf:
+            - $ref: '#/components/schemas/ConflictFileRange'
+
+    CommentAddedPayload:
+      type: object
+      description: >
+        A comment was posted in the session. Payload is the full comment per
+        PROTOCOL.md comment schema.
+        PROTOCOL.md canonical fields: id, session_id, author_id, author_kind,
+        anchor, body, addressed_to, kind, created_at, resolved_at,
+        resolved_by, resolution_note.
+      required: [id, session_id, author_id, author_kind, anchor, body, kind, created_at]
+      properties:
+        id:
+          type: string
+          description: Comment ID (UUID)
+        session_id:
+          type: string
+          description: Session the comment belongs to
+        author_id:
+          type: string
+          description: Account ID of the comment author
+        author_kind:
+          type: string
+          enum: [human, agent]
+          description: Whether the author is a human or an agent
+        anchor:
+          $ref: '#/components/schemas/CommentAnchor'
+        body:
+          type: string
+          description: Comment body in markdown
+        addressed_to:
+          type: string
+          nullable: true
+          description: Addressing token (e.g. "@user", "@user/branch", "@all-agents")
+        kind:
+          type: string
+          enum: [fyi, question, suggestion, action-request]
+          description: Comment kind
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp of creation
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO-8601 timestamp when resolved; null if open
+        resolved_by:
+          type: string
+          nullable: true
+          description: Account ID of resolver; null if open
+        resolution_note:
+          type: string
+          nullable: true
+          description: Optional resolution note
+
+    CommentResolvedPayload:
+      type: object
+      description: >
+        A comment was marked resolved.
+        PROTOCOL.md canonical fields: comment_id, resolved_by, note.
+      required: [comment_id, resolved_by]
+      properties:
+        comment_id:
+          type: string
+          description: The comment ID that was resolved
+        resolved_by:
+          type: string
+          description: Account ID of the user who resolved the comment
+        note:
+          type: string
+          nullable: true
+          description: Optional resolution note
+
+    RefForkedPayload:
+      type: object
+      description: >
+        A participant forked a new session ref.
+        PROTOCOL.md canonical fields: ref, parent_sha, mode.
+      required: [ref, parent_sha, mode]
+      properties:
+        ref:
+          type: string
+          description: The new ref name (e.g. jam/<session>/<user>/<branch>)
+        parent_sha:
+          type: string
+          description: The commit SHA the new ref was parented at
+        mode:
+          type: string
+          description: The collaboration mode of the new ref (sync or isolated)
+
+    ModeChangedPayload:
+      type: object
+      description: >
+        A ref's collaboration mode was changed.
+        PROTOCOL.md canonical fields: ref, old_mode, new_mode.
+      required: [ref, old_mode, new_mode]
+      properties:
+        ref:
+          type: string
+          description: The ref whose mode changed
+        old_mode:
+          type: string
+          description: The previous mode
+        new_mode:
+          type: string
+          description: The new mode
+
+    TurnEndedPayload:
+      type: object
+      description: >
+        A participant's turn ended; they yielded control back to the human.
+        PROTOCOL.md canonical fields: user_id, ref, final_sha.
+      required: [user_id, ref, final_sha]
+      properties:
+        user_id:
+          type: string
+          description: Account ID of the participant whose turn ended
+        ref:
+          type: string
+          description: The ref the participant was working on
+        final_sha:
+          type: string
+          description: The final commit SHA on the ref at turn end
+
+    PresenceUpdatedPayload:
+      type: object
+      description: >
+        A participant's presence (active ref + tip SHA) was updated.
+        PROTOCOL.md canonical fields: user_id, ref, current_sha, last_active.
+      required: [user_id, ref, current_sha, last_active]
+      properties:
+        user_id:
+          type: string
+          description: Account ID of the participant
+        ref:
+          type: string
+          description: The ref the participant is currently on
+        current_sha:
+          type: string
+          description: The current tip SHA of the participant's ref
+        last_active:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp of last participant activity
+
+    SessionFinalizingPayload:
+      type: object
+      description: >
+        A session has entered the finalizing state.
+        PROTOCOL.md canonical fields: by_user_id.
+      required: [by_user_id]
+      properties:
+        by_user_id:
+          type: string
+          description: Account ID of the participant who initiated finalization
+
+    SessionEndedPayload:
+      type: object
+      description: >
+        A session has ended (finalized, abandoned, or timed out).
+        PROTOCOL.md canonical fields: reason.
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [finalize, abandon, timeout]
+          description: The reason the session ended
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token

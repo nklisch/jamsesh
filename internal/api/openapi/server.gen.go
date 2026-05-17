@@ -18,12 +18,311 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const (
 	BearerAuthScopes bearerAuthContextKey = "bearerAuth.Scopes"
 )
+
+// Defines values for CommentAddedPayloadAuthorKind.
+const (
+	Agent CommentAddedPayloadAuthorKind = "agent"
+	Human CommentAddedPayloadAuthorKind = "human"
+)
+
+// Valid indicates whether the value is a known member of the CommentAddedPayloadAuthorKind enum.
+func (e CommentAddedPayloadAuthorKind) Valid() bool {
+	switch e {
+	case Agent:
+		return true
+	case Human:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CommentAddedPayloadKind.
+const (
+	ActionRequest CommentAddedPayloadKind = "action-request"
+	Fyi           CommentAddedPayloadKind = "fyi"
+	Question      CommentAddedPayloadKind = "question"
+	Suggestion    CommentAddedPayloadKind = "suggestion"
+)
+
+// Valid indicates whether the value is a known member of the CommentAddedPayloadKind enum.
+func (e CommentAddedPayloadKind) Valid() bool {
+	switch e {
+	case ActionRequest:
+		return true
+	case Fyi:
+		return true
+	case Question:
+		return true
+	case Suggestion:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConflictDetectedPayloadStatus.
+const (
+	Abandoned ConflictDetectedPayloadStatus = "abandoned"
+	Open      ConflictDetectedPayloadStatus = "open"
+	Resolved  ConflictDetectedPayloadStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the ConflictDetectedPayloadStatus enum.
+func (e ConflictDetectedPayloadStatus) Valid() bool {
+	switch e {
+	case Abandoned:
+		return true
+	case Open:
+		return true
+	case Resolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventEnvelopeType.
+const (
+	CommentAdded      EventEnvelopeType = "comment.added"
+	CommentResolved   EventEnvelopeType = "comment.resolved"
+	CommitArrived     EventEnvelopeType = "commit.arrived"
+	ConflictDetected  EventEnvelopeType = "conflict.detected"
+	ConflictResolved  EventEnvelopeType = "conflict.resolved"
+	MergeSucceeded    EventEnvelopeType = "merge.succeeded"
+	ModeChanged       EventEnvelopeType = "mode.changed"
+	PresenceUpdated   EventEnvelopeType = "presence.updated"
+	RefForked         EventEnvelopeType = "ref.forked"
+	SessionEnded      EventEnvelopeType = "session.ended"
+	SessionFinalizing EventEnvelopeType = "session.finalizing"
+	TurnEnded         EventEnvelopeType = "turn.ended"
+)
+
+// Valid indicates whether the value is a known member of the EventEnvelopeType enum.
+func (e EventEnvelopeType) Valid() bool {
+	switch e {
+	case CommentAdded:
+		return true
+	case CommentResolved:
+		return true
+	case CommitArrived:
+		return true
+	case ConflictDetected:
+		return true
+	case ConflictResolved:
+		return true
+	case MergeSucceeded:
+		return true
+	case ModeChanged:
+		return true
+	case PresenceUpdated:
+		return true
+	case RefForked:
+		return true
+	case SessionEnded:
+		return true
+	case SessionFinalizing:
+		return true
+	case TurnEnded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventEnvelopeVersion.
+const (
+	N1 EventEnvelopeVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the EventEnvelopeVersion enum.
+func (e EventEnvelopeVersion) Valid() bool {
+	switch e {
+	case N1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SessionEndedPayloadReason.
+const (
+	Abandon  SessionEndedPayloadReason = "abandon"
+	Finalize SessionEndedPayloadReason = "finalize"
+	Timeout  SessionEndedPayloadReason = "timeout"
+)
+
+// Valid indicates whether the value is a known member of the SessionEndedPayloadReason enum.
+func (e SessionEndedPayloadReason) Valid() bool {
+	switch e {
+	case Abandon:
+		return true
+	case Finalize:
+		return true
+	case Timeout:
+		return true
+	default:
+		return false
+	}
+}
+
+// CommentAddedPayload A comment was posted in the session. Payload is the full comment per PROTOCOL.md comment schema. PROTOCOL.md canonical fields: id, session_id, author_id, author_kind, anchor, body, addressed_to, kind, created_at, resolved_at, resolved_by, resolution_note.
+type CommentAddedPayload struct {
+	// AddressedTo Addressing token (e.g. "@user", "@user/branch", "@all-agents")
+	AddressedTo string        `json:"addressed_to,omitempty"`
+	Anchor      CommentAnchor `json:"anchor"`
+
+	// AuthorId Account ID of the comment author
+	AuthorId string `json:"author_id"`
+
+	// AuthorKind Whether the author is a human or an agent
+	AuthorKind CommentAddedPayloadAuthorKind `json:"author_kind"`
+
+	// Body Comment body in markdown
+	Body string `json:"body"`
+
+	// CreatedAt ISO-8601 timestamp of creation
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id Comment ID (UUID)
+	Id string `json:"id"`
+
+	// Kind Comment kind
+	Kind CommentAddedPayloadKind `json:"kind"`
+
+	// ResolutionNote Optional resolution note
+	ResolutionNote string `json:"resolution_note,omitempty"`
+
+	// ResolvedAt ISO-8601 timestamp when resolved; null if open
+	ResolvedAt time.Time `json:"resolved_at,omitempty"`
+
+	// ResolvedBy Account ID of resolver; null if open
+	ResolvedBy string `json:"resolved_by,omitempty"`
+
+	// SessionId Session the comment belongs to
+	SessionId string `json:"session_id"`
+}
+
+// CommentAddedPayloadAuthorKind Whether the author is a human or an agent
+type CommentAddedPayloadAuthorKind string
+
+// CommentAddedPayloadKind Comment kind
+type CommentAddedPayloadKind string
+
+// CommentAnchor defines model for CommentAnchor.
+type CommentAnchor struct {
+	// CommitSha The commit being commented on
+	CommitSha string `json:"commit_sha"`
+
+	// FilePath File within the commit's tree; null for commit-level comments
+	FilePath string `json:"file_path,omitempty"`
+
+	// LineRange 1-indexed line range; null for file-level or commit-level comments
+	LineRange ConflictFileRange `json:"line_range,omitempty"`
+}
+
+// CommentResolvedPayload A comment was marked resolved. PROTOCOL.md canonical fields: comment_id, resolved_by, note.
+type CommentResolvedPayload struct {
+	// CommentId The comment ID that was resolved
+	CommentId string `json:"comment_id"`
+
+	// Note Optional resolution note
+	Note string `json:"note,omitempty"`
+
+	// ResolvedBy Account ID of the user who resolved the comment
+	ResolvedBy string `json:"resolved_by"`
+}
+
+// CommitArrivedPayload A commit was pushed to a session ref. PROTOCOL.md canonical fields: ref, sha, author_id, summary.
+type CommitArrivedPayload struct {
+	// AuthorId Account ID of the commit author
+	AuthorId string `json:"author_id"`
+
+	// Ref The session ref the commit landed on (e.g. jam/<session>/<user>/<branch>)
+	Ref string `json:"ref"`
+
+	// Sha The commit SHA that arrived
+	Sha string `json:"sha"`
+
+	// Summary One-line summary of the commit message
+	Summary string `json:"summary"`
+}
+
+// ConflictDetectedPayload Auto-merger detected a three-way merge conflict. Payload is the full conflict event per PROTOCOL.md conflict event schema. PROTOCOL.md canonical fields: id, session_id, source_commit_sha, source_ref, draft_tip_sha, ancestor_sha, conflicts, addressed_to, status, resolving_commit_sha, resolved_at, created_at.
+type ConflictDetectedPayload struct {
+	// AddressedTo Addressing tokens for impacted participants (e.g. "@user/branch")
+	AddressedTo []string `json:"addressed_to"`
+
+	// AncestorSha The common ancestor commit SHA
+	AncestorSha string `json:"ancestor_sha"`
+
+	// Conflicts Per-file conflict details
+	Conflicts []ConflictFile `json:"conflicts"`
+
+	// CreatedAt ISO-8601 timestamp when the conflict was detected
+	CreatedAt time.Time `json:"created_at"`
+
+	// DraftTipSha The draft tip at the time of the failed merge attempt
+	DraftTipSha string `json:"draft_tip_sha"`
+
+	// Id Conflict event ID (UUID)
+	Id string `json:"id"`
+
+	// ResolvedAt ISO-8601 timestamp when the conflict was resolved
+	ResolvedAt time.Time `json:"resolved_at,omitempty"`
+
+	// ResolvingCommitSha Set when a Resolves-Conflict trailer matches this event
+	ResolvingCommitSha string `json:"resolving_commit_sha,omitempty"`
+
+	// SessionId Session the conflict belongs to
+	SessionId string `json:"session_id"`
+
+	// SourceCommitSha The commit that could not be merged
+	SourceCommitSha string `json:"source_commit_sha"`
+
+	// SourceRef The ref the source commit came from
+	SourceRef string `json:"source_ref"`
+
+	// Status Current status of this conflict
+	Status ConflictDetectedPayloadStatus `json:"status"`
+}
+
+// ConflictDetectedPayloadStatus Current status of this conflict
+type ConflictDetectedPayloadStatus string
+
+// ConflictFile defines model for ConflictFile.
+type ConflictFile struct {
+	// File File path within the repository
+	File string `json:"file"`
+
+	// Ranges Line ranges in conflict within this file
+	Ranges []ConflictFileRange `json:"ranges"`
+}
+
+// ConflictFileRange defines model for ConflictFileRange.
+type ConflictFileRange struct {
+	// End End line (1-indexed) of the conflict range
+	End int `json:"end"`
+
+	// Start Start line (1-indexed) of the conflict range
+	Start int `json:"start"`
+}
+
+// ConflictResolvedPayload A conflict has been resolved via a commit with a matching Resolves-Conflict trailer. PROTOCOL.md canonical fields: event_id, resolving_commit_sha.
+type ConflictResolvedPayload struct {
+	// EventId The conflict event ID that was resolved
+	EventId string `json:"event_id"`
+
+	// ResolvingCommitSha The commit SHA that resolved the conflict
+	ResolvingCommitSha string `json:"resolving_commit_sha"`
+}
 
 // ErrorEnvelope defines model for ErrorEnvelope.
 type ErrorEnvelope struct {
@@ -38,6 +337,37 @@ type ErrorEnvelope struct {
 	Message string `json:"message"`
 }
 
+// EventEnvelope defines model for EventEnvelope.
+type EventEnvelope struct {
+	Payload EventEnvelope_Payload `json:"payload"`
+
+	// Seq Monotonic per-session sequence number
+	Seq int64 `json:"seq"`
+
+	// SessionId Session this event belongs to
+	SessionId string `json:"session_id"`
+
+	// Timestamp ISO-8601 timestamp of event emission
+	Timestamp time.Time `json:"timestamp"`
+
+	// Type Event type; used as discriminator for payload
+	Type EventEnvelopeType `json:"type"`
+
+	// Version Envelope version; always 1
+	Version EventEnvelopeVersion `json:"version"`
+}
+
+// EventEnvelope_Payload defines model for EventEnvelope.Payload.
+type EventEnvelope_Payload struct {
+	union json.RawMessage
+}
+
+// EventEnvelopeType Event type; used as discriminator for payload
+type EventEnvelopeType string
+
+// EventEnvelopeVersion Envelope version; always 1
+type EventEnvelopeVersion int
+
 // MagicLinkExchangeBody defines model for MagicLinkExchangeBody.
 type MagicLinkExchangeBody struct {
 	// Token Raw magic-link token from the URL query parameter
@@ -47,6 +377,30 @@ type MagicLinkExchangeBody struct {
 // MagicLinkRequestBody defines model for MagicLinkRequestBody.
 type MagicLinkRequestBody struct {
 	Email openapi_types.Email `json:"email"`
+}
+
+// MergeSucceededPayload Auto-merger successfully merged a source commit into the draft tip. PROTOCOL.md canonical fields: source_sha, draft_sha, merge_commit_sha.
+type MergeSucceededPayload struct {
+	// DraftSha The draft tip SHA after the merge
+	DraftSha string `json:"draft_sha"`
+
+	// MergeCommitSha The merge commit SHA created by the auto-merger
+	MergeCommitSha string `json:"merge_commit_sha"`
+
+	// SourceSha The source commit SHA that was merged
+	SourceSha string `json:"source_sha"`
+}
+
+// ModeChangedPayload A ref's collaboration mode was changed. PROTOCOL.md canonical fields: ref, old_mode, new_mode.
+type ModeChangedPayload struct {
+	// NewMode The new mode
+	NewMode string `json:"new_mode"`
+
+	// OldMode The previous mode
+	OldMode string `json:"old_mode"`
+
+	// Ref The ref whose mode changed
+	Ref string `json:"ref"`
 }
 
 // OAuthCallbackBody defines model for OAuthCallbackBody.
@@ -73,12 +427,66 @@ type OAuthStartResponse struct {
 	AuthorizeUrl string `json:"authorize_url"`
 }
 
+// PresenceUpdatedPayload A participant's presence (active ref + tip SHA) was updated. PROTOCOL.md canonical fields: user_id, ref, current_sha, last_active.
+type PresenceUpdatedPayload struct {
+	// CurrentSha The current tip SHA of the participant's ref
+	CurrentSha string `json:"current_sha"`
+
+	// LastActive ISO-8601 timestamp of last participant activity
+	LastActive time.Time `json:"last_active"`
+
+	// Ref The ref the participant is currently on
+	Ref string `json:"ref"`
+
+	// UserId Account ID of the participant
+	UserId string `json:"user_id"`
+}
+
+// RefForkedPayload A participant forked a new session ref. PROTOCOL.md canonical fields: ref, parent_sha, mode.
+type RefForkedPayload struct {
+	// Mode The collaboration mode of the new ref (sync or isolated)
+	Mode string `json:"mode"`
+
+	// ParentSha The commit SHA the new ref was parented at
+	ParentSha string `json:"parent_sha"`
+
+	// Ref The new ref name (e.g. jam/<session>/<user>/<branch>)
+	Ref string `json:"ref"`
+}
+
+// SessionEndedPayload A session has ended (finalized, abandoned, or timed out). PROTOCOL.md canonical fields: reason.
+type SessionEndedPayload struct {
+	// Reason The reason the session ended
+	Reason SessionEndedPayloadReason `json:"reason"`
+}
+
+// SessionEndedPayloadReason The reason the session ended
+type SessionEndedPayloadReason string
+
+// SessionFinalizingPayload A session has entered the finalizing state. PROTOCOL.md canonical fields: by_user_id.
+type SessionFinalizingPayload struct {
+	// ByUserId Account ID of the participant who initiated finalization
+	ByUserId string `json:"by_user_id"`
+}
+
 // TokenPair defines model for TokenPair.
 type TokenPair struct {
 	AccessExpiresAt  time.Time `json:"access_expires_at"`
 	AccessToken      string    `json:"access_token"`
 	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
 	RefreshToken     string    `json:"refresh_token"`
+}
+
+// TurnEndedPayload A participant's turn ended; they yielded control back to the human. PROTOCOL.md canonical fields: user_id, ref, final_sha.
+type TurnEndedPayload struct {
+	// FinalSha The final commit SHA on the ref at turn end
+	FinalSha string `json:"final_sha"`
+
+	// Ref The ref the participant was working on
+	Ref string `json:"ref"`
+
+	// UserId Account ID of the participant whose turn ended
+	UserId string `json:"user_id"`
 }
 
 // Forbidden defines model for Forbidden.
@@ -121,6 +529,328 @@ type RefreshTokenJSONRequestBody RefreshTokenJSONBody
 
 // RevokeTokenJSONRequestBody defines body for RevokeToken for application/json ContentType.
 type RevokeTokenJSONRequestBody RevokeTokenJSONBody
+
+// AsCommitArrivedPayload returns the union data inside the EventEnvelope_Payload as a CommitArrivedPayload
+func (t EventEnvelope_Payload) AsCommitArrivedPayload() (CommitArrivedPayload, error) {
+	var body CommitArrivedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCommitArrivedPayload overwrites any union data inside the EventEnvelope_Payload as the provided CommitArrivedPayload
+func (t *EventEnvelope_Payload) FromCommitArrivedPayload(v CommitArrivedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCommitArrivedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided CommitArrivedPayload
+func (t *EventEnvelope_Payload) MergeCommitArrivedPayload(v CommitArrivedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMergeSucceededPayload returns the union data inside the EventEnvelope_Payload as a MergeSucceededPayload
+func (t EventEnvelope_Payload) AsMergeSucceededPayload() (MergeSucceededPayload, error) {
+	var body MergeSucceededPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMergeSucceededPayload overwrites any union data inside the EventEnvelope_Payload as the provided MergeSucceededPayload
+func (t *EventEnvelope_Payload) FromMergeSucceededPayload(v MergeSucceededPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMergeSucceededPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided MergeSucceededPayload
+func (t *EventEnvelope_Payload) MergeMergeSucceededPayload(v MergeSucceededPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsConflictDetectedPayload returns the union data inside the EventEnvelope_Payload as a ConflictDetectedPayload
+func (t EventEnvelope_Payload) AsConflictDetectedPayload() (ConflictDetectedPayload, error) {
+	var body ConflictDetectedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromConflictDetectedPayload overwrites any union data inside the EventEnvelope_Payload as the provided ConflictDetectedPayload
+func (t *EventEnvelope_Payload) FromConflictDetectedPayload(v ConflictDetectedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeConflictDetectedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided ConflictDetectedPayload
+func (t *EventEnvelope_Payload) MergeConflictDetectedPayload(v ConflictDetectedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsConflictResolvedPayload returns the union data inside the EventEnvelope_Payload as a ConflictResolvedPayload
+func (t EventEnvelope_Payload) AsConflictResolvedPayload() (ConflictResolvedPayload, error) {
+	var body ConflictResolvedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromConflictResolvedPayload overwrites any union data inside the EventEnvelope_Payload as the provided ConflictResolvedPayload
+func (t *EventEnvelope_Payload) FromConflictResolvedPayload(v ConflictResolvedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeConflictResolvedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided ConflictResolvedPayload
+func (t *EventEnvelope_Payload) MergeConflictResolvedPayload(v ConflictResolvedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCommentAddedPayload returns the union data inside the EventEnvelope_Payload as a CommentAddedPayload
+func (t EventEnvelope_Payload) AsCommentAddedPayload() (CommentAddedPayload, error) {
+	var body CommentAddedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCommentAddedPayload overwrites any union data inside the EventEnvelope_Payload as the provided CommentAddedPayload
+func (t *EventEnvelope_Payload) FromCommentAddedPayload(v CommentAddedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCommentAddedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided CommentAddedPayload
+func (t *EventEnvelope_Payload) MergeCommentAddedPayload(v CommentAddedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCommentResolvedPayload returns the union data inside the EventEnvelope_Payload as a CommentResolvedPayload
+func (t EventEnvelope_Payload) AsCommentResolvedPayload() (CommentResolvedPayload, error) {
+	var body CommentResolvedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCommentResolvedPayload overwrites any union data inside the EventEnvelope_Payload as the provided CommentResolvedPayload
+func (t *EventEnvelope_Payload) FromCommentResolvedPayload(v CommentResolvedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCommentResolvedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided CommentResolvedPayload
+func (t *EventEnvelope_Payload) MergeCommentResolvedPayload(v CommentResolvedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsRefForkedPayload returns the union data inside the EventEnvelope_Payload as a RefForkedPayload
+func (t EventEnvelope_Payload) AsRefForkedPayload() (RefForkedPayload, error) {
+	var body RefForkedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRefForkedPayload overwrites any union data inside the EventEnvelope_Payload as the provided RefForkedPayload
+func (t *EventEnvelope_Payload) FromRefForkedPayload(v RefForkedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRefForkedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided RefForkedPayload
+func (t *EventEnvelope_Payload) MergeRefForkedPayload(v RefForkedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsModeChangedPayload returns the union data inside the EventEnvelope_Payload as a ModeChangedPayload
+func (t EventEnvelope_Payload) AsModeChangedPayload() (ModeChangedPayload, error) {
+	var body ModeChangedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromModeChangedPayload overwrites any union data inside the EventEnvelope_Payload as the provided ModeChangedPayload
+func (t *EventEnvelope_Payload) FromModeChangedPayload(v ModeChangedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeModeChangedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided ModeChangedPayload
+func (t *EventEnvelope_Payload) MergeModeChangedPayload(v ModeChangedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTurnEndedPayload returns the union data inside the EventEnvelope_Payload as a TurnEndedPayload
+func (t EventEnvelope_Payload) AsTurnEndedPayload() (TurnEndedPayload, error) {
+	var body TurnEndedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTurnEndedPayload overwrites any union data inside the EventEnvelope_Payload as the provided TurnEndedPayload
+func (t *EventEnvelope_Payload) FromTurnEndedPayload(v TurnEndedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTurnEndedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided TurnEndedPayload
+func (t *EventEnvelope_Payload) MergeTurnEndedPayload(v TurnEndedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPresenceUpdatedPayload returns the union data inside the EventEnvelope_Payload as a PresenceUpdatedPayload
+func (t EventEnvelope_Payload) AsPresenceUpdatedPayload() (PresenceUpdatedPayload, error) {
+	var body PresenceUpdatedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPresenceUpdatedPayload overwrites any union data inside the EventEnvelope_Payload as the provided PresenceUpdatedPayload
+func (t *EventEnvelope_Payload) FromPresenceUpdatedPayload(v PresenceUpdatedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePresenceUpdatedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided PresenceUpdatedPayload
+func (t *EventEnvelope_Payload) MergePresenceUpdatedPayload(v PresenceUpdatedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSessionFinalizingPayload returns the union data inside the EventEnvelope_Payload as a SessionFinalizingPayload
+func (t EventEnvelope_Payload) AsSessionFinalizingPayload() (SessionFinalizingPayload, error) {
+	var body SessionFinalizingPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSessionFinalizingPayload overwrites any union data inside the EventEnvelope_Payload as the provided SessionFinalizingPayload
+func (t *EventEnvelope_Payload) FromSessionFinalizingPayload(v SessionFinalizingPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSessionFinalizingPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided SessionFinalizingPayload
+func (t *EventEnvelope_Payload) MergeSessionFinalizingPayload(v SessionFinalizingPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSessionEndedPayload returns the union data inside the EventEnvelope_Payload as a SessionEndedPayload
+func (t EventEnvelope_Payload) AsSessionEndedPayload() (SessionEndedPayload, error) {
+	var body SessionEndedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSessionEndedPayload overwrites any union data inside the EventEnvelope_Payload as the provided SessionEndedPayload
+func (t *EventEnvelope_Payload) FromSessionEndedPayload(v SessionEndedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSessionEndedPayload performs a merge with any union data inside the EventEnvelope_Payload, using the provided SessionEndedPayload
+func (t *EventEnvelope_Payload) MergeSessionEndedPayload(v SessionEndedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t EventEnvelope_Payload) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *EventEnvelope_Payload) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -898,37 +1628,75 @@ func (sh *strictHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"//L69fHOp5Lz5h7lDtHx873KyK4X/wkAAP//",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-events-log-openapi-event-payloads
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-api-events-log
 depends_on: []
@@ -95,3 +95,105 @@ EventEnvelope:
   (which currently uses a fallback string-keyed envelope). Once
   this story lands, the TS client's discriminator narrowing
   activates automatically with no code changes there.
+
+## Implementation notes
+
+### Field-name deviations from story task description vs PROTOCOL.md
+
+PROTOCOL.md is canonical per the task. The following deviations exist
+between the task description's suggested field names and the PROTOCOL.md
+canonical names (PROTOCOL.md names were used in all schemas):
+
+| Event type        | Task description field | PROTOCOL.md canonical field |
+|-------------------|------------------------|------------------------------|
+| commit.arrived    | commit_sha             | sha                          |
+| commit.arrived    | author_display         | (omitted, not in PROTOCOL)   |
+| commit.arrived    | message                | summary                      |
+| commit.arrived    | trailers               | (omitted, not in PROTOCOL)   |
+| commit.arrived    | created_at             | (omitted, not in PROTOCOL)   |
+| merge.succeeded   | merge_commit_sha       | merge_commit_sha (same)      |
+| merge.succeeded   | source_commit          | source_sha                   |
+| merge.succeeded   | draft_tip_before       | (omitted, not in PROTOCOL)   |
+| merge.succeeded   | draft_tip_after        | draft_sha                    |
+| merge.succeeded   | heuristic              | (omitted, not in PROTOCOL)   |
+| conflict.detected | (event_id at top)      | id                           |
+| conflict.detected | files                  | conflicts                    |
+| comment.added     | comment_id             | id                           |
+| comment.added     | kind                   | kind (same)                  |
+| comment.added     | addressing             | addressed_to                 |
+| comment.added     | anchor.file            | anchor.file_path             |
+| comment.added     | anchor.range           | anchor.line_range            |
+| comment.added     | body_excerpt           | body (full body in PROTOCOL) |
+| ref.forked        | parent_commit          | parent_sha                   |
+| ref.forked        | owner_id               | (omitted; ref ownership is   |
+|                   |                        |  implicit in ref path)       |
+| mode.changed      | from_mode              | old_mode                     |
+| mode.changed      | to_mode                | new_mode                     |
+| mode.changed      | changed_by             | (omitted, not in PROTOCOL)   |
+| turn.ended        | turn_id                | (omitted, not in PROTOCOL)   |
+| turn.ended        | author_id              | user_id                      |
+| turn.ended        | commit_count           | (omitted, not in PROTOCOL)   |
+| turn.ended        | ended_at               | (omitted, not in PROTOCOL)   |
+| presence.updated  | account_id             | user_id                      |
+| presence.updated  | last_active_at         | last_active                  |
+| session.finalizing| initiator_id           | by_user_id                   |
+| session.finalizing| started_at             | (omitted, not in PROTOCOL)   |
+| session.ended     | end_reason             | reason                       |
+| session.ended     | final_branch           | (omitted, not in PROTOCOL)   |
+| session.ended     | ended_at               | (omitted, not in PROTOCOL)   |
+
+Fields present in the task description but absent from PROTOCOL.md
+were not added — PROTOCOL.md is the source of truth, and producers
+should extend PROTOCOL.md before adding fields.
+
+### Generated Go shape (oapi-codegen v2.7.0)
+
+`EventEnvelope_Payload` is a struct wrapping `json.RawMessage` (not
+an interface). The generated API for consumers is:
+
+```go
+// Read a payload:
+switch env.Type {
+case openapi.CommitArrived:
+    p, err := env.Payload.AsCommitArrivedPayload()
+case openapi.MergeSucceeded:
+    p, err := env.Payload.AsMergeSucceededPayload()
+// ... etc for all 12 types
+}
+
+// Write a payload (at emit time):
+var payload openapi.EventEnvelope_Payload
+if err := payload.FromCommitArrivedPayload(p); err != nil { ... }
+```
+
+The `MergeXxxPayload` variants perform JSON merge of the union; use
+`FromXxxPayload` to set or overwrite.
+
+### Generated TypeScript shape (openapi-typescript 7.13.0)
+
+`components["schemas"]["EventEnvelope"]["payload"]` is typed as a
+union of all 12 payload schemas. The TypeScript consumer discriminates
+via the sibling `type` field on the envelope object:
+
+```typescript
+if (env.type === "commit.arrived") {
+    const p = env.payload; // typed as CommitArrivedPayload
+}
+```
+
+Standard TypeScript discriminated-union narrowing works via the `type`
+string literal union on `EventEnvelope`.
+
+### New indirect dependency
+
+`github.com/apapsch/go-jsonmerge/v2 v2.0.0` added to go.mod — pulled
+in by `github.com/oapi-codegen/runtime` v1.4.0 for the MergeXxx methods
+in the generated union type.
+
+### Build status
+
+`go build ./...` fails on pre-existing errors in the sibling story
+(`schema-queries-emit`) for `AllocateNextSeq` missing from store
+adapters — unrelated to this story's openapi-only changes. The openapi
+package itself compiles cleanly. Full build will pass once both stories
+in this wave are merged.
