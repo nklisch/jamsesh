@@ -1,14 +1,14 @@
 ---
 id: epic-auto-merger-worker
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal]
 parent: epic-auto-merger
 depends_on: [epic-auto-merger-merge-engine, epic-auto-merger-outcomes, epic-portal-api-events-log, epic-portal-git-storage]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Auto-Merger — Worker Runtime
@@ -103,5 +103,93 @@ itself — that lives in `epic-portal-api-events-log`.
   drop a commit from replay's view. Cross-epic invariant — flag in
   post-receive's design pass.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+## Design decisions
+
+- **In-process pub/sub addition**: extend `internal/portal/events/` with a `Subscriber` channel API. `Log.Subscribe(ch chan<- Event) (unsubscribe func())` and an internal subscriber list that `Emit`/`EmitBatch` fan out to. This is the minimal cross-feature surface needed to make worker reactive. Add as an additive change in THIS story (worker owns the design + impact).
+- **Per-session goroutine**: `manager` struct keeps `map[sessionID]chan Event`. On first event for a session: spawn worker + queue. Idle timeout (default 30s): worker exits cleanly. Bounded queue (default 256): overflow emits `auto-merger.backpressure` event.
+- **Mode filtering**: worker reads `ref_modes` table at enqueue time. Falls back to `session.default_mode`. Skips isolated refs.
+- **Merge orchestration**: for each commit.arrived:
+  1. Parse `ref` and `sha` from event payload
+  2. If ref mode != "sync": skip
+  3. Open repo via storage; resolve sourceCommit, draftTipCommit (the current `jam/<sess>/draft` ref tip)
+  4. Compute merge base via go-git `object.MergeBase`
+  5. Call `automerger.Merge(ctx, repo, source, draft, ancestor)`
+  6. Call `automerger.Applier.Apply(ctx, ApplyInput{...})` with the result
+  7. Log + carry on
+- **Replay on startup**: on Start(ctx): for every active session, list `commit.arrived` events with `seq > <last-seen-seq>`. The "last-seen" baseline is computed by scanning the draft ref's history: any commit reachable from draft tip is already-processed. For unprocessed source commits, enqueue. Idempotency via the ancestor check.
+- **Single story**: `auto-merger-worker-manager-and-subscriber`.
+
+## Implementation Units
+
+### Unit 1: events.Log Subscribe extension
+
+**File**: `internal/portal/events/log.go` (edit)
+
+Add:
+```go
+type Subscriber chan Event
+
+// Subscribe returns an unsubscribe func. Buffer 64 events on the
+// channel; if the consumer falls behind, events are dropped silently
+// (the worker scans on startup, so transient drops are tolerable).
+func (l *Log) Subscribe(typeFilter string) (Subscriber, func())
+```
+
+Internally, `Log` keeps `[]subscriber{ch, filter}`. `Emit`/`EmitBatch` non-blocking-send to each matching subscriber.
+
+### Unit 2: Worker manager
+
+**File**: `internal/portal/automerger/worker.go`
+**Story**: `epic-auto-merger-worker-manager-and-subscriber`
+
+```go
+package automerger
+
+type Worker struct {
+    Store        store.Store
+    Storage      storage.Service
+    Log          *events.Log
+    Applier      *Applier
+    PortalHost   string
+    IdleTimeout  time.Duration // default 30s
+    QueueSize    int           // default 256
+}
+
+func (w *Worker) Start(ctx context.Context) error {
+    // 1. Subscribe to commit.arrived events
+    // 2. Replay scan (across all active sessions)
+    // 3. Spawn dispatch goroutine that fans events to per-session queues
+    // 4. Return; dispatch + per-session goroutines run until ctx cancelled
+}
+
+func (w *Worker) Stop(ctx context.Context) error {
+    // Wait for all queues to drain or ctx timeout
+}
+```
+
+### Unit 3: Per-session worker loop
+
+Internal helper. On receiving an event from the queue:
+1. Decode payload to extract ref + sha
+2. Check mode (ref_modes -> session.default_mode); skip if isolated
+3. Open repo
+4. Run merge + apply
+5. Log errors but keep draining queue
+
+## Implementation Order
+
+Single story.
+
+## Testing
+
+- Subscribe round-trip: emit → subscriber receives
+- Worker happy path: emit commit.arrived → merge succeeds → draft advanced + merge.succeeded emitted
+- Isolated ref: emit → worker skips (verified no draft change)
+- Replay: pre-populate events table with unprocessed commit; Start; verify worker processes it
+- Backpressure: fill queue beyond capacity; verify auto-merger.backpressure event emitted
+- Stop: pending events in queue drain before Stop returns
+
+## Risks
+
+- **Channel-drop subscriber semantics**: dropping events is fine because the replay scan on next startup catches them, BUT in a long-running session a missed event could lag indefinitely. Mitigation: log every drop at Warn level; consider a periodic resync pass in v0.x.
+- **Per-session goroutine churn**: many short-lived sessions could spawn/exit frequently. The 30s idle timeout amortizes; if profiling shows issues, switch to a fixed worker pool.
