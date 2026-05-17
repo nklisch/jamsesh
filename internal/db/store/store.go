@@ -30,6 +30,7 @@ type Store interface {
 	OAuthTokenStore
 	MagicLinkTokenStore
 	ArchivedSessionStore
+	OAuthStateStore
 
 	// Close releases pool resources.
 	Close() error
@@ -126,6 +127,15 @@ type OAuthToken struct {
 	ExpiresAt  time.Time
 	LastUsedAt *time.Time
 	RevokedAt  *time.Time
+}
+
+// OAuthState is a server-side nonce row used to validate OAuth callbacks.
+type OAuthState struct {
+	Nonce       string
+	Provider    string
+	RedirectURI string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 // MagicLinkToken is a single-use sign-in token.
@@ -288,6 +298,14 @@ type ConsumeMagicLinkTokenParams struct {
 	UsedAt *time.Time
 }
 
+type InsertOAuthStateParams struct {
+	Nonce       string
+	Provider    string
+	RedirectURI string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+}
+
 type InsertArchivedSessionParams struct {
 	SessionID        string
 	OrgID            string
@@ -387,4 +405,17 @@ type MagicLinkTokenStore interface {
 	// ConsumeMagicLinkToken marks the token used (single-use enforcement at
 	// the SQL level: UPDATE WHERE used_at IS NULL).
 	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error
+}
+
+// OAuthStateStore covers the transient OAuth state-nonce table.
+type OAuthStateStore interface {
+	// InsertOAuthState stores a new state nonce with a TTL.
+	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
+	// ConsumeOAuthState atomically deletes and returns the nonce row.
+	// Returns ErrNotFound when the nonce does not exist (already consumed or
+	// never inserted).
+	ConsumeOAuthState(ctx context.Context, nonce string) (OAuthState, error)
+	// CleanupExpiredOAuthState deletes nonces whose expires_at is before the
+	// given time. Intended for operator-cron cleanup.
+	CleanupExpiredOAuthState(ctx context.Context, before time.Time) error
 }

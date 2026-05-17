@@ -39,6 +39,14 @@ type MagicLinkToken struct {
 	UsedAt    *time.Time `json:"used_at"`
 }
 
+type OauthState struct {
+	Nonce       string    `json:"nonce"`
+	Provider    string    `json:"provider"`
+	RedirectUri string    `json:"redirect_uri"`
+	CreatedAt   time.Time `json:"created_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
 type OauthToken struct {
 	ID         string     `json:"id"`
 	AccountID  string     `json:"account_id"`

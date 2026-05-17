@@ -5,7 +5,8 @@
 //
 //	tls.key_path, log.format, log.level, storage,
 //	email.provider, email.from, email.smtp.*, email.sendgrid.*,
-//	email.postmark.*, email.resend.*
+//	email.postmark.*, email.resend.*,
+//	oauth.github.client_id, oauth.github.client_secret
 //
 // Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
@@ -19,7 +20,9 @@
 //	JAMSESH_EMAIL_SENDGRID_API_KEY,
 //	JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN,
 //	JAMSESH_EMAIL_POSTMARK_MESSAGE_STREAM,
-//	JAMSESH_EMAIL_RESEND_API_KEY
+//	JAMSESH_EMAIL_RESEND_API_KEY,
+//	JAMSESH_OAUTH_GITHUB_CLIENT_ID,
+//	JAMSESH_OAUTH_GITHUB_CLIENT_SECRET
 //
 // log.level is an integer matching slog.Level values:
 //
@@ -47,6 +50,20 @@ type Config struct {
 	Log       LogConfig   `yaml:"log"`
 	Storage   string      `yaml:"storage"` // path for bare git repos
 	Email     EmailConfig `yaml:"email"`
+	OAuth     OAuthConfig `yaml:"oauth"`
+}
+
+// OAuthConfig holds OAuth provider credentials. Only providers with non-empty
+// ClientID and ClientSecret are considered configured. The start endpoint
+// returns 503 for providers without credentials.
+type OAuthConfig struct {
+	GitHub GitHubOAuthConfig `yaml:"github"`
+}
+
+// GitHubOAuthConfig holds GitHub OAuth application credentials.
+type GitHubOAuthConfig struct {
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
 }
 
 // EmailConfig selects the email delivery provider and holds all provider
@@ -239,6 +256,17 @@ func applyEnv(c *Config) {
 		c.PortalURL = v
 	}
 	applyEmailEnv(&c.Email)
+	applyOAuthEnv(&c.OAuth)
+}
+
+// applyOAuthEnv overlays OAuth-related environment variables.
+func applyOAuthEnv(o *OAuthConfig) {
+	if v := os.Getenv("JAMSESH_OAUTH_GITHUB_CLIENT_ID"); v != "" {
+		o.GitHub.ClientID = v
+	}
+	if v := os.Getenv("JAMSESH_OAUTH_GITHUB_CLIENT_SECRET"); v != "" {
+		o.GitHub.ClientSecret = v
+	}
 }
 
 // applyEmailEnv overlays email-related environment variables.

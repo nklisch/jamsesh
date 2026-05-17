@@ -29,6 +29,7 @@ import (
 	"jamsesh/internal/portal/auth"
 	"jamsesh/internal/portal/config"
 	"jamsesh/internal/portal/logging"
+	portaloauth "jamsesh/internal/portal/oauth"
 	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/server"
@@ -41,6 +42,7 @@ import (
 type combinedHandler struct {
 	*tokens.Handler
 	*auth.MagicLinkHandler
+	*auth.OAuthHandler
 }
 
 // compile-time assertion that combinedHandler satisfies the full interface.
@@ -97,10 +99,27 @@ func main() {
 	// Build the magic-link handler.
 	magicLinkHandler := auth.NewMagicLinkHandler(dbStore, tokenSvc, emailSender, cfg.PortalURL)
 
+	// Build the OAuth provider map. GitHub is configured when both ClientID
+	// and ClientSecret are non-empty; otherwise the entry is nil and the
+	// start endpoint returns 503 when invoked for that provider.
+	providers := map[string]portaloauth.Provider{
+		"github": nil, // registered but unconfigured by default
+	}
+	if cfg.OAuth.GitHub.ClientID != "" && cfg.OAuth.GitHub.ClientSecret != "" {
+		providers["github"] = portaloauth.NewGitHub(portaloauth.GitHubOptions{
+			ClientID:     cfg.OAuth.GitHub.ClientID,
+			ClientSecret: cfg.OAuth.GitHub.ClientSecret,
+		})
+	}
+
+	// Build the OAuth handler.
+	oauthHandler := auth.NewOAuthHandler(providers, dbStore, tokenSvc, cfg.PortalURL)
+
 	// Compose the combined handler that satisfies the full StrictServerInterface.
 	strictAPI := openapi.NewStrictHandler(&combinedHandler{
 		Handler:          tokenHandler,
 		MagicLinkHandler: magicLinkHandler,
+		OAuthHandler:     oauthHandler,
 	}, nil)
 
 	// Wire the embedded SPA handler. assets.Handler() returns a handler that
@@ -127,6 +146,8 @@ func main() {
 				r.Post("/auth/refresh", strictAPI.RefreshToken)
 				r.Post("/auth/magic-link/request", strictAPI.RequestMagicLink)
 				r.Post("/auth/magic-link/exchange", strictAPI.ExchangeMagicLink)
+				r.Post("/auth/oauth/start", strictAPI.StartOAuth)
+				r.Post("/auth/oauth/callback", strictAPI.OauthCallback)
 			})
 
 			// Authenticated endpoints — Bearer middleware required.

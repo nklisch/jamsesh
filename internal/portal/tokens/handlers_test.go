@@ -38,6 +38,14 @@ func (t *tokensOnlyHandler) RequestMagicLink(ctx context.Context, _ openapi.Requ
 	panic("RequestMagicLink: not implemented in token handler tests")
 }
 
+func (t *tokensOnlyHandler) StartOAuth(_ context.Context, _ openapi.StartOAuthRequestObject) (openapi.StartOAuthResponseObject, error) {
+	panic("StartOAuth: not implemented in token handler tests")
+}
+
+func (t *tokensOnlyHandler) OauthCallback(_ context.Context, _ openapi.OauthCallbackRequestObject) (openapi.OauthCallbackResponseObject, error) {
+	panic("OauthCallback: not implemented in token handler tests")
+}
+
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 
 // newTestEnv creates a fresh in-memory SQLite store, builds the tokens.Service

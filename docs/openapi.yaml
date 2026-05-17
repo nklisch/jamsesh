@@ -83,6 +83,38 @@ components:
           format: email
           example: user@example.com
 
+    OAuthStartBody:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          type: string
+          description: OAuth provider name, e.g. "github"
+          example: github
+
+    OAuthStartResponse:
+      type: object
+      required: [authorize_url]
+      properties:
+        authorize_url:
+          type: string
+          description: Provider authorization URL the browser should be redirected to
+
+    OAuthCallbackBody:
+      type: object
+      required: [provider, code, state]
+      properties:
+        provider:
+          type: string
+          description: OAuth provider name, e.g. "github"
+          example: github
+        code:
+          type: string
+          description: Authorization code from the provider
+        state:
+          type: string
+          description: State nonce echoed back from the provider
+
     MagicLinkExchangeBody:
       type: object
       required: [token]
@@ -161,6 +193,64 @@ paths:
       responses:
         '204':
           description: Revocation complete
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/oauth/start:
+    post:
+      summary: Begin OAuth authorization flow — returns the provider authorize URL
+      operationId: startOAuth
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthStartBody'
+      responses:
+        '200':
+          description: Authorization URL ready for browser redirect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthStartResponse'
+        '400':
+          description: Unknown or unconfigured provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Provider not configured on this server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/auth/oauth/callback:
+    post:
+      summary: Exchange OAuth authorization code for a portal token pair
+      operationId: oauthCallback
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthCallbackBody'
+      responses:
+        '200':
+          description: Token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '400':
+          description: Invalid or expired state nonce, or provider mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           $ref: '#/components/responses/Unauthorized'
 

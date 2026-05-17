@@ -99,6 +99,14 @@ func (m *magicLinkOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTok
 	panic("RevokeToken: not wired in this test")
 }
 
+func (m *magicLinkOnlyStrict) StartOAuth(_ context.Context, _ openapi.StartOAuthRequestObject) (openapi.StartOAuthResponseObject, error) {
+	panic("StartOAuth: not wired in this test")
+}
+
+func (m *magicLinkOnlyStrict) OauthCallback(_ context.Context, _ openapi.OauthCallbackRequestObject) (openapi.OauthCallbackResponseObject, error) {
+	panic("OauthCallback: not wired in this test")
+}
+
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 
 // ---------------------------------------------------------------------------

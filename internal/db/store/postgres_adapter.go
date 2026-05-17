@@ -602,3 +602,35 @@ func (a *postgresAdapter) GetArchivedSession(ctx context.Context, p GetArchivedS
 	}
 	return pgArchivedSession(row), nil
 }
+
+// ---------------------------------------------------------------------------
+// OAuthStateStore
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) InsertOAuthState(ctx context.Context, p InsertOAuthStateParams) error {
+	return mapPostgresErr(a.q.InsertOAuthState(ctx, pgstore.InsertOAuthStateParams{
+		Nonce:       p.Nonce,
+		Provider:    p.Provider,
+		RedirectUri: p.RedirectURI,
+		CreatedAt:   p.CreatedAt,
+		ExpiresAt:   p.ExpiresAt,
+	}))
+}
+
+func (a *postgresAdapter) ConsumeOAuthState(ctx context.Context, nonce string) (OAuthState, error) {
+	row, err := a.q.ConsumeOAuthState(ctx, nonce)
+	if err != nil {
+		return OAuthState{}, mapPostgresErr(err)
+	}
+	return OAuthState{
+		Nonce:       row.Nonce,
+		Provider:    row.Provider,
+		RedirectURI: row.RedirectUri,
+		CreatedAt:   row.CreatedAt,
+		ExpiresAt:   row.ExpiresAt,
+	}, nil
+}
+
+func (a *postgresAdapter) CleanupExpiredOAuthState(ctx context.Context, before time.Time) error {
+	return mapPostgresErr(a.q.CleanupExpiredOAuthState(ctx, before))
+}

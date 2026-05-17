@@ -80,3 +80,12 @@ CREATE TABLE archived_sessions (
     final_branch_name TEXT
 );
 CREATE INDEX archived_sessions_org_idx ON archived_sessions(org_id);
+
+CREATE TABLE oauth_state (
+    nonce TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    redirect_uri TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    expires_at DATETIME NOT NULL
+);
+CREATE INDEX oauth_state_expires_idx ON oauth_state(expires_at);

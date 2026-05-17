@@ -38,6 +38,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/oauth/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Begin OAuth authorization flow — returns the provider authorize URL */
+        post: operations["startOAuth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange OAuth authorization code for a portal token pair */
+        post: operations["oauthCallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/magic-link/request": {
         parameters: {
             query?: never;
@@ -109,6 +143,28 @@ export interface components {
              * @example user@example.com
              */
             email: string;
+        };
+        OAuthStartBody: {
+            /**
+             * @description OAuth provider name, e.g. "github"
+             * @example github
+             */
+            provider: string;
+        };
+        OAuthStartResponse: {
+            /** @description Provider authorization URL the browser should be redirected to */
+            authorize_url: string;
+        };
+        OAuthCallbackBody: {
+            /**
+             * @description OAuth provider name, e.g. "github"
+             * @example github
+             */
+            provider: string;
+            /** @description Authorization code from the provider */
+            code: string;
+            /** @description State nonce echoed back from the provider */
+            state: string;
         };
         MagicLinkExchangeBody: {
             /** @description Raw magic-link token from the URL query parameter */
@@ -201,6 +257,82 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    startOAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthStartBody"];
+            };
+        };
+        responses: {
+            /** @description Authorization URL ready for browser redirect */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthStartResponse"];
+                };
+            };
+            /** @description Unknown or unconfigured provider */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Provider not configured on this server */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    oauthCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthCallbackBody"];
+            };
+        };
+        responses: {
+            /** @description Token pair issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
+                };
+            };
+            /** @description Invalid or expired state nonce, or provider mismatch */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             401: components["responses"]["Unauthorized"];
         };

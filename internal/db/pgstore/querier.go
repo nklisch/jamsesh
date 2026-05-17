@@ -6,6 +6,7 @@ package pgstore
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -13,7 +14,9 @@ import (
 type Querier interface {
 	AddOrgMember(ctx context.Context, arg AddOrgMemberParams) error
 	AddSessionMember(ctx context.Context, arg AddSessionMemberParams) error
+	CleanupExpiredOAuthState(ctx context.Context, expiresAt time.Time) error
 	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error
+	ConsumeOAuthState(ctx context.Context, nonce string) (OauthState, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateMagicLinkToken(ctx context.Context, arg CreateMagicLinkTokenParams) (MagicLinkToken, error)
 	CreateOAuthToken(ctx context.Context, arg CreateOAuthTokenParams) (OauthToken, error)
@@ -32,6 +35,7 @@ type Querier interface {
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	GetSessionMember(ctx context.Context, arg GetSessionMemberParams) (SessionMember, error)
 	InsertArchivedSession(ctx context.Context, arg InsertArchivedSessionParams) error
+	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
 	ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OauthToken, error)
 	ListOrgMembers(ctx context.Context, orgID string) ([]ListOrgMembersRow, error)
 	ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error)

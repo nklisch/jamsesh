@@ -598,3 +598,35 @@ func (a *sqliteAdapter) GetArchivedSession(ctx context.Context, p GetArchivedSes
 	}
 	return sqliteArchivedSession(row), nil
 }
+
+// ---------------------------------------------------------------------------
+// OAuthStateStore
+// ---------------------------------------------------------------------------
+
+func (a *sqliteAdapter) InsertOAuthState(ctx context.Context, p InsertOAuthStateParams) error {
+	return mapSQLiteErr(a.q.InsertOAuthState(ctx, sqlitestore.InsertOAuthStateParams{
+		Nonce:       p.Nonce,
+		Provider:    p.Provider,
+		RedirectUri: p.RedirectURI,
+		CreatedAt:   p.CreatedAt,
+		ExpiresAt:   p.ExpiresAt,
+	}))
+}
+
+func (a *sqliteAdapter) ConsumeOAuthState(ctx context.Context, nonce string) (OAuthState, error) {
+	row, err := a.q.ConsumeOAuthState(ctx, nonce)
+	if err != nil {
+		return OAuthState{}, mapSQLiteErr(err)
+	}
+	return OAuthState{
+		Nonce:       row.Nonce,
+		Provider:    row.Provider,
+		RedirectURI: row.RedirectUri,
+		CreatedAt:   row.CreatedAt,
+		ExpiresAt:   row.ExpiresAt,
+	}, nil
+}
+
+func (a *sqliteAdapter) CleanupExpiredOAuthState(ctx context.Context, before time.Time) error {
+	return mapSQLiteErr(a.q.CleanupExpiredOAuthState(ctx, before))
+}

@@ -49,6 +49,30 @@ type MagicLinkRequestBody struct {
 	Email openapi_types.Email `json:"email"`
 }
 
+// OAuthCallbackBody defines model for OAuthCallbackBody.
+type OAuthCallbackBody struct {
+	// Code Authorization code from the provider
+	Code string `json:"code"`
+
+	// Provider OAuth provider name, e.g. "github"
+	Provider string `json:"provider"`
+
+	// State State nonce echoed back from the provider
+	State string `json:"state"`
+}
+
+// OAuthStartBody defines model for OAuthStartBody.
+type OAuthStartBody struct {
+	// Provider OAuth provider name, e.g. "github"
+	Provider string `json:"provider"`
+}
+
+// OAuthStartResponse defines model for OAuthStartResponse.
+type OAuthStartResponse struct {
+	// AuthorizeUrl Provider authorization URL the browser should be redirected to
+	AuthorizeUrl string `json:"authorize_url"`
+}
+
 // TokenPair defines model for TokenPair.
 type TokenPair struct {
 	AccessExpiresAt  time.Time `json:"access_expires_at"`
@@ -86,6 +110,12 @@ type ExchangeMagicLinkJSONRequestBody = MagicLinkExchangeBody
 // RequestMagicLinkJSONRequestBody defines body for RequestMagicLink for application/json ContentType.
 type RequestMagicLinkJSONRequestBody = MagicLinkRequestBody
 
+// OauthCallbackJSONRequestBody defines body for OauthCallback for application/json ContentType.
+type OauthCallbackJSONRequestBody = OAuthCallbackBody
+
+// StartOAuthJSONRequestBody defines body for StartOAuth for application/json ContentType.
+type StartOAuthJSONRequestBody = OAuthStartBody
+
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
 type RefreshTokenJSONRequestBody RefreshTokenJSONBody
 
@@ -100,6 +130,12 @@ type ServerInterface interface {
 	// Request a magic-link sign-in email
 	// (POST /api/auth/magic-link/request)
 	RequestMagicLink(w http.ResponseWriter, r *http.Request)
+	// Exchange OAuth authorization code for a portal token pair
+	// (POST /api/auth/oauth/callback)
+	OauthCallback(w http.ResponseWriter, r *http.Request)
+	// Begin OAuth authorization flow — returns the provider authorize URL
+	// (POST /api/auth/oauth/start)
+	StartOAuth(w http.ResponseWriter, r *http.Request)
 	// Exchange a refresh token for a new access+refresh pair
 	// (POST /api/auth/refresh)
 	RefreshToken(w http.ResponseWriter, r *http.Request)
@@ -121,6 +157,18 @@ func (_ Unimplemented) ExchangeMagicLink(w http.ResponseWriter, r *http.Request)
 // Request a magic-link sign-in email
 // (POST /api/auth/magic-link/request)
 func (_ Unimplemented) RequestMagicLink(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Exchange OAuth authorization code for a portal token pair
+// (POST /api/auth/oauth/callback)
+func (_ Unimplemented) OauthCallback(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Begin OAuth authorization flow — returns the provider authorize URL
+// (POST /api/auth/oauth/start)
+func (_ Unimplemented) StartOAuth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -164,6 +212,34 @@ func (siw *ServerInterfaceWrapper) RequestMagicLink(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RequestMagicLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OauthCallback operation middleware
+func (siw *ServerInterfaceWrapper) OauthCallback(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OauthCallback(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartOAuth operation middleware
+func (siw *ServerInterfaceWrapper) StartOAuth(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartOAuth(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -327,6 +403,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/auth/magic-link/request", wrapper.RequestMagicLink)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/auth/oauth/callback", wrapper.OauthCallback)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/auth/oauth/start", wrapper.StartOAuth)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/auth/refresh", wrapper.RefreshToken)
 	})
 	r.Group(func(r chi.Router) {
@@ -408,6 +490,106 @@ func (response RequestMagicLink500JSONResponse) VisitRequestMagicLinkResponse(w 
 	return err
 }
 
+type OauthCallbackRequestObject struct {
+	Body *OauthCallbackJSONRequestBody
+}
+
+type OauthCallbackResponseObject interface {
+	VisitOauthCallbackResponse(w http.ResponseWriter) error
+}
+
+type OauthCallback200JSONResponse TokenPair
+
+func (response OauthCallback200JSONResponse) VisitOauthCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OauthCallback400JSONResponse ErrorEnvelope
+
+func (response OauthCallback400JSONResponse) VisitOauthCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OauthCallback401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response OauthCallback401JSONResponse) VisitOauthCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartOAuthRequestObject struct {
+	Body *StartOAuthJSONRequestBody
+}
+
+type StartOAuthResponseObject interface {
+	VisitStartOAuthResponse(w http.ResponseWriter) error
+}
+
+type StartOAuth200JSONResponse OAuthStartResponse
+
+func (response StartOAuth200JSONResponse) VisitStartOAuthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartOAuth400JSONResponse ErrorEnvelope
+
+func (response StartOAuth400JSONResponse) VisitStartOAuthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartOAuth503JSONResponse ErrorEnvelope
+
+func (response StartOAuth503JSONResponse) VisitStartOAuthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RefreshTokenRequestObject struct {
 	Body *RefreshTokenJSONRequestBody
 }
@@ -482,6 +664,12 @@ type StrictServerInterface interface {
 	// Request a magic-link sign-in email
 	// (POST /api/auth/magic-link/request)
 	RequestMagicLink(ctx context.Context, request RequestMagicLinkRequestObject) (RequestMagicLinkResponseObject, error)
+	// Exchange OAuth authorization code for a portal token pair
+	// (POST /api/auth/oauth/callback)
+	OauthCallback(ctx context.Context, request OauthCallbackRequestObject) (OauthCallbackResponseObject, error)
+	// Begin OAuth authorization flow — returns the provider authorize URL
+	// (POST /api/auth/oauth/start)
+	StartOAuth(ctx context.Context, request StartOAuthRequestObject) (StartOAuthResponseObject, error)
 	// Exchange a refresh token for a new access+refresh pair
 	// (POST /api/auth/refresh)
 	RefreshToken(ctx context.Context, request RefreshTokenRequestObject) (RefreshTokenResponseObject, error)
@@ -581,6 +769,68 @@ func (sh *strictHandler) RequestMagicLink(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// OauthCallback operation middleware
+func (sh *strictHandler) OauthCallback(w http.ResponseWriter, r *http.Request) {
+	var request OauthCallbackRequestObject
+
+	var body OauthCallbackJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OauthCallback(ctx, request.(OauthCallbackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OauthCallback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OauthCallbackResponseObject); ok {
+		if err := validResponse.VisitOauthCallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartOAuth operation middleware
+func (sh *strictHandler) StartOAuth(w http.ResponseWriter, r *http.Request) {
+	var request StartOAuthRequestObject
+
+	var body StartOAuthJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartOAuth(ctx, request.(StartOAuthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartOAuth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartOAuthResponseObject); ok {
+		if err := validResponse.VisitStartOAuthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RefreshToken operation middleware
 func (sh *strictHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var request RefreshTokenRequestObject
@@ -648,31 +898,37 @@ func (sh *strictHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"//L69fHOp5Lz5h7lDtHx873KyK4X/wkAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
