@@ -2,7 +2,7 @@ CREATE TABLE orgs (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL
+    created_at DATETIME NOT NULL
 );
 
 CREATE TABLE accounts (
@@ -10,14 +10,14 @@ CREATE TABLE accounts (
     email TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
     github_user_id TEXT,
-    created_at TEXT NOT NULL
+    created_at DATETIME NOT NULL
 );
 
 CREATE TABLE org_members (
     org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('creator','member')),
-    created_at TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
     PRIMARY KEY (org_id, account_id)
 );
 CREATE INDEX org_members_account_idx ON org_members(account_id);
@@ -31,8 +31,8 @@ CREATE TABLE sessions (
     default_mode TEXT NOT NULL CHECK (default_mode IN ('sync','isolated')),
     base_sha TEXT,
     status TEXT NOT NULL CHECK (status IN ('active','ended','archived')),
-    created_at TEXT NOT NULL,
-    ended_at TEXT
+    created_at DATETIME NOT NULL,
+    ended_at DATETIME
 );
 CREATE INDEX sessions_org_idx ON sessions(org_id);
 
@@ -41,7 +41,7 @@ CREATE TABLE session_members (
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('creator','member')),
-    joined_at TEXT NOT NULL,
+    joined_at DATETIME NOT NULL,
     PRIMARY KEY (session_id, account_id)
 );
 CREATE INDEX session_members_org_idx ON session_members(org_id);
@@ -52,10 +52,10 @@ CREATE TABLE oauth_tokens (
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     token_hash TEXT NOT NULL UNIQUE,
     kind TEXT NOT NULL CHECK (kind IN ('access','refresh')),
-    issued_at TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    last_used_at TEXT,
-    revoked_at TEXT
+    issued_at DATETIME NOT NULL,
+    expires_at DATETIME NOT NULL,
+    last_used_at DATETIME,
+    revoked_at DATETIME
 );
 CREATE INDEX oauth_tokens_account_idx ON oauth_tokens(account_id);
 
@@ -63,7 +63,7 @@ CREATE TABLE magic_link_tokens (
     id TEXT PRIMARY KEY,
     token_hash TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL,
-    issued_at TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    used_at TEXT
+    issued_at DATETIME NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME
 );
