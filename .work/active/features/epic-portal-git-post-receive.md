@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-post-receive
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal]
 parent: epic-portal-git
 depends_on: [epic-portal-git-storage]
@@ -82,5 +82,75 @@ feature subscribes to the event log). Does NOT cover auto-merger triggering
   missed event means a peer's UI lags one turn — acceptable; git remains
   the source of truth.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+## Design decisions
+
+- **Events log is at done**: this feature consumes the `Log.EmitBatch` API directly. No need to re-design event-log primitives.
+- **Single entry point**: `Emitter` type with `EmitForUpdates(ctx, repo, session, account, updates) error`. Internally: for each update, walk commits via go-git, collect minimal metadata, marshal `CommitArrivedPayload` (from generated openapi types), batch-emit via `Log.EmitBatch`.
+- **Trailer-derived author**: from `Jam-Author` trailer if present; else commit author. Falls back to author.Email if Jam-Author absent.
+- **Failure semantics**: errors logged at slog Error level but propagated to caller. Caller (smart-http handler) logs but doesn't fail the HTTP response — the push already succeeded.
+- **Single story**: small surface (one Emitter type + tests).
+
+## Implementation Units
+
+### Unit 1: Emitter
+
+**File**: `internal/portal/postreceive/emitter.go`
+**Story**: `epic-portal-git-post-receive-emitter`
+
+```go
+package postreceive
+
+import (
+    "context"
+    "encoding/json"
+
+    "github.com/go-git/go-git/v5"
+    "jamsesh/internal/db/store"
+    "jamsesh/internal/portal/events"
+)
+
+type Emitter struct {
+    Log *events.Log
+}
+
+type RefUpdate struct {
+    Ref    string
+    OldSHA string
+    NewSHA string
+}
+
+// EmitForUpdates emits a batch of commit.arrived events for every new
+// commit in every accepted update. Returns nil on success.
+func (e *Emitter) EmitForUpdates(ctx context.Context, repo *git.Repository, session *store.Session, account *store.Account, updates []RefUpdate) error
+```
+
+Implementation:
+1. For each update, resolve OldSHA..NewSHA commit range
+2. For each commit, build a `CommitArrivedPayload` struct (from generated openapi types):
+   - `sha`: commit hash
+   - `ref`: update.Ref
+   - `summary`: first line of commit message (trimmed at first `\n`)
+   - `author_id`: trailer `Jam-Author` value, or commit.Author.Email if absent
+3. JSON-marshal each payload as `json.RawMessage`
+4. Collect into `[]events.DraftEvent` with `Type: "commit.arrived"`
+5. Call `Log.EmitBatch(ctx, account.OrgID...)`
+
+Wait — `session.OrgID` is the right org. Not account.
+
+Final signature: `EmitForUpdates(ctx, repo *git.Repository, session *store.Session, _ *store.Account, updates []RefUpdate) error`. Use `session.OrgID`.
+
+## Implementation Order
+
+Single story.
+
+## Testing
+
+- Synthetic repo with 3 commits on a branch; emit + verify 3 events written with correct seqs, types, and payload contents
+- Empty range (OldSHA == NewSHA): zero events emitted
+- New ref creation (OldSHA == ""): emits events for all reachable new commits (subject to a sane cap — e.g., 1000 commits — to prevent runaway first-push)
+- Missing Jam-Author trailer falls back to commit.Author.Email
+
+## Risks
+
+- **First-push runaway**: a new ref with no OldSHA could in theory have thousands of commits in its ancestry. Mitigation: cap at 1000 commits per emit batch; document as a known limitation.
+- **Event ordering**: parallel pushes to the same session could interleave events. The event log's seq allocation is atomic per session, so the seq numbers stay monotonic — but the order of commits across pushes isn't guaranteed. Acceptable; consumers can resequence by timestamp if needed.
