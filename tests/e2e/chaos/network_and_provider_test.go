@@ -9,9 +9,10 @@
 //     Postgres. Requests either succeed (elevated latency) or surface a clear
 //     non-2xx status; no partial-state writes.
 //
-//   - oauth_provider_timeout — WireMock adds 10s delay to GitHub token
-//     endpoint. The portal's 15s HTTP client timeout fires first; the callback
-//     returns a non-2xx error within the configured timeout window.
+//   - oauth_provider_timeout — WireMock adds 30s delay to GitHub token
+//     endpoint. The portal's 15s HTTP client timeout fires first (well
+//     before WireMock's 30s response) and the callback returns a non-2xx
+//     error within ~15s.
 //
 //   - ws_reconnect_drop — DEFERRED. Requires spa-websocket-reconnect-logic
 //     (SPA-side reconnect) and wsclient.ConnectFromSeq (Go test helper).
@@ -197,16 +198,19 @@ func testNetworkJitterDB(t *testing.T) {
 // Scenario 2: oauth_provider_timeout
 //
 // Invariant: the portal's GitHub OAuth HTTP client has a 15s timeout
-// (githubOAuthHTTPTimeout in internal/portal/oauth/github.go). A 10s
-// WireMock fixedDelayMilliseconds on /login/oauth/access_token causes the
-// portal to timeout and return a non-2xx error within the configured window.
+// (githubOAuthHTTPTimeout in internal/portal/oauth/github.go). A 30s
+// WireMock fixedDelayMilliseconds on /login/oauth/access_token forces the
+// portal to time out at ~15s before WireMock would respond. The test
+// asserts elapsed in a band around 15s and that the callback returns a
+// non-2xx status.
 // ---------------------------------------------------------------------------
 
 func testOAuthProviderTimeout(t *testing.T) {
 	ctx := context.Background()
 
-	// WireMock: 10s fixedDelay on /login/oauth/access_token to simulate a
-	// slow or hung OAuth provider.
+	// WireMock: 30s fixedDelay on /login/oauth/access_token to simulate a
+	// slow or hung OAuth provider. 30s > portal's 15s timeout, so the portal
+	// timeout fires first.
 	wm := wiremock.Start(ctx, t, wiremock.Mappings{
 		"github-delay": oauthDelayMappingPath(),
 	})
@@ -225,10 +229,10 @@ func testOAuthProviderTimeout(t *testing.T) {
 	})
 
 	// The HTTP client timeout must be set to portal's OAuth timeout + margin
-	// so that we don't time out before the portal does. Once portal-oauth-client-
-	// timeout sets a concrete timeout value, hardcode that + 2s here.
+	// so that we don't time out before the portal does, but well below
+	// WireMock's 30s delay so that the portal timeout is the triggering event.
 	const expectedPortalTimeout = 15 * time.Second
-	client := &http.Client{Timeout: expectedPortalTimeout + 2*time.Second}
+	client := &http.Client{Timeout: expectedPortalTimeout + 5*time.Second}
 
 	// Start the OAuth flow to obtain a valid state nonce.
 	authorizeURL := oauthStart(ctx, t, client, p.URL, "github")
@@ -241,20 +245,29 @@ func testOAuthProviderTimeout(t *testing.T) {
 		t.Fatalf("oauth_provider_timeout: no state param in authorize_url: %s", authorizeURL)
 	}
 
-	// Issue the callback — WireMock will delay the token exchange by 10s.
-	// Invariant: the portal must timeout and return a non-2xx status within
-	// expectedPortalTimeout + 2s. It must not hang.
+	// Issue the callback — WireMock will delay the token exchange by 30s.
+	// The portal's 15s OAuth HTTP client timeout fires first. The callback
+	// must return a non-2xx status in a band around 15s: fast enough that
+	// WireMock didn't respond first (lower bound ~14s), and not hanging past
+	// the timeout window (upper bound ~18s).
 	start := time.Now()
 	status, body := oauthCallback(ctx, t, client, p.URL, "github", stateNonce, "chaos-code")
 	elapsed := time.Since(start)
 
-	if elapsed > expectedPortalTimeout+3*time.Second {
-		t.Errorf("oauth_provider_timeout: callback took %v — portal hung beyond configured timeout", elapsed)
+	const (
+		lowerBound = 14 * time.Second // timeout fired (not a fast WireMock response)
+		upperBound = 18 * time.Second // portal did not hang past timeout + 3s grace
+	)
+	if elapsed < lowerBound {
+		t.Errorf("oauth_provider_timeout: callback returned in %v — too fast; portal likely did not exercise the 15s timeout (WireMock responded before timeout fired)", elapsed)
+	}
+	if elapsed > upperBound {
+		t.Errorf("oauth_provider_timeout: callback took %v — portal hung beyond configured timeout + grace (%v)", elapsed, upperBound)
 	}
 	if status == http.StatusOK {
 		t.Errorf("oauth_provider_timeout: portal returned 200 on a timed-out OAuth callback — expected error status\nbody: %s", body)
 	}
-	t.Logf("oauth_provider_timeout: callback returned status=%d elapsed=%v (expected non-2xx within %v)", status, elapsed, expectedPortalTimeout)
+	t.Logf("oauth_provider_timeout: callback returned status=%d elapsed=%v (expected non-2xx in [%v, %v])", status, elapsed, lowerBound, upperBound)
 }
 
 // ---------------------------------------------------------------------------
@@ -318,10 +331,10 @@ func requirePortalImage(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // oauthDelayMappingPath returns the absolute path to the WireMock mapping JSON
-// that injects a 10s delay on /login/oauth/access_token.
+// that injects a 30s delay on /login/oauth/access_token.
 func oauthDelayMappingPath() string {
 	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "testdata", "github_delay_10s.json")
+	return filepath.Join(filepath.Dir(file), "testdata", "github_delay_30s.json")
 }
 
 // netJitterExtractDBName extracts the database name from a postgres DSN.

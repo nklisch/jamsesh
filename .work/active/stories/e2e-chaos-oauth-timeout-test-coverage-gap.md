@@ -1,7 +1,7 @@
 ---
 id: e2e-chaos-oauth-timeout-test-coverage-gap
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, oauth]
 parent: null
 depends_on: []
@@ -74,10 +74,10 @@ Additionally:
 
 ## Acceptance criteria
 
-- [ ] WireMock delay > portal OAuth timeout, so the timeout actually fires
-- [ ] Test asserts elapsed in a band around the portal timeout (not just
+- [x] WireMock delay > portal OAuth timeout, so the timeout actually fires
+- [x] Test asserts elapsed in a band around the portal timeout (not just
       an upper bound)
-- [ ] Test doc comment accurately describes the timing relationship
+- [x] Test doc comment accurately describes the timing relationship
 
 ## References
 
@@ -86,3 +86,33 @@ Additionally:
 - `internal/portal/oauth/github.go > githubOAuthHTTPTimeout`
 - Implementation that introduced the gap: commit `0031fe3` (review of
   `portal-oauth-client-timeout`)
+
+## Implementation notes
+
+### Files touched
+
+- `tests/e2e/chaos/testdata/github_delay_10s.json` renamed to
+  `tests/e2e/chaos/testdata/github_delay_30s.json` via `git mv` (git
+  tracks as a rename); `fixedDelayMilliseconds` bumped from 10000 to 30000.
+- `tests/e2e/chaos/network_and_provider_test.go` — mapping path constant,
+  doc comments, client timeout, and assertions updated.
+
+### Why 30s for WireMock / 14-18s for the band
+
+WireMock's `fixedDelayMilliseconds` is a deliberate sleep, so 30s is
+precise and far enough above the portal's 15s timeout that there is no
+ambiguity about which party terminates first. The test client timeout was
+raised to 20s (`expectedPortalTimeout + 5s`): enough headroom to receive
+the portal's timeout-triggered error response, but well below WireMock's
+30s (so the test client itself never fires first).
+
+The band `[14s, 18s]` is calibrated around the 15s portal timeout:
+- Lower bound 14s: rules out the old false-pass shape (WireMock responds
+  fast, portal returns non-2xx for a parsing reason at ~10s). A 1s margin
+  absorbs scheduler and container startup jitter.
+- Upper bound 18s: portal timeout + 3s grace; fails if the portal hangs.
+
+### Execution
+
+Build-verified with `go build ./chaos/...` (clean). Full execution requires
+Docker + Testcontainers and was not run in this session.
