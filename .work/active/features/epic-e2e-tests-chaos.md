@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-chaos
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-golden-path]
@@ -174,3 +174,24 @@ Both depend only on infrastructure (done).
   partial. The 3 active scenarios still surface useful invariants
   (DB jitter, OAuth provider delay, auto-merger pause), but the
   full coverage requires the two backlog items to land.
+
+## Implementation summary (2026-05-17)
+
+Both child stories at review:
+- `chaos-network-and-provider` (review) — 1 active + 2 deferred-skip
+- `chaos-runtime-and-clock` (review) — 1 active + 1 deferred-skip
+
+**Active scenarios proven**:
+- `network_jitter_db` — portal tolerates 500ms DB latency without data corruption (16s test)
+- `automerger_pause` — auto-merger resumes cleanly after 5s portal pause; no spurious `conflict.detected` event
+
+**Deferred scenarios (with backlog references)**:
+- `oauth_provider_timeout` → blocked by `portal-oauth-client-timeout` (filed during this run — portal uses http.DefaultClient with no timeout, would hang forever on slow upstream)
+- `ws_reconnect_drop` → blocked by `spa-websocket-reconnect-logic` + `wsclient.ConnectFromSeq`
+- `clock_skew_token_expiry` → blocked by `portal-test-clock-advance-endpoint`
+
+**Production bug filed by chaos run**: `portal-oauth-client-timeout` — real production issue surfaced by the OAuth delay scenario; correctly skipped rather than masking.
+
+**Resilience claims validated**: auto-merger's in-process go-git merge is idempotent across process pauses; portal handles DB latency without partial-state writes.
+
+**Next**: `/agile-workflow:review epic-e2e-tests-chaos` once the user is ready.
