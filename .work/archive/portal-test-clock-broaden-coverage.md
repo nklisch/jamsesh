@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage
 kind: feature
-stage: review
+stage: done
 tags: [testing, testability, portal]
 parent: null
 depends_on: []
@@ -388,3 +388,134 @@ unlock.
       in a single test run that calls `AdvanceClock` once).
 - [ ] Follow-on backlog item parked covering the 3 deferred sites in
       `auth/oauth.go` and `sessions/handler.go`.
+
+## Review (2026-05-17) — Approve, archived with children
+
+### Verdict
+
+**Approve.** All three child stories shipped at `stage: done` with
+clean reviews. Production safety, e2etest gating, and the targeted
+chaos test all green.
+
+### What shipped end-to-end
+
+- **Story A — tokens wiring + chaos un-skip** (commit `13a4b50`).
+  `tokens.NewWithClock(dbStore, c)` wired in `cmd/portal/main.go`
+  behind `testClk.tokensClock()`; `clock_skew_token_expiry` un-skipped
+  and passes (advance by `AccessTokenTTL + 1m = 1h1m` causes the prior
+  bearer to return 401 `auth.expired_token`).
+- **Story B — provisioning + state TTL** (commit `fc05cff`). 5 sites
+  wired across `accounts/handlers.go` (`CreateOrg`),
+  `accounts/orgs.go` (`CreateOrgInvite`, `AcceptOrgInvite`),
+  `auth/provision.go` (`FindOrProvisionAt` additive variant),
+  `oauth/state.go` (`StoreStateAt` additive variant). Back-compat
+  wrappers kept so `auth/oauth.go` (in-flight lock) compiles
+  unmodified.
+- **Story C — handlers + workers + MCP** (commit `e54ea0b`). 17 sites
+  wired across `comments` (3), `finalize` (5), `storage` (1), `events`
+  (3), `automerger` (3), `mcpendpoint` (2). Six new `clock_test.go`
+  files added. Seven new `*Clock()` accessors registered on
+  `testClockProvider`.
+
+**Totals.** 5 + 17 + tokens-runtime-knob = **22 sites + 1 runtime
+wiring = 23 wired** (the design's "~25 sites" target). Intentional
+skips: 2 (`logging/logging.go:34` access-log latency,
+`auth/slug.go:66` rand seed). Deferred to follow-on: 5 sessions sites
+(`handler.go` ×2, `invites.go` ×2, `listing.go` ×1) — parked at
+`.work/backlog/portal-test-clock-broaden-coverage-sessions-followup.md`.
+
+### Verification
+
+- `go build ./...` — clean.
+- `go build -tags e2etest ./...` — clean.
+- `go vet ./internal/portal/...` — clean.
+- `go test ./internal/portal/...` — all packages green.
+- `go test -run TestProductionBuild_HasNoTestEndpoint ./cmd/portal/...`
+  — pass. Production binary returns 404 on `POST /test/clock-advance`.
+- `make test-portal-image` — rebuilt `jamsesh/portal:e2e` clean.
+- `cd tests/e2e && go test -run TestRuntimeAndClock -v ./chaos/...`
+  — **PASS**. `clock_skew_token_expiry` ran in 1.97s; portal logged
+  `advanced by 1h1m0s, new offset=3660s`. `automerger_pause` also
+  green (regression — 21.30s).
+- `cd tests/e2e && go test -run 'TestInterruptedOps/magic_link_ttl_expiry'
+  -v ./failure/...` — **PASS**. v1 magic-link TTL test still passes
+  (no regression in the auth path).
+
+### Shared-clock invariant
+
+Spot-checked `cmd/portal/test_clock_advance.go` — all 9 e2etest
+accessors (`magicLinkClock`, `tokensClock`, `accountsClock`,
+`commentsClock`, `finalizeClock`, `storageClock`, `eventsClock`,
+`automergerClock`, `mcpClock`) return the unmodified `p.clock` field
+on a single `*testClockProvider`. The provider's `clock` field is a
+single `*testclock.AdvanceableClock` constructed once in
+`newTestClockProvider()`. One `POST /test/clock-advance` advances
+every wired clock simultaneously — confirmed by the chaos test which
+relies on the same provider for both magic-link and token expiry.
+
+### Per-package Clock pattern consistency
+
+Spot-checked across the six newly-wired packages plus the v1
+reference (`auth/magic_link.go`):
+
+- All declare a local `type Clock interface { Now() time.Time }` —
+  identical shape; structural typing carries the shared-instance
+  property without import-graph coupling.
+- All declare a `realClock` with `func (realClock) Now() time.Time
+  { return time.Now().UTC() }`.
+- Constructor-style packages (`accounts`, `finalize`, `storage`,
+  `events`, `automerger`) expose `NewWithClock(...)`; the default
+  `New(...)` delegates with `realClock{}`. Production code unchanged.
+- Struct-literal-style packages (`comments`, `mcpendpoint`,
+  `automerger.Applier`) expose a `Clock` field with a nil-safe `now()`
+  helper, preserving struct-literal callers.
+
+### Intentional-skip audit
+
+- `internal/portal/logging/logging.go:34` — `start := time.Now()` for
+  access-log latency. Matches Design decision #2. Wall-clock
+  measurement; advancing the test clock would fabricate latency
+  numbers.
+- `internal/portal/auth/slug.go:66` —
+  `rand.New(rand.NewSource(time.Now().UnixNano()))`. Matches Design
+  decision #3. Non-secret PRNG seed; advancement has no test benefit.
+
+Both remain on the real wall clock as designed.
+
+### Deferred-sessions judgment
+
+Parked properly. The follow-on backlog item
+(`.work/backlog/portal-test-clock-broaden-coverage-sessions-followup.md`)
+exists, names the 5 sites precisely (handler.go ×2, invites.go ×2,
+listing.go ×1), notes the unlocking event (commit `87835cc` — the
+in-flight `portal-validate-writable-scope-at-create-time` feature has
+since landed), and is sized at ~50-80 LoC for a single follow-on
+stride. No active test is blocked on these sites — they're write
+timestamps and a pagination cursor with no TTL semantics, so deferring
+adds no test debt.
+
+### Acceptance-criteria coverage
+
+- [x] All three child stories at stage `done`.
+- [x] `clock_skew_token_expiry` runs green (un-skipped) under
+      `make test-portal-image`.
+- [x] `magic_link_ttl_expiry` still passes (regression check).
+- [x] `git grep -- 'testclock' cmd/portal/ internal/portal/` returns
+      only e2etest-tagged files plus prod stubs plus doc comments.
+- [x] `go build ./...` succeeds; production binary returns 404 on
+      `POST /test/clock-advance`.
+- [x] `go build -tags e2etest ./...` succeeds.
+- [x] A single `POST /test/clock-advance` advances every wired clock
+      simultaneously (verified via the shared `p.clock` invariant
+      and the chaos test's actual advance behaviour).
+- [x] Follow-on backlog item parked covering the deferred sessions
+      sites.
+
+### Findings
+
+- Blockers: 0.
+- Important: 0.
+- Nits: 0.
+
+The feature delivers exactly the scope its design committed to.
+Advancing to `done` and archiving with children.
