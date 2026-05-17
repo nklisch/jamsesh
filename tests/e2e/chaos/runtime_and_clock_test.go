@@ -6,7 +6,10 @@
 //   - automerger_pause: pauses the portal container mid-merge for 5 seconds via
 //     `docker pause` and asserts the merge completes after resume with no
 //     spurious conflict.detected event.
-//   - clock_skew_token_expiry: DEFERRED — requires portal-test-clock-advance-endpoint.
+//   - clock_skew_token_expiry: advances the portal's process-global clock past
+//     the access-token TTL via the build-tag-gated /test/clock-advance endpoint
+//     and asserts that subsequent bearer-authenticated requests return 401
+//     auth.expired_token.
 package chaos_test
 
 import (
@@ -32,13 +35,90 @@ import (
 func TestRuntimeAndClock(t *testing.T) {
 	t.Run("automerger_pause", testAutomergerPause)
 
-	t.Run("clock_skew_token_expiry", func(t *testing.T) {
-		// DEFERRED: libfaketime clock-skew requires the portal to expose a
-		// test-only clock-advance endpoint or a libfaketime shim in the
-		// Dockerfile.e2e. Neither is implemented yet.
-		// See backlog item: portal-test-clock-advance-endpoint
-		t.Skip("requires portal-test-clock-advance-endpoint backlog item")
+	// Ordering invariant: clock_skew_token_expiry mutates the portal's
+	// process-global clock (forward-only and cumulative). It runs in its
+	// own fresh portal+postgres+mailhog stack so the offset cannot leak
+	// into any other subtest. If a future clock-sensitive subtest is
+	// added to TestRuntimeAndClock, either spin up its own stack or
+	// order it before this one.
+	t.Run("clock_skew_token_expiry", testClockSkewTokenExpiry)
+}
+
+// errorEnvelope mirrors the portal's PROTOCOL.md error envelope shape so
+// the subtest can assert on the typed code (not the human-readable message).
+type errorEnvelope struct {
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
+// testClockSkewTokenExpiry verifies the resilience invariant:
+//
+//	Invariant: after the portal's clock is advanced past the access-token
+//	TTL, a previously-valid bearer token is rejected with 401
+//	auth.expired_token. Before the advance the same token must succeed —
+//	the baseline call establishes that the token is well-formed and the
+//	stack is healthy, so the post-advance 401 is attributable to the
+//	clock skew and not to a pre-existing misconfiguration.
+//
+// The subtest stands up a fresh portal+postgres+mailhog stack so the
+// process-global clock offset cannot leak into sibling subtests.
+func testClockSkewTokenExpiry(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+
+	// --- Fresh stack (clock offset stays contained) ---
+	pg := postgres.Start(ctx, t, postgres.Options{})
+	mh := mailhog.Start(ctx, t)
+	p := portal.Start(ctx, t, portal.Options{
+		DBDriver:  "postgres",
+		DBDSN:     pg.ContainerDSN,
+		EmailFrom: "noreply@example.com",
+		SMTPHost:  mh.ContainerSMTPHost,
+		SMTPPort:  mh.ContainerSMTPPort,
 	})
+
+	email := randEmail(t, "skew")
+	user := authflow.SignInViaMagicLink(ctx, t, p, mh, email)
+
+	// --- BEFORE-ADVANCE BASELINE ---
+	// GET /api/me with a fresh access token must succeed. This proves the
+	// token is well-formed and the bearer middleware is wired correctly
+	// before chaos (the clock skew) is injected.
+	getMe(ctx, t, p, user.AccessToken)
+
+	// --- INJECT CLOCK SKEW ---
+	// Advance the portal's clock past the access-token TTL. The TTL is
+	// 1 hour (locked in internal/portal/tokens/service.go AccessTokenTTL;
+	// hardcoded here because tests/e2e/ is a separate go module without
+	// a replace directive into the parent). 60 seconds of headroom avoids
+	// any ms-level drift between issue time and the advance call.
+	const accessTokenTTL = 1 * time.Hour
+	p.AdvanceClock(ctx, t, accessTokenTTL+time.Minute)
+
+	// --- ASSERT POST-ADVANCE: same token must now return 401 auth.expired_token ---
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.URL+"/api/me", nil)
+	if err != nil {
+		t.Fatalf("clock_skew_token_expiry: build /me request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+user.AccessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("clock_skew_token_expiry: GET /me after advance: %v", err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("clock_skew_token_expiry: GET /me after advance: status %d (want 401): %s",
+			resp.StatusCode, respBody)
+	}
+	var env errorEnvelope
+	if err := json.Unmarshal(respBody, &env); err != nil {
+		t.Fatalf("clock_skew_token_expiry: decode error envelope: %v\nbody: %s", err, respBody)
+	}
+	if env.Error != "auth.expired_token" {
+		t.Fatalf("clock_skew_token_expiry: error code %q (want %q)\nbody: %s",
+			env.Error, "auth.expired_token", respBody)
+	}
 }
 
 // testAutomergerPause verifies the resilience invariant:

@@ -245,17 +245,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build the token service and its HTTP handler.
-	tokenSvc := tokens.New(dbStore)
-	tokenHandler := tokens.NewHandler(tokenSvc)
-
 	// Build the test-clock provider. In e2etest builds this returns a
 	// provider holding an AdvanceableClock that's injected into handlers
-	// requiring time.Now indirection (v1: magic-link only). In production
-	// builds (no -tags e2etest) this returns a no-op stub: magicLinkClock()
-	// is nil and mountTestEndpointsHook() is nil, so the /test subtree
-	// is never registered.
+	// requiring time.Now indirection (magic-link AND tokens — advancing
+	// once moves both forward). In production builds (no -tags e2etest)
+	// this returns a no-op stub: magicLinkClock() / tokensClock() are nil
+	// and mountTestEndpointsHook() is nil, so the /test subtree is never
+	// registered.
 	testClk := newTestClockProvider()
+
+	// Build the token service. In e2etest builds, inject the advanceable
+	// clock so /test/clock-advance affects token-expiry validation
+	// (un-blocks tests/e2e/chaos/runtime_and_clock_test.go >
+	// clock_skew_token_expiry). In production builds the provider's
+	// tokensClock() returns nil and the real-clock constructor is used.
+	var tokenSvc tokens.Service
+	if c := testClk.tokensClock(); c != nil {
+		tokenSvc = tokens.NewWithClock(dbStore, c)
+	} else {
+		tokenSvc = tokens.New(dbStore)
+	}
+	tokenHandler := tokens.NewHandler(tokenSvc)
 
 	// Build the magic-link handler. In e2etest builds, inject the
 	// advanceable clock; in production builds, the provider's

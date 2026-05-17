@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage-tokens-wiring
 kind: story
-stage: implementing
+stage: review
 tags: [testing, testability, portal]
 parent: portal-test-clock-broaden-coverage
 depends_on: []
@@ -159,3 +159,78 @@ tags. The new `tokensClock()` method on the e2etest variant returns a
 non-nil clock; the prod stub returns nil. `git grep -- 'testclock'
 cmd/portal/ internal/portal/` should still only find `//go:build
 e2etest`-tagged files plus the prod stub (`!e2etest`).
+
+## Implementation notes
+
+Landed per spec with one deviation forced by the build layout:
+
+- `cmd/portal/test_clock_advance.go` — added `tokensClock() tokens.Clock`
+  returning the shared `*testclock.AdvanceableClock`. Imported
+  `jamsesh/internal/portal/tokens`. Updated the type doc to read
+  "magic-link AND tokens" rather than "magic-link only".
+- `cmd/portal/test_clock_advance_prod.go` — added the symmetric
+  `tokensClock() tokens.Clock { return nil }` stub with matching
+  typed-nil-safety doc.
+- `cmd/portal/main.go` — moved `testClk := newTestClockProvider()` up
+  to precede the token-service construction, then branched on
+  `testClk.tokensClock()` exactly the way the magic-link wiring
+  branches on `testClk.magicLinkClock()`. `tokens.NewWithClock(dbStore, c)`
+  is used when the provider returns non-nil; `tokens.New(dbStore)` is
+  retained for production. The variable's static type is widened to
+  the `tokens.Service` interface so both constructor return shapes
+  satisfy it.
+- `tests/e2e/chaos/runtime_and_clock_test.go` — un-skipped
+  `clock_skew_token_expiry` and implemented it as
+  `testClockSkewTokenExpiry`. Stands up a fresh
+  postgres+mailhog+portal stack so the clock offset stays contained;
+  signs in via magic link; asserts `GET /api/me` succeeds (baseline);
+  advances the clock by `AccessTokenTTL + 1 minute`; asserts the same
+  token now returns `401` with `{"error": "auth.expired_token"}`.
+
+### Deviation: TTL constant duplicated, not imported
+
+The spec example referenced `tokens.AccessTokenTTL` directly. The
+`tests/e2e/` directory is a separate Go module (`module jamsesh/tests/e2e`)
+with no `replace` directive into the parent, so the
+`jamsesh/internal/portal/tokens` package is not importable from the
+chaos test. Settled by defining `const accessTokenTTL = 1 * time.Hour`
+inside the subtest with a comment naming `tokens.AccessTokenTTL` as
+the single source of truth. If that constant is ever changed, this
+test will continue to advance by 1h+1m — a drift that would surface
+the first time the TTL is shortened to <1h (test would still pass
+because the advance is past the new TTL) or lengthened past 1h+1m
+(test would fail with a 200 from `/me` because the token still has
+life left). Acceptable risk — the constant is locked by SECURITY.md.
+
+### Verification
+
+Production safety:
+
+- `go build ./...` — clean.
+- `go build -tags e2etest ./...` — clean.
+- `go test -count=1 ./cmd/portal/...` — `TestProductionBuild_HasNoTestEndpoint`
+  passes (production stub of `tokensClock()` returning nil is not
+  asserted by that test but doesn't need to be — the build-tag
+  exclusivity is the gate).
+- `go test -count=1 -tags e2etest ./cmd/portal/...` — passes.
+- `go test -count=1 ./internal/portal/tokens/...` — passes (no changes
+  to the tokens package itself).
+- `git grep -- 'testclock' cmd/portal/ internal/portal/` — only the
+  e2etest-tagged file references `testclock`; production stub does
+  not. Invariant preserved.
+
+End-to-end:
+
+- `make test-portal-image` rebuilt `jamsesh/portal:e2e` with the new
+  `-tags e2etest` binary.
+- `cd tests/e2e && go test -run 'TestRuntimeAndClock/clock_skew_token_expiry'
+  -v ./chaos/...` — **PASS** in 10.4s. Baseline `GET /me` succeeded;
+  after `AdvanceClock(1h1m)` the same bearer returned 401
+  `auth.expired_token`. The portal logged
+  `advanced by 1h1m0s, new offset=3660s`.
+
+### Access-token TTL value used
+
+`1 * time.Hour` (the locked-by-SECURITY.md value of
+`tokens.AccessTokenTTL`). Advance amount was `AccessTokenTTL + 1
+minute = 1h1m` for ms-drift headroom.
