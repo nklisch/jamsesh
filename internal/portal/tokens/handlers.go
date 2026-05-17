@@ -24,8 +24,10 @@ func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Compile-time assertion that Handler satisfies the generated interface.
-var _ openapi.StrictServerInterface = (*Handler)(nil)
+// Handler satisfies the RefreshToken and RevokeToken methods of
+// openapi.StrictServerInterface. The full interface is satisfied by a
+// combined handler in cmd/portal/main.go that composes this handler with
+// additional feature handlers (e.g. magic-link).
 
 // RefreshToken implements POST /api/auth/refresh.
 // This endpoint is PUBLIC — the refresh token in the request body is the

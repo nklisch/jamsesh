@@ -23,6 +23,23 @@ type testEnv struct {
 	srv   *httptest.Server
 }
 
+// tokensOnlyHandler wraps tokens.Handler and satisfies the full
+// openapi.StrictServerInterface by panicking on methods not owned by this
+// package. This lets the handler tests remain independent of the auth package.
+type tokensOnlyHandler struct {
+	*tokens.Handler
+}
+
+func (t *tokensOnlyHandler) ExchangeMagicLink(ctx context.Context, _ openapi.ExchangeMagicLinkRequestObject) (openapi.ExchangeMagicLinkResponseObject, error) {
+	panic("ExchangeMagicLink: not implemented in token handler tests")
+}
+
+func (t *tokensOnlyHandler) RequestMagicLink(ctx context.Context, _ openapi.RequestMagicLinkRequestObject) (openapi.RequestMagicLinkResponseObject, error) {
+	panic("RequestMagicLink: not implemented in token handler tests")
+}
+
+var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
+
 // newTestEnv creates a fresh in-memory SQLite store, builds the tokens.Service
 // and handler stack, and starts an httptest.Server with the same public/
 // authenticated route split used in cmd/portal/main.go.
@@ -32,7 +49,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	s := openStore(t)
 	svc := tokens.New(s)
 	h := tokens.NewHandler(svc)
-	strictAPI := openapi.NewStrictHandler(h, nil)
+	strictAPI := openapi.NewStrictHandler(&tokensOnlyHandler{h}, nil)
 
 	r := chi.NewRouter()
 
@@ -178,7 +195,7 @@ func TestHandler_RefreshToken_ExpiredToken_Returns401(t *testing.T) {
 	clk := &fakeClock{t: time.Now().UTC()}
 	svc := tokens.NewWithClock(s, clk)
 	h := tokens.NewHandler(svc)
-	strictAPI := openapi.NewStrictHandler(h, nil)
+	strictAPI := openapi.NewStrictHandler(&tokensOnlyHandler{h}, nil)
 
 	r := chi.NewRouter()
 	r.Post("/api/auth/refresh", strictAPI.RefreshToken)

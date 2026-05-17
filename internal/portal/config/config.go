@@ -1,14 +1,25 @@
 // Package config loads and validates the portal server configuration.
 // Config is sourced from an optional YAML file with env-var overrides.
 //
-// YAML keys:  bind, db_driver, db_dsn, tls.mode, tls.cert_path,
+// YAML keys:  bind, db_driver, db_dsn, portal_url, tls.mode, tls.cert_path,
 //
-//	tls.key_path, log.format, log.level, storage
+//	tls.key_path, log.format, log.level, storage,
+//	email.provider, email.from, email.smtp.*, email.sendgrid.*,
+//	email.postmark.*, email.resend.*
 //
 // Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
+//	JAMSESH_PORTAL_URL,
 //	JAMSESH_TLS_MODE, JAMSESH_TLS_CERT, JAMSESH_TLS_KEY,
-//	JAMSESH_LOG_FORMAT, JAMSESH_LOG_LEVEL, JAMSESH_STORAGE
+//	JAMSESH_LOG_FORMAT, JAMSESH_LOG_LEVEL, JAMSESH_STORAGE,
+//	JAMSESH_EMAIL_PROVIDER, JAMSESH_EMAIL_FROM,
+//	JAMSESH_EMAIL_SMTP_HOST, JAMSESH_EMAIL_SMTP_PORT,
+//	JAMSESH_EMAIL_SMTP_USER, JAMSESH_EMAIL_SMTP_PASS,
+//	JAMSESH_EMAIL_SMTP_TLS,
+//	JAMSESH_EMAIL_SENDGRID_API_KEY,
+//	JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN,
+//	JAMSESH_EMAIL_POSTMARK_MESSAGE_STREAM,
+//	JAMSESH_EMAIL_RESEND_API_KEY
 //
 // log.level is an integer matching slog.Level values:
 //
@@ -28,12 +39,54 @@ import (
 
 // Config holds the full portal server configuration.
 type Config struct {
-	Bind     string    `yaml:"bind"`      // listen address, e.g. ":8443"
-	DBDriver string    `yaml:"db_driver"` // "sqlite" | "postgres"
-	DBDSN    string    `yaml:"db_dsn"`    // DSN appropriate for DBDriver
-	TLS      TLSConfig `yaml:"tls"`
-	Log      LogConfig `yaml:"log"`
-	Storage  string    `yaml:"storage"` // path for bare git repos
+	Bind      string      `yaml:"bind"`       // listen address, e.g. ":8443"
+	DBDriver  string      `yaml:"db_driver"`  // "sqlite" | "postgres"
+	DBDSN     string      `yaml:"db_dsn"`     // DSN appropriate for DBDriver
+	PortalURL string      `yaml:"portal_url"` // public base URL, e.g. "https://example.com"
+	TLS       TLSConfig   `yaml:"tls"`
+	Log       LogConfig   `yaml:"log"`
+	Storage   string      `yaml:"storage"` // path for bare git repos
+	Email     EmailConfig `yaml:"email"`
+}
+
+// EmailConfig selects the email delivery provider and holds all provider
+// credentials. Only the chosen provider's sub-struct needs valid fields;
+// the others are ignored. Validation runs in senders.New() at startup.
+type EmailConfig struct {
+	// Provider selects the delivery backend: smtp | sendgrid | postmark | resend
+	Provider string `yaml:"provider"`
+	// From is the envelope sender address, e.g. "jamsesh <noreply@example.com>"
+	From string `yaml:"from"`
+
+	SMTP     SMTPConfig     `yaml:"smtp"`
+	SendGrid SendGridConfig `yaml:"sendgrid"`
+	Postmark PostmarkConfig `yaml:"postmark"`
+	Resend   ResendConfig   `yaml:"resend"`
+}
+
+// SMTPConfig holds SMTP connection settings.
+type SMTPConfig struct {
+	Host    string `yaml:"host"`
+	Port    int    `yaml:"port"`
+	User    string `yaml:"user"`
+	Pass    string `yaml:"pass"`
+	TLSMode string `yaml:"tls"` // "mandatory" | "opportunistic" | "none"
+}
+
+// SendGridConfig holds SendGrid API credentials.
+type SendGridConfig struct {
+	APIKey string `yaml:"api_key"`
+}
+
+// PostmarkConfig holds Postmark API credentials.
+type PostmarkConfig struct {
+	ServerToken   string `yaml:"server_token"`
+	MessageStream string `yaml:"message_stream"` // defaults to "outbound"
+}
+
+// ResendConfig holds Resend API credentials.
+type ResendConfig struct {
+	APIKey string `yaml:"api_key"`
 }
 
 // TLSConfig controls how the portal presents to clients.
@@ -111,12 +164,21 @@ func Load(path string) (Config, error) {
 // Configuration table.
 func defaults() Config {
 	return Config{
-		Bind:     ":8443",
-		DBDriver: "sqlite",
-		DBDSN:    "./jamsesh.db",
-		TLS:      TLSConfig{Mode: "behind_proxy"},
-		Log:      LogConfig{Format: "json", Level: slog.LevelInfo},
-		Storage:  "./storage",
+		Bind:      ":8443",
+		DBDriver:  "sqlite",
+		DBDSN:     "./jamsesh.db",
+		PortalURL: "http://localhost:8443",
+		TLS:       TLSConfig{Mode: "behind_proxy"},
+		Log:       LogConfig{Format: "json", Level: slog.LevelInfo},
+		Storage:   "./storage",
+		Email: EmailConfig{
+			Provider: "smtp",
+			SMTP: SMTPConfig{
+				Host:    "localhost",
+				Port:    587,
+				TLSMode: "mandatory",
+			},
+		},
 	}
 }
 
@@ -172,5 +234,48 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("JAMSESH_STORAGE"); v != "" {
 		c.Storage = v
+	}
+	if v := os.Getenv("JAMSESH_PORTAL_URL"); v != "" {
+		c.PortalURL = v
+	}
+	applyEmailEnv(&c.Email)
+}
+
+// applyEmailEnv overlays email-related environment variables.
+func applyEmailEnv(e *EmailConfig) {
+	if v := os.Getenv("JAMSESH_EMAIL_PROVIDER"); v != "" {
+		e.Provider = v
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_FROM"); v != "" {
+		e.From = v
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_SMTP_HOST"); v != "" {
+		e.SMTP.Host = v
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_SMTP_PORT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			e.SMTP.Port = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_SMTP_USER"); v != "" {
+		e.SMTP.User = v
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_SMTP_PASS"); v != "" {
+		e.SMTP.Pass = v
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_SMTP_TLS"); v != "" {
+		e.SMTP.TLSMode = v
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_SENDGRID_API_KEY"); v != "" {
+		e.SendGrid.APIKey = v
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN"); v != "" {
+		e.Postmark.ServerToken = v
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_POSTMARK_MESSAGE_STREAM"); v != "" {
+		e.Postmark.MessageStream = v
+	}
+	if v := os.Getenv("JAMSESH_EMAIL_RESEND_API_KEY"); v != "" {
+		e.Resend.APIKey = v
 	}
 }

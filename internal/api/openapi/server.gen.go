@@ -18,6 +18,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const (
@@ -35,6 +36,17 @@ type ErrorEnvelope struct {
 
 	// Message human-readable error message
 	Message string `json:"message"`
+}
+
+// MagicLinkExchangeBody defines model for MagicLinkExchangeBody.
+type MagicLinkExchangeBody struct {
+	// Token Raw magic-link token from the URL query parameter
+	Token string `json:"token"`
+}
+
+// MagicLinkRequestBody defines model for MagicLinkRequestBody.
+type MagicLinkRequestBody struct {
+	Email openapi_types.Email `json:"email"`
 }
 
 // TokenPair defines model for TokenPair.
@@ -68,6 +80,12 @@ type RevokeTokenJSONBody struct {
 	Token     string `json:"token"`
 }
 
+// ExchangeMagicLinkJSONRequestBody defines body for ExchangeMagicLink for application/json ContentType.
+type ExchangeMagicLinkJSONRequestBody = MagicLinkExchangeBody
+
+// RequestMagicLinkJSONRequestBody defines body for RequestMagicLink for application/json ContentType.
+type RequestMagicLinkJSONRequestBody = MagicLinkRequestBody
+
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
 type RefreshTokenJSONRequestBody RefreshTokenJSONBody
 
@@ -76,6 +94,12 @@ type RevokeTokenJSONRequestBody RevokeTokenJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Exchange a magic-link token for a portal token pair
+	// (POST /api/auth/magic-link/exchange)
+	ExchangeMagicLink(w http.ResponseWriter, r *http.Request)
+	// Request a magic-link sign-in email
+	// (POST /api/auth/magic-link/request)
+	RequestMagicLink(w http.ResponseWriter, r *http.Request)
 	// Exchange a refresh token for a new access+refresh pair
 	// (POST /api/auth/refresh)
 	RefreshToken(w http.ResponseWriter, r *http.Request)
@@ -87,6 +111,18 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Exchange a magic-link token for a portal token pair
+// (POST /api/auth/magic-link/exchange)
+func (_ Unimplemented) ExchangeMagicLink(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Request a magic-link sign-in email
+// (POST /api/auth/magic-link/request)
+func (_ Unimplemented) RequestMagicLink(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Exchange a refresh token for a new access+refresh pair
 // (POST /api/auth/refresh)
@@ -108,6 +144,34 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ExchangeMagicLink operation middleware
+func (siw *ServerInterfaceWrapper) ExchangeMagicLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExchangeMagicLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RequestMagicLink operation middleware
+func (siw *ServerInterfaceWrapper) RequestMagicLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RequestMagicLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // RefreshToken operation middleware
 func (siw *ServerInterfaceWrapper) RefreshToken(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +321,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/auth/magic-link/exchange", wrapper.ExchangeMagicLink)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/auth/magic-link/request", wrapper.RequestMagicLink)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/auth/refresh", wrapper.RefreshToken)
 	})
 	r.Group(func(r chi.Router) {
@@ -271,6 +341,72 @@ type ForbiddenJSONResponse ErrorEnvelope
 type NotFoundJSONResponse ErrorEnvelope
 
 type UnauthorizedJSONResponse ErrorEnvelope
+
+type ExchangeMagicLinkRequestObject struct {
+	Body *ExchangeMagicLinkJSONRequestBody
+}
+
+type ExchangeMagicLinkResponseObject interface {
+	VisitExchangeMagicLinkResponse(w http.ResponseWriter) error
+}
+
+type ExchangeMagicLink200JSONResponse TokenPair
+
+func (response ExchangeMagicLink200JSONResponse) VisitExchangeMagicLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExchangeMagicLink401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ExchangeMagicLink401JSONResponse) VisitExchangeMagicLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestMagicLinkRequestObject struct {
+	Body *RequestMagicLinkJSONRequestBody
+}
+
+type RequestMagicLinkResponseObject interface {
+	VisitRequestMagicLinkResponse(w http.ResponseWriter) error
+}
+
+type RequestMagicLink204Response struct {
+}
+
+func (response RequestMagicLink204Response) VisitRequestMagicLinkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RequestMagicLink500JSONResponse ErrorEnvelope
+
+func (response RequestMagicLink500JSONResponse) VisitRequestMagicLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type RefreshTokenRequestObject struct {
 	Body *RefreshTokenJSONRequestBody
@@ -340,6 +476,12 @@ func (response RevokeToken401JSONResponse) VisitRevokeTokenResponse(w http.Respo
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Exchange a magic-link token for a portal token pair
+	// (POST /api/auth/magic-link/exchange)
+	ExchangeMagicLink(ctx context.Context, request ExchangeMagicLinkRequestObject) (ExchangeMagicLinkResponseObject, error)
+	// Request a magic-link sign-in email
+	// (POST /api/auth/magic-link/request)
+	RequestMagicLink(ctx context.Context, request RequestMagicLinkRequestObject) (RequestMagicLinkResponseObject, error)
 	// Exchange a refresh token for a new access+refresh pair
 	// (POST /api/auth/refresh)
 	RefreshToken(ctx context.Context, request RefreshTokenRequestObject) (RefreshTokenResponseObject, error)
@@ -375,6 +517,68 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ExchangeMagicLink operation middleware
+func (sh *strictHandler) ExchangeMagicLink(w http.ResponseWriter, r *http.Request) {
+	var request ExchangeMagicLinkRequestObject
+
+	var body ExchangeMagicLinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExchangeMagicLink(ctx, request.(ExchangeMagicLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExchangeMagicLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExchangeMagicLinkResponseObject); ok {
+		if err := validResponse.VisitExchangeMagicLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RequestMagicLink operation middleware
+func (sh *strictHandler) RequestMagicLink(w http.ResponseWriter, r *http.Request) {
+	var request RequestMagicLinkRequestObject
+
+	var body RequestMagicLinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RequestMagicLink(ctx, request.(RequestMagicLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RequestMagicLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RequestMagicLinkResponseObject); ok {
+		if err := validResponse.VisitRequestMagicLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // RefreshToken operation middleware
@@ -444,27 +648,31 @@ func (sh *strictHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

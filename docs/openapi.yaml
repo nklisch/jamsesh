@@ -74,6 +74,23 @@ components:
           type: string
           format: date-time
 
+    MagicLinkRequestBody:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+
+    MagicLinkExchangeBody:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Raw magic-link token from the URL query parameter
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -144,5 +161,47 @@ paths:
       responses:
         '204':
           description: Revocation complete
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/magic-link/request:
+    post:
+      summary: Request a magic-link sign-in email
+      operationId: requestMagicLink
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MagicLinkRequestBody'
+      responses:
+        '204':
+          description: Magic link email sent (or silently accepted if address unknown)
+        '500':
+          description: Internal server error (email delivery failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/auth/magic-link/exchange:
+    post:
+      summary: Exchange a magic-link token for a portal token pair
+      operationId: exchangeMagicLink
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MagicLinkExchangeBody'
+      responses:
+        '200':
+          description: Token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
         '401':
           $ref: '#/components/responses/Unauthorized'
