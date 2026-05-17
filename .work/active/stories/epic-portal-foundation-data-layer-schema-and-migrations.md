@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-data-layer-schema-and-migrations
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-foundation-data-layer
 depends_on: []
@@ -62,3 +62,45 @@ adds the initial dependencies: `pressly/goose/v3`, `modernc.org/sqlite`,
   per-connection; the `db.Open` helper sets it via DSN pragmas. For
   migrations specifically, goose opens its own connection, so the
   SQLite migration helper must apply the same pragma before goose runs.
+
+## Implementation notes
+
+### Files landed
+
+| File | Description |
+|------|-------------|
+| `sqlc.yaml` | Dual-dialect sqlc v2 config: sqlite + postgresql blocks, both with `emit_interface: true`, per-engine timestamp overrides, nullable-column pointer overrides |
+| `db/schema/sqlite.sql` | Full 7-table schema with TEXT timestamps, CHECK constraints, FK references, indexes |
+| `db/schema/postgres.sql` | Same logical schema with TIMESTAMPTZ, same constraints and indexes |
+| `internal/db/migrations/sqlite/00001_initial.sql` | Goose Up/Down wrapping the SQLite schema statements |
+| `internal/db/migrations/postgres/00001_initial.sql` | Goose Up/Down wrapping the Postgres schema statements |
+| `internal/db/migrate.go` | `MigrateUp(ctx, *sql.DB, dialect)` using `goose.NewProvider` + `embed.FS` |
+| `internal/db/migrate_test.go` | `TestMigrateUpSQLite_Idempotent` (passes), `TestMigrateUpPostgres_Idempotent` (skips without `JAMSESH_TEST_PG_DSN`) |
+| `go.mod` / `go.sum` | Added: `pressly/goose/v3@v3.27.1`, `modernc.org/sqlite@v1.50.1`, `jackc/pgx/v5@v5.9.2`, `oklog/ulid/v2@v2.1.1` |
+
+### Validation results
+
+- `go test ./internal/db/...` — PASS (SQLite idempotency test passes; Postgres test skips cleanly)
+- `go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 compile` — clean, no output
+- `go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate` — clean, generates `internal/db/sqlitestore/` and `internal/db/pgstore/` with models, querier, db files
+- `go vet ./...` — clean
+
+### Deviations from design
+
+**Migration file location**: The feature design specifies `db/migrations/sqlite/` and `db/migrations/postgres/` at the repo root, but Go's `//go:embed` directive does not allow `..` in paths — the embed path must be relative to the source file and within its subtree. Since `migrate.go` lives at `internal/db/`, the migrations are placed at `internal/db/migrations/sqlite/` and `internal/db/migrations/postgres/`. Functionally identical; the embed path in the source (`migrations/sqlite/*.sql`) resolves correctly.
+
+**sqlc.yaml output paths**: Feature design specifies `internal/db/sqlitestore` and `internal/db/pgstore` (not `db/sqlitestore` and `db/pgstore` as in the sqlc skill reference). Feature design takes precedence.
+
+**Generated files not committed**: `sqlc generate` produces output in `internal/db/sqlitestore/` and `internal/db/pgstore/`, but these belong to the `queries-and-codegen` story. Only `.gitkeep` placeholder files are committed in those directories. The dummy `_validate.sql` query files remain in `db/queries/sqlite/` and `db/queries/postgres/` to enable `sqlc compile/generate` validation.
+
+**FK enforcement in migrations**: Chose the simpler path — SQLite migrations run without `PRAGMA foreign_keys = ON`. The initial migration is CREATE TABLE only, so no FK violations are possible. Documented in `migrate.go` comments.
+
+**goose API**: Used `goose.NewProvider` (v3 provider API) with `fs.Sub` to strip the embed path prefix, avoiding package-level global mutation (`goose.SetBaseFS`, `goose.SetDialect`). This is safe for concurrent test runs.
+
+### Schema/migration column parity (review checklist)
+
+Manually verified that `db/schema/sqlite.sql`, `db/schema/postgres.sql`,
+`internal/db/migrations/sqlite/00001_initial.sql`, and
+`internal/db/migrations/postgres/00001_initial.sql` declare identical
+columns in the same order for all 7 tables. Only type differences
+(TEXT vs TIMESTAMPTZ for timestamps) are expected and intentional.

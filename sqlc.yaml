@@ -1,0 +1,73 @@
+version: "2"
+sql:
+  - engine: sqlite
+    schema: db/schema/sqlite.sql
+    queries: db/queries/sqlite/
+    gen:
+      go:
+        package: sqlitestore
+        out: internal/db/sqlitestore
+        emit_interface: true
+        emit_json_tags: true
+        emit_prepared_queries: false
+        overrides:
+          - column: "*.created_at"
+            go_type: time.Time
+          - column: "*.updated_at"
+            go_type: time.Time
+          - column: "*.issued_at"
+            go_type: time.Time
+          - column: "*.expires_at"
+            go_type: time.Time
+          - column: "*.last_used_at"
+            go_type:
+              type: time.Time
+              pointer: true
+          - column: "*.revoked_at"
+            go_type:
+              type: time.Time
+              pointer: true
+          - column: "*.used_at"
+            go_type:
+              type: time.Time
+              pointer: true
+          - column: "*.ended_at"
+            go_type:
+              type: time.Time
+              pointer: true
+          - column: "*.base_sha"
+            go_type:
+              type: string
+              pointer: true
+  - engine: postgresql
+    schema: db/schema/postgres.sql
+    queries: db/queries/postgres/
+    gen:
+      go:
+        package: pgstore
+        out: internal/db/pgstore
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_json_tags: true
+        emit_prepared_queries: false
+        overrides:
+          - column: "*.last_used_at"
+            go_type:
+              type: time.Time
+              pointer: true
+          - column: "*.revoked_at"
+            go_type:
+              type: time.Time
+              pointer: true
+          - column: "*.used_at"
+            go_type:
+              type: time.Time
+              pointer: true
+          - column: "*.ended_at"
+            go_type:
+              type: time.Time
+              pointer: true
+          - column: "*.base_sha"
+            go_type:
+              type: string
+              pointer: true
