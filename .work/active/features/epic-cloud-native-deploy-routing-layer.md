@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer
 kind: feature
-stage: implementing
+stage: review
 tags: [infra]
 parent: epic-cloud-native-deploy
 depends_on: [epic-cloud-native-deploy-operational-polish]
@@ -527,3 +527,20 @@ Wave 3: Unit 6 (metrics + docs) — depends on Unit 2 + Unit 3
 Updated at Unit 6 (when the feature lands):
 - `docs/ARCHITECTURE.md` — Horizontal scaling subsection.
 - `docs/SELF_HOST.md` — Clustered mode (preview) section.
+
+## Children complete (2026-05-17)
+
+All 6 child stories landed and reviewed across multiple orchestrator waves:
+
+| Story | Verdict | Notes |
+|---|---|---|
+| core | Approve | extract + ring packages; lock-free atomic-pointer reads |
+| hint-cache | Approve | LRU + TTL; sync.Mutex; idiomatic Go |
+| mcp-header | Approve | `Jam-Session-Id` in `jamsesh mcp-headers`; incidental /auth/ extract fix |
+| service | Approve with comments | `cmd/jamsesh-router/` + proxy + config; agent didn't commit (orchestrator recovered) |
+| discovery | Approve | static + k8s; `neverPublished` sentinel; client-go@v0.36.1 |
+| metrics-and-docs | review (pending) | 4 router metric handles + SELF_HOST §14 + ARCHITECTURE horizontal-scaling section |
+
+Verification: `go build ./...` clean; `go test ./...` green across all packages.
+
+Feature advanced `implementing → review`. The single review finding (service agent's non-commit recovery) is a process observation, not a blocker.

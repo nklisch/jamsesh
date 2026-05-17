@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing
 kind: feature
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy
 depends_on: [epic-cloud-native-deploy-operational-polish]
@@ -468,3 +468,18 @@ Wave 3: Unit 4 (factory+retention+metrics) — depends on 3
 - `docs/ARCHITECTURE.md` — request-lifecycle gains the lease check
   in clustered mode.
 - `docs/SELF_HOST.md` — connection-per-lease math + retention env vars.
+
+## Children complete (2026-05-17)
+
+All 4 child stories landed and reviewed:
+
+| Story | Verdict | Notes |
+|---|---|---|
+| interface-and-noop | Approve | Manager + Handle interfaces + NoopManager; sync.Once for idempotent Release |
+| schema | Approve with comments | leases table + sequence + sqlc queries. sqlc hand-written (no sqlc in env); backlog `lease-fencing-schema-verify-sqlc-regen` |
+| postgres | Approve | PostgresManager with dedicated `*sql.Conn` + heartbeat; 8 integration tests gated on JAMSESH_TEST_PG_DSN |
+| factory-and-retention | review (pending) | factory + retention goroutine + 5 metric handles + config validation; db.Open signature changed to return *sql.DB |
+
+Verification: `go build ./...` clean; `go test ./...` green across all packages.
+
+Feature advanced `implementing → review`. db.Open signature change touched 25+ test files; sibling story (factory-and-retention) handled the cascade.
