@@ -202,20 +202,15 @@ test("session-list shows load error on 403 response", async ({
   });
 });
 
-// ─── 7. Skipped: expired bearer token triggers 401 sign-out ──────────────────
+// ─── 7. Expired bearer token triggers 401 sign-out ───────────────────────────
 //
-// Pending: a 401-interceptor in the API client (frontend/src/lib/api/client.ts
-// or a wrapper) that calls auth.signOut() on 401 responses. Once that lands, a
-// test can seed a known-invalid token, navigate to a protected route, let the
-// backend return 401, and assert a redirect to /login.
-//
-// Without the interceptor, a stale non-null token makes isAuthenticated = true
-// and the auth guard does not redirect; the SPA just shows a load error.
-test.skip(
+// The API client's 401-interceptor (frontend/src/lib/api/client.ts) routes
+// every 401 through auth.signOut(), which clears localStorage and navigates
+// to /login. Seed a known-invalid token, navigate to a protected route, let
+// the backend return 401, and assert a redirect to /login.
+test(
   "stale bearer token on API call triggers 401 sign-out and login redirect",
   async ({ page, context }) => {
-    // Pending: API client 401 interceptor (see frontend/src/lib/api/client.ts).
-    // Re-enable once client.GET/POST unwraps 401 and calls auth.signOut().
     await context.addInitScript(() => {
       localStorage.setItem("jamsesh.token", "expired-fake-token-123");
     });

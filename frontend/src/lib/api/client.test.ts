@@ -96,3 +96,98 @@ describe('client — Bearer middleware', () => {
     expect(captured!.headers.get('Authorization')).toBe('Bearer after-set-token');
   });
 });
+
+describe('client — 401 interceptor', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+    window.history.replaceState({}, '', '/orgs/x/sessions');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('clears tokens and navigates to /login on 401 response', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('stale-token', 'stale-refresh');
+    expect(auth.token).toBe('stale-token');
+
+    const { client } = await import('./client');
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return new Response(
+        JSON.stringify({ error: 'auth.invalid_token', message: 'token rejected' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    await client.GET('/api/me');
+
+    expect(auth.token).toBeNull();
+    expect(auth.refresh).toBeNull();
+    expect(localStorage.getItem('jamsesh.token')).toBeNull();
+    expect(localStorage.getItem('jamsesh.refresh')).toBeNull();
+    expect(window.location.pathname).toBe('/login');
+  });
+
+  test('does NOT clear tokens on 200 response', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('good-token', 'good-refresh');
+
+    const { client } = await import('./client');
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return new Response(
+        JSON.stringify({ id: 'u1', email: 'a@b.test', display_name: 'A' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    await client.GET('/api/me');
+
+    expect(auth.token).toBe('good-token');
+    expect(auth.refresh).toBe('good-refresh');
+    expect(window.location.pathname).not.toBe('/login');
+  });
+
+  test('does NOT clear tokens on 500 response', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('good-token', 'good-refresh');
+
+    const { client } = await import('./client');
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return new Response('internal error', { status: 500 });
+    });
+
+    await client.GET('/api/me');
+
+    expect(auth.token).toBe('good-token');
+    expect(auth.refresh).toBe('good-refresh');
+    expect(window.location.pathname).not.toBe('/login');
+  });
+
+  test('multiple parallel 401s are idempotent', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('stale-token', 'stale-refresh');
+
+    const { client } = await import('./client');
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return new Response(
+        JSON.stringify({ error: 'auth.invalid_token', message: '' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    await Promise.all([
+      client.GET('/api/me'),
+      client.GET('/api/me'),
+      client.GET('/api/me'),
+    ]);
+
+    expect(auth.token).toBeNull();
+    expect(window.location.pathname).toBe('/login');
+  });
+});
