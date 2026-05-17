@@ -1,6 +1,6 @@
 ---
 id: portal-test-clock-advance-endpoint
-kind: story
+kind: feature
 stage: drafting
 tags: [testing, e2e-test, testability]
 parent: null

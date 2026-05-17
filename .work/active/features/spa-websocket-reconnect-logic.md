@@ -1,6 +1,6 @@
 ---
 id: spa-websocket-reconnect-logic
-kind: story
+kind: feature
 stage: drafting
 tags: [ui]
 parent: null
