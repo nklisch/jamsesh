@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-data-layer
 kind: feature
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-foundation
 depends_on: []
@@ -911,3 +911,26 @@ CI runs `make generate && git diff --exit-code` to catch schema drift.
   native. The temporary `*sql.DB` from `pgx/v5/stdlib.OpenDBFromPool`
   is correct but slightly subtle — leave a comment in `Open` noting
   why it's there.
+
+## Implementation summary
+
+All 4 child stories advanced to `stage: review` across 5 implementation waves:
+
+| Story | Status | Notes |
+|---|---|---|
+| `data-layer-schema-and-migrations` | review | Migrations moved to `internal/db/migrations/` (Go embed requires same-subtree); SQLite timestamp columns later changed from TEXT to DATETIME by the store-and-adapters story for driver-level parsing |
+| `data-layer-queries-and-codegen` | review | sqlc.yaml gained additional timestamp overrides (joined_at, plus full Postgres timestamp set) to align generated `time.Time` shapes across dialects; one residual divergence on `Account.GithubUserID` (sql.NullString vs pgtype.Text) handled in adapter |
+| `data-layer-store-and-adapters` | review | Found and fixed a scan failure by changing SQLite timestamp columns to DATETIME; ErrUniqueViolation mapping extended in org-id-tests pass to cover SQLITE_CONSTRAINT_PRIMARYKEY for composite PK tables |
+| `data-layer-org-id-tests` | review | Cross-org leakage suite parameterized over both dialects (Postgres path skips without `JAMSESH_TEST_PG_DSN`); revealed and fixed the composite-PK error-mapping gap noted above |
+
+### Cross-cutting deviations
+- **Migration path**: `internal/db/migrations/` instead of `db/migrations/` per Go embed constraint
+- **SQLite timestamps**: TEXT → DATETIME for driver auto-parsing to `time.Time`
+- **SQLite unique-violation mapping**: extended to include `SQLITE_CONSTRAINT_PRIMARYKEY` (composite PK tables)
+
+### Verification
+- `go build ./...` clean
+- `go test ./...` green (SQLite path; Postgres harness in place, gated on `JAMSESH_TEST_PG_DSN`)
+- `go vet ./...` clean
+- `make generate-db && git diff --exit-code` green
+- Cross-org failure-mode verified: removing `org_id = ?` from `GetSession` causes `TestOrgIDDiscipline/sqlite/GetSession_cross_org_returns_ErrNotFound` to fail
