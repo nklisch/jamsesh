@@ -75,6 +75,31 @@ the onboarding flow rather than a per-feature `/screens` pass.
   (wordmark, breadcrumb-like org chip, theme chip, avatar) — foundation
   must implement these as base components for downstream features to reuse.
 
+## Generated-contracts scope
+
+Per the SPEC.md generated-contracts decision, this feature establishes
+the typed-client wrapper used by every other UI feature:
+
+- A Vite-time codegen step (or pre-build script invoked by `make
+  generate`) runs `openapi-typescript` against `docs/openapi.yaml` to
+  produce `frontend/src/lib/api/types.gen.ts` (committed). This file is
+  imported but never edited.
+- A thin REST client wrapper at `frontend/src/lib/api/client.ts` uses
+  `openapi-fetch` with the generated types to provide typed
+  `client.GET`, `client.POST`, `client.PATCH`, etc. — endpoint paths
+  and request/response bodies are checked against the spec at TS
+  compile time.
+- The WebSocket primitive (the cross-cutting subscription pattern this
+  feature already owns) types incoming events against the
+  `EventEnvelope` discriminated union from the generated types. A
+  consumer subscribes to events filtered by `type` and receives the
+  correctly-narrowed payload shape.
+
+Auth-flow surfaces (login screen handlers) call the typed `client` for
+the `/api/auth/*` endpoints. Token persistence and reactive state
+primitives (Svelte runes wrapping the WebSocket subscription and the
+typed REST client) sit on top of this generated foundation.
+
 <!-- Feature-design will fill in interfaces, signatures, and implementation
 units when /agile-workflow:feature-design runs on this. Feature stays at
 stage: drafting per --mocks-only pass. -->

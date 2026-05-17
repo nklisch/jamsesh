@@ -91,6 +91,18 @@ the upgrade-time check (sessions-rest owns membership management).
 - **Event envelope**: `version: 1`, shape `{seq, version, type, payload,
   timestamp, session_id}`.
 
+## Generated-contracts scope
+
+Per the SPEC.md generated-contracts decision, this feature consumes
+(rather than authors) the event-payload schemas defined by
+`epic-portal-api-events-log` in `docs/openapi.yaml > components/schemas`:
+`EventEnvelope` and the per-event payload schemas. Marshaling on the
+Go side uses the oapi-codegen-generated structs; the TypeScript client
+unmarshals into the openapi-typescript-generated discriminated union on
+`type`. WebSocket itself is not described by OpenAPI, but the
+**payload** types ARE — so REST responses, MCP tool returns, and
+WebSocket events all share the same typed shapes across both runtimes.
+
 ## Decomposition risks
 
 - WebSocket gateway is the highest-risk feature in this epic. Replay-

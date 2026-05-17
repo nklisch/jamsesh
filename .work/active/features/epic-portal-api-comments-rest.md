@@ -97,5 +97,26 @@ Does NOT cover the MCP `post_comment` and `resolve_comment` wiring
 - **Event emission**: `comment.added` / `comment.resolved` per the
   canonical envelope.
 
+## Generated-contracts scope
+
+Per the SPEC.md generated-contracts decision, this feature adds the
+following to `docs/openapi.yaml`:
+
+- Endpoints under `paths:`: `GET /api/sessions/{id}/comments`,
+  `POST /api/sessions/{id}/comments/{commentId}/resolve`
+- Component schemas: `Comment` (the canonical row from PROTOCOL.md's
+  Comment schema), `CommentAnchor`, `CommentKind` enum,
+  `CommentListResponse`, `ResolveCommentRequest`, `ConflictEvent`
+  (read-only shape — auto-merger writes it but this feature exposes
+  the read API surface)
+
+The `Comment` schema is reused by the MCP `post_comment` tool's
+parameter shape and by the WebSocket `CommentAddedPayload` event — same
+type across REST, MCP, and WebSocket, generated once.
+
+Handlers implement the `oapi-codegen`-generated `ServerInterface`
+methods. The internal library functions (`CreateComment`,
+`ResolveComment`) accept the generated `Comment` struct directly.
+
 <!-- Feature-design will fill in interfaces, signatures, and implementation
 units when /agile-workflow:feature-design runs on this. -->

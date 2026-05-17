@@ -116,6 +116,23 @@ WebSocket subscription (separate feature).
   `epic-portal-git-storage` from the `POST /api/sessions` handler.
   Atomic compensation: rm-rf the repo on row insert failure.
 
+## Generated-contracts scope
+
+Per the SPEC.md generated-contracts decision, every endpoint in this
+feature gets a corresponding entry under `paths:` in
+`docs/openapi.yaml`. Request and response bodies reference component
+schemas (this feature adds: `Session`, `SessionSummary`,
+`SessionListResponse`, `CreateSessionRequest`, `PatchSessionRequest`,
+`Ref`, `RefListResponse`, `DigestResponse`, `Invite`, `Member`,
+`MemberRole`).
+
+Handlers implement the `oapi-codegen`-generated `ServerInterface`
+methods (one method per spec'd endpoint). The generated interface is
+the compile-time contract between the spec and the handler; drift
+becomes a build error. Pagination cursor opaque shape and
+`pagination.cursor_filter_mismatch` error code are spec'd in the YAML
+under the standard error contract.
+
 ## Decomposition risks
 
 - This feature is at the size ceiling (12-15 implementation units). If

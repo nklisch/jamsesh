@@ -22,6 +22,27 @@ Technical boundaries and decisions for jamsesh. Present truth, not roadmap.
   ref inspection, commit-trailer parsing).
 - Pre/post-receive hooks implemented as Go functions invoked by the smart-HTTP
   handler at the appropriate point in the receive-pack flow.
+- **chi** for HTTP routing — per-subroute middleware stacks fit the multi-auth
+  shape (Bearer on `/api/*` + `/mcp`, HTTP Basic on `/git/*`, subprotocol token
+  on `/ws`). Compatible with `http.Handler` so we can drop into stdlib anywhere.
+
+**Generated contracts (REST + event payloads)**
+
+- `docs/openapi.yaml` is the **single source of truth** for the portal's REST
+  routes AND for the WebSocket event envelope and per-event payload schemas.
+  Spec-first: the YAML is reviewed, versioned, and authoritative; both Go and
+  TypeScript regenerate from it.
+- **Go server**: `oapi-codegen` (deepmap) with the chi backend generates strict
+  server interfaces from `docs/openapi.yaml`. Handlers implement the generated
+  interface — drift is a compile error. Component schemas generate Go structs
+  reused by the WebSocket gateway and event emitters.
+- **TypeScript client**: `openapi-typescript` generates TS types from the same
+  spec; `openapi-fetch` provides the typed fetch wrapper consumed by the Svelte
+  client. Component-schema types are shared between REST responses and
+  WebSocket payloads.
+- **Build wire**: a single `make generate` target invokes both generators.
+  CI verifies the working tree matches the spec (`make generate && git diff
+  --exit-code`). Generated files are committed (no run-time generation).
 
 **Local client**
 - A `jamsesh` Go binary shipped in the Claude Code plugin's `bin/` directory.

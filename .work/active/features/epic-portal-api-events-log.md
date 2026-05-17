@@ -86,5 +86,27 @@ assembly). Does NOT cover comments table (lives in `comments-rest`).
 - **Sequence allocation**: per-session monotonic, generated at emit time
   within the transaction.
 
+## Generated-contracts scope
+
+This feature contributes the canonical event-payload schemas to
+`docs/openapi.yaml > components/schemas/` (per the SPEC.md generated-
+contracts decision):
+
+- `EventEnvelope` — `{seq, version, type, payload, timestamp,
+  session_id}` from PROTOCOL.md
+- One schema per event type listed in PROTOCOL.md's WebSocket event
+  catalog: `CommitArrivedPayload`, `MergeSucceededPayload`,
+  `ConflictDetectedPayload`, `ConflictResolvedPayload`,
+  `CommentAddedPayload`, `CommentResolvedPayload`, `RefForkedPayload`,
+  `ModeChangedPayload`, `TurnEndedPayload`, `PresenceUpdatedPayload`,
+  `SessionFinalizingPayload`, `SessionEndedPayload`
+
+The schemas are consumed by:
+- Go event-emitter helpers in THIS feature (oapi-codegen-generated
+  Go structs become the `payload` type for `EmitEvent`)
+- The WebSocket gateway feature (typed marshal of envelopes)
+- The TypeScript client (events come typed off the WebSocket as
+  discriminated unions on `type`)
+
 <!-- Feature-design will fill in interfaces, signatures, and implementation
 units when /agile-workflow:feature-design runs on this. -->
