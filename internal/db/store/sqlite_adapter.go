@@ -41,9 +41,14 @@ func mapSQLiteErr(err error) error {
 		return ErrNotFound
 	}
 	// modernc.org/sqlite surfaces constraint violations as *sqlite.Error.
+	// Both SQLITE_CONSTRAINT_UNIQUE (standalone UNIQUE index) and
+	// SQLITE_CONSTRAINT_PRIMARYKEY (composite PRIMARY KEY acting as the
+	// uniqueness constraint, e.g. org_members and session_members) map to
+	// ErrUniqueViolation — they are semantically the same to callers.
 	var sqliteErr *sqlite.Error
 	if errors.As(err, &sqliteErr) {
-		if sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+		code := sqliteErr.Code()
+		if code == sqlite3.SQLITE_CONSTRAINT_UNIQUE || code == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY {
 			return ErrUniqueViolation
 		}
 	}
