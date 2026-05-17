@@ -7,7 +7,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
-	"jamsesh/internal/portal/tokens"
+	"jamsesh/internal/portal/handlerauth"
 )
 
 // Handler implements the openapi.StrictServerInterface comment methods.
@@ -27,18 +27,17 @@ func NewHandler(svc *Service) *Handler {
 
 // CreateComment inserts a new comment and emits a comment.added event.
 func (h *Handler) CreateComment(ctx context.Context, req openapi.CreateCommentRequestObject) (openapi.CreateCommentResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
-	if !ok {
-		return openapi.CreateComment401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
-	}
-
 	orgID := req.OrgID
 	sessionID := req.SessionID
+
+	// Verify session membership (auth → session member).
+	acc, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.s, orgID, sessionID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, fmt.Errorf("comments: create: %w", fail.Err)
+		}
+		return createCommentFail(fail), nil
+	}
 
 	if req.Body == nil {
 		return openapi.CreateComment400JSONResponse(openapi.ErrorEnvelope{
@@ -48,39 +47,6 @@ func (h *Handler) CreateComment(ctx context.Context, req openapi.CreateCommentRe
 	}
 
 	body := req.Body
-
-	// Require org membership.
-	if _, err := h.s.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.CreateComment403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this org",
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("comments: create: get org member: %w", err)
-	}
-
-	// Require session membership.
-	if _, err := h.s.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.CreateComment403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this session",
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("comments: create: get session member: %w", err)
-	}
 
 	// Verify session exists.
 	if _, err := h.s.GetSession(ctx, orgID, sessionID); err != nil {
@@ -141,52 +107,18 @@ func (h *Handler) CreateComment(ctx context.Context, req openapi.CreateCommentRe
 // ---------------------------------------------------------------------------
 
 // ListComments returns cursor-paginated comments for a session.
-// The caller must be an org member and a session member.
+// The caller must be a session member.
 func (h *Handler) ListComments(ctx context.Context, req openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
-	if !ok {
-		return openapi.ListComments401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
-	}
-
 	orgID := req.OrgID
 	sessionID := req.SessionID
 
-	// Require org membership.
-	if _, err := h.s.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.ListComments403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this org",
-				},
-			}, nil
+	// Verify session membership (auth → session member).
+	_, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.s, orgID, sessionID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, fmt.Errorf("comments: list: %w", fail.Err)
 		}
-		return nil, fmt.Errorf("comments: list: get org member: %w", err)
-	}
-
-	// Require session membership.
-	if _, err := h.s.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.ListComments403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this session",
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("comments: list: get session member: %w", err)
+		return listCommentsFail(fail), nil
 	}
 
 	// Verify session exists in this org.
@@ -252,53 +184,19 @@ func (h *Handler) ListComments(ctx context.Context, req openapi.ListCommentsRequ
 // ---------------------------------------------------------------------------
 
 // ResolveComment marks a comment resolved.
-// The caller must be an org member and a session member.
+// The caller must be a session member.
 func (h *Handler) ResolveComment(ctx context.Context, req openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
-	if !ok {
-		return openapi.ResolveComment401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
-	}
-
 	orgID := req.OrgID
 	sessionID := req.SessionID
 	commentID := req.CommentId
 
-	// Require org membership.
-	if _, err := h.s.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.ResolveComment403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this org",
-				},
-			}, nil
+	// Verify session membership (auth → session member).
+	acc, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.s, orgID, sessionID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, fmt.Errorf("comments: resolve: %w", fail.Err)
 		}
-		return nil, fmt.Errorf("comments: resolve: get org member: %w", err)
-	}
-
-	// Require session membership.
-	if _, err := h.s.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.ResolveComment403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this session",
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("comments: resolve: get session member: %w", err)
+		return resolveCommentFail(fail), nil
 	}
 
 	var resolutionNote *string
@@ -338,6 +236,34 @@ func (h *Handler) ResolveComment(ctx context.Context, req openapi.ResolveComment
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Per-handler auth-fail wrappers
+//
+// Each function wraps a handlerauth.AuthFail into the operation-specific
+// response type required by oapi-codegen's strict-server interface.
+// ---------------------------------------------------------------------------
+
+func createCommentFail(f handlerauth.AuthFail) openapi.CreateCommentResponseObject {
+	if f.Status == 401 {
+		return openapi.CreateComment401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.CreateComment403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+func listCommentsFail(f handlerauth.AuthFail) openapi.ListCommentsResponseObject {
+	if f.Status == 401 {
+		return openapi.ListComments401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.ListComments403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+func resolveCommentFail(f handlerauth.AuthFail) openapi.ResolveCommentResponseObject {
+	if f.Status == 401 {
+		return openapi.ResolveComment401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.ResolveComment403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
 
 // storeCommentToAPI converts a store.Comment to an openapi.Comment.
 func storeCommentToAPI(c store.Comment) openapi.Comment {
