@@ -1,7 +1,7 @@
 ---
 id: docs-self-host-document-ws-allow-origins
 kind: story
-stage: review
+stage: done
 tags: [documentation, portal]
 parent: null
 depends_on: []
@@ -55,3 +55,26 @@ pattern. The paragraph covers:
 
 YAML-key column is `_(env-only)_` to match the existing convention for
 env-only knobs.
+
+## Review findings — nits
+
+- "Origins are compared verbatim (scheme + host + port)" slightly understates
+  the actual matching. The portal hands `AllowOrigins` to coder/websocket's
+  `OriginPatterns`, which runs `path.Match` (case-insensitive) against either
+  `host:port` (no scheme in pattern) or `scheme://host:port` (scheme present).
+  Operator-facing impact is nil — copying the exact origin still works — but
+  the wording could be tightened to "Patterns are matched case-insensitively
+  against the request Origin's `scheme://host:port` (path ignored)."
+- "Wildcards are not supported" is technically false — `path.Match` glob is
+  honored. The upstream library explicitly warns against `*` (use
+  `InsecureSkipVerify` instead). The doc steers operators correctly away from
+  wildcards, but could phrase it as "Wildcard patterns are discouraged — list
+  each origin exactly."
+- Implementation notes describe the `_(env-only)_` YAML-key marker as matching
+  "the existing convention for env-only knobs"; in fact this row establishes
+  the convention (no prior env-only row exists in the table). Reasonable
+  default; just noting the precedent is set here, not followed.
+
+None of the above is load-bearing; approving as-is. If a future operator hits
+the matching-semantics phrasing, file a follow-up parked item to tighten the
+language.
