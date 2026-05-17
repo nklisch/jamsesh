@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-fuzzing
 kind: feature
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-infrastructure]
@@ -197,3 +197,12 @@ Both child stories at review:
 - `make test-fuzz-mcp` runs the MCP harness
 
 **Next**: `/agile-workflow:review epic-e2e-tests-fuzzing` once the user is ready.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none new at feature level — both children reviewed individually with findings filed appropriately.
+
+**Notes**: 4 fuzz harnesses delivered (3 Go pre-receive + 1 property-based MCP). 2 real production bugs caught and fixed inline by the pre-receive harness (`refSegmentSafe` defence-in-depth + `probeGlob` panic workaround). The MCP harness found no 5xx in 222 iterations — reassuring for the MCP layer's input handling. The fuzzing feature delivered the value it was designed to: surface bugs at parser/validator boundaries before users find them.
