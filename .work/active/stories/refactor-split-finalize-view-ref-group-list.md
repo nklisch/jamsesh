@@ -1,7 +1,7 @@
 ---
 id: refactor-split-finalize-view-ref-group-list
 kind: story
-stage: implementing
+stage: review
 tags: [refactor, ui]
 parent: refactor-split-finalize-view
 depends_on: [refactor-split-finalize-view-lock-banner]
@@ -66,3 +66,17 @@ than a `bind:`-mediated cross-component sync.
 
 `git revert` the commit; the orchestrator's prior inline implementation
 is restored.
+
+## Implementation notes
+
+- `selectedShas` stayed as `string[]` in the orchestrator (option 1 from the story). The
+  orchestrator passes `selected={new Set(selectedShas)}` to `RefGroupList`, keeping the
+  array canonical for the PATCH body (`selected_commit_shas: selectedShas`).
+- **Reduced scope**: cart panel stayed inline in `FinalizeView`. The cart depends on
+  `targetBranch`, `commitMessage`, `mode`, `plan`, `distinctAuthors`, `canRun`, `runCommand`,
+  `markShipped`, `copyRunCommand`, and `setTargetBranch` — too many orthogonal orchestrator
+  concerns to cleanly extract. Only the source-pool panel was moved.
+- **LoC delta**: FinalizeView 1065 → 959 lines (−106). New component: 165 lines.
+- **onAddAll callback**: `RefGroupList` also accepts an optional `onAddAll?: (group: RefGroup) => void`
+  prop, wired to `addAllInGroup` in the orchestrator.
+- **Test count**: 7 new tests in `RefGroupList.test.ts`; total suite 293 (was 286).
