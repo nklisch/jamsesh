@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path
 kind: feature
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-infrastructure]
@@ -108,3 +108,133 @@ Playwright. No mock-invocation assertions.
       direct DB inserts
 - [ ] Each spec tears down its containers without manual intervention
       on green AND red runs
+
+## Design decisions
+
+Locked under autopilot (2026-05-17):
+
+- **5 stories, not 8**. The original brief listed 5 Go specs + 3
+  Playwright specs (8 total). Grouping them into 4 journey arcs
+  (auth, session-lifecycle, collab-merge, finalize) + 1 prereq
+  (ccdriver env fix) gives cleaner per-story scope and avoids
+  fragmenting tightly-coupled assertions across stories. Each
+  journey story owns both the Go spec(s) and any Playwright spec for
+  the same arc.
+
+- **Promoted `ccdriver-subprocess-env-inheritance` from backlog**.
+  The journey specs all invoke the `jamsesh` binary via ccdriver.
+  The known env-inheritance bug must land before any journey story
+  can be implemented. Made it the prereq child story
+  `epic-e2e-tests-golden-path-ccdriver-env-fix`; all journey stories
+  depend on it.
+
+- **Per-test fresh portal container**. Matches the portal fixture's
+  existing `Start` pattern. Parallel test runs spin many containers
+  — acceptable trade-off for state isolation. The Postgres /
+  MailHog / WireMock / Toxiproxy containers stay shared via
+  `sync.Once` (already implemented).
+
+- **Pre-built `jamsesh` binary** via a new shared fixture
+  `tests/e2e/fixtures/binary/jamsesh.go`. `func Build(ctx, t)
+  string` runs `go build ./cmd/jamsesh` once per test binary using
+  `sync.Once` and returns the absolute path. Avoids rebuild on every
+  spec.
+
+- **Postgres for all golden-path specs**, matching the
+  infrastructure smoke spec. Driver-matrix coverage (SQLite parallel
+  run) is deferred.
+
+- **Magic-link, not OAuth, for the auth journey**. Parent feature
+  design specified MailHog. OAuth flow exercise lives in the
+  `failure-mode` feature where the smaller surface is easier to
+  drive.
+
+- **Three new shared fixtures**:
+  - `tests/e2e/fixtures/binary/jamsesh.go` — pre-built binary
+  - `tests/e2e/fixtures/wsclient/wsclient.go` — WebSocket client
+    that connects with subprotocol-token auth, exposes a `WaitFor`
+    channel for event assertions
+  - `tests/e2e/fixtures/gitclient/gitclient.go` — git wrapper that
+    produces commits with the required `Jam-*` trailers and pushes
+    via smart-HTTP
+  - `tests/e2e/fixtures/mcpclient/mcpclient.go` — typed MCP tool
+    invocations via the official SDK's streamable-http client
+  - `tests/e2e/fixtures/mailhog/messages.go` — `LatestMessageTo`
+    helper extending the existing mailhog fixture
+  - `tests/e2e/fixtures/checkout/checkout.go` — local source-repo
+    sandbox for executing finalize plan bodies
+
+  These are owned by the first journey story that needs them but
+  declared here so the implementor knows the shared-fixture layout.
+
+## Story decomposition
+
+5 stories under this feature:
+
+1. `epic-e2e-tests-golden-path-ccdriver-env-fix` — 3-line fix to
+   `tests/e2e/fixtures/ccdriver/driver.go` so subprocesses inherit
+   host environment (PATH, HOME, etc.). Promoted from backlog. No
+   deps.
+
+2. `epic-e2e-tests-golden-path-onboarding-auth` — `onboarding_test.go`
+   (Go) + `login.spec.ts` (Playwright). Magic-link flow + invite
+   acceptance + org membership. Depends on the env fix.
+
+3. `epic-e2e-tests-golden-path-session-lifecycle` —
+   `session_join_and_push_test.go` (Go) + `session_list.spec.ts`
+   (Playwright) + the `wsclient` and `gitclient` shared fixtures.
+   Two agents joining, pushing, observing peer activity. Depends on
+   onboarding (uses authenticated agent setup).
+
+4. `epic-e2e-tests-golden-path-collab-merge` — `auto_merge_test.go` +
+   `fork_and_comment_test.go` + the `mcpclient` shared fixture. The
+   convergence + MCP-tool-use arc. Depends on session-lifecycle (uses
+   the same multi-agent harness).
+
+5. `epic-e2e-tests-golden-path-finalize` — `finalize_plan_test.go` +
+   `finalize.spec.ts` + the `checkout` shared fixture. The "human
+   ships the work" arc. Depends on collab-merge (needs a session
+   with multi-agent draft state to exercise finalize).
+
+## Implementation Order
+
+Wave 1: `ccdriver-env-fix` (no deps).
+Wave 2: `onboarding-auth` (depends on env fix).
+Wave 3: `session-lifecycle` (depends on onboarding).
+Wave 4: `collab-merge` (depends on session-lifecycle).
+Wave 5: `finalize` (depends on collab-merge).
+
+Each later wave reuses the fixtures from the prior wave. This
+serializes the implementation but keeps shared-fixture authorship
+clean — each journey story owns the fixtures it introduces, the next
+story extends them.
+
+## Pre-mortem
+
+- **WebSocket subprotocol-token auth is fiddly across implementations**.
+  Go's standard `gorilla/websocket` and `coder/websocket` clients
+  expect different `Sec-WebSocket-Protocol` handling. The wsclient
+  fixture should pin one library (use `coder/websocket` to match the
+  server) and test the subprotocol path early.
+- **Git smart-HTTP basic-auth with bearer tokens** is unusual — the
+  bearer goes in as the HTTP Basic password with an empty username
+  (or `jamsesh` placeholder). The gitclient fixture must get this
+  right or every push fails with 401.
+- **Auto-merger timing**: tests assume `merge.succeeded` fires within
+  some short window of the source push. If the auto-merger has a
+  startup delay or batches commits, the assertion windows may be too
+  tight. The wsclient's `WaitFor` should accept a generous timeout
+  (5-10s) initially; tighten later if the suite is reliable.
+- **Finalize plan execution is the riskiest spec** — it runs a real
+  `git cherry-pick` sequence inside the test process. Plan-body
+  errors can leave the sandbox repo in mid-pick state. The checkout
+  fixture must idempotently clean up via `git cherry-pick --abort`
+  on failure.
+- **Playwright timing in CI**. Playwright traces are the canonical
+  debug artifact. If a Go-spawned portal container takes longer to
+  reach `/healthz` than Playwright's default navigation timeout,
+  specs fail spuriously. Use `page.goto({ waitUntil: "load" })` with
+  generous timeouts.
+
+Risks documented; no spike unit added (the feature is large but the
+risks are well-understood, not exploratory).

@@ -1,9 +1,9 @@
 ---
-id: ccdriver-subprocess-env-inheritance
+id: epic-e2e-tests-golden-path-ccdriver-env-fix
 kind: story
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing, bug]
-parent: null
+parent: epic-e2e-tests-golden-path
 depends_on: []
 release_binding: null
 gate_origin: null
