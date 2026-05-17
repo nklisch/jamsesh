@@ -1,7 +1,7 @@
 ---
 id: portal-docker-image-missing-git-binary
 kind: story
-stage: review
+stage: done
 tags: [bug, infra, docker]
 parent: null
 depends_on: []
@@ -102,3 +102,33 @@ Verified on 2026-05-17:
 - `make test-portal-image` completed successfully (build cached layers, final image built and tagged `jamsesh/portal:e2e`).
 
 The sibling backlog item `portal-prod-dockerfile-base-image-review` covers the longer-term ops review of the distroless → debian decision; no action needed here.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+- Land-mode review. The actual code fix landed in commit `7501fdf` as part
+  of `epic-e2e-tests-golden-path-session-lifecycle`. This story's implement
+  commit (`3d50b2a`) only verified the as-built state and updated the
+  story body. That's the right shape for a bug whose fix was already
+  applied during another epic's implementation.
+- Direct verification: `docker run --entrypoint git jamsesh/portal:e2e
+  --version` → `git version 2.47.3` (exit 0). `grep -c "t.Skip"
+  tests/e2e/golden/session_join_and_push_test.go` → 0. `cd tests/e2e &&
+  go build ./golden/...` → exit 0.
+- The security/ops trade-off (distroless → debian = larger attack surface)
+  is already tracked by the sibling backlog item
+  `portal-prod-dockerfile-base-image-review`. No new finding needed.
+- No foundation-doc drift: no `docs/` file references the base image, so
+  the switch needs no rolling-forward.
+
+## What's now possible
+
+End-to-end session creation works against the production-shaped Dockerfile.
+The blocker on `TestSessionLifecycleJoinAndPush` is gone — that test now
+serves as the regression guard for git-on-PATH in the production image.
