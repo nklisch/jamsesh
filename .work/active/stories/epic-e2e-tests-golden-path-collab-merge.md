@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path-collab-merge
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-golden-path
 depends_on: [epic-e2e-tests-golden-path-session-lifecycle]
@@ -53,18 +53,43 @@ returns `additionalContext` containing the comment text.
 
 ## Acceptance criteria
 
-- [ ] Auto-merge spec green: non-conflicting pushes both reach
+- [x] Auto-merge spec green: non-conflicting pushes both reach
       `draft` without manual intervention; `merge.succeeded` events
       fire for both source commits
-- [ ] Fork spec green: `fork` MCP call returns a new ref
+- [x] Fork spec green: `fork` MCP call returns a new ref
       `jam/<sid>/<user>/fork-<sha7>`; `ref.forked` event fires on the
       WS stream
-- [ ] Comment-addressing spec green: Agent A's `post_comment` with
+- [x] Comment-addressing spec green: Agent A's `post_comment` with
       `addressed_to: "@agent-b"` flows into Agent B's
       `user-prompt-submit` hook `additionalContext`
-- [ ] All assertions on user-visible outcomes (HTTP responses, git
+- [x] All assertions on user-visible outcomes (HTTP responses, git
       log output, WS event payloads, hook stdout) — no
       mock-invocation assertions
+
+## Implementation notes
+
+- `mcpclient.go` uses raw JSON-RPC 2.0 HTTP (no MCP Go SDK in e2e
+  go.mod). It performs the full `initialize` → `notifications/initialized`
+  → `tools/call` handshake to obtain `Mcp-Session-Id`, then parses the
+  SSE response format (`data: {json}`) the portal's streamable-HTTP handler
+  emits. Tool output is decoded from `content[0].text`.
+
+- Production gap discovered and fixed: the portal's receive-pack handler
+  never seeded `jam/<session>/draft` when `jam/<session>/base` was pushed.
+  The auto-merger's `getOrCreateDraft` function finds no draft ref and
+  returns early with a warning. Fix added in
+  `internal/portal/githttp/receive_pack.go`: when a base push lands on an
+  empty repo, `draft` is atomically set to the same commit before events
+  are emitted.
+
+- Bob's clone starts at an unborn HEAD (empty repo). Added `gitResetToRef`
+  helper that runs `git fetch origin && git reset --hard origin/<base-ref>`
+  so Bob's first commit descends from base and shares a merge-base with
+  draft.
+
+- `requireCommitInLog` uses `git merge-base --is-ancestor` (exit 0 =
+  ancestor) rather than scanning `git log --oneline` output; more
+  reliable on any SHA length.
 
 ## Notes for the implementer
 

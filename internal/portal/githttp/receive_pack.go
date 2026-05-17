@@ -177,6 +177,28 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Post-receive: bootstrap the draft ref from the base ref on first push.
+	// The base ref (refs/heads/jam/<session>/base) is the only ref that is
+	// allowed when the repo is empty. When it lands, we create the draft ref
+	// (refs/heads/jam/<session>/draft) pointing at the same commit so that the
+	// auto-merger has a starting point for all subsequent sync-ref merges.
+	baseRefName := plumbing.NewBranchReferenceName("jam/" + sessionID + "/base")
+	draftRefName := plumbing.NewBranchReferenceName("jam/" + sessionID + "/draft")
+	for _, u := range updates {
+		if u.Ref == baseRefName.String() && u.OldSHA == "" {
+			// This is the base ref's first push. Seed the draft ref if not present.
+			if _, err := diskRepo.Reference(draftRefName, true); err != nil {
+				hash := plumbing.NewHash(u.NewSHA)
+				draftRef := plumbing.NewHashReference(draftRefName, hash)
+				if setErr := diskRepo.Storer.SetReference(draftRef); setErr != nil {
+					slog.ErrorContext(r.Context(), "receive-pack: seed draft ref from base",
+						"err", setErr, "org", orgID, "session", sessionID)
+				}
+			}
+			break
+		}
+	}
+
 	// Post-receive: emit commit.arrived events for accepted ref updates.
 	if h.Emitter != nil {
 		if emitErr := h.Emitter.EmitForUpdates(
