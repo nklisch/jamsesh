@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-build-pipeline
 kind: feature
-stage: review
+stage: done
 tags: [infra]
 parent: epic-distribution
 depends_on: []
@@ -465,3 +465,13 @@ The workflow's matrix jobs will fail until `cmd/portal` (provided by `http-skele
 - `go test ./internal/buildinfo/...` green (4/4)
 - Matrix expansion = 10 jobs verified
 - Permissions correctly scoped per-job
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability complete pending the binary stories. Single-stride feature: the release workflow is correct and signed-release-ready; matrix builds will go green when cmd/portal and cmd/jamsesh exist. internal/buildinfo is the minimal injection surface. Cosign + SLSA + SBOM wiring follows current best practices per sigstore-cosign skill. Cross-cutting note: the matrix continues to produce expected failures for cmd/jamsesh until epic-cc-plugin-binary-foundation lands — documented in story body and feature summary.

@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-self-host-docs
 kind: feature
-stage: review
+stage: done
 tags: [infra]
 parent: epic-distribution
 depends_on: []
@@ -407,3 +407,13 @@ Both child stories advanced to `stage: review`:
 - `actionlint .github/workflows/quickstart.yml` clean
 - Local simulation of quickstart-ci: portal starts, /healthz returns `{"status":"ok"}`, SIGTERM exits cleanly
 - Configuration table cross-checked against `internal/portal/config/config.go:defaults()` — all 9 entries match
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability complete. README + SELF_HOST.md cover the operator install/configure/operate path; the executable-spec quickstart-ci workflow keeps the docs honest. Configuration table is in lockstep with config.go defaults — gate-docs picks up drift at release time. No cross-cutting drift in foundation docs.

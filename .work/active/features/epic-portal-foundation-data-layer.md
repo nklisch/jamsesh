@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-data-layer
 kind: feature
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-foundation
 depends_on: []
@@ -934,3 +934,13 @@ All 4 child stories advanced to `stage: review` across 5 implementation waves:
 - `go vet ./...` clean
 - `make generate-db && git diff --exit-code` green
 - Cross-org failure-mode verified: removing `org_id = ?` from `GetSession` causes `TestOrgIDDiscipline/sqlite/GetSession_cross_org_returns_ErrNotFound` to fail
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability complete. Dual-dialect sqlc setup with SQLite (modernc.org pure Go) + Postgres (pgx/v5), seven core tables (orgs, accounts, org_members, sessions, session_members, oauth_tokens, magic_link_tokens), goose migrations embedded via embed.FS, Store interface with adapter pattern, db.Open factory, and an org_id-discipline test suite that catches cross-tenant leakage structurally. No cross-cutting concerns surfaced once all four children landed. Foundation docs (SPEC.md / ARCHITECTURE.md) align — no rolling-forward needed.

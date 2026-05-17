@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-http-skeleton
 kind: feature
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-foundation
 depends_on: []
@@ -948,3 +948,13 @@ All 3 child stories advanced to `stage: review`:
 - `actionlint` clean on workflow files
 - `make generate && git diff --exit-code` green
 - In-process smoke test (server_test.go:TestGracefulShutdown) green
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability complete. The HTTP chassis is up: chi router with the correct middleware stack, JSON error envelope matching PROTOCOL.md, slog access logging, config loader (env + YAML), TLS modes (native + behind-proxy), graceful shutdown, and the generated-contracts pipeline (oapi-codegen + openapi-typescript) wired with empty paths ready for downstream features to populate. Late-binding shape via router.Deps mount hooks is exactly right for incremental feature shipping. No cross-cutting concerns at the seam.
