@@ -1,0 +1,3 @@
+line 1: header
+line 2: this file will be deleted by ours but modified by theirs
+line 3: footer

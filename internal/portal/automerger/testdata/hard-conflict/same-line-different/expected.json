@@ -1,0 +1,12 @@
+{
+  "kind": "hard-conflict",
+  "description": "both sides modify the same line differently — hard conflict",
+  "conflicts": [
+    {
+      "file": "file.txt",
+      "ranges": [
+        {"start": 2, "end": 6}
+      ]
+    }
+  ]
+}

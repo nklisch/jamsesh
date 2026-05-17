@@ -1,0 +1,4 @@
+{
+  "kind": "clean-merge",
+  "description": "ours adds file-a.txt, theirs adds file-b.txt — disjoint file additions yield clean merge"
+}

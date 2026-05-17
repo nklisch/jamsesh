@@ -1,0 +1,6 @@
+line 1: shared header
+line 2: section A starts
+line 3: section A content
+line 4: section B starts
+line 5: section B content
+line 6: shared footer

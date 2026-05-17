@@ -1,0 +1,3 @@
+line 1: header
+line 2: the contested line (edited by ours)
+line 3: footer

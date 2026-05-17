@@ -1,0 +1,10 @@
+{
+  "kind": "hard-conflict",
+  "description": "ours deletes file.txt, theirs modifies it — delete-vs-modify is always hard conflict",
+  "conflicts": [
+    {
+      "file": "file.txt",
+      "ranges": []
+    }
+  ]
+}

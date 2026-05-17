@@ -1,0 +1,4 @@
+{
+  "kind": "clean-merge",
+  "description": "ours edits section A, theirs edits section B — disjoint line ranges yield clean merge"
+}
