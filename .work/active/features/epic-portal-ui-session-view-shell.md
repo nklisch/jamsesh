@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-session-view-shell
 kind: feature
-stage: drafting
+stage: implementing
 tags: [ui]
 parent: epic-portal-ui
 depends_on: [epic-portal-ui-foundation, epic-portal-ui-design-system]
