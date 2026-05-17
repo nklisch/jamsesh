@@ -56,6 +56,16 @@ test-e2e-playwright:
 # test-e2e: run the full e2e suite (Go then Playwright).
 test-e2e: test-e2e-go test-e2e-playwright
 
+.PHONY: test-fuzz
+
+# test-fuzz: run fuzz harnesses with a 30s budget per harness.
+# For deeper continuous fuzzing, run individually with -fuzztime=10m.
+test-fuzz:
+	go test -fuzz=FuzzCommitTrailerParse -fuzztime=30s ./internal/portal/prereceive/
+	go test -fuzz=FuzzRefNamespaceValidate -fuzztime=30s ./internal/portal/prereceive/
+	go test -fuzz=FuzzPathScopeValidate -fuzztime=30s ./internal/portal/prereceive/
+	go test -fuzz=FuzzPathScopeEmpty -fuzztime=30s ./internal/portal/prereceive/
+
 # test-portal-image: build the portal Docker image used by e2e Testcontainers
 # fixtures. Uses Dockerfile.e2e (alpine + git) instead of the production
 # distroless image so that e2e tests that exercise git smart-HTTP (session

@@ -1,0 +1,3 @@
+go test fuzz v1
+string("docs/**")
+string("%2e%2e/etc/passwd")

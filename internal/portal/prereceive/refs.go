@@ -10,6 +10,23 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
+// refSegmentSafe reports whether a ref segment (session ID, account key, or
+// branch name) is free of path-traversal sequences. Git's own ref-format rules
+// forbid ".." as a component, but we enforce this explicitly as a defence-in-
+// depth measure in case the input bypasses git's own checks.
+func refSegmentSafe(s string) bool {
+	lower := strings.ToLower(s)
+	// Raw ".." segment anywhere in the string.
+	if strings.Contains(s, "..") {
+		return false
+	}
+	// URL-encoded variants: %2e%2e or %252e%252e.
+	if strings.Contains(lower, "%2e%2e") || strings.Contains(lower, "%252e") {
+		return false
+	}
+	return true
+}
+
 // ValidateRef checks ref namespace and force-push semantics for a single ref
 // update. It enforces the following rules:
 //
@@ -109,8 +126,10 @@ func checkRefNamespace(_ context.Context, repo *git.Repository, sessionID, accou
 		return false, false
 	}
 
-	// Branch segment must be non-empty.
-	if parts[2] == "" {
+	// Branch segment must be non-empty and must not contain path-traversal
+	// sequences. Git's own ref-format rules forbid ".." components, but we
+	// enforce this explicitly as a defence-in-depth measure.
+	if parts[2] == "" || !refSegmentSafe(parts[2]) {
 		return false, false
 	}
 

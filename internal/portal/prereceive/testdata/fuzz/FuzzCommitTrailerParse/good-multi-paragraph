@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Multi paragraph\n\nSome body.\nMore body.\n\nJam-Session: sess-xyz\nJam-Turn: 42\nJam-Author: bob\n")

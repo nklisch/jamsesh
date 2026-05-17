@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("subject\n\nJam-Session: sess-001\nJam-Turn: 3\nJam-Author: alice\nResolves-Conflict: true\nAuto-Merger: false\nSource-Commit: deadbeef\n")

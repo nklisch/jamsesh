@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("subject\n\nJam-Session: sess-abc\nJam-Turn: 1\nJam-Author: bob\n  extra-info\n")
