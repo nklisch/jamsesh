@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-metrics-and-docs
 kind: story
-stage: implementing
+stage: review
 tags: [infra, documentation]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: [epic-cloud-native-deploy-routing-layer-service, epic-cloud-native-deploy-routing-layer-discovery]
@@ -56,3 +56,55 @@ Edit:
   not yet fully shippable — other features in the epic
   (lease-fencing, object-storage-sync, hydration-handoff) must land
   for end-to-end clustered serving.
+
+## Implementation notes
+
+### Metrics wiring
+
+- Added four new metric handles to `internal/portal/metrics/metrics.go`:
+  `RouterDecisionsTotal` (CounterVec, label `result`), `RouterRingSize`
+  (Gauge), `RouterRingRebalancesTotal` (Counter), `RouterProbeFailuresTotal`
+  (CounterVec, label `addr`). Registered unconditionally in `New()` — both
+  binaries get all handles; portal just never increments router fields.
+
+- `internal/router/proxy/proxy.go` — added `incDecision(result)` nil-safe
+  helper. Emits `hit_cache`, `hit_ring`, `fallback`, `empty_ring`, `retry`,
+  and `error_503` at the correct decision points in `ServeHTTP`.
+
+- `internal/router/readyz/probe.go` — added `Metrics *metrics.Registry` field
+  (nil-safe). Added `incProbeFailure(addr)` helper called on HTTP error, non-OK
+  status, and connection failure.
+
+- `cmd/jamsesh-router/main.go` — constructs `metrics.New()`, passes it to
+  `proxy.Handler` and `readyz.Probe`. Wraps the static-mode seed path with
+  direct ring-size + rebalance counter updates. Mounts `/metrics` on an
+  `http.ServeMux` in front of the proxy handler so Prometheus scraping doesn't
+  interfere with proxy traffic. The `publishWithMetrics` wrapper is ready for
+  wiring to the discovery `Discoverer.Run` callback when kubernetes-mode
+  discovery is wired in `main.go` (the discoverer itself stays pure per
+  Option B).
+
+### Test coverage added
+
+- `internal/portal/metrics/metrics_test.go` — six new tests covering all four
+  router metric families: label values, gauge mutation, scalar zero-emission,
+  and the CounterVec lazy-emission semantics (vec metrics need a first
+  observation to appear in output).
+- `internal/router/readyz/probe_test.go` — two new tests:
+  `TestProbeCheck_FailureCounterIncrements` (non-200 response increments
+  counter for that addr, not for healthy addr) and
+  `TestProbeCheck_UnreachableIncrementsCounter` (connection failure also
+  increments).
+
+### Docs
+
+- `docs/SELF_HOST.md` §14 — "Clustered mode (preview)": when to use, Postgres
+  prerequisite, object-storage caveat, architecture diagram, full k8s YAML
+  (portal Deployment + Service + router Deployment + Service + RBAC), config
+  knob table, metrics table, and explicit limitations section naming the three
+  missing capabilities (fencing, object-storage-sync, hydration-handoff).
+- `docs/ARCHITECTURE.md` — "Horizontal scaling (clustered mode)" section added
+  before "Data layer". Covers: router as consistent-hash proxy, per-session
+  Postgres advisory locks, fencing token design intent, object-storage-sync and
+  hydration-handoff (to come). Framed accurately as preview — no "previously"
+  prose, rolling-foundation principle respected.

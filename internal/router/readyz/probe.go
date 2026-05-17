@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"jamsesh/internal/portal/metrics"
 )
 
 // defaultTimeout is used when no http.Client is supplied.
@@ -20,6 +22,11 @@ type Probe struct {
 
 	// Path is the readiness path probed on each address, typically "/readyz".
 	Path string
+
+	// Metrics is the optional Prometheus registry. When nil all metric
+	// operations in Check are no-ops. When set, RouterProbeFailuresTotal{addr}
+	// is incremented for each address that fails its readiness probe.
+	Metrics *metrics.Registry
 }
 
 // client returns p.Client if set, otherwise a shared default client.
@@ -69,15 +76,21 @@ func (p *Probe) Check(ctx context.Context, addrs []string) []string {
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 			if err != nil {
 				results[i] = result{addr: addr, healthy: false}
+				p.incProbeFailure(addr)
 				return
 			}
 			resp, err := client.Do(req)
 			if err != nil {
 				results[i] = result{addr: addr, healthy: false}
+				p.incProbeFailure(addr)
 				return
 			}
 			resp.Body.Close()
-			results[i] = result{addr: addr, healthy: resp.StatusCode == http.StatusOK}
+			healthy := resp.StatusCode == http.StatusOK
+			if !healthy {
+				p.incProbeFailure(addr)
+			}
+			results[i] = result{addr: addr, healthy: healthy}
 		}()
 	}
 
@@ -90,4 +103,13 @@ func (p *Probe) Check(ctx context.Context, addrs []string) []string {
 		}
 	}
 	return healthy
+}
+
+// incProbeFailure increments RouterProbeFailuresTotal for addr. No-op when
+// Metrics is nil or RouterProbeFailuresTotal is nil.
+func (p *Probe) incProbeFailure(addr string) {
+	if p.Metrics == nil || p.Metrics.RouterProbeFailuresTotal == nil {
+		return
+	}
+	p.Metrics.RouterProbeFailuresTotal.WithLabelValues(addr).Inc()
 }

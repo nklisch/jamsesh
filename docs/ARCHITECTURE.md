@@ -383,6 +383,99 @@ Failure modes and recovery:
 a portal API call restores social state. Nothing important lives only in
 client memory.
 
+## Horizontal scaling (clustered mode)
+
+> The router service and per-session Postgres leases are shipped. Object-storage
+> sync and hydration handoff are in progress; clustered mode is preview-quality
+> and not yet production-ready for write-heavy workloads. See §14 of
+> `docs/SELF_HOST.md` for operator details.
+
+Single-instance jamsesh is a single portal pod: one Go process, one data store,
+one storage volume. For horizontal scale-out a second binary — `jamsesh-router`
+— sits in front of multiple portal pods and implements consistent-hash sticky
+routing.
+
+### Router binary as the front-door consistent-hash reverse proxy
+
+`jamsesh-router` is a stateless Go binary (`cmd/jamsesh-router`). It:
+
+1. **Extracts the session ID** from every incoming request — from the URL path
+   for REST, WebSocket, and Git requests; from the `Jam-Session-Id` header for
+   MCP connections.
+2. **Hashes the session ID** onto a consistent-hash ring of healthy portal pod
+   addresses. The ring uses virtual nodes (default 150 per pod) to keep
+   distribution even as pods are added or removed.
+3. **Reverse-proxies the request** to the chosen pod using
+   `net/http/httputil.ReverseProxy`. WebSocket upgrades pass through
+   transparently.
+4. **Falls back to round-robin** for requests without a session ID (e.g.
+   `/healthz`, `/auth/*`).
+5. **Retries on 503** — if the chosen pod returns 503 the router invalidates
+   its hint-cache entry for the session and retries once against the ring's
+   next preference.
+6. **Maintains a soft-coordinator hint cache** — a bounded LRU (10 000 entries,
+   5-minute TTL) that remembers which pod served a session last. On cache hit
+   the router checks the pod is still in the ring before using the hint, to
+   recover cleanly from pod replacement.
+
+Pod discovery is pluggable:
+- **Static mode** (`JAMSESH_ROUTER_DISCOVERY_MODE=static`) — a fixed list of
+  addresses, probed on a configurable interval.
+- **Kubernetes mode** (`JAMSESH_ROUTER_DISCOVERY_MODE=kubernetes`) — watches
+  the pod IPs backing a named Kubernetes Service via client-go informers, probes
+  each Running pod's `/readyz`, and publishes only the healthy subset to the
+  ring.
+
+The router is intentionally decoupled from session semantics; it does not read
+the database and holds no durable state.
+
+### Per-session leases via Postgres advisory locks
+
+Each portal pod acquires a Postgres advisory lock keyed on the session ID
+before beginning any write to the session's bare repo or event log. The lock
+is held for the duration of the operation and released immediately after.
+Advisory locks are lightweight (no table row required) and visible across
+connections, which makes them suitable for cross-pod coordination without an
+external lock service.
+
+The lock acquisition strategy is non-blocking: a pod that cannot acquire the
+lock within a short window returns 503, triggering the router's retry logic.
+The retry routes to the next ring preference, which is likely a pod not
+currently holding the lock.
+
+### Fencing tokens for split-brain protection
+
+Postgres advisory locks alone guard against concurrent writers in steady state.
+Under network partition or clock skew a pod might believe it holds a lease it
+has actually lost. Fencing tokens — monotonically increasing integers stamped
+on every write — let the storage layer reject stale writes: if a write arrives
+with a token lower than the current stored token, it is rejected.
+
+Fencing token support is designed and awaiting implementation as part of the
+`epic-cloud-native-deploy` epic backlog. Until it lands, write safety depends
+on network reliability and Postgres availability (which is the common case for
+cloud-managed Postgres).
+
+### Object-storage sync and hydration handoff (to come)
+
+Bare repos live on each portal pod's local filesystem. In a multi-pod cluster,
+when a session migrates to a new pod (because the ring rebalanced after pod
+churn), the new pod has no local copy of the bare repo.
+
+Two capabilities address this:
+
+- **Object-storage sync** — after every `post-receive`, the receiving pod
+  uploads a pack of the new objects to S3/GCS. Other pods fetch the pack on
+  demand before serving a request for the session.
+- **Hydration handoff** — on ring rebalance the new pod for a session fetches
+  the current repo state from object storage before serving its first request.
+  This is triggered by the router noticing a cache miss (the hint cache no
+  longer has an entry, or the entry points to a pod no longer in the ring).
+
+Both capabilities are in progress. Until they land, clustered mode is safe for
+stable rings and read-heavy traffic, but pod replacement may cause a brief
+`git fetch` retry loop from clients until the new pod's local repo is seeded.
+
 ## Data layer (multi-tenancy)
 
 Every persisted entity carries `org_id`. Every API route is org-scoped.

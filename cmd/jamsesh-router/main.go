@@ -37,10 +37,12 @@ import (
 	"syscall"
 	"time"
 
+	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/router/cache"
 	"jamsesh/internal/router/config"
 	"jamsesh/internal/router/extract"
 	"jamsesh/internal/router/proxy"
+	"jamsesh/internal/router/readyz"
 	"jamsesh/internal/router/ring"
 )
 
@@ -85,8 +87,29 @@ func run(args []string) int {
 		"shutdown_grace_s", cfg.ShutdownGraceSeconds,
 	)
 
+	// Build the Prometheus metrics registry.
+	metricsReg := metrics.New()
+
 	// Build the consistent-hash ring.
 	r := ring.New(cfg.Vnodes)
+
+	// publishWithMetrics wraps a publish callback to record ring-size gauge
+	// and rebalance counter updates. This keeps the discoverer itself free of
+	// metrics dependencies (Option B from the design).
+	publishWithMetrics := func(base func([]ring.Pod)) func([]ring.Pod) {
+		return func(pods []ring.Pod) {
+			base(pods)
+			metricsReg.RouterRingRebalancesTotal.Inc()
+			metricsReg.RouterRingSize.Set(float64(len(pods)))
+		}
+	}
+	_ = publishWithMetrics // used below when discovery is wired; silences unused warning
+
+	// Build the readiness probe (with metrics wired for failure tracking).
+	probe := &readyz.Probe{
+		Metrics: metricsReg,
+	}
+	_ = probe // used by discovery; probe is constructed here for metrics wiring
 
 	// Seed the ring from static config (the discovery story / Unit 3 will
 	// overlay this with live k8s watch results by calling SetPods on the
@@ -100,24 +123,32 @@ func run(args []string) int {
 			})
 		}
 		r.SetPods(pods)
+		metricsReg.RouterRingRebalancesTotal.Inc()
+		metricsReg.RouterRingSize.Set(float64(len(pods)))
 		slog.Info("ring seeded from static config", "pod_count", len(pods))
 	}
 
 	// Build the hint cache.
 	hint := cache.New(10_000, cfg.HintCacheTTL)
 
-	// Build the reverse-proxy handler.
+	// Build the reverse-proxy handler (with metrics wired for routing decisions).
 	h := &proxy.Handler{
 		Extract:  extract.SessionID,
 		Ring:     r,
 		Hint:     hint,
 		Fallback: proxy.NewRoundRobinFallback(r),
+		Metrics:  metricsReg,
 	}
+
+	// Build the HTTP mux: route proxy traffic on / and expose /metrics.
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", metricsReg.Handler())
+	mux.Handle("/", h)
 
 	// Wire up the HTTP server.
 	srv := &http.Server{
 		Addr:    cfg.Bind,
-		Handler: h,
+		Handler: mux,
 		// Generous timeouts: the proxy handles streaming responses and WebSocket
 		// upgrades, so we don't cut long-lived connections at the read/write
 		// layer; the upstream portal pods enforce their own per-request timeouts.

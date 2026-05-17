@@ -191,3 +191,78 @@ func TestMetricsHandlerRequiresNoAuthentication(t *testing.T) {
 		t.Errorf("want 200 (no auth required), got %d", w.Code)
 	}
 }
+
+// ── Router metric tests ────────────────────────────────────────────────────────
+
+func TestRouterDecisionsTotalLabels(t *testing.T) {
+	reg := metrics.New()
+
+	// Simulate routing decisions with each valid result label.
+	for _, result := range []string{"hit_cache", "hit_ring", "fallback", "empty_ring", "retry", "error_503"} {
+		reg.RouterDecisionsTotal.WithLabelValues(result).Inc()
+	}
+
+	body := scrapeMetrics(t, reg)
+	assertContains(t,
+		body,
+		`jamsesh_router_decisions_total{result="hit_cache"} 1`,
+		`jamsesh_router_decisions_total{result="hit_ring"} 1`,
+		`jamsesh_router_decisions_total{result="fallback"} 1`,
+		`jamsesh_router_decisions_total{result="empty_ring"} 1`,
+		`jamsesh_router_decisions_total{result="retry"} 1`,
+		`jamsesh_router_decisions_total{result="error_503"} 1`,
+	)
+}
+
+func TestRouterRingSizeGauge(t *testing.T) {
+	reg := metrics.New()
+
+	reg.RouterRingSize.Set(3)
+	body := scrapeMetrics(t, reg)
+	assertContains(t, body, "jamsesh_router_ring_size 3")
+
+	// Simulate a pod leaving.
+	reg.RouterRingSize.Set(2)
+	body = scrapeMetrics(t, reg)
+	assertContains(t, body, "jamsesh_router_ring_size 2")
+}
+
+func TestRouterRingRebalancesTotalIncrements(t *testing.T) {
+	reg := metrics.New()
+
+	reg.RouterRingRebalancesTotal.Inc()
+	reg.RouterRingRebalancesTotal.Inc()
+
+	body := scrapeMetrics(t, reg)
+	assertContains(t, body, "jamsesh_router_ring_rebalances_total 2")
+}
+
+func TestRouterProbeFailuresTotalLabels(t *testing.T) {
+	reg := metrics.New()
+
+	reg.RouterProbeFailuresTotal.WithLabelValues("10.0.0.1:8443").Inc()
+	reg.RouterProbeFailuresTotal.WithLabelValues("10.0.0.1:8443").Inc()
+	reg.RouterProbeFailuresTotal.WithLabelValues("10.0.0.2:8443").Inc()
+
+	body := scrapeMetrics(t, reg)
+	assertContains(t,
+		body,
+		`jamsesh_router_probe_failures_total{addr="10.0.0.1:8443"} 2`,
+		`jamsesh_router_probe_failures_total{addr="10.0.0.2:8443"} 1`,
+	)
+}
+
+func TestRouterScalarMetricsPresentAtZero(t *testing.T) {
+	// Scalar metrics (Counter, Gauge) appear in /metrics output at their zero
+	// value before any observations. CounterVec and GaugeVec (router_decisions
+	// and router_probe_failures) are lazy — they don't emit until a label set
+	// is first used; those are covered by TestRouterDecisionsTotalLabels and
+	// TestRouterProbeFailuresTotalLabels.
+	reg := metrics.New()
+	body := scrapeMetrics(t, reg)
+	assertContains(t,
+		body,
+		"jamsesh_router_ring_size",
+		"jamsesh_router_ring_rebalances_total",
+	)
+}

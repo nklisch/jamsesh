@@ -1002,3 +1002,325 @@ kubectl -n jamsesh rollout status deployment/jamsesh
 - Ensure the `storage` directory (or the mounted volume in Docker) is
   persisted across restarts. Check that the volume mount in your `docker run`
   command covers both the database file and the storage directory.
+
+---
+
+## 14. Clustered mode (preview)
+
+> **Preview status.** The router service and per-session Postgres leases are
+> shipped and tested. The remaining components required for production
+> multi-pod serving — lease fencing with split-brain protection, object-storage
+> durability sync, and hydration handoff — are still in progress under the
+> `epic-cloud-native-deploy` epic. Do not rely on clustered mode for production
+> workloads yet. Use it for evaluation and feedback.
+
+### When to use clustered mode
+
+The default jamsesh deployment is a single portal pod. A single pod is
+adequate for teams of up to ~50 concurrent agents, scales well vertically, and
+avoids all distributed-systems concerns. Clustered mode is appropriate when:
+
+- You need horizontal scale-out beyond what a single host can provide.
+- You need zero-downtime rolling upgrades without session disruption.
+- You are running a multi-tenant managed service where isolation between
+  tenants is enforced at the pod level.
+
+### Prerequisites
+
+- **Postgres** — SQLite is not supported in clustered mode. Advisory locks
+  used by the per-session lease mechanism require Postgres 12+. See §5 for
+  Postgres setup.
+- **Object storage** — required for cross-pod bare-repo durability. Object
+  storage sync is a capability in progress and not yet fully landed; the
+  per-session `storage/` directory is currently pod-local. This means pod
+  restarts or replacements lose in-flight session repos until object-storage
+  sync lands. Track progress under the epic.
+- **The `jamsesh-router` binary** — a separate Go binary in the same repo
+  (`cmd/jamsesh-router`). Build it alongside the portal:
+  ```bash
+  go build -o jamsesh-router ./cmd/jamsesh-router
+  ```
+
+### Architecture overview
+
+```
+         Clients (agents + browsers)
+                    │
+         ┌──────────▼──────────┐
+         │  jamsesh-router      │   consistent-hash reverse proxy
+         │  (:8080, no TLS)    │   + round-robin for session-less routes
+         └──────────┬──────────┘
+                    │  session-ID-keyed sticky routing
+         ┌──────────▼───────────────────────────┐
+         │  portal pods (N replicas, :8443)      │
+         │  shared Postgres + (future) object    │
+         │  storage                              │
+         └───────────────────────────────────────┘
+```
+
+The router extracts the session ID from every request:
+- REST: from the URL path (`/api/orgs/{org}/sessions/{id}/...`)
+- WebSocket: same path
+- Git: same path (`/git/orgs/{org}/sessions/{id}.git/...`)
+- MCP: from the `Jam-Session-Id` request header
+
+It hashes the session ID onto the consistent-hash ring of healthy portal pods
+and reverse-proxies the request. Requests without a session ID (e.g. `/healthz`,
+`/auth/*`) are distributed round-robin across all pods. On a pod returning 503
+the router invalidates its hint cache entry and retries once against the next
+ring preference.
+
+### Config knobs (`JAMSESH_ROUTER_*`)
+
+| Env var | Default | Description |
+|---|---|---|
+| `JAMSESH_ROUTER_BIND` | `:8080` | Listen address for the router |
+| `JAMSESH_ROUTER_DISCOVERY_MODE` | `static` | `static` or `kubernetes` |
+| `JAMSESH_ROUTER_STATIC_PODS` | — | Comma-separated pod addresses, e.g. `10.0.0.1:8443,10.0.0.2:8443` (static mode) |
+| `JAMSESH_ROUTER_KUBE_NAMESPACE` | — | Kubernetes namespace to watch (kubernetes mode) |
+| `JAMSESH_ROUTER_KUBE_SERVICE_NAME` | — | Service name whose pod IPs to watch (kubernetes mode) |
+| `JAMSESH_ROUTER_VNODES` | `150` | Consistent-hash virtual nodes per pod |
+| `JAMSESH_ROUTER_HINT_CACHE_TTL` | `5m` | Soft-coordinator hint cache TTL |
+| `JAMSESH_ROUTER_PROBE_INTERVAL` | `10s` | Readiness-probe interval (kubernetes mode) |
+| `JAMSESH_ROUTER_SHUTDOWN_GRACE_S` | `30` | Graceful drain budget in seconds |
+
+### Kubernetes deployment
+
+The following YAML deploys a two-replica portal cluster plus the router as a
+separate Deployment. Adapt namespaces, image references, resource limits, and
+secrets management to your environment.
+
+```yaml
+# jamsesh-cluster.yaml
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jamsesh
+
+---
+# Portal ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jamsesh-portal-config
+  namespace: jamsesh
+data:
+  JAMSESH_TLS_MODE: "behind_proxy"
+  JAMSESH_DB_DRIVER: "postgres"
+  JAMSESH_SHUTDOWN_GRACE_S: "30"
+
+---
+# Portal Deployment (multi-replica)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jamsesh-portal
+  namespace: jamsesh
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: jamsesh-portal
+  template:
+    metadata:
+      labels:
+        app: jamsesh-portal
+    spec:
+      terminationGracePeriodSeconds: 35
+      containers:
+        - name: portal
+          image: ghcr.io/<owner>/jamsesh:v0.3.0
+          ports:
+            - name: http
+              containerPort: 8443
+          envFrom:
+            - configMapRef:
+                name: jamsesh-portal-config
+          env:
+            - name: JAMSESH_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: jamsesh-secrets
+                  key: db_dsn
+            - name: JAMSESH_GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: jamsesh-secrets
+                  key: github_client_id
+            - name: JAMSESH_GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jamsesh-secrets
+                  key: github_client_secret
+            - name: JAMSESH_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jamsesh-secrets
+                  key: session_secret
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+            initialDelaySeconds: 15
+            periodSeconds: 30
+
+---
+# Portal Service (ClusterIP — only the router talks to pods directly)
+apiVersion: v1
+kind: Service
+metadata:
+  name: jamsesh-portal
+  namespace: jamsesh
+spec:
+  selector:
+    app: jamsesh-portal
+  ports:
+    - port: 8443
+      targetPort: 8443
+  # ClusterIP is intentional: external traffic enters via the router, not here.
+
+---
+# Router Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jamsesh-router
+  template:
+    metadata:
+      labels:
+        app: jamsesh-router
+    spec:
+      serviceAccountName: jamsesh-router  # needs pod list/watch on the namespace
+      terminationGracePeriodSeconds: 35
+      containers:
+        - name: router
+          image: ghcr.io/<owner>/jamsesh-router:v0.3.0
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: JAMSESH_ROUTER_BIND
+              value: ":8080"
+            - name: JAMSESH_ROUTER_DISCOVERY_MODE
+              value: "kubernetes"
+            - name: JAMSESH_ROUTER_KUBE_NAMESPACE
+              value: "jamsesh"
+            - name: JAMSESH_ROUTER_KUBE_SERVICE_NAME
+              value: "jamsesh-portal"
+            - name: JAMSESH_ROUTER_SHUTDOWN_GRACE_S
+              value: "30"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+---
+# Router Service (LoadBalancer — external entry point)
+apiVersion: v1
+kind: Service
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+spec:
+  type: LoadBalancer
+  selector:
+    app: jamsesh-router
+  ports:
+    - port: 443
+      targetPort: 8080
+      # TLS termination handled upstream (e.g. cloud LB or an ingress with
+      # cert-manager). The router speaks plain HTTP internally.
+
+---
+# RBAC: allow the router to list/watch pods
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+subjects:
+  - kind: ServiceAccount
+    name: jamsesh-router
+roleBinding:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jamsesh-router
+```
+
+Apply with:
+
+```bash
+kubectl apply -f jamsesh-cluster.yaml
+kubectl -n jamsesh rollout status deployment/jamsesh-portal
+kubectl -n jamsesh rollout status deployment/jamsesh-router
+```
+
+### Observability
+
+The router exposes Prometheus metrics at `/metrics` on its bind address.
+Scraped metric families:
+
+| Metric | Type | Description |
+|---|---|---|
+| `jamsesh_router_decisions_total{result}` | counter | Routing decisions; result ∈ {hit_cache, hit_ring, fallback, empty_ring, retry, error_503} |
+| `jamsesh_router_ring_size` | gauge | Current pod count in the consistent-hash ring |
+| `jamsesh_router_ring_rebalances_total` | counter | Ring rebalances (pod set changes) |
+| `jamsesh_router_probe_failures_total{addr}` | counter | Readiness-probe failures per pod address |
+
+Standard Go runtime and process metrics (`go_goroutines`, `go_memstats_*`,
+`process_cpu_seconds_total`) are also included.
+
+### What is not yet in place (preview limitations)
+
+The following capabilities are planned but not yet landed:
+
+- **Lease fencing** — prevents split-brain when a session migrates between
+  pods mid-request. Without fencing, concurrent writes from two pods to the
+  same session repo are possible if the ring rebalances during a push. A
+  fencing token protocol using Postgres advisory locks is designed and
+  serialized after the router in the epic backlog.
+- **Object-storage sync** — bare repos are currently pod-local. If a pod is
+  replaced, in-flight sessions on that pod lose their repo state until the
+  next `git fetch` from clients re-seeds it. Object storage sync (S3/GCS)
+  will replicate repos across pods to make pod replacement transparent.
+- **Hydration handoff** — on session migration (new pod picks up a session
+  after a ring rebalance), the new pod needs to hydrate from storage before
+  serving. This is coupled to object-storage sync.
+
+Until these land, clustered mode is safe to run **read-only workloads**
+(digest queries, status checks, WebSocket observation) across multiple pods,
+and safe to run **write workloads** only when the ring is stable (no pod churn
+during the session). For rolling upgrades, drain the old pod (SIGTERM causes
+a 30s graceful shutdown) before replacing it.

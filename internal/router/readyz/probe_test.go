@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/router/readyz"
 )
 
@@ -156,5 +157,72 @@ func TestProbeCheck_DefaultPath(t *testing.T) {
 	got := p.Check(context.Background(), []string{hostPort(srv)})
 	if len(got) != 1 {
 		t.Fatalf("expected 1 healthy (default path /readyz), got %v; hitPath=%q", got, hitPath)
+	}
+}
+
+// TestProbeCheck_FailureCounterIncrements verifies that probe failures
+// (non-200 responses and unreachable addresses) increment the
+// RouterProbeFailuresTotal metric for the failing address.
+func TestProbeCheck_FailureCounterIncrements(t *testing.T) {
+	unhealthy := newUnhealthyServer(t)
+	healthyAddr := hostPort(newHealthyServer(t))
+	unhealthyAddr := hostPort(unhealthy)
+
+	reg := metrics.New()
+	p := &readyz.Probe{
+		Path:    "/",
+		Metrics: reg,
+	}
+
+	got := p.Check(context.Background(), []string{healthyAddr, unhealthyAddr})
+	if len(got) != 1 {
+		t.Fatalf("expected 1 healthy, got %v", got)
+	}
+
+	// The unhealthy address should have one failure recorded.
+	// The healthy address must have zero failures.
+	// Scrape metrics to verify.
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	reg.Handler().ServeHTTP(rw, req)
+	body := rw.Body.String()
+
+	wantFailure := `jamsesh_router_probe_failures_total{addr="` + unhealthyAddr + `"} 1`
+	if !strings.Contains(body, wantFailure) {
+		t.Errorf("expected probe failure metric %q in output\n--- output ---\n%s", wantFailure, body)
+	}
+
+	// Healthy address must NOT appear as a failure.
+	wantNoFailure := `jamsesh_router_probe_failures_total{addr="` + healthyAddr + `"}`
+	if strings.Contains(body, wantNoFailure) {
+		t.Errorf("healthy address appeared in probe failure metrics: %q", wantNoFailure)
+	}
+}
+
+// TestProbeCheck_UnreachableIncrementsCounter verifies that connection
+// failures (address unreachable) also increment the probe failure counter.
+func TestProbeCheck_UnreachableIncrementsCounter(t *testing.T) {
+	unreachableAddr := "127.0.0.1:1" // nothing listens here
+
+	reg := metrics.New()
+	p := &readyz.Probe{
+		Path:    "/readyz",
+		Client:  &http.Client{Timeout: 100 * time.Millisecond},
+		Metrics: reg,
+	}
+
+	got := p.Check(context.Background(), []string{unreachableAddr})
+	if len(got) != 0 {
+		t.Fatalf("expected 0 healthy for unreachable addr, got %v", got)
+	}
+
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	reg.Handler().ServeHTTP(rw, req)
+	body := rw.Body.String()
+
+	wantFailure := `jamsesh_router_probe_failures_total{addr="` + unreachableAddr + `"} 1`
+	if !strings.Contains(body, wantFailure) {
+		t.Errorf("expected probe failure metric %q in output\n--- output ---\n%s", wantFailure, body)
 	}
 }

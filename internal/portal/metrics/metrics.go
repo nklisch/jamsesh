@@ -1,7 +1,9 @@
-// Package metrics provides a Prometheus metrics registry for the portal server.
-// It exposes typed metric handles for HTTP traffic, git push outcomes, auto-merger
-// results, and event-log throughput. Callers increment metrics directly via the
-// exported handles; the Registry never inspects request/response internals itself.
+// Package metrics provides a Prometheus metrics registry shared between the
+// portal server and the jamsesh-router binary. It exposes typed metric handles
+// for HTTP traffic, git push outcomes, auto-merger results, event-log
+// throughput, and router routing decisions. Callers increment metrics directly
+// via the exported handles; the Registry never inspects request/response
+// internals itself.
 package metrics
 
 import (
@@ -40,13 +42,41 @@ type Registry struct {
 	// including both Emit and EmitBatch calls (batch counts each event separately).
 	EventLogEmitTotal prometheus.Counter
 
+	// ── Router metrics ────────────────────────────────────────────────────────
+	// These fields are populated only when the Registry is used by the
+	// jamsesh-router binary. Portal instances leave them nil (they are not
+	// registered in a portal-only New call). Use nil checks before incrementing,
+	// or prefer the nil-safe handler fields on proxy.Handler and readyz.Probe.
+
+	// RouterDecisionsTotal counts routing decisions per request. Label "result"
+	// is one of: hit_cache, hit_ring, fallback, empty_ring, retry, error_503.
+	RouterDecisionsTotal *prometheus.CounterVec
+
+	// RouterRingSize tracks the current number of pods in the consistent-hash
+	// ring. Updated on every ring rebalance via the discovery publish callback.
+	RouterRingSize prometheus.Gauge
+
+	// RouterRingRebalancesTotal counts how many times ring.SetPods has been
+	// called (i.e., the healthy pod set has changed). Increments even when the
+	// new set is empty.
+	RouterRingRebalancesTotal prometheus.Counter
+
+	// RouterProbeFailuresTotal counts readiness-probe failures, labeled by the
+	// pod address that failed. Cardinality is bounded by the pod count (≤ 20).
+	RouterProbeFailuresTotal *prometheus.CounterVec
+
 	reg *prometheus.Registry
 }
 
-// New creates and registers all portal metrics into an isolated Prometheus
-// registry. Standard Go runtime and process collectors are included so that
-// go_goroutines, go_memstats_*, and process_cpu_seconds_total are present at
-// /metrics without additional configuration.
+// New creates and registers all portal and router metrics into an isolated
+// Prometheus registry. Standard Go runtime and process collectors are included
+// so that go_goroutines, go_memstats_*, and process_cpu_seconds_total are
+// present at /metrics without additional configuration.
+//
+// Both the portal server and the jamsesh-router binary call New() and obtain
+// the same Registry type. Router-specific fields (RouterDecisionsTotal, etc.)
+// are registered by New() unconditionally; the portal simply never increments
+// them, so they appear at zero in portal /metrics output.
 func New() *Registry {
 	reg := prometheus.NewRegistry()
 
@@ -86,13 +116,45 @@ func New() *Registry {
 	})
 	reg.MustRegister(eventLogEmitTotal)
 
+	// ── Router metrics ────────────────────────────────────────────────────────
+
+	routerDecisionsTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "jamsesh_router_decisions_total",
+		Help: "Total number of routing decisions made by the router, labeled by result " +
+			"(hit_cache, hit_ring, fallback, empty_ring, retry, error_503).",
+	}, []string{"result"})
+	reg.MustRegister(routerDecisionsTotal)
+
+	routerRingSize := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "jamsesh_router_ring_size",
+		Help: "Current number of pods in the consistent-hash ring.",
+	})
+	reg.MustRegister(routerRingSize)
+
+	routerRingRebalancesTotal := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "jamsesh_router_ring_rebalances_total",
+		Help: "Total number of ring rebalances (SetPods calls) triggered by discovery.",
+	})
+	reg.MustRegister(routerRingRebalancesTotal)
+
+	routerProbeFailuresTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "jamsesh_router_probe_failures_total",
+		Help: "Total number of readiness-probe failures, labeled by pod address. " +
+			"Cardinality is bounded by the pod count (typically ≤ 20).",
+	}, []string{"addr"})
+	reg.MustRegister(routerProbeFailuresTotal)
+
 	return &Registry{
-		HTTPRequestsTotal:   httpRequestsTotal,
-		HTTPRequestDuration: httpRequestDuration,
-		GitPushesTotal:      gitPushesTotal,
-		AutoMergerOutcomes:  autoMergerOutcomes,
-		EventLogEmitTotal:   eventLogEmitTotal,
-		reg:                 reg,
+		HTTPRequestsTotal:         httpRequestsTotal,
+		HTTPRequestDuration:       httpRequestDuration,
+		GitPushesTotal:            gitPushesTotal,
+		AutoMergerOutcomes:        autoMergerOutcomes,
+		EventLogEmitTotal:         eventLogEmitTotal,
+		RouterDecisionsTotal:      routerDecisionsTotal,
+		RouterRingSize:            routerRingSize,
+		RouterRingRebalancesTotal: routerRingRebalancesTotal,
+		RouterProbeFailuresTotal:  routerProbeFailuresTotal,
+		reg:                       reg,
 	}
 }
 

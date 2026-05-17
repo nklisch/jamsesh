@@ -68,6 +68,7 @@ type Handler struct {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sessionID := h.Extract(r)
 	if sessionID == "" {
+		h.incDecision("fallback")
 		h.Fallback.ServeHTTP(w, r)
 		return
 	}
@@ -77,6 +78,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if pod.Address == "" {
 		slog.WarnContext(r.Context(), "router: no backends available",
 			"session_id", sessionID)
+		h.incDecision("empty_ring")
 		h.writeNoBackend(w)
 		return
 	}
@@ -86,6 +88,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"pod_id", pod.ID,
 		"source", source,
 	)
+
+	// Record the routing source (hit_cache or hit_ring).
+	switch source {
+	case "cache":
+		h.incDecision("hit_cache")
+	default:
+		h.incDecision("hit_ring")
+	}
 
 	// First attempt.
 	rw := &statusCapture{ResponseWriter: w}
@@ -111,6 +121,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// No distinct retry target; propagate the 503 that already got written.
 		slog.WarnContext(r.Context(), "router: no retry target, propagating 503",
 			"session_id", sessionID)
+		h.incDecision("error_503")
 		return
 	}
 
@@ -118,6 +129,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"session_id", sessionID,
 		"retry_pod", retryPod.ID,
 	)
+	h.incDecision("retry")
 
 	// We've already written headers from the first attempt; we cannot send
 	// a fresh response. Use a fresh recorder to capture the retry result.
@@ -133,6 +145,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	retryRW := &statusCapture{ResponseWriter: w}
 	h.proxyTo(retryPod, retryRW, r)
 	// Don't update hint on retry; let next request re-establish via ring.
+}
+
+// incDecision increments RouterDecisionsTotal for the given result label. It
+// is a no-op when Metrics is nil or RouterDecisionsTotal is nil.
+func (h *Handler) incDecision(result string) {
+	if h.Metrics == nil || h.Metrics.RouterDecisionsTotal == nil {
+		return
+	}
+	h.Metrics.RouterDecisionsTotal.WithLabelValues(result).Inc()
 }
 
 // resolvePod returns the pod to use for sessionID, plus a diagnostic label.
