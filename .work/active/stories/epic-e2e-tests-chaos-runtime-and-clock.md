@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-chaos-runtime-and-clock
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-chaos
 depends_on: []
@@ -108,3 +108,14 @@ One active chaos scenario + 1 documented-skip:
 passes with `automerger_pause` PASS and `clock_skew_token_expiry` SKIP.
 Resume semantics proved healthy on this machine — go-git resumes cleanly
 after a 5-second freeze, no spurious `conflict.detected` event observed.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Cleanly validated a real resilience claim — auto-merger's in-process go-git merge is idempotent across process pauses, no spurious conflict events. Defensive `defer docker unpause` registered before the pause prevents leaving the container frozen on test failure.
+
+**Notes**: The `(*Portal).ContainerName(ctx)` helper added to the portal fixture is a clean small extension; future chaos tests targeting other containers (postgres, mailhog) can reuse the docker-pause pattern. clock_skew_token_expiry deferred-skip references the backlog item; appropriate handling.

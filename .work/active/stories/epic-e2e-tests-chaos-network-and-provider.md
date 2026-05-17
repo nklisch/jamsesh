@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-chaos-network-and-provider
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-chaos
 depends_on: []
@@ -139,3 +139,17 @@ existing test compiles.
   `http.Client` setup in `internal/portal/oauth/github.go` — if no
   timeout, file as backlog (`portal-oauth-client-timeout`) and skip
   the scenario
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- Surfaced real production bug `portal-oauth-client-timeout` — portal uses `http.DefaultClient` with no timeout. Test correctly skipped rather than masking. Backlog item is the proper fix.
+
+**Nits**:
+- `network_jitter_db` accepts any non-2xx as "error surfaced correctly" — a stricter invariant ("non-2xx with `dep.*` error code") would require `portal-dep-failure-error-codes` to land first.
+- The new toxiproxy/toxics.go helpers are reusable beyond this story — nice fixture growth.
+
+**Notes**: The Toxiproxy proxy-port-to-portal-env handoff worked cleanly. Anti-tautology baseline assertions present (5s baseline before chaos). Three scenarios → 1 active + 2 documented-skip = correct application of the user's directive that tests document failures rather than masking them.
