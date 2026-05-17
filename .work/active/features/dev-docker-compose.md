@@ -1,7 +1,7 @@
 ---
 id: dev-docker-compose
 kind: feature
-stage: implementing
+stage: review
 tags: [infra]
 parent: null
 depends_on: []
@@ -307,3 +307,31 @@ From the pre-mortem:
 
 Sourced from `.work/backlog/idea-docker-compose-local-dev.md` (parked in
 this session via `/agile-workflow:park`).
+
+## Implementation summary
+
+Both child stories shipped via `/agile-workflow:autopilot` in a 2-wave
+orchestrator run:
+
+- `dev-docker-compose-setup` → `stage: review` (commit `8d0e04e`). Landed
+  `Dockerfile.dev` (golang:1.25-alpine pinned to `go.mod`'s 1.25.7), `.air.toml`
+  (with `-buildvcs=false` for in-container git compat), `compose.yaml`,
+  `.dockerignore`, and `.gitignore` additions for `.data/` and `tmp/`. Also
+  wired `JAMSESH_WS_ALLOW_ORIGINS` in `cmd/portal/main.go` (the comment had
+  described it as configurable but the slice was hardcoded — the Vite WS
+  acceptance criterion required the wiring). Added `JAMSESH_EMAIL_FROM:
+  dev@localhost` in compose env to satisfy `senders.New()` startup
+  validation; actual email delivery fails gracefully in dev.
+- `dev-docker-compose-docs` → `stage: review` (commit `8b28117`). Added
+  `make dev`, `dev-down`, `dev-down-v`, `dev-rebuild` targets; renamed the
+  README's `Quickstart (Docker)` heading to `Operator quickstart` and
+  inserted a `Local development` section above it documenting the
+  two-terminal flow, `./.data/` data path, and `make dev-down-v` reset.
+  Deliberately skipped a reverse cross-link in `docs/SELF_HOST.md` —
+  that doc is operator-facing.
+
+Verification: `go build ./...` clean, `wsgateway` tests green,
+`docker compose up --build` brought the portal up on `:8443`,
+`curl /healthz` returned `{"status":"ok"}`, `.go` file edits triggered
+air rebuilds within ~5s. The Vite WS criterion is manual-verify (requires
+a browser).
