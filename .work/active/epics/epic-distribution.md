@@ -51,6 +51,24 @@ per VISION.md self-host-first stance).
 - `docs/SECURITY.md` — Supply chain and integrity, Self-host security
   posture
 
+## Design decisions
+
+- **CI/release pipeline**: GitHub Actions. Mature, free for public repos,
+  matrix builds for multi-arch, native Sigstore action, fits the
+  GitHub-based marketplace model.
+- **Versioning**: synchronized. Plugin and portal both ship as the same
+  semver (v0.4.2 etc.). Every portal release ships a matching plugin
+  release. Costs a plugin bump when only portal changed; buys a much
+  simpler mental model and guaranteed compat.
+- **License**: Apache 2.0. Permissive with explicit patent grant; standard
+  for Go infrastructure; maximum adoption headroom. Includes copyright
+  headers + NOTICE file in the source tree.
+- **First-public-release branding**: v0.1.0 with semver from day one.
+  Pre-1.0 versions signal expect-breakage; bump 0.x.0 on breaking
+  changes, 0.0.x for additive/fixes. Path to 1.0 when the API surface
+  stabilizes. Apache-2.0-licensed source, multi-arch binaries, Docker
+  image, Sigstore signatures, checksums published with every tagged release.
+
 ## Anticipated child features
 
 Provisional — actual decomposition lands when this epic is designed.
