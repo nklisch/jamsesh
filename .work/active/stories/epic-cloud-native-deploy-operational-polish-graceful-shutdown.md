@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-graceful-shutdown
 kind: story
-stage: review
+stage: done
 tags: [infra, portal]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: []
@@ -97,3 +97,18 @@ Edit:
   1s grace → cut off within 2.5s).
 - Four new config tests cover default, env override, YAML parsing,
   and validation of `ShutdownGraceSeconds`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- `cmd/portal/main.go` shutdownStart write/read race → backlog item `graceful-shutdown-shutdownstart-race`. The writer goroutine sets `shutdownStart` after `<-ctx.Done()` without an HB edge to the main goroutine's read after `server.Run` returns. In-code comment claims server.Run blocking creates the necessary HB — that reasoning is incorrect under the Go memory model. Benign in practice (microsecond writer vs second-scale reader) but not race-clean and `go test -race` would flag it if a test exercised the path. Fix is a one-liner using `chan time.Time` instead of bare variable.
+
+**Nits**:
+- The 1-second floor on `remaining` (`if remaining < 1*time.Second { remaining = 1 * time.Second }`) is sensible but silent — could log a warning when HTTP draining consumed the full budget to surface operator misconfiguration.
+
+**Notes**: The core mechanics — shared grace budget across HTTP/auto-merger/WS, parallel drain of auto-merger and WS via WaitGroup, per-step elapsed logging — are well-designed. Validation in `config.validate()` for positive `ShutdownGraceSeconds` is correct. Two new server tests cover both the complete-before-deadline path (200ms request + 10s grace) and the cut-off path (3s request + 1s grace).
+
+The signature change to `server.Run` (now reads `cfg.ShutdownGraceSeconds`) means callers must populate that field; tests in server_test.go were updated to set `ShutdownGraceSeconds: 5`. Reasonable migration; documented via the validate() error message.
