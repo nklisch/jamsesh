@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync-wiring
 kind: story
-stage: review
+stage: done
 tags: [portal, documentation]
 parent: epic-cloud-native-deploy-object-storage-sync
 depends_on: [epic-cloud-native-deploy-object-storage-sync-pipeline]
@@ -124,3 +124,21 @@ or non-nil); the Emitter already handles nil as a no-op (ships per pipeline stor
   "Bare-repo dual-layer storage" section describing the working-cache +
   system-of-record model, RPO=0 contract, fencing token enforcement, and
   conditional-write linearizability. Updated horizontal-scaling overview blurb.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Final piece landed cleanly. Factory dispatches URL schemes correctly (`s3://`, `s3-compatible://`, `gs://`, `azblob://`); unknown schemes return clear errors. The `s3-compatible://` normalization is a nice touch — same impl as `s3://` but the EndpointURL requirement is documented. Config validation correctly enforces clustered+object-storage-required and rejects non-positive queue size.
+
+main.go wiring is nil-safe — postreceive Emitter already handles nil Syncer (from the pipeline story), so single-instance mode requires no special-casing here. Just construct or not.
+
+Docs are thorough. SELF_HOST §14 properly reframes from "object-storage in progress" to "hydration-handoff is the last gap" — accurate present-truth framing. Per-provider deploy examples are concrete (real env-var settings + workload-identity guidance per platform). Cost-model paragraph helps operators size their bills.
+
+SPEC.md gains the dual-layer note in Deployment shape. SECURITY.md gains the object-storage IAM operator-responsibility row. ARCHITECTURE.md replaces the placeholder "in progress" prose with concrete dual-layer storage description (RPO=0, fencing, conditional-write linearizability).
+
+No "previously" prose anywhere. Rolling-foundation principle respected.

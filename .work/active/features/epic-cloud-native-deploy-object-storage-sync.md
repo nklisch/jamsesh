@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync
 kind: feature
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy
 depends_on: [epic-cloud-native-deploy-lease-fencing]
@@ -534,3 +534,19 @@ Updates land with Unit 5:
 - `docs/ARCHITECTURE.md` — bare-repo storage section gains the dual-layer description
 - `docs/SECURITY.md` — operator responsibilities table gains object-storage IAM row
 - `docs/SELF_HOST.md` — clustered-mode section gains object-storage subsection with per-provider deploy examples + cost-model paragraph
+
+## Children complete (2026-05-17)
+
+All 5 child stories landed and reviewed:
+
+| Story | Verdict | Notes |
+|---|---|---|
+| backend | Approve | S3-compat impl via aws-sdk-go-v2; covers AWS/R2/B2/MinIO/Ceph |
+| manifest | Approve | Linearizable per-session state object; ErrFenced sentinel distinct from ErrPrecondition |
+| pipeline | Approve | RPO=0 sync hooked into post-receive; gc.auto=0 on CreateRepo prevents pack-rewrite races |
+| provider-extensions | Approve | Native GCS + Azure Blob SDKs (workload-identity auth); research doc landed |
+| wiring (review pending) | — | Factory + config + main.go + docs |
+
+Verification: `go build ./...` clean; `go test ./...` green across all packages.
+
+Feature advanced `implementing → review`. Object storage is now the system-of-record in clustered mode; single-instance mode is unchanged.
