@@ -1,0 +1,20 @@
+# Dockerfile.dev — local-development image with the Go toolchain and `air`
+# for file-watched rebuilds. NOT used for production releases — see the
+# top-level `Dockerfile` for the distroless release image.
+FROM golang:1.25-alpine AS dev
+
+RUN apk add --no-cache git ca-certificates && \
+    go install github.com/air-verse/air@v1.61.0
+
+WORKDIR /src
+
+# Pre-warm the build cache by copying go.mod / go.sum and downloading deps.
+# This means `compose up --build` after a `go.mod` edit re-downloads; pure
+# code edits skip this layer.
+COPY go.mod go.sum ./
+RUN go mod download
+
+EXPOSE 8443
+
+# air watches /src (bind-mounted from the host) and rebuilds on .go changes.
+CMD ["air", "-c", ".air.toml"]

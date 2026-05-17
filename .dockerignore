@@ -1,0 +1,25 @@
+# Files NOT to copy into the Docker build context.
+# Note: the dev compose bind-mounts the source tree at runtime, so this
+# only affects the `Dockerfile.dev` build step (which COPYs only go.mod/go.sum).
+
+.git/
+.gitignore
+.dockerignore
+node_modules/
+frontend/node_modules/
+frontend/dist/
+internal/portal/assets/dist/
+.data/
+tmp/
+.mockups/
+.work/
+.claude/
+docs/
+
+# Compiled binaries (gitignored anyway, but in case)
+/portal
+/jamsesh
+*.db
+*.db-journal
+*.db-shm
+*.db-wal

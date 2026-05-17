@@ -1,7 +1,7 @@
 ---
 id: dev-docker-compose-setup
 kind: story
-stage: implementing
+stage: review
 tags: [infra]
 parent: dev-docker-compose
 depends_on: []
@@ -223,3 +223,48 @@ as a build error on first `compose up --build`.
 
 `git revert` the commit. The 5 new files are removed; the .gitignore
 addition is reverted. Existing `make build` workflows are unaffected.
+
+## Implementation notes
+
+### What landed
+
+- `Dockerfile.dev` — `golang:1.25-alpine` + `air@v1.61.0` + dep pre-warm layer
+- `.air.toml` — watches `.go` files, debounce 500ms, excludes frontend/test dirs
+- `compose.yaml` — portal service with bind-mounted source, `.data/` for SQLite
+- `.dockerignore` — trims the build context for the `COPY go.mod go.sum` step
+- `.gitignore` — appended `.data/` and `tmp/`
+- `cmd/portal/main.go` — wired `JAMSESH_WS_ALLOW_ORIGINS` env var (see deviation below)
+
+### Deviations from spec
+
+**Go toolchain version**: Spec showed `golang:1.24-alpine`; `go.mod` declares `go 1.25.7`.
+Used `golang:1.25-alpine` as the story instructs: "Pin Go version to match `go.mod`'s declared toolchain."
+
+**Wired JAMSESH_WS_ALLOW_ORIGINS env var to wsgateway.Gateway.AllowOrigins in
+`cmd/portal/main.go`**: The comment described it as configurable but the value was
+hardcoded `[]string{}`; required for the Vite WS acceptance criterion. Added `"strings"`
+import and a parsing loop (comma-separated, trimmed, empty entries dropped).
+
+**Added `-buildvcs=false` to `.air.toml` build cmd**: `go build` inside the container
+reads VCS metadata but the Alpine git in the container can't access the host-mounted
+`.git` safely (`exit status 128`). The flag suppresses VCS stamping for the dev build;
+production image (`Dockerfile`) uses a pre-built binary and is unaffected.
+
+**Added `JAMSESH_EMAIL_FROM: dev@localhost` to `compose.yaml`**: `senders.New()` returns
+a hard error when `email.from` is empty, causing `os.Exit(1)` before the portal
+can listen. The dev compose sets a stub address so the server starts; actual SMTP
+delivery fails gracefully (no local MTA). Developers who need email in dev can
+overlay their own provider env vars.
+
+### Verification results
+
+1. `go build ./...` — clean (0 errors)
+2. `go test ./cmd/portal/... ./internal/portal/wsgateway/...` — `wsgateway` PASS, `cmd/portal` has no test files
+3. `docker compose up --build -d` — built image successfully, container started
+4. `curl -fsS http://localhost:8443/healthz` — returned `{"status":"ok"}`
+5. `touch internal/portal/router/router.go` — air detected change, logged "building...",
+   rebuilt and restarted within ~5s; `portal listening` message appeared in logs
+6. `docker compose down -v` — stack stopped cleanly; `.data/jamsesh.db` visible on host
+
+All acceptance criteria verified automated except the Vite WS criterion (requires
+running browser + frontend dev server; manual-verify only).

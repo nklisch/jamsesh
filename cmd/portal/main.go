@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -316,14 +317,22 @@ func main() {
 	// Build and start the WebSocket gateway. It subscribes to all events and
 	// fans them out to connected clients at /ws/sessions/{sessionID}.
 	//
-	// AllowOrigins is intentionally empty by default — all cross-origin upgrades
-	// are denied until operators configure JAMSESH_WS_ALLOW_ORIGINS. See
-	// docs/SELF_HOST.md for the configuration table.
+	// AllowOrigins is parsed from JAMSESH_WS_ALLOW_ORIGINS (comma-separated
+	// origins). Defaults to empty (deny all cross-origin upgrades) when unset.
+	// See docs/SELF_HOST.md for the configuration table.
+	var wsAllowOrigins []string
+	if v := os.Getenv("JAMSESH_WS_ALLOW_ORIGINS"); v != "" {
+		for _, o := range strings.Split(v, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				wsAllowOrigins = append(wsAllowOrigins, o)
+			}
+		}
+	}
 	wsGateway := &wsgateway.Gateway{
 		Store:        dbStore,
 		Tokens:       tokenSvc,
 		Log:          eventLog,
-		AllowOrigins: []string{}, // deny all cross-origin; configure per SELF_HOST.md
+		AllowOrigins: wsAllowOrigins,
 	}
 	if err := wsGateway.Start(ctx); err != nil {
 		slog.Error("ws gateway start failed", "err", err)

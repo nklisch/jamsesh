@@ -1,0 +1,29 @@
+# Local-development orchestration. NOT for production — see the top-level
+# Dockerfile and docs/SELF_HOST.md for the production deployment path.
+# Reference: `dev-docker-compose` feature in .work/.
+
+services:
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8443:8443"
+    volumes:
+      - .:/src
+      - ./.data:/data
+    working_dir: /src
+    environment:
+      JAMSESH_BIND: ":8443"
+      JAMSESH_TLS_MODE: behind_proxy
+      JAMSESH_DB_DRIVER: sqlite
+      JAMSESH_DB_DSN: /data/jamsesh.db
+      JAMSESH_STORAGE: /data/storage
+      JAMSESH_LOG_FORMAT: text
+      JAMSESH_LOG_LEVEL: "-4"
+      # Allow the Vite dev server to connect via WebSocket.
+      JAMSESH_WS_ALLOW_ORIGINS: http://localhost:5173
+      # Satisfy the required email.from field; actual email delivery will
+      # fail gracefully since no SMTP server runs in dev. Configure a real
+      # provider via env overrides if you need email during development.
+      JAMSESH_EMAIL_FROM: dev@localhost

@@ -13,3 +13,9 @@ jamsesh.db
 
 # Un-ignore the plugin skill dir named jamsesh
 !skills/jamsesh/
+
+# Local dev compose data
+.data/
+
+# air build artifacts
+tmp/

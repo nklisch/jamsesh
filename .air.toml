@@ -1,0 +1,23 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -buildvcs=false -o ./tmp/portal ./cmd/portal"
+  bin = "./tmp/portal"
+  include_ext = ["go"]
+  exclude_dir = [
+    "frontend",
+    "node_modules",
+    ".git",
+    ".data",
+    "tmp",
+    "tests/e2e/playwright/node_modules",
+    "tests/e2e/playwright/playwright-report",
+    "tests/e2e/playwright/test-results",
+    ".mockups",
+  ]
+  delay = 500             # ms debounce
+  stop_on_root = true
+
+[log]
+  time = false
