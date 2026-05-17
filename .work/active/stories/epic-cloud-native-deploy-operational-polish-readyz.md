@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-readyz
 kind: story
-stage: review
+stage: done
 tags: [infra, portal]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: []
@@ -103,3 +103,20 @@ Fresh implementation. All acceptance criteria verified by automated tests.
 
 **main.go wiring**: `ReadyzChecks` slice with `db` (store.Ping) and
 `storage` (os.Stat on cfg.Storage) probes.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Inside the allOK check loop, `for _, r := range results` shadows the outer `r *http.Request` parameter. Cosmetic; no actual use of the outer `r` after that point.
+
+**Notes**: Clean implementation. Probes package has good separation (Check struct + Handler builder), thorough doc comments. Per-check `context.WithTimeout` derives from request context (cancels if client disconnects — correct). Timeout detection via `ctx.Err()` after Fn returns handles both DeadlineExceeded and Canceled as "timeout" — acceptable user-facing meaning.
+
+Tests are external (`package probes_test`), assert on behavioral contracts (status code, JSON envelope, per-check fields) not implementation details. 6 tests covering all-ok, one-fail, all-fail, timeout, parallel timing, and empty list.
+
+Store interface change (`Ping(ctx) error`) was propagated to all implementations — verified the only stubStore in `internal/portal/handlerauth/handlerauth_test.go` was updated; no other mock/fake stores exist in the codebase.
+
+`/readyz` not yet documented in SELF_HOST.md — belongs to the sibling docs story, not a finding here.
