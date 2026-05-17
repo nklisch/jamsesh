@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-failure-mode-config-and-deps
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-failure-mode
 depends_on: [epic-e2e-tests-failure-mode-rest-validation]
@@ -129,3 +129,15 @@ should either:
 
 - `tests/e2e/fixtures/mailhog/mailhog.go` — added `Stop(ctx) error` method
 - `tests/e2e/fixtures/toxiproxy/toxiproxy.go` — added `ContainerIP string` field populated at Start time
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- 685 lines in one file is approaching the upper readable limit. Could split into `missing_config_test.go` + `unavailable_deps_test.go` for the two distinct categories. Not blocking; the t.Run structure already groups them clearly.
+- "git binary missing" subtest is skipped with documented reason — acceptable.
+
+**Notes**: The production-side discovery (dep.* codes not implemented — failures surface as plain-text 500) was correctly filed as `portal-dep-failure-error-codes` backlog item rather than blocked-on. Tests pin to HTTP status 500 only, with comments documenting the contract gap. The Toxiproxy reset_peer pattern for DB disruption is a good choice — surfaces a clear "connection refused" failure mode without pausing the container (which would affect other tests sharing the same Postgres instance).
