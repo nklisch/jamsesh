@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-playwright-bootstrap
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, ui]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-testcontainers-fixtures]
@@ -131,3 +131,15 @@ additional verification.
 - Failure mode without installed browsers: "Executable doesn't exist" (browser
   not installed) — infrastructure problem, not a TS/config error; the
   `make test-e2e-playwright` target installs browsers before running
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Commit incidentally bundled `.mockups/screens/org-session-invite-policy-settings/*.html` from an unrelated scope (~1000 lines of HTML). Likely picked up by a PostToolUse staging hook on untracked files. Inert side effect.
+- `playwright.config.ts > retries` / `workers` use `process.env["CI"] ? ... : ...` — relies on empty-string-is-falsy. Explicit `process.env["CI"] != null` would be more robust if some CI sets `CI=false`. Minor.
+
+**Notes**: Selector choice (`getByPlaceholder("you@example.com")`) is semantic and well-justified inline in the spec. The two-test split (visibility + interactivity) is the right scope for a smoke spec. Strict TS with `noUncheckedIndexedAccess` is correctly applied throughout. Pinned versions (no `^`) for `@playwright/test` 1.45.0 match the CI image tag.
