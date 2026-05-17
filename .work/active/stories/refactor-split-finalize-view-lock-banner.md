@@ -1,7 +1,7 @@
 ---
 id: refactor-split-finalize-view-lock-banner
 kind: story
-stage: implementing
+stage: review
 tags: [refactor, ui]
 parent: refactor-split-finalize-view
 depends_on: []
@@ -63,3 +63,35 @@ orchestrator.
 ## Rollback
 
 `git revert` the commit; the new component is unreferenced after revert.
+
+## Implementation discovery
+
+**Design choice:** Option 1 — single `<LockBanner>` with raw flag props. The component receives `{ lockConflict, lockError, lock, isCaller, sessionEnded }` and three callbacks (`onWait`, `onOverride`, `onDismissError`). It decides what to render internally using `$derived`. This maps directly onto the existing inline logic without a forced status-enum translation.
+
+**Lock-pill placement note:** The lock-pill was originally inline inside `.sub` (mixed with plan-base text). Since the pill is now rendered by the top-level `<LockBanner>` instance above `.page-head`, it appears just before the section rather than inside it. The FinalizeView test only asserts presence (`getByLabelText`), not DOM position — test passes unchanged.
+
+## Implementation notes
+
+**Final prop shape:** Single `<LockBanner>` component with raw flag props:
+```ts
+type Props = {
+  lockConflict: { holderAccountId: string } | null;
+  lockError: string | null;
+  lock: { lock_id: string; is_caller: boolean } | null;
+  isCaller: boolean;
+  sessionEnded: boolean;
+  onWait?: () => void;
+  onOverride?: () => void;
+  onDismissError?: () => void;
+};
+```
+
+**CSS rules moved from FinalizeView to LockBanner:**
+- `.conflict-banner` + `.conflict-text` + `.conflict-actions`
+- `.error-banner`
+- `.lock-pill`
+- `.btn`, `.btn.primary`, `.btn.ghost` (duplicated into LockBanner; originals kept in FinalizeView for the "Back to sessions" ghost button)
+
+**LoC delta on FinalizeView.svelte:** 1110 → 1065 lines (net −45 lines). The new `LockBanner.svelte` is 101 lines.
+
+**Test count:** 11 tests in `LockBanner.test.ts`. All 13 existing `FinalizeView.test.ts` tests pass unchanged. Full suite: 286/286 passing.

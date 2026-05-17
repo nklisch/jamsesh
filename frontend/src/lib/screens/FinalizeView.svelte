@@ -7,6 +7,7 @@
   import AuthorDot from '$lib/components/AuthorDot.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import SquashMessageEditor from '$lib/components/SquashMessageEditor.svelte';
+  import LockBanner from '$lib/components/finalize/LockBanner.svelte';
   import type { components } from '$lib/api/types.gen';
 
   type LockStatus = components['schemas']['LockStatus'];
@@ -425,33 +426,16 @@
     {/if}
   </header>
 
-  {#if lockConflict}
-    <!-- Lock-conflict banner -->
-    <div class="conflict-banner" role="alert" aria-label="Another member is finalizing">
-      <div class="conflict-text">
-        <strong>{lockConflict.holderAccountId || 'Another member'}</strong>
-        is finalizing this session. Wait for them, or override to
-        restart curation from the current draft.
-      </div>
-      <div class="conflict-actions">
-        <button class="btn ghost" type="button" onclick={() => navigate(`/orgs/${orgId}/sessions/${sessionId}`)}>
-          Wait
-        </button>
-        <button class="btn primary" type="button" onclick={() => void overrideLock()}>
-          Override
-        </button>
-      </div>
-    </div>
-  {/if}
-
-  {#if lockError}
-    <div class="error-banner" role="alert">
-      {lockError}
-      <button class="btn ghost" type="button" onclick={() => { lockError = null; }}>
-        Dismiss
-      </button>
-    </div>
-  {/if}
+  <LockBanner
+    {lockConflict}
+    {lockError}
+    {lock}
+    {isCaller}
+    {sessionEnded}
+    onWait={() => navigate(`/orgs/${orgId}/sessions/${sessionId}`)}
+    onOverride={() => void overrideLock()}
+    onDismissError={() => { lockError = null; }}
+  />
 
   <!-- Page head -->
   <section class="page-head">
@@ -466,10 +450,6 @@
         Held by another member.
       {:else}
         Preparing plan…
-      {/if}
-
-      {#if lock && isCaller && !sessionEnded}
-        <span class="lock-pill" aria-label="You hold the lock">You hold the lock</span>
       {/if}
     </div>
   </section>
@@ -752,23 +732,6 @@
   .sep { color: var(--color-text-tertiary); }
   .chrome-spacer { flex: 1; }
 
-  .conflict-banner {
-    display: flex; align-items: center; gap: 16px;
-    padding: 14px 22px;
-    background: var(--color-warning-muted);
-    border-bottom: 1px solid var(--color-border);
-  }
-  .conflict-text { flex: 1; font-size: var(--font-size-sm); color: var(--color-text-primary); }
-  .conflict-actions { display: flex; gap: 8px; flex-shrink: 0; }
-
-  .error-banner {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 22px;
-    background: var(--color-danger-muted);
-    color: var(--color-danger);
-    font-size: var(--font-size-sm);
-  }
-
   .page-head {
     padding: 22px 28px 16px;
     border-bottom: 1px solid var(--color-border);
@@ -784,14 +747,6 @@
     background: var(--color-bg-tertiary);
     padding: 1px 6px; border-radius: 3px;
     color: var(--color-text-primary);
-  }
-  .lock-pill {
-    display: inline-flex; align-items: center;
-    margin-left: 12px;
-    padding: 4px 10px; border-radius: var(--radius-full);
-    background: var(--color-accent-muted); color: var(--color-accent);
-    font: var(--font-weight-medium) 11px var(--font-mono);
-    letter-spacing: 0.04em; text-transform: uppercase;
   }
 
   .mode-bar {
