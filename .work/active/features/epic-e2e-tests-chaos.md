@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-chaos
 kind: feature
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-golden-path]
@@ -195,3 +195,12 @@ Both child stories at review:
 **Resilience claims validated**: auto-merger's in-process go-git merge is idempotent across process pauses; portal handles DB latency without partial-state writes.
 
 **Next**: `/agile-workflow:review epic-e2e-tests-chaos` once the user is ready.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none new at feature level — both children reviewed individually.
+
+**Notes**: 2 active chaos scenarios validated resilience claims (DB-latency tolerance, auto-merger pause-and-resume). 3 deferred scenarios with clear backlog references. 1 real production bug surfaced and filed (`portal-oauth-client-timeout`). The chaos feature delivered the headline value of "tests that prove graceful degradation under controlled fault injection."
