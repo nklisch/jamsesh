@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: []
@@ -486,3 +486,51 @@ Five waves total; max 2 stories per wave.
   The e2e smoke spec uses Postgres. SQLite e2e is deferred to the
   golden-path feature's driver-matrix decision (or omitted if the
   unit-test SQLite coverage is judged sufficient by gate-tests).
+
+## Implementation summary (2026-05-17)
+
+All 7 child stories landed at `stage: review` in 5 waves:
+
+| Wave | Stories | Status |
+|---|---|---|
+| 1 (parallel) | `module-skeleton`, `portal-oauth-base-url` | review |
+| 2 (parallel) | `portal-image-build`, `ccdriver` | review |
+| 3 | `testcontainers-fixtures` | review |
+| 4 | `playwright-bootstrap` | review |
+| 5 | `ci-workflow` | review |
+
+**Verification status**: root `go build ./...` green; `tests/e2e` module
+builds clean; the e2e CI workflow YAML parses; the `make
+test-portal-image` and `make test-e2e` targets work end-to-end on a
+Docker-enabled host. Wave 3 confirmed the smoke spec (`/healthz` via
+Testcontainers stack) passes locally.
+
+**Cross-cutting deviations to note for review**:
+
+- **`tests/e2e/go.mod` declares `go 1.26`** — bumped from the root's `go
+  1.25.7` by a transitive Testcontainers-Go requirement. The CI workflow
+  uses `go-version: 'stable'` so both modules build. Worth confirming in
+  review whether to pin a specific version instead.
+- **Portal binary needs `CGO_ENABLED=0`** for distroless-static. The
+  Makefile target builds the binary directly with that flag rather than
+  delegating to `make go-build` (which leaves a dynamically linked host
+  binary). Documented in the portal-image-build story's notes.
+- **`JAMSESH_EMAIL_FROM` is required at startup** — `senders.New()` in
+  `cmd/portal/main.go` hard-fails on empty `email.from`. Fixtures
+  populate it with `noreply@example.com`. Worth surfacing as a
+  documentation item for self-hosters too.
+- **Docker bridge networking** in Testcontainers — the portal container
+  cannot reach sibling containers via host-mapped ports. Fixtures
+  expose `ContainerDSN` / `ContainerURL` alongside the host-side
+  addresses; the smoke spec uses the container-side addresses when
+  configuring the portal.
+- **Testcontainers-go v0.42.0 API** — `network.Port.Int()` was
+  renamed to `network.Port.Num()`. Worth catching if any future story
+  inherits older snippets.
+- **`docs/SELF_HOST.md` gained two new sections** — section 12 (CI)
+  naming the e2e workflow as the canonical gate, plus the OAuth
+  config rows added in wave 1's portal-oauth-base-url story.
+
+**Next**: `/agile-workflow:review epic-e2e-tests-infrastructure` once
+the user is ready. The feature gate lets the three sibling features
+(`golden-path`, `failure-mode`, `fuzzing`) become design-ready next.
