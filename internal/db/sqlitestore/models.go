@@ -29,6 +29,21 @@ type ArchivedSession struct {
 	FinalBranchName  sql.NullString `json:"final_branch_name"`
 }
 
+type Event struct {
+	ID        string    `json:"id"`
+	OrgID     string    `json:"org_id"`
+	SessionID string    `json:"session_id"`
+	Seq       int64     `json:"seq"`
+	Type      string    `json:"type"`
+	Payload   string    `json:"payload"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type EventSeq struct {
+	SessionID string `json:"session_id"`
+	Next      int64  `json:"next"`
+}
+
 type MagicLinkToken struct {
 	ID        string     `json:"id"`
 	TokenHash string     `json:"token_hash"`
@@ -69,6 +84,15 @@ type OrgMember struct {
 	AccountID string    `json:"account_id"`
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type Presence struct {
+	OrgID        string    `json:"org_id"`
+	SessionID    string    `json:"session_id"`
+	AccountID    string    `json:"account_id"`
+	Ref          string    `json:"ref"`
+	CurrentSha   string    `json:"current_sha"`
+	LastActiveAt time.Time `json:"last_active_at"`
 }
 
 type Session struct {

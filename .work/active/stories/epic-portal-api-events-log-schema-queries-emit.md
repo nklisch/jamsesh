@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-events-log-schema-queries-emit
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-api-events-log
 depends_on: []
@@ -73,3 +73,66 @@ The sibling story `epic-portal-api-events-log-openapi-event-payloads`
 runs in parallel and adds payload schemas to openapi.yaml. The two
 stories don't conflict: Go side uses `json.RawMessage`, openapi side
 declares typed schemas for consumers.
+
+## Implementation notes
+
+### Schema and migrations
+
+- Appended `event_seq`, `events`, `presence` tables to both
+  `db/schema/sqlite.sql` and `db/schema/postgres.sql`
+- Created `internal/db/migrations/sqlite/00004_events.sql` and postgres
+  variant using goose Up/Down format with `-- +goose StatementBegin`
+  wrappers per table/index
+
+### sqlc queries
+
+- `db/queries/sqlite/events.sql` and `db/queries/postgres/events.sql`:
+  `EnsureEventSeqRow :exec`, `AllocateNextSeq :one`, `AllocateNextSeqN :one`,
+  `InsertEvent :exec`, `ListEventsSince :many`
+- `db/queries/sqlite/presence.sql` and postgres variant:
+  `UpsertPresence :exec`, `ListPresenceForSession :many`
+- Regenerated via `make generate-db` (sqlc v1.31.1); produces
+  `internal/db/{sqlitestore,pgstore}/events.sql.go` and `presence.sql.go`
+- Note: Postgres uses `int32` for seq fields; SQLite uses `int64`. All
+  adapters normalise to `int64` at the store.Store boundary.
+
+### Store interface extension
+
+- Added `EventLogStore` and `PresenceStore` sub-interfaces to
+  `internal/db/store/store.go`
+- Added `TxStore` interface (mirrors all sub-interfaces, no Close/Dialect)
+- Added `WithTx(ctx, func(TxStore) error) error` to `Store` interface
+- Added domain types: `Event`, `PresenceRow`, `InsertEventParams`,
+  `ListEventsSinceParams`, `UpsertPresenceParams`
+- Both adapters implement new methods + `WithTx`
+- SQLite `WithTx` uses `db.BeginTx(ctx, nil)` (SQLite serialises all writes)
+  with a `sqliteTxStore` wrapping `sqlitestore.New(tx)` 
+- Postgres `WithTx` uses `pool.BeginTx(ctx, pgx.TxOptions{})` with a
+  `postgresTxStore` wrapping `pgstore.New(tx)`
+- Added `RawDB() *sql.DB` to `sqliteAdapter` for test use (MaxOpenConns config)
+- Fixed `.gitignore`: changed `portal` to `/portal` so the rule only matches
+  the root-level binary and not `internal/portal/**` directories
+
+### Log type
+
+- `internal/portal/events/log.go`: `Log` type with `Emit`, `EmitBatch`,
+  `UpdatePresence`, `ListSince`
+- `Emit`: `EnsureEventSeqRow` + `AllocateNextSeq` + `InsertEvent` in one Tx
+- `EmitBatch`: `EnsureEventSeqRow` + `AllocateNextSeqN(n)` + N×`InsertEvent`
+  in one Tx; first seq = `last - n + 1`
+- `UpdatePresence`: `UpsertPresence` + `EnsureEventSeqRow` + `AllocateNextSeq`
+  + `InsertEvent("presence.updated")` in one Tx
+- `ListSince`: direct `ListEventsSince` call (no Tx needed)
+
+### Tests (8 tests, all green)
+
+- `TestLog_EmitSingleMonotonic`: seq=1 then seq=2
+- `TestLog_EmitBatch`: 3-event batch gets contiguous seqs [1,2,3]
+- `TestLog_EmitBatch_Empty`: empty batch returns 0, nil
+- `TestLog_ConcurrentEmit`: 10 goroutines → unique seqs [1..10]
+  (uses named shared-cache in-memory SQLite + MaxOpenConns=1 to ensure
+  all goroutines share the same DB connection)
+- `TestLog_DifferentSessionsIndependentSeqs`: two sessions each start at seq=1
+- `TestLog_UpdatePresence`: upserts presence and emits presence.updated event
+- `TestLog_ListSince_Cursor`: sinceSeq=2 returns events [3,4,5]
+- `TestLog_ListSince_Limit`: limit=2 caps result to 2 events

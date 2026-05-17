@@ -13,6 +13,8 @@ import (
 type Querier interface {
 	AddOrgMember(ctx context.Context, arg AddOrgMemberParams) error
 	AddSessionMember(ctx context.Context, arg AddSessionMemberParams) error
+	AllocateNextSeq(ctx context.Context, sessionID string) (int64, error)
+	AllocateNextSeqN(ctx context.Context, arg AllocateNextSeqNParams) (int64, error)
 	CleanupExpiredOAuthState(ctx context.Context, expiresAt time.Time) error
 	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error
 	ConsumeOAuthState(ctx context.Context, nonce string) (OauthState, error)
@@ -22,6 +24,7 @@ type Querier interface {
 	CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
+	EnsureEventSeqRow(ctx context.Context, sessionID string) error
 	GetAccountByEmail(ctx context.Context, email string) (Account, error)
 	GetAccountByGitHubUserID(ctx context.Context, githubUserID sql.NullString) (Account, error)
 	GetAccountByID(ctx context.Context, id string) (Account, error)
@@ -34,10 +37,13 @@ type Querier interface {
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	GetSessionMember(ctx context.Context, arg GetSessionMemberParams) (SessionMember, error)
 	InsertArchivedSession(ctx context.Context, arg InsertArchivedSessionParams) error
+	InsertEvent(ctx context.Context, arg InsertEventParams) error
 	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
+	ListEventsSince(ctx context.Context, arg ListEventsSinceParams) ([]Event, error)
 	ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OauthToken, error)
 	ListOrgMembers(ctx context.Context, orgID string) ([]ListOrgMembersRow, error)
 	ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error)
+	ListPresenceForSession(ctx context.Context, sessionID string) ([]Presence, error)
 	ListSessionMembers(ctx context.Context, arg ListSessionMembersParams) ([]SessionMember, error)
 	// Intentional cross-org exception: returns sessions across all orgs for the
 	// authenticated account. The caller receives org_id on each row so it can
@@ -53,6 +59,7 @@ type Querier interface {
 	TouchOAuthTokenLastUsed(ctx context.Context, arg TouchOAuthTokenLastUsedParams) error
 	UpdateAccountDisplayName(ctx context.Context, arg UpdateAccountDisplayNameParams) error
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
+	UpsertPresence(ctx context.Context, arg UpsertPresenceParams) error
 }
 
 var _ Querier = (*Queries)(nil)

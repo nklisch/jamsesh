@@ -89,3 +89,36 @@ CREATE TABLE oauth_state (
     expires_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX oauth_state_expires_idx ON oauth_state(expires_at);
+
+-- ---------------------------------------------------------------------------
+-- Event log tables (00004_events migration)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE event_seq (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    next INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE events (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    UNIQUE(session_id, seq)
+);
+CREATE INDEX events_session_created_idx ON events(session_id, created_at);
+CREATE INDEX events_org_idx ON events(org_id);
+
+CREATE TABLE presence (
+    org_id TEXT NOT NULL,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    ref TEXT NOT NULL,
+    current_sha TEXT NOT NULL,
+    last_active_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (session_id, account_id, ref)
+);
+CREATE INDEX presence_org_idx ON presence(org_id);

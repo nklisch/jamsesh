@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -633,4 +634,425 @@ func (a *postgresAdapter) ConsumeOAuthState(ctx context.Context, nonce string) (
 
 func (a *postgresAdapter) CleanupExpiredOAuthState(ctx context.Context, before time.Time) error {
 	return mapPostgresErr(a.q.CleanupExpiredOAuthState(ctx, before))
+}
+
+// ---------------------------------------------------------------------------
+// EventLogStore
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) EnsureEventSeqRow(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(a.q.EnsureEventSeqRow(ctx, sessionID))
+}
+
+func (a *postgresAdapter) AllocateNextSeq(ctx context.Context, sessionID string) (int64, error) {
+	seq, err := a.q.AllocateNextSeq(ctx, sessionID)
+	return int64(seq), mapPostgresErr(err)
+}
+
+func (a *postgresAdapter) AllocateNextSeqN(ctx context.Context, sessionID string, n int64) (int64, error) {
+	seq, err := a.q.AllocateNextSeqN(ctx, pgstore.AllocateNextSeqNParams{
+		Next:      int32(n),
+		SessionID: sessionID,
+	})
+	return int64(seq), mapPostgresErr(err)
+}
+
+func (a *postgresAdapter) InsertEvent(ctx context.Context, p InsertEventParams) error {
+	return mapPostgresErr(a.q.InsertEvent(ctx, pgstore.InsertEventParams{
+		ID:        p.ID,
+		OrgID:     p.OrgID,
+		SessionID: p.SessionID,
+		Seq:       int32(p.Seq),
+		Type:      p.Type,
+		Payload:   p.Payload,
+		CreatedAt: p.CreatedAt,
+	}))
+}
+
+func (a *postgresAdapter) ListEventsSince(ctx context.Context, p ListEventsSinceParams) ([]Event, error) {
+	rows, err := a.q.ListEventsSince(ctx, pgstore.ListEventsSinceParams{
+		SessionID: p.SessionID,
+		Seq:       int32(p.SinceSeq),
+		Limit:     int32(p.Limit),
+	})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	events := make([]Event, len(rows))
+	for i, r := range rows {
+		events[i] = Event{
+			ID:        r.ID,
+			OrgID:     r.OrgID,
+			SessionID: r.SessionID,
+			Seq:       int64(r.Seq),
+			Type:      r.Type,
+			Payload:   r.Payload,
+			CreatedAt: r.CreatedAt,
+		}
+	}
+	return events, nil
+}
+
+// ---------------------------------------------------------------------------
+// PresenceStore
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) UpsertPresence(ctx context.Context, p UpsertPresenceParams) error {
+	return mapPostgresErr(a.q.UpsertPresence(ctx, pgstore.UpsertPresenceParams{
+		OrgID:        p.OrgID,
+		SessionID:    p.SessionID,
+		AccountID:    p.AccountID,
+		Ref:          p.Ref,
+		CurrentSha:   p.CurrentSHA,
+		LastActiveAt: pgtype.Timestamptz{Time: p.LastActiveAt, Valid: true},
+	}))
+}
+
+func (a *postgresAdapter) ListPresenceForSession(ctx context.Context, sessionID string) ([]PresenceRow, error) {
+	rows, err := a.q.ListPresenceForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	out := make([]PresenceRow, len(rows))
+	for i, r := range rows {
+		var lastActiveAt time.Time
+		if r.LastActiveAt.Valid {
+			lastActiveAt = r.LastActiveAt.Time
+		}
+		out[i] = PresenceRow{
+			OrgID:        r.OrgID,
+			SessionID:    r.SessionID,
+			AccountID:    r.AccountID,
+			Ref:          r.Ref,
+			CurrentSHA:   r.CurrentSha,
+			LastActiveAt: lastActiveAt,
+		}
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// WithTx
+// ---------------------------------------------------------------------------
+
+// postgresTxStore wraps a *pgstore.Queries scoped to a transaction and
+// satisfies TxStore.
+type postgresTxStore struct {
+	q *pgstore.Queries
+}
+
+var _ TxStore = (*postgresTxStore)(nil)
+
+func (a *postgresAdapter) WithTx(ctx context.Context, fn func(TxStore) error) error {
+	tx, err := a.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("store: begin tx: %w", err)
+	}
+	txq := pgstore.New(tx)
+	ts := &postgresTxStore{q: txq}
+	if err := fn(ts); err != nil {
+		_ = tx.Rollback(ctx)
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store: commit tx: %w", mapPostgresErr(err))
+	}
+	return nil
+}
+
+// Delegate all TxStore methods to the underlying *pgstore.Queries.
+// OrgStore
+func (s *postgresTxStore) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, error) {
+	row, err := s.q.CreateOrg(ctx, pgstore.CreateOrgParams{ID: p.ID, Name: p.Name, Slug: p.Slug, CreatedAt: p.CreatedAt})
+	if err != nil {
+		return Org{}, mapPostgresErr(err)
+	}
+	return pgOrg(row), nil
+}
+func (s *postgresTxStore) GetOrgByID(ctx context.Context, id string) (Org, error) {
+	row, err := s.q.GetOrgByID(ctx, id)
+	if err != nil {
+		return Org{}, mapPostgresErr(err)
+	}
+	return pgOrg(row), nil
+}
+func (s *postgresTxStore) GetOrgBySlug(ctx context.Context, slug string) (Org, error) {
+	row, err := s.q.GetOrgBySlug(ctx, slug)
+	if err != nil {
+		return Org{}, mapPostgresErr(err)
+	}
+	return pgOrg(row), nil
+}
+
+// AccountStore
+func (s *postgresTxStore) CreateAccount(ctx context.Context, p CreateAccountParams) (Account, error) {
+	row, err := s.q.CreateAccount(ctx, pgstore.CreateAccountParams{ID: p.ID, Email: p.Email, DisplayName: p.DisplayName, GithubUserID: ptrToPgText(p.GithubUserID), CreatedAt: p.CreatedAt})
+	if err != nil {
+		return Account{}, mapPostgresErr(err)
+	}
+	return pgAccount(row), nil
+}
+func (s *postgresTxStore) GetAccountByID(ctx context.Context, id string) (Account, error) {
+	row, err := s.q.GetAccountByID(ctx, id)
+	if err != nil {
+		return Account{}, mapPostgresErr(err)
+	}
+	return pgAccount(row), nil
+}
+func (s *postgresTxStore) GetAccountByEmail(ctx context.Context, email string) (Account, error) {
+	row, err := s.q.GetAccountByEmail(ctx, email)
+	if err != nil {
+		return Account{}, mapPostgresErr(err)
+	}
+	return pgAccount(row), nil
+}
+func (s *postgresTxStore) GetAccountByGitHubUserID(ctx context.Context, githubUserID *string) (Account, error) {
+	row, err := s.q.GetAccountByGitHubUserID(ctx, ptrToPgText(githubUserID))
+	if err != nil {
+		return Account{}, mapPostgresErr(err)
+	}
+	return pgAccount(row), nil
+}
+func (s *postgresTxStore) UpdateAccountDisplayName(ctx context.Context, p UpdateAccountDisplayNameParams) error {
+	return mapPostgresErr(s.q.UpdateAccountDisplayName(ctx, pgstore.UpdateAccountDisplayNameParams{ID: p.ID, DisplayName: p.DisplayName}))
+}
+
+// OrgMemberStore
+func (s *postgresTxStore) AddOrgMember(ctx context.Context, p AddOrgMemberParams) error {
+	return mapPostgresErr(s.q.AddOrgMember(ctx, pgstore.AddOrgMemberParams{OrgID: p.OrgID, AccountID: p.AccountID, Role: p.Role, CreatedAt: p.CreatedAt}))
+}
+func (s *postgresTxStore) GetOrgMember(ctx context.Context, p GetOrgMemberParams) (OrgMember, error) {
+	row, err := s.q.GetOrgMember(ctx, pgstore.GetOrgMemberParams{OrgID: p.OrgID, AccountID: p.AccountID})
+	if err != nil {
+		return OrgMember{}, mapPostgresErr(err)
+	}
+	return pgOrgMember(row), nil
+}
+func (s *postgresTxStore) ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error) {
+	rows, err := s.q.ListOrgsForAccount(ctx, accountID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	orgs := make([]Org, len(rows))
+	for i, r := range rows {
+		orgs[i] = pgOrg(r)
+	}
+	return orgs, nil
+}
+func (s *postgresTxStore) ListOrgMembers(ctx context.Context, orgID string) ([]OrgMemberWithAccount, error) {
+	rows, err := s.q.ListOrgMembers(ctx, orgID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	members := make([]OrgMemberWithAccount, len(rows))
+	for i, r := range rows {
+		members[i] = pgOrgMemberWithAccount(orgID, r)
+	}
+	return members, nil
+}
+func (s *postgresTxStore) RemoveOrgMember(ctx context.Context, p RemoveOrgMemberParams) error {
+	return mapPostgresErr(s.q.RemoveOrgMember(ctx, pgstore.RemoveOrgMemberParams{OrgID: p.OrgID, AccountID: p.AccountID}))
+}
+
+// SessionStore
+func (s *postgresTxStore) CreateSession(ctx context.Context, p CreateSessionParams) (Session, error) {
+	row, err := s.q.CreateSession(ctx, pgstore.CreateSessionParams{ID: p.ID, OrgID: p.OrgID, Name: p.Name, Goal: p.Goal, WritableScope: p.WritableScope, DefaultMode: p.DefaultMode, BaseSha: p.BaseSHA, Status: p.Status, CreatedAt: p.CreatedAt, EndedAt: p.EndedAt})
+	if err != nil {
+		return Session{}, mapPostgresErr(err)
+	}
+	return pgSession(row), nil
+}
+func (s *postgresTxStore) GetSession(ctx context.Context, orgID, id string) (Session, error) {
+	row, err := s.q.GetSession(ctx, pgstore.GetSessionParams{OrgID: orgID, ID: id})
+	if err != nil {
+		return Session{}, mapPostgresErr(err)
+	}
+	return pgSession(row), nil
+}
+func (s *postgresTxStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error) {
+	rows, err := s.q.ListSessionsForOrg(ctx, orgID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	sessions := make([]Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = pgSession(r)
+	}
+	return sessions, nil
+}
+func (s *postgresTxStore) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
+	return mapPostgresErr(s.q.UpdateSessionStatus(ctx, pgstore.UpdateSessionStatusParams{OrgID: p.OrgID, ID: p.ID, Status: p.Status}))
+}
+func (s *postgresTxStore) SetSessionBaseSHA(ctx context.Context, p SetSessionBaseSHAParams) error {
+	return mapPostgresErr(s.q.SetSessionBaseSHA(ctx, pgstore.SetSessionBaseSHAParams{OrgID: p.OrgID, ID: p.ID, BaseSha: p.BaseSHA}))
+}
+func (s *postgresTxStore) DeleteSession(ctx context.Context, p DeleteSessionParams) error {
+	return mapPostgresErr(s.q.DeleteSession(ctx, pgstore.DeleteSessionParams{OrgID: p.OrgID, ID: p.ID}))
+}
+
+// SessionMemberStore
+func (s *postgresTxStore) AddSessionMember(ctx context.Context, p AddSessionMemberParams) error {
+	return mapPostgresErr(s.q.AddSessionMember(ctx, pgstore.AddSessionMemberParams{OrgID: p.OrgID, SessionID: p.SessionID, AccountID: p.AccountID, Role: p.Role, JoinedAt: p.JoinedAt}))
+}
+func (s *postgresTxStore) GetSessionMember(ctx context.Context, p GetSessionMemberParams) (SessionMember, error) {
+	row, err := s.q.GetSessionMember(ctx, pgstore.GetSessionMemberParams{OrgID: p.OrgID, SessionID: p.SessionID, AccountID: p.AccountID})
+	if err != nil {
+		return SessionMember{}, mapPostgresErr(err)
+	}
+	return pgSessionMember(row), nil
+}
+func (s *postgresTxStore) ListSessionMembers(ctx context.Context, p ListSessionMembersParams) ([]SessionMember, error) {
+	rows, err := s.q.ListSessionMembers(ctx, pgstore.ListSessionMembersParams{OrgID: p.OrgID, SessionID: p.SessionID})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	members := make([]SessionMember, len(rows))
+	for i, r := range rows {
+		members[i] = pgSessionMember(r)
+	}
+	return members, nil
+}
+func (s *postgresTxStore) RemoveSessionMember(ctx context.Context, p RemoveSessionMemberParams) error {
+	return mapPostgresErr(s.q.RemoveSessionMember(ctx, pgstore.RemoveSessionMemberParams{OrgID: p.OrgID, SessionID: p.SessionID, AccountID: p.AccountID}))
+}
+func (s *postgresTxStore) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]SessionMembership, error) {
+	rows, err := s.q.ListSessionMembershipsForAccount(ctx, accountID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	memberships := make([]SessionMembership, len(rows))
+	for i, r := range rows {
+		memberships[i] = pgSessionMembership(r)
+	}
+	return memberships, nil
+}
+
+// OAuthTokenStore
+func (s *postgresTxStore) CreateOAuthToken(ctx context.Context, p CreateOAuthTokenParams) (OAuthToken, error) {
+	row, err := s.q.CreateOAuthToken(ctx, pgstore.CreateOAuthTokenParams{ID: p.ID, AccountID: p.AccountID, TokenHash: p.TokenHash, Kind: p.Kind, IssuedAt: p.IssuedAt, ExpiresAt: p.ExpiresAt, LastUsedAt: p.LastUsedAt, RevokedAt: p.RevokedAt})
+	if err != nil {
+		return OAuthToken{}, mapPostgresErr(err)
+	}
+	return pgOAuthToken(row), nil
+}
+func (s *postgresTxStore) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error) {
+	row, err := s.q.GetOAuthTokenByHash(ctx, tokenHash)
+	if err != nil {
+		return OAuthToken{}, mapPostgresErr(err)
+	}
+	return pgOAuthToken(row), nil
+}
+func (s *postgresTxStore) TouchOAuthTokenLastUsed(ctx context.Context, p TouchOAuthTokenLastUsedParams) error {
+	return mapPostgresErr(s.q.TouchOAuthTokenLastUsed(ctx, pgstore.TouchOAuthTokenLastUsedParams{ID: p.ID, LastUsedAt: p.LastUsedAt}))
+}
+func (s *postgresTxStore) RevokeOAuthToken(ctx context.Context, p RevokeOAuthTokenParams) error {
+	return mapPostgresErr(s.q.RevokeOAuthToken(ctx, pgstore.RevokeOAuthTokenParams{ID: p.ID, RevokedAt: p.RevokedAt}))
+}
+func (s *postgresTxStore) RevokeAllOAuthTokensForAccount(ctx context.Context, p RevokeAllOAuthTokensForAccountParams) error {
+	return mapPostgresErr(s.q.RevokeAllOAuthTokensForAccount(ctx, pgstore.RevokeAllOAuthTokensForAccountParams{AccountID: p.AccountID, RevokedAt: p.RevokedAt}))
+}
+func (s *postgresTxStore) ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OAuthToken, error) {
+	rows, err := s.q.ListOAuthTokensForAccount(ctx, accountID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	tokens := make([]OAuthToken, len(rows))
+	for i, r := range rows {
+		tokens[i] = pgOAuthToken(r)
+	}
+	return tokens, nil
+}
+
+// MagicLinkTokenStore
+func (s *postgresTxStore) CreateMagicLinkToken(ctx context.Context, p CreateMagicLinkTokenParams) (MagicLinkToken, error) {
+	row, err := s.q.CreateMagicLinkToken(ctx, pgstore.CreateMagicLinkTokenParams{ID: p.ID, TokenHash: p.TokenHash, Email: p.Email, IssuedAt: p.IssuedAt, ExpiresAt: p.ExpiresAt, UsedAt: p.UsedAt})
+	if err != nil {
+		return MagicLinkToken{}, mapPostgresErr(err)
+	}
+	return pgMagicLinkToken(row), nil
+}
+func (s *postgresTxStore) GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error) {
+	row, err := s.q.GetMagicLinkTokenByHash(ctx, tokenHash)
+	if err != nil {
+		return MagicLinkToken{}, mapPostgresErr(err)
+	}
+	return pgMagicLinkToken(row), nil
+}
+func (s *postgresTxStore) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) error {
+	return mapPostgresErr(s.q.ConsumeMagicLinkToken(ctx, pgstore.ConsumeMagicLinkTokenParams{ID: p.ID, UsedAt: p.UsedAt}))
+}
+
+// ArchivedSessionStore
+func (s *postgresTxStore) InsertArchivedSession(ctx context.Context, p InsertArchivedSessionParams) error {
+	endedAt := p.EndedAt
+	return mapPostgresErr(s.q.InsertArchivedSession(ctx, pgstore.InsertArchivedSessionParams{SessionID: p.SessionID, OrgID: p.OrgID, Name: p.Name, GoalText: p.GoalText, MemberAccountIds: p.MemberAccountIDs, EndedAt: &endedAt, ArchivedAt: pgtype.Timestamptz{Time: p.ArchivedAt, Valid: true}, EndReason: p.EndReason, FinalBranchName: ptrToPgText(p.FinalBranchName)}))
+}
+func (s *postgresTxStore) GetArchivedSession(ctx context.Context, p GetArchivedSessionParams) (ArchivedSession, error) {
+	row, err := s.q.GetArchivedSession(ctx, pgstore.GetArchivedSessionParams{OrgID: p.OrgID, SessionID: p.SessionID})
+	if err != nil {
+		return ArchivedSession{}, mapPostgresErr(err)
+	}
+	return pgArchivedSession(row), nil
+}
+
+// OAuthStateStore
+func (s *postgresTxStore) InsertOAuthState(ctx context.Context, p InsertOAuthStateParams) error {
+	return mapPostgresErr(s.q.InsertOAuthState(ctx, pgstore.InsertOAuthStateParams{Nonce: p.Nonce, Provider: p.Provider, RedirectUri: p.RedirectURI, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt}))
+}
+func (s *postgresTxStore) ConsumeOAuthState(ctx context.Context, nonce string) (OAuthState, error) {
+	row, err := s.q.ConsumeOAuthState(ctx, nonce)
+	if err != nil {
+		return OAuthState{}, mapPostgresErr(err)
+	}
+	return OAuthState{Nonce: row.Nonce, Provider: row.Provider, RedirectURI: row.RedirectUri, CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt}, nil
+}
+func (s *postgresTxStore) CleanupExpiredOAuthState(ctx context.Context, before time.Time) error {
+	return mapPostgresErr(s.q.CleanupExpiredOAuthState(ctx, before))
+}
+
+// EventLogStore
+func (s *postgresTxStore) EnsureEventSeqRow(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(s.q.EnsureEventSeqRow(ctx, sessionID))
+}
+func (s *postgresTxStore) AllocateNextSeq(ctx context.Context, sessionID string) (int64, error) {
+	seq, err := s.q.AllocateNextSeq(ctx, sessionID)
+	return int64(seq), mapPostgresErr(err)
+}
+func (s *postgresTxStore) AllocateNextSeqN(ctx context.Context, sessionID string, n int64) (int64, error) {
+	seq, err := s.q.AllocateNextSeqN(ctx, pgstore.AllocateNextSeqNParams{Next: int32(n), SessionID: sessionID})
+	return int64(seq), mapPostgresErr(err)
+}
+func (s *postgresTxStore) InsertEvent(ctx context.Context, p InsertEventParams) error {
+	return mapPostgresErr(s.q.InsertEvent(ctx, pgstore.InsertEventParams{ID: p.ID, OrgID: p.OrgID, SessionID: p.SessionID, Seq: int32(p.Seq), Type: p.Type, Payload: p.Payload, CreatedAt: p.CreatedAt}))
+}
+func (s *postgresTxStore) ListEventsSince(ctx context.Context, p ListEventsSinceParams) ([]Event, error) {
+	rows, err := s.q.ListEventsSince(ctx, pgstore.ListEventsSinceParams{SessionID: p.SessionID, Seq: int32(p.SinceSeq), Limit: int32(p.Limit)})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	events := make([]Event, len(rows))
+	for i, r := range rows {
+		events[i] = Event{ID: r.ID, OrgID: r.OrgID, SessionID: r.SessionID, Seq: int64(r.Seq), Type: r.Type, Payload: r.Payload, CreatedAt: r.CreatedAt}
+	}
+	return events, nil
+}
+
+// PresenceStore
+func (s *postgresTxStore) UpsertPresence(ctx context.Context, p UpsertPresenceParams) error {
+	return mapPostgresErr(s.q.UpsertPresence(ctx, pgstore.UpsertPresenceParams{OrgID: p.OrgID, SessionID: p.SessionID, AccountID: p.AccountID, Ref: p.Ref, CurrentSha: p.CurrentSHA, LastActiveAt: pgtype.Timestamptz{Time: p.LastActiveAt, Valid: true}}))
+}
+func (s *postgresTxStore) ListPresenceForSession(ctx context.Context, sessionID string) ([]PresenceRow, error) {
+	rows, err := s.q.ListPresenceForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	out := make([]PresenceRow, len(rows))
+	for i, r := range rows {
+		var lastActiveAt time.Time
+		if r.LastActiveAt.Valid {
+			lastActiveAt = r.LastActiveAt.Time
+		}
+		out[i] = PresenceRow{OrgID: r.OrgID, SessionID: r.SessionID, AccountID: r.AccountID, Ref: r.Ref, CurrentSHA: r.CurrentSha, LastActiveAt: lastActiveAt}
+	}
+	return out, nil
 }

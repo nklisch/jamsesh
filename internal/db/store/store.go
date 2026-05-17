@@ -18,6 +18,23 @@ var ErrNotFound = errors.New("store: not found")
 // and Postgres SQLSTATE 23505 into this error.
 var ErrUniqueViolation = errors.New("store: unique violation")
 
+// TxStore is the interface available inside a WithTx callback. It mirrors all
+// domain sub-interfaces but omits Close and Dialect (which operate on the
+// outer connection, not the Tx).
+type TxStore interface {
+	OrgStore
+	AccountStore
+	OrgMemberStore
+	SessionStore
+	SessionMemberStore
+	OAuthTokenStore
+	MagicLinkTokenStore
+	ArchivedSessionStore
+	OAuthStateStore
+	EventLogStore
+	PresenceStore
+}
+
 // Store is the unified data-access interface for the portal. All handler and
 // service code depends on this interface; dialect selection is once-at-startup
 // via db.Open.
@@ -31,6 +48,14 @@ type Store interface {
 	MagicLinkTokenStore
 	ArchivedSessionStore
 	OAuthStateStore
+	EventLogStore
+	PresenceStore
+
+	// WithTx opens a dialect-appropriate transaction, calls fn with a TxStore
+	// backed by that transaction, and commits on success or rolls back on any
+	// error (including panics recovered as errors). The caller must not retain
+	// the TxStore outside fn.
+	WithTx(ctx context.Context, fn func(TxStore) error) error
 
 	// Close releases pool resources.
 	Close() error
@@ -405,6 +430,80 @@ type MagicLinkTokenStore interface {
 	// ConsumeMagicLinkToken marks the token used (single-use enforcement at
 	// the SQL level: UPDATE WHERE used_at IS NULL).
 	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error
+}
+
+// Event is a persisted event-log row.
+type Event struct {
+	ID        string
+	OrgID     string
+	SessionID string
+	Seq       int64
+	Type      string
+	Payload   string // JSON text
+	CreatedAt time.Time
+}
+
+// PresenceRow is a presence row for a session participant.
+type PresenceRow struct {
+	OrgID        string
+	SessionID    string
+	AccountID    string
+	Ref          string
+	CurrentSHA   string
+	LastActiveAt time.Time
+}
+
+// InsertEventParams are the parameters for inserting a single event row.
+type InsertEventParams struct {
+	ID        string
+	OrgID     string
+	SessionID string
+	Seq       int64
+	Type      string
+	Payload   string
+	CreatedAt time.Time
+}
+
+// ListEventsSinceParams are the parameters for the ListEventsSince query.
+type ListEventsSinceParams struct {
+	SessionID string
+	SinceSeq  int64
+	Limit     int64
+}
+
+// UpsertPresenceParams are the parameters for UpsertPresence.
+type UpsertPresenceParams struct {
+	OrgID        string
+	SessionID    string
+	AccountID    string
+	Ref          string
+	CurrentSHA   string
+	LastActiveAt time.Time
+}
+
+// EventLogStore covers event-log writes and reads.
+type EventLogStore interface {
+	// EnsureEventSeqRow creates the event_seq row for the session if it
+	// does not yet exist (idempotent).
+	EnsureEventSeqRow(ctx context.Context, sessionID string) error
+	// AllocateNextSeq atomically increments the per-session counter and
+	// returns the newly allocated seq number.
+	AllocateNextSeq(ctx context.Context, sessionID string) (int64, error)
+	// AllocateNextSeqN atomically increments the counter by n and returns
+	// the last allocated seq (the range is [last-n+1, last]).
+	AllocateNextSeqN(ctx context.Context, sessionID string, n int64) (int64, error)
+	// InsertEvent inserts a single event row.
+	InsertEvent(ctx context.Context, p InsertEventParams) error
+	// ListEventsSince returns events with seq > sinceSeq in ascending order.
+	ListEventsSince(ctx context.Context, p ListEventsSinceParams) ([]Event, error)
+}
+
+// PresenceStore covers presence upserts and reads.
+type PresenceStore interface {
+	// UpsertPresence inserts or updates a presence row.
+	UpsertPresence(ctx context.Context, p UpsertPresenceParams) error
+	// ListPresenceForSession returns all presence rows for a session.
+	ListPresenceForSession(ctx context.Context, sessionID string) ([]PresenceRow, error)
 }
 
 // OAuthStateStore covers the transient OAuth state-nonce table.
