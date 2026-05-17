@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-packaging
 kind: feature
-stage: implementing
+stage: done
 tags: [plugin]
 parent: epic-cc-plugin
 depends_on: []
@@ -290,3 +290,21 @@ No Go tests — pure markdown/json.
 - **Word budget vs coverage**: 2500 words is tight. Prioritize
   the operational essentials; defer exhaustive examples to
   `docs/PROTOCOL.md` and `docs/UX.md`.
+
+## Implementation summary
+
+Single child story at done. Static plugin package: manifest, hooks, MCP config, 5 user-facing slash skills, auto-loaded teaching skill (2045 words).
+
+### Verification
+- All JSON parses (`jq` validation)
+- Teaching skill ≤ 2500 word budget honored
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability complete. The plugin package directory tree is ready for the marketplace publishing pipeline (epic-distribution-marketplace) to consume on every tag.

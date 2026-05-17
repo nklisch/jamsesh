@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger-merge-engine-three-way-merge
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-auto-merger-merge-engine
 depends_on: []
@@ -101,3 +101,13 @@ and get a deterministic, structured result.
 - Story 2 (safe-auto-resolve) layers heuristics on this story's
   HardConflict path. This story's HardConflict classification is
   the conservative default; story 2 narrows it.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Pure-library design preserved (no DB, no events, no ref-updater imports). go-git v5.19.0 + system git via os/exec is the right split. Tree composition bottom-up with deepest-dirs-first handles the empty-tree edge case. 9 tests covering corpus + short-circuits + parser. Conservative on binary files (errors rather than misclassifies). Solid algorithmic foundation.
