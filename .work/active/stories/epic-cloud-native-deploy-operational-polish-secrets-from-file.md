@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-secrets-from-file
 kind: story
-stage: review
+stage: done
 tags: [infra, portal]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: []
@@ -105,3 +105,15 @@ None. Implementation matches the feature design exactly. The `readEnvOrFile` sig
 ### Test results
 
 All 35 tests in `internal/portal/config` pass. Full suite (`go test ./...`) passes with all 40 packages green.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The 6-line repetition `v, err := readEnvOrFile("X"); if err != nil {...}; if v != "" { c.X = v }` is verbose but explicit; a one-liner helper would shave lines at the cost of clarity. Skip.
+- `strings.TrimRight` is a slight footgun for secrets that legitimately contain trailing whitespace (rare); documented in the helper's doc comment, so operator-aware.
+
+**Notes**: Implementation matches design verbatim. 15 tests cover the full helper state matrix (neither/plain-only/file-only/both/whitespace/unreadable) and end-to-end Load behavior for each of the 6 secret env vars. Package doc comment updated. No foundation-doc drift (SELF_HOST / SPEC updates belong to the sibling docs story).
