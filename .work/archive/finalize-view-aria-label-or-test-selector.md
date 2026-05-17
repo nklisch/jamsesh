@@ -1,7 +1,7 @@
 ---
 id: finalize-view-aria-label-or-test-selector
 kind: story
-stage: review
+stage: done
 tags: [ui, e2e-test]
 parent: null
 depends_on: []
@@ -74,3 +74,22 @@ with no further action required. Closing as review.
       already there; no edit needed on either side.
 - [x] No `setTimeout` / `waitForTimeout` added to mask timing — N/A,
       no test edit needed.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Verified both cited locations directly.
+`frontend/src/lib/screens/FinalizeView.svelte:438` emits
+`<section class="mode-bar" aria-label="Finalization mode">` exactly as
+claimed. `tests/e2e/playwright/finalize.spec.ts:435` uses
+`page.getByRole("region", { name: "Finalization mode" })` exactly as
+claimed. The ARIA implicit-role mapping (`<section>` with an accessible
+name → `role="region"`) is correct per the HTML Accessibility API
+Mappings spec. No-op verdict is honest — investigation revealed the
+desired end state was already the existing reality. No code change
+warranted; advancing to done.
