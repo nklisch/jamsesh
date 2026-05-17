@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-tokens-token-core-and-middleware
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation-tokens
 depends_on: []
@@ -134,3 +134,13 @@ handler := router.New(router.Deps{
 
 (The refresh-and-revoke story refines the mount shape; this story
 just adds the middleware infrastructure.)
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Clean implementation. Service interface + injectable Clock for testing + sentinel error mapping in BearerMiddleware. 31 tests cover the contract. UUID used instead of ULID (former is already in go.mod indirectly); reasonable deviation. ErrRevokedToken mapped to ErrInvalidToken in envelope — intentional to avoid leaking revocation reason to attackers.

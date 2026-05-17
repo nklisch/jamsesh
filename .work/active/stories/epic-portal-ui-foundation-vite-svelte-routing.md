@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-foundation-vite-svelte-routing
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui-foundation
 depends_on: []
@@ -141,3 +141,13 @@ in the sibling's test files, not introduced by this story. They also produce 21 
   route registered.
 - `go:embed all:dist` requires `frontend/dist/` to exist at compile
   time. The Makefile must run frontend-build before go-build.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Toolchain + History-API rune router + Go embed wiring landed clean. The Svelte 5 \$derived export gotcha (wrapping in a get-accessor object) is correctly documented and applied. The /assets/dist/ embed path + .gitkeep + .gitignore approach works around the go:embed-needs-existing-dir constraint elegantly. Pre-existing test failures in sibling component tests flagged (filed as follow-up).

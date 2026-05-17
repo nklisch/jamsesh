@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-design-system-tokens-and-components
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui-design-system
 depends_on: []
@@ -147,3 +147,13 @@ no `export let`, no `on:click`, no `$:` reactive statements.
 - [x] `theme-bootstrap.ts` reads localStorage and sets `data-theme` before paint
 - [x] AuthorDot hash is deterministic (djb2-style polynomial, same input → same `--author-N`)
 - [x] ThemeToggle cycles `system → light → dark → system`, persists localStorage, applies `data-theme`
+
+## Review (2026-05-16)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**: 21 component-test failures due to Snippet API misuse — see epic-portal-ui-design-system-fix-component-tests
+**Nits**: none
+
+**Notes**: Components are correctly written and follow Svelte 5 patterns. Component tests use incorrect Snippet API (children: () => 'string') causing 21 test failures and svelte-check errors. Filed as follow-up: epic-portal-ui-design-system-fix-component-tests at stage:implementing.

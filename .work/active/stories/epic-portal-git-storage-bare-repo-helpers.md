@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-storage-bare-repo-helpers
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-git-storage
 depends_on: []
@@ -80,3 +80,13 @@ materialize a bare repo on disk and check whether one exists.
   - `internal/portal/storage/paths.go`
   - `internal/portal/storage/repo.go`
   - `internal/portal/storage/repo_test.go`
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Storage Service with forward-compatible interface (Option a from the prompt — stubs for ArchiveSession etc.). 10 tests including a git-availability gate via exec.LookPath. Clean separation of paths.go from repo.go.

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-tokens-refresh-and-revoke-endpoints
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation-tokens
 depends_on: [epic-portal-foundation-tokens-token-core-and-middleware]
@@ -110,3 +110,13 @@ request → handler → store round-trip via an in-memory SQLite store:
 - Revoke: without Bearer → 401
 - Revoke: revoke_all → 204 + both tokens invalid afterward
 - Revoke: revoked bearer rejected on next request
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: First REST endpoints in openapi.yaml. Per-route middleware split via two chi.Group blocks works cleanly. handlers_test.go exercises the full request → handler → store path against in-memory SQLite. The HandlerFromMux double-prefix gotcha is documented for future reference.

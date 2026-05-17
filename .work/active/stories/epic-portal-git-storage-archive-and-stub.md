@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-storage-archive-and-stub
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-git-storage
 depends_on: [epic-portal-git-storage-bare-repo-helpers]
@@ -107,3 +107,13 @@ stub-response formatter used by both REST and git smart-HTTP for
 - `internal/portal/storage/archive_test.go`: end-to-end tests covering
   full archive lifecycle, re-archive no-op, ErrNotFound paths, StubResponse
   table tests (with/without final_branch_name). All pass.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Schema-additive 00002 migration on both dialects clean. Adapter JSON encode/decode for member_account_ids handled in both dialects. Archive ordering correct per locked decision (INSERT → RemoveRepo → DeleteSession). Idempotent re-archive verified. The DeleteSession addition to the Store interface is a clean extension.

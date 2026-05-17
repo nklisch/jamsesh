@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-foundation-api-ws-token
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui-foundation
 depends_on: [epic-portal-ui-foundation-vite-svelte-routing]
@@ -107,3 +107,13 @@ persists it to localStorage.
   Svelte 5 requires a `Snippet` value. These are sibling design-system story
   bugs. The `epic-portal-ui-design-system-tokens-and-components` review should
   address them before those tests are promoted to CI gates.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Three clean primitives: typed REST client with Bearer middleware, WebSocket subscription manager with placeholder EventEnvelope typing (swap-in comment is in place), rune-based auth store. The lateFetch wrapper for test mockability is a thoughtful detail. 21 tests across the three modules.

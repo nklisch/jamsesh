@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-foundation-login-and-chrome
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui-foundation
 depends_on:
@@ -122,3 +122,13 @@ the chrome wraps.
 `Badge.test.ts`, `Button.test.ts`, `Card.test.ts`, `InlineCode.test.ts`
 — all use `children: () => 'string'` (incompatible with Svelte 5
 Snippet type). Filed as a finding for the design-system story's review.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Pixel-faithful Login translation from the mock. Chrome composition via design-system primitives is clean. Auth gate via \$effect redirects unauthenticated routes correctly. ChromeTestHarness.svelte demonstrates the correct Svelte 5 Snippet testing pattern — the bug-fix follow-up should use this same pattern.
