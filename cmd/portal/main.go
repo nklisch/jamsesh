@@ -44,6 +44,7 @@ import (
 	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
+	"jamsesh/internal/portal/wsgateway"
 )
 
 // combinedHandler satisfies openapi.StrictServerInterface by composing the
@@ -233,6 +234,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Build and start the WebSocket gateway. It subscribes to all events and
+	// fans them out to connected clients at /ws/sessions/{sessionID}.
+	//
+	// AllowOrigins is intentionally empty by default — all cross-origin upgrades
+	// are denied until operators configure JAMSESH_WS_ALLOW_ORIGINS. See
+	// docs/SELF_HOST.md for the configuration table.
+	wsGateway := &wsgateway.Gateway{
+		Store:        dbStore,
+		Tokens:       tokenSvc,
+		Log:          eventLog,
+		AllowOrigins: []string{}, // deny all cross-origin; configure per SELF_HOST.md
+	}
+	if err := wsGateway.Start(ctx); err != nil {
+		slog.Error("ws gateway start failed", "err", err)
+		os.Exit(1)
+	}
+
 	// Compose the combined handler that satisfies the full StrictServerInterface.
 	strictAPI := openapi.NewStrictHandler(&combinedHandler{
 		Handler:          tokenHandler,
@@ -280,6 +298,7 @@ func main() {
 		TrustProxyHeaders: cfg.TLS.Mode == "behind_proxy",
 		MountUI:           uiHandler,
 		MountGit:          gitHandler.Mount,
+		MountWS:           wsGateway.Handler(),
 		MountAPI: func(r chi.Router) {
 			// Public auth endpoints — no Bearer middleware.
 			r.Group(func(r chi.Router) {
@@ -341,6 +360,10 @@ func main() {
 	if err := mergerWorker.Stop(stopCtx); err != nil {
 		slog.Warn("auto-merger worker stop timed out", "err", err)
 	}
+
+	// Stop the WebSocket gateway — unsubscribes from the event log.
+	// In-flight connections are already draining because ctx was cancelled above.
+	wsGateway.Stop()
 
 	slog.Info("portal stopped cleanly")
 }
