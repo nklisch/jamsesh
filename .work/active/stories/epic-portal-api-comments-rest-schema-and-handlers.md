@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-comments-rest-schema-and-handlers
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-api-comments-rest
 depends_on: []
@@ -70,3 +70,9 @@ Add the comments table + Service (CreateComment/ResolveComment/List) + REST hand
 - `resolved` query parameter: changed from `boolean` to `string enum ["true","false"]` to allow tristate (absent = all, "true" = resolved, "false" = unresolved) since oapi-codegen generates non-pointer `bool` for optional booleans in OpenAPI 3.0.3
 - Comment + Event inserts are in a single `WithTx` transaction; fan-out via `events.Log.FanOut()` happens post-commit (same pattern as `Log.Emit` but the DB write is handled by the caller)
 - `ErrAlreadyResolved` is detected by reading the comment before the update (pre-check) rather than relying on SQL row-count; this is idiomatic for the existing pattern
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Tristate `resolved` enum (string "true"/"false") is the clean workaround for oapi-codegen's non-pointer optional bools. Pre-check ErrAlreadyResolved before UPDATE is idiomatic. Events.Log.FanOut export pairs cleanly with caller-managed Tx.

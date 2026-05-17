@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-comments-rest
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-api-events-log, epic-portal-foundation-http-skeleton]
@@ -197,3 +197,11 @@ Single story.
 ## Risks
 
 - **addressed_to as string**: filtering by recipient does substring match. Performance acceptable for v1 scale.
+
+## Implementation summary
+
+Single child story done. Comments table + Service (consumed by future mcp-endpoint) + REST list/resolve endpoints.
+
+## Review
+
+**Verdict**: Approve. Capability complete. Last remaining portal-api feature is mcp-endpoint; after that lands, portal-api epic is done.
