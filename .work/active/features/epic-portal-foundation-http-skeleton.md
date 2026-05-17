@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-http-skeleton
 kind: feature
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-foundation
 depends_on: []
@@ -924,3 +924,27 @@ func main() {
   npm + Node toolchain in CI. Mitigation: pin Node version in CI
   config (added by `epic-distribution-build-pipeline`); the local
   developer story tolerates `npm install` running on demand.
+
+## Implementation summary
+
+All 3 child stories advanced to `stage: review`:
+
+| Story | Status | Notes |
+|---|---|---|
+| `http-skeleton-router-and-middleware` | review | httperr, logging, router-with-Deps shape, /healthz. 27 unit tests green. Clean implementation of the multi-auth mount-hook seam |
+| `http-skeleton-openapi-bootstrap` | review | OpenAPI 3.0.3 skeleton, oapi-codegen v2.7.0 + openapi-typescript 7.13.0 wiring, generated stubs committed. Added `output-options.skip-prune: true` to force `ErrorEnvelope` emission with empty paths. `tools/tools.go` anchors the codegen tool dep |
+| `http-skeleton-config-tls-and-entry` | review | Config Load + env overlay, server lifecycle with graceful shutdown, cmd/portal entry. Added `LogConfig.UnmarshalYAML` to accept both int and string slog levels. In-process smoke test exercises the full startup → healthz → SIGTERM cycle |
+
+### Mid-wave fix
+- After Wave 2 the oapi-codegen `output:` path produced a duplicated `internal/api/openapi/internal/api/openapi/` directory because `output:` resolved relative to the package dir under `go generate`. Fixed by changing `output: internal/api/openapi/server.gen.go` → `output: server.gen.go` (commit `bfaa23a`).
+
+### Cross-cutting deviations
+- `go-version-file: go.mod` used in CI instead of pinning a version string — `go.mod` linter bumped Go directive to 1.25.7 mid-implementation, so `go-version-file` keeps CI in lockstep automatically
+- `LogConfig.UnmarshalYAML` supports both integer values and slog name strings (improvement over int-only design)
+
+### Verification
+- `go build ./cmd/portal` and `go build ./...` clean
+- `go test ./internal/portal/...` green (all packages)
+- `actionlint` clean on workflow files
+- `make generate && git diff --exit-code` green
+- In-process smoke test (server_test.go:TestGracefulShutdown) green
