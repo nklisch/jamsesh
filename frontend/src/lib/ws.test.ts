@@ -29,6 +29,9 @@ class MockWebSocket {
   readonly protocol: string;
   readyState: number = WebSocket.CONNECTING;
 
+  /** Every frame written via send() — order-preserving. */
+  readonly sent: string[] = [];
+
   private listeners: { [K in keyof EventMap]?: Array<(e: EventMap[K][number]) => void> } = {};
 
   constructor(url: string, protocol?: string | string[]) {
@@ -80,8 +83,11 @@ class MockWebSocket {
     this.emit('close', code);
   }
 
-  // Satisfy the WebSocket interface for TS — unused in tests.
-  send(_data: string | ArrayBuffer | Blob): void {}
+  send(data: string | ArrayBuffer | Blob): void {
+    if (typeof data === 'string') {
+      this.sent.push(data);
+    }
+  }
   onopen: ((ev: Event) => void) | null = null;
   onclose: ((ev: CloseEvent) => void) | null = null;
   onmessage: ((ev: MessageEvent) => void) | null = null;
@@ -560,5 +566,159 @@ describe('ws — wsStatus rune store', () => {
 
     MockWebSocket.instances[0].emit('close', 1000);
     expect(wsStatus.for('sess-s4')).toBe(null);
+  });
+});
+
+// ------------------------------------------------------------------
+// lastSeenSeq cursor + replay_from frame on reconnect
+// ------------------------------------------------------------------
+
+describe('ws — lastSeenSeq cursor + replay_from', () => {
+  beforeEach(async () => {
+    installMockWebSocket();
+    localStorage.clear();
+    vi.resetModules();
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-token', 'test-refresh');
+  });
+
+  afterEach(() => {
+    uninstallMockWebSocket();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test('fresh subscribe does not send a replay_from frame on open', async () => {
+    const { subscribe } = await import('$lib/ws.svelte');
+    subscribe('sess-c1', 'ev', vi.fn());
+
+    const ws = MockWebSocket.instances[0];
+    ws.emit('open');
+
+    // No prior cursor → no frame sent.
+    expect(ws.sent).toEqual([]);
+  });
+
+  test('reconnect after seeing events sends {"replay_from":<max-seq>} as the first frame', async () => {
+    const { subscribe } = await import('$lib/ws.svelte');
+    subscribe('sess-c2', 'tick', vi.fn());
+
+    const first = MockWebSocket.instances[0];
+    first.emit('open');
+    // Pre-drop: receive a few events.
+    first.emit('message', { type: 'tick', seq: 1 });
+    first.emit('message', { type: 'tick', seq: 2 });
+    first.emit('message', { type: 'tick', seq: 3 });
+
+    // Unexpected close → reconnect path.
+    first.emit('close', 1006);
+
+    // Advance past backoff so the timer fires and a new socket opens.
+    vi.advanceTimersByTime(1000);
+    expect(MockWebSocket.instances).toHaveLength(2);
+    const second = MockWebSocket.instances[1];
+
+    // Before 'open' on the new socket, nothing has been written.
+    expect(second.sent).toEqual([]);
+
+    // 'open' on the new socket emits exactly one frame: the replay cursor.
+    second.emit('open');
+    expect(second.sent).toEqual([JSON.stringify({ replay_from: 3 })]);
+  });
+
+  test('cursor only moves forward — out-of-order / duplicate seq is a no-op', async () => {
+    const { subscribe } = await import('$lib/ws.svelte');
+    subscribe('sess-c3', 'tick', vi.fn());
+
+    const first = MockWebSocket.instances[0];
+    first.emit('open');
+    first.emit('message', { type: 'tick', seq: 5 });
+    // Lower seq — should NOT move the cursor back.
+    first.emit('message', { type: 'tick', seq: 3 });
+    // Duplicate — should NOT advance.
+    first.emit('message', { type: 'tick', seq: 5 });
+
+    // Drop + reconnect to surface the cursor on the wire.
+    first.emit('close', 1006);
+    vi.advanceTimersByTime(1000);
+    const second = MockWebSocket.instances[1];
+    second.emit('open');
+
+    expect(second.sent).toEqual([JSON.stringify({ replay_from: 5 })]);
+  });
+
+  test('envelopes without a numeric seq do not advance the cursor and do not throw', async () => {
+    const { subscribe } = await import('$lib/ws.svelte');
+    subscribe('sess-c4', 'ev', vi.fn());
+
+    const first = MockWebSocket.instances[0];
+    first.emit('open');
+    first.emit('message', { type: 'ev' }); // no seq
+    first.emit('message', { type: 'ev', seq: 'nope' }); // non-numeric
+    first.emit('message', { type: 'ev', seq: Number.NaN }); // non-finite
+    first.emit('message', { type: 'ev', seq: Infinity }); // non-finite
+
+    // Then a valid one to make sure the path still works.
+    first.emit('message', { type: 'ev', seq: 7 });
+
+    first.emit('close', 1006);
+    vi.advanceTimersByTime(1000);
+    const second = MockWebSocket.instances[1];
+    second.emit('open');
+
+    // Cursor should reflect only the single valid envelope.
+    expect(second.sent).toEqual([JSON.stringify({ replay_from: 7 })]);
+  });
+
+  test('explicit close() invalidates the cursor — next subscribe sends no replay frame', async () => {
+    const { subscribe, close } = await import('$lib/ws.svelte');
+    subscribe('sess-c5', 'ev', vi.fn());
+
+    const first = MockWebSocket.instances[0];
+    first.emit('open');
+    first.emit('message', { type: 'ev', seq: 42 });
+
+    // User leaves the view.
+    close('sess-c5');
+
+    // Fresh subscribe — cursor must start at 0.
+    subscribe('sess-c5', 'ev', vi.fn());
+    expect(MockWebSocket.instances).toHaveLength(2);
+    const second = MockWebSocket.instances[1];
+    second.emit('open');
+
+    expect(second.sent).toEqual([]);
+  });
+
+  test('multiple consecutive reconnects continue to send the latest cursor', async () => {
+    const { subscribe } = await import('$lib/ws.svelte');
+    subscribe('sess-c6', 'ev', vi.fn());
+
+    // First socket: see seq 1,2,3 then drop.
+    const a = MockWebSocket.instances[0];
+    a.emit('open');
+    a.emit('message', { type: 'ev', seq: 1 });
+    a.emit('message', { type: 'ev', seq: 2 });
+    a.emit('message', { type: 'ev', seq: 3 });
+    a.emit('close', 1006);
+
+    // Reconnect → second socket sends replay_from:3.
+    vi.advanceTimersByTime(1000);
+    const b = MockWebSocket.instances[1];
+    b.emit('open');
+    expect(b.sent).toEqual([JSON.stringify({ replay_from: 3 })]);
+
+    // Receive more events on the new socket, then drop again.
+    b.emit('message', { type: 'ev', seq: 4 });
+    b.emit('message', { type: 'ev', seq: 5 });
+    b.emit('close', 1006);
+
+    // Second backoff is 1600ms (attempt=1).
+    vi.advanceTimersByTime(1600);
+    const c = MockWebSocket.instances[2];
+    c.emit('open');
+    expect(c.sent).toEqual([JSON.stringify({ replay_from: 5 })]);
   });
 });

@@ -17,13 +17,14 @@
 // via the `wsStatus` rune store.
 //
 // Write invariant: nothing else writes to the socket today — the
-// client doesn't issue commands over WS. When the replay-from cursor
-// lands (sibling story), the reconnect 'open' listener will send a
-// `{"replay_from": <seq>}` frame first, BEFORE any other writes,
-// because the portal accepts that frame only as the first text frame
-// after upgrade (gateway.go:215). This module's reconnect path
-// already runs synchronously inside the 'open' listener so the
-// ordering invariant holds when that story merges.
+// client doesn't issue commands over WS. On reconnect, the 'open'
+// listener sends a `{"replay_from": <lastSeenSeq>}` frame FIRST,
+// before any other writes, because the portal accepts that frame
+// only as the first text frame after upgrade (gateway.go:215). The
+// reconnect path runs synchronously inside the 'open' listener so the
+// ordering invariant holds. On a fresh subscribe (lastSeenSeq === 0),
+// no replay frame is sent — the portal's 2-second timer falls through
+// and the stream goes straight to live.
 //
 // EventEnvelope note:
 // `EventEnvelope` is not yet in docs/openapi.yaml — no WS event
@@ -59,6 +60,12 @@ interface ConnectionRecord {
   attempt: number; // 0 when open, increments per backoff tick
   closedByUs: boolean;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
+  // Highest envelope seq seen so far for this session. Bumped only
+  // forward inside the 'message' handler; consumed by the reconnect
+  // path to emit a `{"replay_from": <lastSeenSeq>}` first frame.
+  // Plain field, not a rune — nothing reactive consumes it (see D2 in
+  // the feature design).
+  lastSeenSeq: number;
 }
 
 // Module-level maps; one record and one handler registry per sessionId.
@@ -134,6 +141,17 @@ function attachListeners(sessionId: string, ws: WebSocket): void {
     } catch {
       return;
     }
+    const rec = records.get(sessionId);
+    // Advance the replay cursor only forward. Envelopes without a
+    // numeric `seq` (or with non-finite seq) do not move it.
+    if (
+      rec &&
+      typeof env.seq === 'number' &&
+      Number.isFinite(env.seq) &&
+      env.seq > rec.lastSeenSeq
+    ) {
+      rec.lastSeenSeq = env.seq;
+    }
     const byType = handlers.get(sessionId);
     const set = byType?.get(env.type);
     if (set) {
@@ -147,6 +165,14 @@ function attachListeners(sessionId: string, ws: WebSocket): void {
     rec.status = 'open';
     rec.attempt = 0;
     setStatus(sessionId, 'open');
+    // Reconnect replay: if we've already seen events for this session,
+    // ask the portal to replay everything past our cursor. Sent
+    // synchronously here, before any other write, so the portal's
+    // first-frame contract (gateway.go:215) is satisfied. A fresh
+    // subscribe has lastSeenSeq === 0 and sends nothing.
+    if (rec.lastSeenSeq > 0) {
+      ws.send(JSON.stringify({ replay_from: rec.lastSeenSeq }));
+    }
   });
 
   ws.addEventListener('close', (ev: CloseEvent) => {
@@ -205,6 +231,7 @@ function open(sessionId: string): WebSocket {
     attempt: 0,
     closedByUs: false,
     reconnectTimer: null,
+    lastSeenSeq: 0,
   };
   records.set(sessionId, rec);
   setStatus(sessionId, 'connecting');

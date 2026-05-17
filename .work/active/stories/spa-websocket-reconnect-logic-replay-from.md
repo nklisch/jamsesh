@@ -1,7 +1,7 @@
 ---
 id: spa-websocket-reconnect-logic-replay-from
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: spa-websocket-reconnect-logic
 depends_on: [spa-websocket-reconnect-logic-backoff]
@@ -130,3 +130,55 @@ A second test covers the fresh-subscribe path (no events seen): no
   Other consumers — `TreeDag.svelte`, `CommentsTab.svelte` — need a
   spot-check during implementation; any required dedupe lands as a
   follow-up story (park if it surfaces, do not silent-fix).
+
+## Implementation notes
+
+Landed per the design with no deviations.
+
+### Changes in `frontend/src/lib/ws.svelte.ts`
+
+- Added `lastSeenSeq: number` to `ConnectionRecord` (plain field; not a
+  rune, per D2). Initialized to `0` in `open()`.
+- The `'message'` handler now looks up the record, and when the parsed
+  envelope carries a finite numeric `seq` greater than the current
+  cursor, advances `rec.lastSeenSeq`. Envelopes without `seq`,
+  non-numeric `seq` (e.g. strings), or non-finite values (`NaN`,
+  `Infinity`) are no-ops. Out-of-order / duplicate `seq` values do not
+  move the cursor backwards.
+- The `'open'` listener emits `JSON.stringify({ replay_from: <seq> })`
+  via `ws.send()` immediately after setting `status = 'open'` and
+  before any other writes, but only when `rec.lastSeenSeq > 0`. On
+  fresh subscribes the listener writes nothing, matching the portal's
+  2-second-falls-through "no replay" path.
+- Module head comment updated to describe the now-current behavior
+  (removing the "sibling story" forward-reference).
+- `close(sessionId)` was left untouched — it drops the record, which
+  takes `lastSeenSeq` down with it. The next subscribe starts fresh
+  with `lastSeenSeq = 0` and sends no replay frame.
+
+### Changes in `frontend/src/lib/ws.test.ts`
+
+- Extended `MockWebSocket` with a `sent: string[]` array and replaced
+  the no-op `send()` with one that pushes string frames onto it.
+- Added a new `describe('ws — lastSeenSeq cursor + replay_from', ...)`
+  suite with six tests covering: fresh-subscribe sends nothing,
+  reconnect after seeing events sends `{"replay_from":<max>}` as the
+  first frame, cursor-only-moves-forward (out-of-order / duplicate),
+  malformed `seq` values are ignored without throwing, explicit
+  `close()` invalidates the cursor (next subscribe sends no frame),
+  and multi-reconnect chains continue to send the latest cursor.
+
+### Test result
+
+- `npm test -- --run src/lib/ws.test.ts`: **33/33 passing** (up from
+  the prior 27; this story adds 6).
+- `npm run check`: 6 pre-existing errors in
+  `src/lib/components/finalize/RefGroupList.test.ts` (`Set<unknown>`
+  vs `Set<string>`) — not in this story's scope. No new errors
+  introduced.
+
+### Surfaces deliberately left alone
+
+Per the assignment, this story did not touch
+`frontend/src/lib/components/`, `SessionViewShell.svelte`, or the
+Playwright spec — those belong to the `-status-ui` sibling.
