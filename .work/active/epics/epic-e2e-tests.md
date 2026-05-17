@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests
 kind: epic
-stage: implementing
+stage: done
 tags: [e2e-test, testing]
 parent: null
 depends_on: []
@@ -219,3 +219,33 @@ Four deep with three-way parallel in the middle band.
       `senders.Sender` httptest stub, `storage.Service` stub) are
       explicitly preserved in unit-test scope and **not** consumed by
       e2e
+
+## Epic-level review (2026-05-17)
+
+**Verdict**: Approve — epic delivered as briefed.
+
+All 5 child features done. The e2e program is live:
+- `epic-e2e-tests-infrastructure` (done) — `tests/e2e/` module, 5 Testcontainers fixtures, ccdriver, Playwright bootstrap, CI workflow
+- `epic-e2e-tests-failure-mode` (done) — REST validation, config/dep failures, interrupted ops, SPA error states
+- `epic-e2e-tests-golden-path` (done) — onboarding, session lifecycle, collab+auto-merger+MCP, fork+addressed comments, finalize+plan execution
+- `epic-e2e-tests-fuzzing` (done) — pre-receive validators (3 harnesses), MCP tool input (property-based)
+- `epic-e2e-tests-chaos` (done) — DB-latency tolerance, auto-merger pause resilience; 3 scenarios deferred to backlog dependencies
+
+**Production bugs caught and fixed inline by the e2e program** (7 total):
+1. `logging.statusRecorder.Unwrap()` missing → WS upgrade broken
+2. `sessions.status` CHECK constraint missing `'finalizing'` → finalize-lock broken
+3. `receive-pack` never seeded `draft` from `base` → auto-merger silently skipped merges for new sessions
+4. `checkRefNamespace` allowed `..` traversal in branch segments → security gap
+5. `gobwas/glob` panics on malformed pattern → DOS vector
+6. `probeGlob` UTF-8 boundary panic → fixed during same fuzz run
+7. Production Dockerfile lacked git binary → CreateSession failed in production
+
+**Production bugs filed to backlog** (4):
+- `portal-oauth-client-timeout` (no HTTP timeout, hangs on slow OAuth)
+- `portal-dep-failure-error-codes` (`dep.*` codes not implemented)
+- `portal-prod-dockerfile-base-image-review` (ops review needed)
+- `bug-gobwas-glob-panic-on-malformed-pattern` (replace gobwas/glob)
+
+**Capability check**: The brief's promised capability — "service-level e2e test program that exercises the portal and jamsesh binary as black-box artifacts" — is delivered. CI workflow runs `make test-e2e` on every PR. Playwright, Go specs, and fuzz harnesses all wired. Three in-process unit-test mocks preserved (MockWebSocket, senders stub, storage stub) — not consumed by e2e per the policy.
+
+**Foundation-doc rolling-forward**: `docs/SELF_HOST.md` gained the OAuth env-var rows and section 12 (CI). Several follow-on docs items filed (scope-glob validation, dep-failure codes) — acceptable rolling-forward gaps.
