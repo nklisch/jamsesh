@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-pre-receive-ref-and-size-validators
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-git-pre-receive
 depends_on: [epic-portal-git-pre-receive-commit-validators]
@@ -67,3 +67,13 @@ After this story, the smart-http feature (next in the chain) imports `Validator`
 - **force-push detection**: uses `object.Commit.IsAncestor` (go-git v5.19 exposes this directly), walking newCommit's history to check if oldCommit is reachable.
 - **empty writable scope**: follows the existing behaviour in `commits.go` — when the compiled scope has no patterns, the path check is skipped (allow-all). The `ScopeMatcher.Match` deny-by-default applies only when the matcher is explicitly queried.
 - **test for orphan commits**: go-git's `wt.Commit` always attaches to HEAD when `Parents` is nil (via `CommitOptions.Validate`). The force-push test creates an orphan branch via `git checkout --orphan` + CLI to obtain a genuine divergent root.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Ref namespace + force-push + size guard land cleanly. repoIsEmpty skipping symbolic refs (HEAD) is a thoughtful detail. object.Commit.IsAncestor from go-git v5.19 simpler than MergeBase route. Empty-scope allow-all matches commits.go behaviour and is the right inherited semantics.

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-pre-receive
 kind: feature
-stage: implementing
+stage: done
 tags: [portal, security]
 parent: epic-portal-git
 depends_on: [epic-portal-git-storage]
@@ -316,3 +316,17 @@ func (v *Validator) Validate(ctx context.Context, in ValidateInput) (ValidateRes
 - **Force-push detection cost**: walking ancestry for each ref
   update can be slow on large repos. Mitigation: bounded walk
   (limit depth); use `go-git`'s commit-graph cache.
+
+## Implementation summary
+
+Both child stories done. Push policy validators landed: trailers, scope, ref namespace, force-push, pack size, top-level Validator.
+
+### Verification
+- `go build ./...` clean
+- `go test ./internal/portal/prereceive/...` green
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Notes**: Capability complete. The smart-http feature can now import `Validator` and call it on every receive-pack invocation.

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-pre-receive-commit-validators
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-git-pre-receive
 depends_on: []
@@ -77,3 +77,13 @@ applies them.
 ## Sequencing note
 
 The sibling story `ref-and-size-validators` depends on this one for the Rejection types and code constants.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Clean primitives. Trailer parser is strict (regexp + folded-continuation support, first-wins on dupes) — matches PROTOCOL.md simplification. gobwas/glob with separator '/' gives proper ** semantics. DiffTreeWithOptions rename-aware diff is the right choice.
