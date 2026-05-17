@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage-sessions-followup
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, testability, portal]
 parent: null
 depends_on: []
