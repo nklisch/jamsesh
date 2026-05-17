@@ -39,50 +39,129 @@ func Merge(
 	repo *gogit.Repository,
 	source, draftTip, ancestor *object.Commit,
 ) (MergeResult, error) {
-	// Short-circuit: source is already in history → nothing new from source.
+	if result, done, err := tryShortCircuit(source, draftTip, ancestor); done {
+		return result, err
+	}
+
+	diff, err := computeMergeDiff(ctx, repo, ancestor, draftTip, source)
+	if err != nil {
+		return MergeResult{}, err
+	}
+
+	state, err := applyChangesPerPath(repo, diff)
+	if err != nil {
+		return MergeResult{}, err
+	}
+
+	if len(state.conflictedFiles) > 0 && len(state.hardConflicts) == 0 {
+		if result, resolved, err := resolveConflicts(repo, &state); resolved {
+			return result, err
+		}
+	} else if len(state.conflictedFiles) > 0 {
+		// hardConflicts already non-empty; add conflict entries for the
+		// conflicted files too.
+		for i := range state.conflictedFiles {
+			cf := &state.conflictedFiles[i]
+			state.hardConflicts = append(state.hardConflicts, Conflict{
+				File:   cf.path,
+				Ranges: cf.ranges,
+			})
+		}
+	}
+
+	if len(state.hardConflicts) > 0 {
+		return MergeResult{Kind: HardConflict, Conflicts: state.hardConflicts}, nil
+	}
+
+	mergedTreeHash, err := buildTree(repo, state.mergedEntries)
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("automerger: build merged tree: %w", err)
+	}
+	return MergeResult{Kind: CleanMerge, MergedTreeSHA: mergedTreeHash.String()}, nil
+}
+
+// tryShortCircuit checks whether the merge can be satisfied by a fast-forward.
+//
+// Inputs: the three commits (source = theirs, draftTip = ours, ancestor = base).
+// Outputs: (result, true, nil) on a fast-forward hit; (zero, false, nil) when
+// no short-circuit applies; (zero, true, err) on a tree-fetch error.
+//
+// Invariant: when done is true the caller must return (result, err) immediately
+// without further processing.
+func tryShortCircuit(
+	source, draftTip, ancestor *object.Commit,
+) (result MergeResult, done bool, err error) {
+	// source is already in history → nothing new from source.
 	if source.Hash == ancestor.Hash {
 		t, err := draftTip.Tree()
 		if err != nil {
-			return MergeResult{}, fmt.Errorf("automerger: draftTip tree: %w", err)
+			return MergeResult{}, true, fmt.Errorf("automerger: draftTip tree: %w", err)
 		}
-		return MergeResult{Kind: CleanMerge, MergedTreeSHA: t.Hash.String()}, nil
+		return MergeResult{Kind: CleanMerge, MergedTreeSHA: t.Hash.String()}, true, nil
 	}
-	// Short-circuit: draftTip is already in history → fast-forward to source.
+	// draftTip is already in history → fast-forward to source.
 	if draftTip.Hash == ancestor.Hash {
 		t, err := source.Tree()
 		if err != nil {
-			return MergeResult{}, fmt.Errorf("automerger: source tree: %w", err)
+			return MergeResult{}, true, fmt.Errorf("automerger: source tree: %w", err)
 		}
-		return MergeResult{Kind: CleanMerge, MergedTreeSHA: t.Hash.String()}, nil
+		return MergeResult{Kind: CleanMerge, MergedTreeSHA: t.Hash.String()}, true, nil
 	}
+	return MergeResult{}, false, nil
+}
 
+// mergeDiff holds the raw diff data produced by computeMergeDiff: the per-path
+// change maps for both sides, the union of changed paths, and a mutable flat
+// snapshot of the base tree used as the starting point for the merged result.
+type mergeDiff struct {
+	ourChanges   map[string]*sideChange
+	theirChanges map[string]*sideChange
+	pathSet      map[string]struct{}
+	// mergedEntries is the flat base-tree snapshot. applyChangesPerPath modifies
+	// it in place as each path is resolved, so it must not be shared.
+	mergedEntries map[string]treeEntry
+}
+
+// computeMergeDiff fetches the base/ours/theirs trees, computes the two
+// base-relative diffs, and flattens the base tree into a mutable snapshot.
+//
+// Inputs: ctx, repo, and the three commits in base/ours/theirs order.
+// Outputs: a mergeDiff ready for applyChangesPerPath, or an error.
+//
+// Invariant: the returned mergeDiff.mergedEntries is a deep copy of the base
+// tree; callers may mutate it freely.
+func computeMergeDiff(
+	ctx context.Context,
+	repo *gogit.Repository,
+	ancestor, draftTip, source *object.Commit,
+) (mergeDiff, error) {
 	baseTree, err := ancestor.Tree()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("automerger: ancestor tree: %w", err)
+		return mergeDiff{}, fmt.Errorf("automerger: ancestor tree: %w", err)
 	}
 	oursTree, err := draftTip.Tree()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("automerger: draftTip tree: %w", err)
+		return mergeDiff{}, fmt.Errorf("automerger: draftTip tree: %w", err)
 	}
 	theirsTree, err := source.Tree()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("automerger: source tree: %w", err)
+		return mergeDiff{}, fmt.Errorf("automerger: source tree: %w", err)
 	}
 
 	baseToOurs, err := object.DiffTreeWithOptions(ctx, baseTree, oursTree, object.DefaultDiffTreeOptions)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("automerger: diff base→ours: %w", err)
+		return mergeDiff{}, fmt.Errorf("automerger: diff base→ours: %w", err)
 	}
 	baseToTheirs, err := object.DiffTreeWithOptions(ctx, baseTree, theirsTree, object.DefaultDiffTreeOptions)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("automerger: diff base→theirs: %w", err)
+		return mergeDiff{}, fmt.Errorf("automerger: diff base→theirs: %w", err)
 	}
 
 	ourChanges := make(map[string]*sideChange)
 	for _, ch := range baseToOurs {
 		from, to, err := ch.Files()
 		if err != nil {
-			return MergeResult{}, fmt.Errorf("automerger: ours change files: %w", err)
+			return mergeDiff{}, fmt.Errorf("automerger: ours change files: %w", err)
 		}
 		sc := &sideChange{}
 		if from != nil {
@@ -97,15 +176,14 @@ func Merge(
 		}
 		sc.deleted = (to == nil)
 		sc.added = (from == nil)
-		path := effectivePath(sc)
-		ourChanges[path] = sc
+		ourChanges[effectivePath(sc)] = sc
 	}
 
 	theirChanges := make(map[string]*sideChange)
 	for _, ch := range baseToTheirs {
 		from, to, err := ch.Files()
 		if err != nil {
-			return MergeResult{}, fmt.Errorf("automerger: theirs change files: %w", err)
+			return mergeDiff{}, fmt.Errorf("automerger: theirs change files: %w", err)
 		}
 		sc := &sideChange{}
 		if from != nil {
@@ -120,8 +198,7 @@ func Merge(
 		}
 		sc.deleted = (to == nil)
 		sc.added = (from == nil)
-		path := effectivePath(sc)
-		theirChanges[path] = sc
+		theirChanges[effectivePath(sc)] = sc
 	}
 
 	// Build the union of changed paths.
@@ -137,42 +214,77 @@ func Merge(
 	// Start with a flat snapshot of baseTree.
 	mergedEntries, err := flattenTree(baseTree)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("automerger: flatten base tree: %w", err)
+		return mergeDiff{}, fmt.Errorf("automerger: flatten base tree: %w", err)
 	}
 
-	// conflictedFile holds the raw blob content for a file that git
-	// merge-file reported as conflicted, so we can attempt auto-resolution.
-	type conflictedFile struct {
-		path    string
-		base    []byte
-		ours    []byte
-		theirs  []byte
-		mode    filemode.FileMode
-		ranges  []LineRange
+	return mergeDiff{
+		ourChanges:    ourChanges,
+		theirChanges:  theirChanges,
+		pathSet:       pathSet,
+		mergedEntries: mergedEntries,
+	}, nil
+}
+
+// conflictedFile holds the raw blob content for a file that git merge-file
+// reported as conflicted, so we can attempt auto-resolution.
+type conflictedFile struct {
+	path   string
+	base   []byte
+	ours   []byte
+	theirs []byte
+	mode   filemode.FileMode
+	ranges []LineRange
+}
+
+// mergeState holds the accumulated output of applyChangesPerPath: the
+// (possibly partially-updated) flat tree, any hard conflicts detected during
+// path-level merging, and the set of files that had content conflicts and
+// need heuristic resolution.
+type mergeState struct {
+	mergedEntries  map[string]treeEntry
+	hardConflicts  []Conflict
+	conflictedFiles []conflictedFile
+}
+
+// applyChangesPerPath iterates over every path touched by either side and
+// resolves it into diff.mergedEntries. Files with content conflicts are
+// collected into the returned state.conflictedFiles; hard conflicts (e.g.
+// delete-vs-modify) go into state.hardConflicts.
+//
+// Inputs: repo (for blob reads and writes) and the diff produced by
+// computeMergeDiff.
+// Outputs: a mergeState whose mergedEntries is diff.mergedEntries after
+// applying all clean resolutions, plus the accumulated conflicts.
+//
+// Invariant: for every path in diff.pathSet, exactly one of the following
+// holds on return: (a) mergedEntries[path] is set to the correct resolved
+// blob, (b) the path was deleted and is absent from mergedEntries, (c) the
+// path appears in hardConflicts, or (d) the path appears in conflictedFiles
+// with a placeholder conflict-marker blob in mergedEntries[path].
+func applyChangesPerPath(repo *gogit.Repository, diff mergeDiff) (mergeState, error) {
+	state := mergeState{
+		mergedEntries: diff.mergedEntries,
 	}
 
-	var hardConflicts []Conflict
-	var conflictedFiles []conflictedFile
-
-	for path := range pathSet {
-		ourCh := ourChanges[path]
-		theirCh := theirChanges[path]
+	for path := range diff.pathSet {
+		ourCh := diff.ourChanges[path]
+		theirCh := diff.theirChanges[path]
 
 		switch {
 		case ourCh == nil && theirCh != nil:
 			// Only theirs changed — accept theirs.
 			if theirCh.deleted {
-				delete(mergedEntries, path)
+				delete(state.mergedEntries, path)
 			} else {
-				mergedEntries[path] = treeEntry{hash: theirCh.toHash, mode: theirCh.mode}
+				state.mergedEntries[path] = treeEntry{hash: theirCh.toHash, mode: theirCh.mode}
 			}
 
 		case ourCh != nil && theirCh == nil:
 			// Only ours changed — accept ours.
 			if ourCh.deleted {
-				delete(mergedEntries, path)
+				delete(state.mergedEntries, path)
 			} else {
-				mergedEntries[path] = treeEntry{hash: ourCh.toHash, mode: ourCh.mode}
+				state.mergedEntries[path] = treeEntry{hash: ourCh.toHash, mode: ourCh.mode}
 			}
 
 		case ourCh != nil && theirCh != nil:
@@ -182,50 +294,50 @@ func Merge(
 
 			if ourDeleted && theirDeleted {
 				// Both deleted — take delete.
-				delete(mergedEntries, path)
+				delete(state.mergedEntries, path)
 				continue
 			}
 			if ourDeleted || theirDeleted {
 				// One deleted, other modified — hard conflict (no merged content).
-				hardConflicts = append(hardConflicts, Conflict{File: path})
+				state.hardConflicts = append(state.hardConflicts, Conflict{File: path})
 				continue
 			}
 			// Both modified the file content.
 			if ourCh.toHash == theirCh.toHash {
 				// Identical result — both sides made the same change.
-				mergedEntries[path] = treeEntry{hash: ourCh.toHash, mode: ourCh.mode}
+				state.mergedEntries[path] = treeEntry{hash: ourCh.toHash, mode: ourCh.mode}
 				continue
 			}
 			// Actually different edits — need per-file three-way merge.
-			baseContent, err := blobContent(repo, mergedEntries[path].hash)
+			baseContent, err := blobContent(repo, state.mergedEntries[path].hash)
 			if err != nil {
-				return MergeResult{}, fmt.Errorf("automerger: read base blob %s: %w", path, err)
+				return mergeState{}, fmt.Errorf("automerger: read base blob %s: %w", path, err)
 			}
 			oursContent, err := blobContent(repo, ourCh.toHash)
 			if err != nil {
-				return MergeResult{}, fmt.Errorf("automerger: read ours blob %s: %w", path, err)
+				return mergeState{}, fmt.Errorf("automerger: read ours blob %s: %w", path, err)
 			}
 			theirsContent, err := blobContent(repo, theirCh.toHash)
 			if err != nil {
-				return MergeResult{}, fmt.Errorf("automerger: read theirs blob %s: %w", path, err)
+				return mergeState{}, fmt.Errorf("automerger: read theirs blob %s: %w", path, err)
 			}
 
 			merged, numConflicts, err := mergeFileContent(baseContent, oursContent, theirsContent)
 			if err != nil {
-				return MergeResult{}, fmt.Errorf("automerger: merge-file %s: %w", path, err)
+				return mergeState{}, fmt.Errorf("automerger: merge-file %s: %w", path, err)
 			}
 
 			if numConflicts == 0 {
 				// Write merged blob and record new hash.
 				newHash, err := writeBlob(repo, merged)
 				if err != nil {
-					return MergeResult{}, fmt.Errorf("automerger: write merged blob %s: %w", path, err)
+					return mergeState{}, fmt.Errorf("automerger: write merged blob %s: %w", path, err)
 				}
-				mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
+				state.mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
 			} else {
 				// Conflict — attempt safe auto-resolution before recording as hard.
 				ranges := ParseConflictRanges(merged)
-				conflictedFiles = append(conflictedFiles, conflictedFile{
+				state.conflictedFiles = append(state.conflictedFiles, conflictedFile{
 					path:   path,
 					base:   baseContent,
 					ours:   oursContent,
@@ -237,78 +349,71 @@ func Merge(
 				// replaced below if auto-resolution succeeds.
 				newHash, err := writeBlob(repo, merged)
 				if err != nil {
-					return MergeResult{}, fmt.Errorf("automerger: write conflict blob %s: %w", path, err)
+					return mergeState{}, fmt.Errorf("automerger: write conflict blob %s: %w", path, err)
 				}
-				mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
+				state.mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
 			}
 		}
 	}
 
-	// Attempt safe auto-resolution for all conflicted files.
-	// Every file must auto-resolve for SafeAutoResolve; a single failure
-	// collapses the whole result to HardConflict.
-	if len(conflictedFiles) > 0 && len(hardConflicts) == 0 {
-		worstPriority := -1
-		worstHeuristic := ""
-		allResolved := true
+	return state, nil
+}
 
-		for i := range conflictedFiles {
-			cf := &conflictedFiles[i]
-			resolved, heuristic, ok := tryAutoResolve(cf.base, cf.ours, cf.theirs)
-			if !ok {
-				allResolved = false
-				hardConflicts = append(hardConflicts, Conflict{
-					File:   cf.path,
-					Ranges: cf.ranges,
-				})
-				continue
-			}
-			p := heuristicPriority(heuristic)
-			if p > worstPriority {
-				worstPriority = p
-				worstHeuristic = heuristic
-			}
-			// Overwrite the placeholder blob with the cleanly resolved content.
-			newHash, err := writeBlob(repo, resolved)
-			if err != nil {
-				return MergeResult{}, fmt.Errorf("automerger: write auto-resolved blob %s: %w", cf.path, err)
-			}
-			mergedEntries[cf.path] = treeEntry{hash: newHash, mode: cf.mode}
-		}
+// resolveConflicts attempts safe auto-resolution for all files in
+// state.conflictedFiles. It is only called when len(state.conflictedFiles) > 0
+// and len(state.hardConflicts) == 0.
+//
+// Inputs: repo (for blob writes) and a pointer to the mergeState so resolved
+// entries can overwrite the placeholder blobs in state.mergedEntries.
+// Outputs: (result, true, nil) when every conflicted file auto-resolves;
+// (zero, false, nil) when any file cannot be auto-resolved (the caller
+// inspects state.hardConflicts which resolveConflicts populates on failure).
+//
+// Invariant: on a true return, state.mergedEntries contains only clean
+// resolved blobs (no conflict markers). On a false return, state.hardConflicts
+// contains one entry per file that failed to auto-resolve.
+func resolveConflicts(repo *gogit.Repository, state *mergeState) (MergeResult, bool, error) {
+	worstPriority := -1
+	worstHeuristic := ""
+	allResolved := true
 
-		if allResolved {
-			mergedTreeHash, err := buildTree(repo, mergedEntries)
-			if err != nil {
-				return MergeResult{}, fmt.Errorf("automerger: build auto-resolved tree: %w", err)
-			}
-			return MergeResult{
-				Kind:          SafeAutoResolve,
-				MergedTreeSHA: mergedTreeHash.String(),
-				Heuristic:     worstHeuristic,
-			}, nil
-		}
-	} else if len(conflictedFiles) > 0 {
-		// hardConflicts already non-empty; add conflict entries for the
-		// conflicted files too.
-		for i := range conflictedFiles {
-			cf := &conflictedFiles[i]
-			hardConflicts = append(hardConflicts, Conflict{
+	for i := range state.conflictedFiles {
+		cf := &state.conflictedFiles[i]
+		resolved, heuristic, ok := tryAutoResolve(cf.base, cf.ours, cf.theirs)
+		if !ok {
+			allResolved = false
+			state.hardConflicts = append(state.hardConflicts, Conflict{
 				File:   cf.path,
 				Ranges: cf.ranges,
 			})
+			continue
 		}
+		p := heuristicPriority(heuristic)
+		if p > worstPriority {
+			worstPriority = p
+			worstHeuristic = heuristic
+		}
+		// Overwrite the placeholder blob with the cleanly resolved content.
+		newHash, err := writeBlob(repo, resolved)
+		if err != nil {
+			return MergeResult{}, false, fmt.Errorf("automerger: write auto-resolved blob %s: %w", cf.path, err)
+		}
+		state.mergedEntries[cf.path] = treeEntry{hash: newHash, mode: cf.mode}
 	}
 
-	if len(hardConflicts) > 0 {
-		return MergeResult{Kind: HardConflict, Conflicts: hardConflicts}, nil
+	if !allResolved {
+		return MergeResult{}, false, nil
 	}
 
-	// Compose the merged tree and write it to the object store.
-	mergedTreeHash, err := buildTree(repo, mergedEntries)
+	mergedTreeHash, err := buildTree(repo, state.mergedEntries)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("automerger: build merged tree: %w", err)
+		return MergeResult{}, false, fmt.Errorf("automerger: build auto-resolved tree: %w", err)
 	}
-	return MergeResult{Kind: CleanMerge, MergedTreeSHA: mergedTreeHash.String()}, nil
+	return MergeResult{
+		Kind:          SafeAutoResolve,
+		MergedTreeSHA: mergedTreeHash.String(),
+		Heuristic:     worstHeuristic,
+	}, true, nil
 }
 
 // sideChange records what one side (ours or theirs) did to a path relative to

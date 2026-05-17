@@ -1,7 +1,7 @@
 ---
 id: refactor-split-merge-function
 kind: story
-stage: implementing
+stage: review
 tags: [refactor, portal]
 parent: null
 depends_on: []
@@ -114,3 +114,64 @@ changes here propagate to every push that lands on a sync ref. Mitigations:
 ## Rollback
 
 `git revert` the commit. The function is self-contained in one file.
+
+## Implementation notes
+
+### Final phase boundaries
+
+The original `Merge()` was 275 LoC (lines 37-311). The refactor settled on
+**four** extracted phases, matching the story hypothesis closely but adapted
+to the actual code structure:
+
+1. **`tryShortCircuit(source, draftTip, ancestor)`** → `(MergeResult, bool, error)`
+   Fast-forward when either side is already the ancestor. Returns `done=true`
+   if the caller should return immediately.
+
+2. **`computeMergeDiff(ctx, repo, ancestor, draftTip, source)`** → `(mergeDiff, error)`
+   Fetches base/ours/theirs trees, computes both base-relative diffs, builds
+   `ourChanges`/`theirChanges` maps, and flattens the base tree into a mutable
+   `mergedEntries` snapshot. Introduced intermediate type `mergeDiff`.
+
+3. **`applyChangesPerPath(repo, diff)`** → `(mergeState, error)`
+   Iterates every changed path and dispatches: only-ours, only-theirs,
+   both-changed (clean / hard / content-conflict). Writes blobs for cleanly
+   resolved files; collects `hardConflicts` and `conflictedFiles` (a new
+   package-scope type replacing the local `conflictedFile` struct). Introduced
+   intermediate type `mergeState`.
+
+4. **`resolveConflicts(repo, state)`** → `(MergeResult, bool, error)`
+   Attempts `tryAutoResolve` on each `conflictedFile`; overwrites placeholder
+   blobs on success; builds the final tree and returns `SafeAutoResolve` if
+   all files resolve, or `false` (and populates `state.hardConflicts`) if any
+   file fails.
+
+### New `Merge()` size
+
+Lines 37-81: **45 lines** (well under the 50-line target).
+
+### Test count delta
+
+- Existing tests: 47 (all pass unchanged)
+- New phase tests added in `merge_phases_test.go`: **8**
+  - `TestTryShortCircuit_SourceEqualsAncestor`
+  - `TestTryShortCircuit_DraftTipEqualsAncestor`
+  - `TestTryShortCircuit_NoShortCircuit`
+  - `TestComputeMergeDiff_DisjointChanges`
+  - `TestApplyChangesPerPath_OnlyTheirs`
+  - `TestApplyChangesPerPath_HardConflict_DeleteVsModify`
+  - `TestResolveConflicts_WhitespaceOnly`
+  - `TestResolveConflicts_Unresolvable`
+
+### Behavior subtleties preserved
+
+- All `fmt.Errorf` strings are byte-for-byte identical to the original (e.g.
+  `"automerger: draftTip tree: %w"`, `"automerger: build auto-resolved tree: %w"`,
+  `"automerger: build merged tree: %w"`, etc.).
+- The `else if len(conflictedFiles) > 0` branch in the original (which adds
+  conflicted-file entries to hardConflicts when hardConflicts is already
+  non-empty) is preserved verbatim in the orchestrating `Merge()`.
+- The `conflictedFile` type was originally a function-local type inside
+  `Merge()`; it moved to package scope as a named type (still unexported)
+  to be shared between `applyChangesPerPath` and `mergeState`.
+- Phase tests live in `package automerger` (internal test package) so they
+  can access unexported phase functions without exporting them.
