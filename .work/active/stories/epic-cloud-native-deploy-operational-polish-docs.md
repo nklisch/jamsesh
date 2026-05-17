@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-docs
 kind: story
-stage: review
+stage: done
 tags: [infra, portal, documentation]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: [epic-cloud-native-deploy-operational-polish-readyz, epic-cloud-native-deploy-operational-polish-metrics, epic-cloud-native-deploy-operational-polish-secrets-from-file, epic-cloud-native-deploy-operational-polish-db-pool-and-lock, epic-cloud-native-deploy-operational-polish-graceful-shutdown]
@@ -131,3 +131,19 @@ covering: env var surface (key vars + defaults), pool config + Postgres migratio
 advisory lock, shutdown grace, `_FILE` secret convention, and observability
 endpoints (`/metrics`, `/readyz`, `/healthz`). Added a single-instance-by-design
 note. No "previously/originally" prose anywhere; all bullets are present truth.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Docs accurately reflect the shipped surface across all 5 sibling stories. Foundation-doc principle honored — no "previously" / "originally" / "we used to" prose anywhere. Two "in v" hits in the codebase (`SPEC.md:19` "stewardship moved to Coder in 2024"; `SELF_HOST.md:540` "no destructive migrations in v1") are pre-existing factual descriptions, not introduced by this story.
+
+The `_FILE` convention subsection is integration-aware (k8s Secrets, Docker Swarm, Secret Manager). The Cloud Run recipe is concrete and runnable (real `gcloud run deploy` command with `--set-secrets` for `_FILE` pairing) and correctly calls out platform constraints — 60-min WebSocket cap, ephemeral filesystem, Cloud SQL pairing. k8s YAML covers Namespace + PVC + ConfigMap + Secret + Deployment + Service with right `terminationGracePeriodSeconds: 35` matching `JAMSESH_SHUTDOWN_GRACE_S=30 + buffer`.
+
+SPEC.md "Deployment shape" was extended with present-truth bullets for the new env-var surface, pool config + advisory lock, shutdown grace, `_FILE` convention, and observability endpoints. The closing single-instance-by-design note correctly frames clustered mode as "future capability; the current architecture does not coordinate across instances" — present-truth phrasing, not a forward-looking promise.
+
+Parent feature `epic-cloud-native-deploy-operational-polish` already advanced to review by the previous orchestrator's Phase 9 (when docs was the last story to land at review and the 5 siblings were already done).
