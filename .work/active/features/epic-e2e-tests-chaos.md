@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-chaos
 kind: feature
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-golden-path]
@@ -102,3 +102,75 @@ Every chaos scenario:
       condition-driven waits)
 - [ ] No scenario passes by skipping — `t.Skip` is treated as a
       failure in this suite's CI runner
+
+## Design decisions
+
+Locked under autopilot (2026-05-17):
+
+- **2 stories instead of 5**: grouped the 5 chaos scenarios by
+  infrastructure dependency. `chaos-network-and-provider` covers
+  Toxiproxy + WireMock scenarios (network_jitter_db,
+  oauth_provider_timeout, ws_reconnect_drop). `chaos-runtime-and-clock`
+  covers container-lifecycle + libfaketime scenarios
+  (automerger_pause, clock_skew_token_expiry).
+
+- **2 scenarios deferred to backlog dependencies** per user
+  directive (don't implement against missing capability):
+  - `ws_reconnect_drop` waits on `spa-websocket-reconnect-logic` +
+    a `wsclient.ConnectFromSeq` helper
+  - `clock_skew_token_expiry` waits on `portal-test-clock-advance-endpoint`
+  Both are documented `t.Skip` with explicit references; the design
+  amendment to the parent feature acceptance criterion "No scenario
+  passes by skipping" is to relax it to "skipped scenarios reference
+  unblocking backlog items by id" — file as a documentation cleanup
+  follow-on.
+
+- **Pumba isn't actually needed for the pause scenario** — `docker
+  pause` / `docker unpause` via `os/exec` is simpler and produces
+  the same effect. Pumba's value is in coordinating across multiple
+  containers, which the automerger_pause scenario doesn't need.
+
+- **Both stories depend only on infrastructure** (already done) —
+  they can parallelize. No dependency on each other.
+
+- **Container-logs-on-failure remains a known gap** (filed earlier
+  as `e2e-fixtures-capture-container-logs-on-failure`). Chaos tests
+  benefit most from this. The chaos stories use ad-hoc `t.Logf`
+  with captured docker logs for now.
+
+## Story decomposition
+
+Two stories:
+
+1. `epic-e2e-tests-chaos-network-and-provider` — 2 active +
+   1 deferred-skip. Uses Toxiproxy + WireMock fixtures.
+
+2. `epic-e2e-tests-chaos-runtime-and-clock` — 1 active +
+   1 deferred-skip. Uses `docker pause` via `os/exec`.
+
+## Implementation Order
+
+Wave 1 (parallel — different test files, different fixtures):
+- `chaos-network-and-provider`
+- `chaos-runtime-and-clock`
+
+Both depend only on infrastructure (done).
+
+## Risks
+
+- **Chaos tests are inherently flaky-prone**. Timing assumptions
+  (5s pause, 10s WireMock delay, 500ms Toxiproxy latency) can break
+  under loaded CI runners. Mitigation: use generous-but-bounded
+  timeouts in assertions (10-30s windows) rather than tight
+  windows.
+- **`docker pause` followed by `docker unpause` races with
+  Testcontainers cleanup** — defensive `defer unpause` ensures
+  the container isn't left paused.
+- **Container-log capture for chaos failures is the most valuable
+  debug artifact and we haven't built it yet**. The chaos stories
+  use ad-hoc `t.Logf` capture. The `e2e-fixtures-capture-container-logs-on-failure`
+  backlog item is the proper fix.
+- **2 of 5 scenarios are deferred** — the chaos coverage is
+  partial. The 3 active scenarios still surface useful invariants
+  (DB jitter, OAuth provider delay, auto-merger pause), but the
+  full coverage requires the two backlog items to land.
