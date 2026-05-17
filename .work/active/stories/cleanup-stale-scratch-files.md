@@ -1,7 +1,7 @@
 ---
 id: cleanup-stale-scratch-files
 kind: story
-stage: implementing
+stage: review
 tags: [refactor, cleanup]
 parent: null
 depends_on: []
@@ -52,3 +52,9 @@ references them.
 ## Rollback
 
 `git checkout HEAD~1 -- ideas.md MIGRATION_REPORT.md` restores both.
+
+## Implementation notes
+
+- Both `ideas.md` and `MIGRATION_REPORT.md` removed from the working tree.
+- `go build ./...` passes with no errors.
+- `git log -- ideas.md MIGRATION_REPORT.md` still surfaces both files in history (audit trail intact).

@@ -1,1 +1,0 @@
-- sessions can have a "goal" / "manifest" that all agent see when joining that guide behavior / alignment - who ever starts the sessoin defines this via a mcp call - this can include hard limits on what files can be edited
