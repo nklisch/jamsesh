@@ -1,7 +1,7 @@
 ---
 id: spa-websocket-reconnect-logic
 kind: feature
-stage: review
+stage: done
 tags: [ui]
 parent: null
 depends_on: []
@@ -299,3 +299,68 @@ historical pointer for the reader scanning the original finding.
 The Playwright test is skipped with `test.skip` and a comment
 pointing at this story. Re-enable when reconnect + status UI lands
 (handled inside the `-status-ui` story).
+
+## Review
+
+**Verdict:** Approve.
+
+Feature-level review of the full reconnect layer shipped across four
+child stories (all at `stage: done` and individually approved). Each
+acceptance criterion in the feature body is demonstrably satisfied:
+
+- **Exponential backoff on unexpected close** — `ws.svelte.ts`
+  implements the `BASE=1000ms`, `CAP=30 000ms`, `MULT=1.6`,
+  `JITTER=±25%` envelope with a `shouldReconnect(code)` predicate
+  matching D7 verbatim. Covered by 7 backoff tests + 3 predicate tests
+  in `ws.test.ts`.
+- **`replay_from` first frame on reconnect** — `ws.svelte.ts:174`
+  emits `ws.send(JSON.stringify({ replay_from: rec.lastSeenSeq }))`
+  gated on `lastSeenSeq > 0`. Cross-checked against the portal:
+  `internal/portal/wsgateway/gateway.go:213-216` reads the frame via
+  `wsjson.Read` into `{ ReplayFrom int64 \`json:"replay_from"\` }`,
+  then `g.Log.ListSince(sessionID, res.seq, 1000)` streams events with
+  `seq > N` before transitioning to live. Wire format and semantics
+  match the SPA's emission exactly.
+- **Visible reconnecting indicator (text + `role="status"`)** —
+  `WsStatusBanner.svelte` renders `role="status"` /
+  `aria-live="polite"` with text "Reconnecting…" only when
+  `wsStatus.for(sessionId) === 'reconnecting'` (absent otherwise, per
+  the accessibility constraint). Mounted exactly once between
+  `.session-header` and the top grid in `SessionViewShell.svelte`,
+  per D5.
+- **Playwright network-loss test un-skipped** — `test.skip(…)` →
+  `test(…)` in `tests/e2e/playwright/error-states.spec.ts:238`;
+  asserts `page.getByRole("status", { name: /reconnecting/i })`.
+- **`ConnectFromSeq` helper in Go fixtures** —
+  `tests/e2e/fixtures/wsclient/wsclient.go:68` ships
+  `ConnectFromSeq(ctx, t, portalURL, sessionID, bearer, replaySeq)`
+  sharing a `dial` helper with `Connect`; writes one
+  `{"replay_from":N}` frame for `N>0`, nothing for `N<=0`. Covered by
+  4 in-process httptest fixtures (Docker-free) plus the existing
+  portal-side coverage in
+  `internal/portal/wsgateway/gateway_test.go::TestHandler_ReplayFromCursor`.
+
+**Integration verification:**
+
+- `cd frontend && npm test` → 35 files, **333/333 passing**.
+- `cd frontend && npm run check` → 6 pre-existing errors only, all in
+  `RefGroupList.test.ts` (unrelated `Set<unknown>` vs `Set<string>`);
+  zero new errors or warnings introduced by this feature.
+- `cd tests/e2e && go build ./fixtures/wsclient/...` → clean.
+
+**Cross-feature contract:** SPA emit shape matches portal expectation
+1:1. The portal accepts the frame only as the first text frame post-
+upgrade (within a 2s grace, after which it falls through to live), and
+the SPA emits it synchronously inside the `'open'` listener before
+anything else writes — satisfying D8.
+
+**Findings:**
+
+- Blockers: 0
+- Important: 0
+- Nits: 0 (already addressed at story level — the documented dead
+  `stubGateway.connectionsCh` field and stale "27 tests" comment in
+  `-backoff` story body. Pure docs/test-fixture drift, not worth
+  filing.)
+
+No parked items. Advancing `review → done`.
