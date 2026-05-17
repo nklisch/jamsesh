@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"jamsesh/internal/portal/assets"
 	"jamsesh/internal/portal/config"
 	"jamsesh/internal/portal/logging"
 	"jamsesh/internal/portal/router"
@@ -55,13 +56,26 @@ func main() {
 		os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Wire the embedded SPA handler. assets.Handler() returns a handler that
+	// serves the compiled Svelte bundle from frontend/dist/ with a History-API
+	// fallback to index.html. If the build hasn't run yet (dist/ only has
+	// .gitkeep), deep links return a blank 200 — acceptable for dev; CI always
+	// runs npm run build before go build.
+	uiHandler, err := assets.Handler()
+	if err != nil {
+		slog.Error("assets handler init failed", "err", err)
+		os.Exit(1)
+	}
+
 	// Build the chi router. Mount hooks are nil until sibling features land:
 	//   MountAPI  — tokens + auth-flows + accounts (epic-portal-auth)
 	//   MountGit  — smart-HTTP git (epic-portal-git)
 	//   MountMCP  — MCP SDK handler (epic-portal-api)
 	//   MountWS   — WebSocket sessions (epic-portal-api)
+	//   MountUI   — embedded Svelte SPA (epic-portal-ui-foundation)
 	handler := router.New(router.Deps{
 		TrustProxyHeaders: cfg.TLS.Mode == "behind_proxy",
+		MountUI:           uiHandler,
 	})
 
 	if err := server.Run(ctx, cfg, handler); err != nil {

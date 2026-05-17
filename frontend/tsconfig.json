@@ -5,7 +5,16 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "skipLibCheck": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "types": ["svelte", "vitest/globals", "@testing-library/jest-dom", "node"],
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+    }
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.svelte",
+    "vite.config.ts"
+  ]
 }

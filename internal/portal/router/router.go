@@ -29,6 +29,10 @@ type Deps struct {
 	MountGit func(chi.Router) // owned by epic-portal-git
 	MountMCP http.Handler     // owned by epic-portal-api
 	MountWS  http.HandlerFunc // owned by epic-portal-api
+	// MountUI serves the embedded Svelte SPA at / as a catch-all after all
+	// other routes. Owned by epic-portal-ui-foundation (assets package).
+	// Must be registered last so API/git/mcp/ws routes take precedence.
+	MountUI http.Handler // owned by epic-portal-ui-foundation
 }
 
 // New returns the root http.Handler for the portal. Middleware order is
@@ -80,6 +84,13 @@ func New(d Deps) http.Handler {
 	// /ws — WebSocket upgrade; auth happens at upgrade time inside the handler.
 	if d.MountWS != nil {
 		r.Get("/ws/sessions/{sessionID}", d.MountWS)
+	}
+
+	// / — SPA catch-all. Must be last so all named routes above take precedence.
+	// Serves the embedded Svelte bundle; falls back to index.html for History-API
+	// deep links. When MountUI is nil, the chi NotFound handler applies.
+	if d.MountUI != nil {
+		r.Mount("/", d.MountUI)
 	}
 
 	return r

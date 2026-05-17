@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-foundation-vite-svelte-routing
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-portal-ui-foundation
 depends_on: []
@@ -62,6 +62,70 @@ mount, and the Go embed wiring so the portal binary serves the SPA.
       reload with `data-theme=dark` persisted
 - [ ] Tests: `vitest run` is green for `router.svelte.ts` (route
       matching, params extraction, navigate updates current)
+
+## Implementation notes
+
+### What landed
+
+- `frontend/vite.config.ts` — Svelte plugin + `@testing-library/svelte/vite` plugin (injects `browser`
+  condition for Vitest so Svelte resolves client-side), `fileURLToPath`-based `$lib` alias, dev proxy for
+  `/api`, `/ws`, `/git`, `/mcp` → `http://localhost:8443`, `build.outDir: 'dist'`.
+- `frontend/svelte.config.js` — `vitePreprocess` for TS in `.svelte` files.
+- `frontend/tsconfig.json` — extended with `svelte`, `vitest/globals`, `@testing-library/jest-dom`, `node`
+  types; `$lib` path alias; includes `.svelte` files + `vite.config.ts`.
+- `frontend/package.json` — all toolchain deps added: `svelte@^5`, `@sveltejs/vite-plugin-svelte@^4`,
+  `vite@^5`, `svelte-check@^4`, `vitest@^2`, `@testing-library/svelte@^5`, `@testing-library/jest-dom`,
+  `jsdom`, `@types/node`; `openapi-fetch` in deps; scripts: `dev`, `build`, `test`, `check`.
+- `frontend/vitest.setup.ts` — imports `@testing-library/jest-dom` so custom matchers are available.
+- `frontend/index.html` — root HTML with `<div id="app">` and `<script type="module" src="/src/main.ts">`.
+- `frontend/src/main.ts` — imports `theme-bootstrap.ts` first (FOUC prevention), then `app.css`, then
+  mounts `App.svelte` via Svelte 5 `mount()`.
+- `frontend/src/App.svelte` — reads `current` from router store; renders named placeholders for `login`,
+  `sessions`, `session-view`; falls back to Not Found.
+- `frontend/src/lib/router.svelte.ts` — History-API rune router. `$state` path, `$derived` match result
+  exposed as `{ get name(), get params() }` object (Svelte 5 prohibits exporting bare `$derived`). `navigate()`
+  + `popstate` listener.
+- `frontend/src/lib/router.test.ts` — 8 tests: pattern matching for all 3 routes, percent-decode, not-found,
+  navigate() synchronous update, history.pushState, popstate event. All green.
+- `internal/portal/assets/assets.go` — `//go:embed all:dist` over `internal/portal/assets/dist/` (populated
+  by `make frontend-build`). `Handler()` tries literal path then falls back to `/` (index.html) for SPA
+  deep links.
+- `internal/portal/assets/dist/.gitkeep` + `.gitignore` — ensures `go build ./...` works on a fresh
+  checkout before `make frontend-build` has run; keeps built artifacts out of the repo.
+- `internal/portal/router/router.go` — `MountUI http.Handler` field added to `Deps`; mounted as catch-all
+  at `/` after all named routes.
+- `cmd/portal/main.go` — calls `assets.Handler()`, passes result as `MountUI` in `router.Deps`.
+- `Makefile` — `frontend-build` target (npm install + npm run build + copy to `assets/dist/`);
+  `go-build` depends on `frontend-build`; `build` target runs generate + frontend-build + go build.
+
+### Svelte 5 module gotcha
+
+`export const current = $derived(match(path))` is rejected by the Svelte 5 module compiler
+(`derived_invalid_export`). Workaround: wrap in an object with `get` accessors:
+
+```ts
+let _current = $derived(match(path));
+export const current = {
+  get name() { return _current.name; },
+  get params() { return _current.params; },
+};
+```
+
+### Go embed layout
+
+Go's `//go:embed` does not support `..` paths, so the embed target must be a subdirectory of the
+package directory. We embed `internal/portal/assets/dist/` (populated by `make frontend-build` which
+copies `frontend/dist/`). On a fresh checkout only `.gitkeep` is present — the embed compiles fine
+and the SPA handler gracefully falls back to index.html (which returns the gitkeep as a 200 with
+garbage — acceptable until `make build` runs). CI and the Makefile's `build` target always run
+`frontend-build` before `go build`.
+
+### Pre-existing sibling test failures
+
+21 tests in the sibling agent's component tests (`Badge`, `Button`, `Card`, `InlineCode`) fail because
+they pass `children: () => 'string'` where Svelte 5 requires a `Snippet`. These are pre-existing bugs
+in the sibling's test files, not introduced by this story. They also produce 21 `svelte-check` errors
+(all in `*.test.ts` files). My own files are type-clean.
 
 ## Notes
 
