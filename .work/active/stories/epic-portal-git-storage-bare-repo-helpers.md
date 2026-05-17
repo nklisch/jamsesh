@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-storage-bare-repo-helpers
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-git-storage
 depends_on: []
@@ -55,3 +55,28 @@ materialize a bare repo on disk and check whether one exists.
   changing the constructor signature.
 - Directory permissions: 0o750 for created dirs (operator-readable,
   group-readable, others-no). Matches typical self-host posture.
+
+## Implementation Notes
+
+- **Full Service interface declared** (option a): all future methods
+  (`ArchiveSession`, `LookupArchived`, `StubResponse`) are declared in
+  `service.go` and return `fmt.Errorf("not implemented yet")` or a zero
+  value. Each has a `// TODO: epic-portal-git-storage-archive-and-stub`
+  comment. This avoids interface churn when the next story fills them in.
+- **store.Store passed as nil in tests**: the constructor accepts a nil
+  Store without panicking because no method in this story calls into it.
+  The archive-and-stub tests will pass a real in-memory SQLite store.
+- **CreateRepo error on existing dir**: uses `os.Mkdir` (not `MkdirAll`)
+  for the repo dir itself, so an `os.IsExist` error surfaces clearly.
+  A descriptive message is returned so callers can distinguish duplicate
+  creation from permission errors.
+- **git init --bare cleanup**: if `git init --bare` fails after `os.Mkdir`
+  succeeds, `os.RemoveAll` is called best-effort to leave no stale dir.
+- **Test coverage**: 10 tests across path resolution, create-verifies-bare-
+  layout, parent-dir creation, duplicate-create error, round-trip, remove
+  idempotency, and pre-create false existence.
+- **Files delivered**:
+  - `internal/portal/storage/service.go`
+  - `internal/portal/storage/paths.go`
+  - `internal/portal/storage/repo.go`
+  - `internal/portal/storage/repo_test.go`
