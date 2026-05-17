@@ -2,6 +2,7 @@ package tokens_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -189,6 +190,96 @@ func TestBearerMiddleware_ValidToken_AttachesAccount(t *testing.T) {
 	}
 	if gotAcct == nil || gotAcct.ID != want.ID {
 		t.Errorf("wrong account in context: got %v, want %v", gotAcct, want)
+	}
+}
+
+// TestBearerMiddleware_TransientDBError_TypedEnvelope asserts that when
+// svc.Validate fails with a non-sentinel error (the canonical case being
+// a transient DB outage — pgx connection failure, etc.), the middleware
+// emits the typed `dep.db_unavailable` envelope (503 + Retry-After: 2)
+// rather than the legacy generic `internal` 500.
+//
+// Regression guard for story portal-bearer-middleware-dep-translate.
+func TestBearerMiddleware_TransientDBError_TypedEnvelope(t *testing.T) {
+	transient := errors.New("unexpected EOF")
+	svc := &mockService{
+		validateFn: func(_ context.Context, _ string) (*store.Account, error) {
+			return nil, transient
+		},
+	}
+	mw := tokens.BearerMiddleware(svc)
+
+	reached := false
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	r.Header.Set("Authorization", "Bearer some-valid-looking-token")
+
+	mw(nextHandler(&reached)).ServeHTTP(w, r)
+
+	if reached {
+		t.Fatal("next handler should not have been called when validate fails")
+	}
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("want 503, got %d", w.Code)
+	}
+	if got := w.Header().Get("Retry-After"); got != "2" {
+		t.Errorf("want Retry-After=2, got %q", got)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("want application/json content-type, got %q", ct)
+	}
+	var env struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode envelope: %v\nbody: %s", err, w.Body.String())
+	}
+	if env.Error != "dep.db_unavailable" {
+		t.Errorf("want error=dep.db_unavailable, got %q\nbody: %s", env.Error, w.Body.String())
+	}
+	if env.Message == "" {
+		t.Errorf("want non-empty message, body: %s", w.Body.String())
+	}
+}
+
+// TestBearerMiddleware_BusinessSentinel_PassesThrough asserts that the
+// dep wrap helper does not misclassify business sentinels routed through
+// the middleware's default branch. store.ErrNotFound from svc.Validate
+// is unexpected (the token-sentinel cases catch the real not-found
+// paths) but should still fall through to ErrInternal — not be wrapped
+// as dep.db_unavailable — because WrapDBIfTransient passes the sentinel
+// through unchanged. This guards against a future change that might
+// over-broaden the dep wrap.
+func TestBearerMiddleware_BusinessSentinel_PassesThrough(t *testing.T) {
+	svc := &mockService{
+		validateFn: func(_ context.Context, _ string) (*store.Account, error) {
+			return nil, store.ErrNotFound
+		},
+	}
+	mw := tokens.BearerMiddleware(svc)
+
+	reached := false
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	r.Header.Set("Authorization", "Bearer some-token")
+
+	mw(nextHandler(&reached)).ServeHTTP(w, r)
+
+	if reached {
+		t.Fatal("next handler should not have been called")
+	}
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("want 500 (business sentinel falls through to ErrInternal), got %d", w.Code)
+	}
+	var env struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode envelope: %v\nbody: %s", err, w.Body.String())
+	}
+	if env.Error != "internal" {
+		t.Errorf("want error=internal, got %q\nbody: %s", env.Error, w.Body.String())
 	}
 }
 

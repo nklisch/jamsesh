@@ -37,6 +37,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"jamsesh/tests/e2e/fixtures/authflow"
 	"jamsesh/tests/e2e/fixtures/mailhog"
 	"jamsesh/tests/e2e/fixtures/portal"
 	"jamsesh/tests/e2e/fixtures/postgres"
@@ -579,6 +580,12 @@ func TestConfigAndDeps(t *testing.T) {
 				resp.Body.Close()
 			}
 
+			// Mint a real bearer token via the magic-link flow BEFORE
+			// disrupting the DB. The token is then used after disruption
+			// to exercise the BearerMiddleware path through
+			// tokens.Service.Validate, which depends on the DB.
+			pair := authflow.SignInViaMagicLink(ctx, t, p, mh, "db-down-bearer@example.com")
+
 			// Add a reset_peer toxic: all new connections to the proxy are reset
 			// immediately. Existing pgxpool connections will fail on next query.
 			toxiproxyAddToxic(ctx, t, tp.AdminURL, proxyName, toxicName, "reset_peer",
@@ -590,15 +597,6 @@ func TestConfigAndDeps(t *testing.T) {
 			// first DB call (CreateMagicLinkToken) is wrapped with
 			// deperr.WrapDBIfTransient, so a transient pgxpool failure
 			// surfaces as the typed dep.db_unavailable 503 envelope.
-			//
-			// Note: an authenticated endpoint like GET /api/me ALSO touches
-			// the DB (via tokens.BearerMiddleware → svc.Validate), but the
-			// middleware currently writes httperr.ErrInternal directly on
-			// non-sentinel validate errors, bypassing the dep translator.
-			// That gap is tracked separately as backlog item
-			// portal-bearer-middleware-dep-translate. Asserting on the
-			// strict-handler path here keeps this test focused on the
-			// dep-translation contract while the middleware fix lands.
 			dbErrClient := httpClientWithTimeout(15 * time.Second)
 			var (
 				dbErrStatus      int
@@ -662,6 +660,70 @@ func TestConfigAndDeps(t *testing.T) {
 				}
 				if dbErrRetryAfter != "2" {
 					t.Errorf("db_unavailable: expected Retry-After=2, got %q", dbErrRetryAfter)
+				}
+			}
+
+			// Also exercise the BearerMiddleware path: GET /api/me with a
+			// valid bearer token routes through tokens.Service.Validate
+			// which hits the DB. Previously the middleware wrote a plain
+			// internal 500 on DB failure (bypassing the dep translator);
+			// the fix in story portal-bearer-middleware-dep-translate
+			// routes the default branch through httperr.WriteFromError +
+			// deperr.WrapDBIfTransient so transient DB outages surface as
+			// the typed dep.db_unavailable 503 envelope here too.
+			var (
+				meStatus      int
+				meBody        []byte
+				meContentType string
+				meRetryAfter  string
+			)
+			{
+				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.URL+"/api/me", nil)
+				req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+				resp, err := dbErrClient.Do(req)
+				if err != nil {
+					// Network-level failure is acceptable for the same
+					// reason as above: the toxic can land mid-request.
+					t.Logf("db_unavailable: GET /api/me while DB disrupted: network error: %v", err)
+					meStatus = 0
+				} else {
+					defer resp.Body.Close()
+					meBody, _ = io.ReadAll(resp.Body)
+					meStatus = resp.StatusCode
+					meContentType = resp.Header.Get("Content-Type")
+					meRetryAfter = resp.Header.Get("Retry-After")
+				}
+			}
+			if meStatus == http.StatusOK {
+				t.Errorf("db_unavailable: GET /api/me returned 200 while DB is disrupted — expected 503 or network error\nbody: %s",
+					meBody)
+			}
+			if meStatus != 0 && meStatus != http.StatusServiceUnavailable {
+				t.Errorf("db_unavailable: GET /api/me: expected 503 when DB is disrupted, got %d\nbody: %s",
+					meStatus, meBody)
+			}
+			if meStatus == http.StatusServiceUnavailable {
+				if !strings.HasPrefix(meContentType, "application/json") {
+					t.Errorf("db_unavailable: GET /api/me: expected Content-Type application/json, got %q",
+						meContentType)
+				}
+				var env struct {
+					Error   string `json:"error"`
+					Message string `json:"message"`
+				}
+				if err := json.Unmarshal(meBody, &env); err != nil {
+					t.Errorf("db_unavailable: GET /api/me: decode envelope: %v\nbody: %s", err, meBody)
+				}
+				if env.Error != "dep.db_unavailable" {
+					t.Errorf("db_unavailable: GET /api/me: expected error=dep.db_unavailable, got %q\nbody: %s",
+						env.Error, meBody)
+				}
+				if env.Message == "" {
+					t.Errorf("db_unavailable: GET /api/me: expected non-empty message, got empty\nbody: %s",
+						meBody)
+				}
+				if meRetryAfter != "2" {
+					t.Errorf("db_unavailable: GET /api/me: expected Retry-After=2, got %q", meRetryAfter)
 				}
 			}
 

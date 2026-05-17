@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/httperr"
 )
 
@@ -34,7 +35,12 @@ func BearerMiddleware(svc Service) func(http.Handler) http.Handler {
 				case errors.Is(err, ErrInvalidToken), errors.Is(err, ErrRevokedToken):
 					httperr.Write(w, r, httperr.ErrInvalidToken())
 				default:
-					httperr.Write(w, r, httperr.ErrInternal(err))
+					// Route through the dep translator so transient DB
+					// failures from svc.Validate surface as the typed
+					// dep.db_unavailable 503 envelope (with Retry-After: 2)
+					// rather than a generic "internal" 500. Non-DB errors
+					// fall through to ErrInternal inside WriteFromError.
+					httperr.WriteFromError(w, r, deperr.WrapDBIfTransient(err))
 				}
 				return
 			}
