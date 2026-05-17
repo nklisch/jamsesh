@@ -659,6 +659,132 @@ components:
           type: string
           description: Raw invite token from the email link query parameter
 
+    # ---------------------------------------------------------------------------
+    # Sessions lifecycle schemas
+    # ---------------------------------------------------------------------------
+
+    MemberSummary:
+      type: object
+      required: [account_id, role, joined_at]
+      properties:
+        account_id:
+          type: string
+          description: Account UUID
+          example: "01926e42-0000-7000-a000-000000000000"
+        role:
+          type: string
+          description: Member's role in the session (creator or member)
+          example: "creator"
+        joined_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the member joined the session
+
+    Session:
+      type: object
+      required: [id, org_id, name, goal, scope, default_mode, status, created_at, members]
+      properties:
+        id:
+          type: string
+          description: Session UUID
+          example: "01926e42-0000-7000-a000-000000000010"
+        org_id:
+          type: string
+          description: Owning org UUID
+          example: "01926e42-0000-7000-a000-000000000001"
+        name:
+          type: string
+          description: Short display name for the session
+          example: "Fix auth bug"
+        goal:
+          type: string
+          description: Free-text description of the session's objective
+          example: "Resolve the token refresh race condition in auth middleware"
+        scope:
+          type: string
+          description: JSON array of path glob strings defining the writable scope
+          example: '["src/auth/**","tests/auth/**"]'
+        default_mode:
+          type: string
+          enum: [sync, isolated]
+          description: Default ref mode for session participants
+          example: "sync"
+        status:
+          type: string
+          enum: [active, finalizing, ended, archived]
+          description: Lifecycle status of the session
+          example: "active"
+        base_sha:
+          type: string
+          nullable: true
+          description: The base commit SHA this session branched from; null until first push
+        end_reason:
+          type: string
+          nullable: true
+          description: Why the session ended; null while active
+          example: "abandoned"
+        finalize_locked_by_account_id:
+          type: string
+          nullable: true
+          description: Account ID holding the finalize-flow lock; null when unlocked
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the session was created
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO-8601 timestamp when the session ended; null while active
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemberSummary'
+          description: Current session members
+
+    CreateSessionRequest:
+      type: object
+      required: [name, goal, scope, default_mode]
+      properties:
+        name:
+          type: string
+          description: Short display name for the session
+          example: "Fix auth bug"
+        goal:
+          type: string
+          description: Free-text description of the session's objective
+          example: "Resolve the token refresh race condition in auth middleware"
+        scope:
+          type: string
+          description: JSON array of path glob strings defining the writable scope
+          example: '["src/auth/**","tests/auth/**"]'
+        default_mode:
+          type: string
+          enum: [sync, isolated]
+          description: Default ref mode for session participants
+          example: "sync"
+
+    PatchSessionRequest:
+      type: object
+      description: |
+        Fields that can be updated on an active session. All fields are optional;
+        only present fields are updated. Scope is append-only (narrowing is rejected).
+      properties:
+        goal:
+          type: string
+          description: Updated session goal
+          example: "Also fix the logout path"
+        scope:
+          type: string
+          description: |
+            Updated JSON array of path globs. Must be a superset of the current scope
+            (scope narrowing is rejected with 400 session.scope_narrowing_rejected).
+          example: '["src/auth/**","tests/auth/**","src/logout/**"]'
+        default_mode:
+          type: string
+          enum: [sync, isolated]
+          description: Updated default ref mode
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -966,6 +1092,166 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           description: Invite already accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/orgs/{orgID}/sessions:
+    post:
+      summary: Create a new session in the org; the authenticated account becomes the creator
+      operationId: createSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/orgs/{orgID}/sessions/{sessionID}:
+    patch:
+      summary: Update goal, scope (widening only), or default_mode; creator only
+      operationId: patchSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchSessionRequest'
+      responses:
+        '200':
+          description: Session updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          description: Scope narrowing rejected or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/finalize:
+    post:
+      summary: Transition session to finalizing; idempotent if already finalizing
+      operationId: finalizeSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      responses:
+        '200':
+          description: Session is finalizing (or was already finalizing)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Session has already ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/abandon:
+    post:
+      summary: Abandon the session without finalizing; sets status=ended, end_reason=abandoned; creator only
+      operationId: abandonSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      responses:
+        '200':
+          description: Session abandoned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Session has already ended
           content:
             application/json:
               schema:

@@ -34,6 +34,7 @@ type TxStore interface {
 	EventLogStore
 	PresenceStore
 	OrgInviteStore
+	RefModeStore
 }
 
 // Store is the unified data-access interface for the portal. All handler and
@@ -52,6 +53,7 @@ type Store interface {
 	EventLogStore
 	PresenceStore
 	OrgInviteStore
+	RefModeStore
 
 	// WithTx opens a dialect-appropriate transaction, calls fn with a TxStore
 	// backed by that transaction, and commits on success or rolls back on any
@@ -110,16 +112,25 @@ type OrgMemberWithAccount struct {
 
 // Session is a collaborative coding session.
 type Session struct {
-	ID            string
-	OrgID         string
-	Name          string
-	Goal          string
-	WritableScope string     // JSON array, stored verbatim
-	DefaultMode   string     // "sync" | "isolated"
-	BaseSHA       *string    // nullable until first push
-	Status        string     // "active" | "ended" | "archived"
-	CreatedAt     time.Time
-	EndedAt       *time.Time
+	ID                       string
+	OrgID                    string
+	Name                     string
+	Goal                     string
+	WritableScope            string     // JSON array, stored verbatim
+	DefaultMode              string     // "sync" | "isolated"
+	BaseSHA                  *string    // nullable until first push
+	Status                   string     // "active" | "finalizing" | "ended" | "archived"
+	CreatedAt                time.Time
+	EndedAt                  *time.Time
+	EndReason                *string // nullable; "abandoned" | "finalized" | "timeout"
+	FinalizeLockedByAccountID *string // nullable; set while finalize-flow is in progress
+}
+
+// RefMode is a per-ref mode override for a session.
+type RefMode struct {
+	SessionID string
+	Ref       string
+	Mode      string // "sync" | "isolated"
 }
 
 // SessionMember is a membership record for a session.
@@ -355,6 +366,43 @@ type DeleteSessionParams struct {
 	ID    string
 }
 
+type UpdateSessionGoalScopeModeParams struct {
+	OrgID         string
+	ID            string
+	Goal          string
+	WritableScope string
+	DefaultMode   string
+}
+
+type SetSessionEndReasonParams struct {
+	OrgID     string
+	ID        string
+	EndReason *string
+	EndedAt   *time.Time
+}
+
+type SetFinalizeLockParams struct {
+	OrgID     string
+	ID        string
+	AccountID *string // nil means no lock / clear
+}
+
+type ClearFinalizeLockParams struct {
+	OrgID string
+	ID    string
+}
+
+type UpsertRefModeParams struct {
+	SessionID string
+	Ref       string
+	Mode      string
+}
+
+type GetRefModeParams struct {
+	SessionID string
+	Ref       string
+}
+
 // ---------------------------------------------------------------------------
 // Sub-interfaces
 // ---------------------------------------------------------------------------
@@ -392,9 +440,20 @@ type SessionStore interface {
 	GetSession(ctx context.Context, orgID, id string) (Session, error)
 	ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error)
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
+	UpdateSessionGoalScopeMode(ctx context.Context, arg UpdateSessionGoalScopeModeParams) error
 	SetSessionBaseSHA(ctx context.Context, arg SetSessionBaseSHAParams) error
+	SetSessionEndReason(ctx context.Context, arg SetSessionEndReasonParams) error
+	SetFinalizeLock(ctx context.Context, arg SetFinalizeLockParams) error
+	ClearFinalizeLock(ctx context.Context, arg ClearFinalizeLockParams) error
 	// DeleteSession removes a session row and cascades to session_members via FK.
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
+}
+
+// RefModeStore covers per-ref mode overrides for sessions.
+type RefModeStore interface {
+	UpsertRefMode(ctx context.Context, arg UpsertRefModeParams) error
+	GetRefMode(ctx context.Context, arg GetRefModeParams) (RefMode, error)
+	ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error)
 }
 
 // SessionMemberStore covers session membership.

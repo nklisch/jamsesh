@@ -39,6 +39,7 @@ import (
 	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/server"
+	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
@@ -50,7 +51,8 @@ type combinedHandler struct {
 	*tokens.Handler
 	*auth.MagicLinkHandler
 	*auth.OAuthHandler
-	AccountsHandler *accounts.Handler
+	AccountsHandler  *accounts.Handler
+	SessionsHandler  *sessions.Handler
 }
 
 // GetMe delegates to the accounts handler.
@@ -76,6 +78,26 @@ func (c *combinedHandler) CreateOrgInvite(ctx context.Context, req openapi.Creat
 // AcceptOrgInvite delegates to the accounts handler.
 func (c *combinedHandler) AcceptOrgInvite(ctx context.Context, req openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
 	return c.AccountsHandler.AcceptOrgInvite(ctx, req)
+}
+
+// CreateSession delegates to the sessions handler.
+func (c *combinedHandler) CreateSession(ctx context.Context, req openapi.CreateSessionRequestObject) (openapi.CreateSessionResponseObject, error) {
+	return c.SessionsHandler.CreateSession(ctx, req)
+}
+
+// PatchSession delegates to the sessions handler.
+func (c *combinedHandler) PatchSession(ctx context.Context, req openapi.PatchSessionRequestObject) (openapi.PatchSessionResponseObject, error) {
+	return c.SessionsHandler.PatchSession(ctx, req)
+}
+
+// FinalizeSession delegates to the sessions handler.
+func (c *combinedHandler) FinalizeSession(ctx context.Context, req openapi.FinalizeSessionRequestObject) (openapi.FinalizeSessionResponseObject, error) {
+	return c.SessionsHandler.FinalizeSession(ctx, req)
+}
+
+// AbandonSession delegates to the sessions handler.
+func (c *combinedHandler) AbandonSession(ctx context.Context, req openapi.AbandonSessionRequestObject) (openapi.AbandonSessionResponseObject, error) {
+	return c.SessionsHandler.AbandonSession(ctx, req)
 }
 
 // compile-time assertion that combinedHandler satisfies the full interface.
@@ -151,12 +173,20 @@ func main() {
 	// Build the accounts handler (GET /api/me, POST /api/orgs, org members + invites).
 	accountsHandler := accounts.New(dbStore, emailSender, cfg.PortalURL)
 
+	// Build the storage service and git HTTP handler (needed before sessions).
+	storageSvc := storage.New(cfg.Storage, dbStore)
+	eventLog := events.New(dbStore)
+
+	// Build the sessions handler (lifecycle endpoints).
+	sessionsHandler := sessions.New(dbStore, storageSvc, eventLog)
+
 	// Compose the combined handler that satisfies the full StrictServerInterface.
 	strictAPI := openapi.NewStrictHandler(&combinedHandler{
 		Handler:          tokenHandler,
 		MagicLinkHandler: magicLinkHandler,
 		OAuthHandler:     oauthHandler,
 		AccountsHandler:  accountsHandler,
+		SessionsHandler:  sessionsHandler,
 	}, nil)
 
 	// Build a ServerInterfaceWrapper so we have http.HandlerFunc-compatible
@@ -168,9 +198,6 @@ func main() {
 		},
 	}
 
-	// Build the storage service and git HTTP handler.
-	storageSvc := storage.New(cfg.Storage, dbStore)
-	eventLog := events.New(dbStore)
 	gitHandler := &githttp.Handler{
 		Store:   dbStore,
 		Tokens:  tokenSvc,
@@ -232,6 +259,12 @@ func main() {
 				// Accept invite: Bearer only — the user is joining the org,
 				// so no org-role gate applies yet.
 				r.Post("/orgs/{orgID}/invites/{inviteID}/accept", apiWrapper.AcceptOrgInvite)
+
+				// Sessions: any org member can create; other ops are checked in the handler.
+				r.Post("/orgs/{orgID}/sessions", apiWrapper.CreateSession)
+				r.Patch("/orgs/{orgID}/sessions/{sessionID}", apiWrapper.PatchSession)
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize", apiWrapper.FinalizeSession)
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/abandon", apiWrapper.AbandonSession)
 			})
 		},
 	})

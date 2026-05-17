@@ -17,6 +17,7 @@ type Querier interface {
 	AllocateNextSeq(ctx context.Context, sessionID string) (int32, error)
 	AllocateNextSeqN(ctx context.Context, arg AllocateNextSeqNParams) (int32, error)
 	CleanupExpiredOAuthState(ctx context.Context, expiresAt time.Time) error
+	ClearFinalizeLock(ctx context.Context, arg ClearFinalizeLockParams) error
 	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error
 	ConsumeOAuthState(ctx context.Context, nonce string) (OauthState, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
@@ -37,6 +38,7 @@ type Querier interface {
 	GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error)
 	GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error)
 	GetOrgMember(ctx context.Context, arg GetOrgMemberParams) (OrgMember, error)
+	GetRefMode(ctx context.Context, arg GetRefModeParams) (RefMode, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	GetSessionMember(ctx context.Context, arg GetSessionMemberParams) (SessionMember, error)
 	InsertArchivedSession(ctx context.Context, arg InsertArchivedSessionParams) error
@@ -50,6 +52,7 @@ type Querier interface {
 	ListPendingOrgInvitesForEmail(ctx context.Context, arg ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error)
 	ListPendingOrgInvitesForOrg(ctx context.Context, arg ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error)
 	ListPresenceForSession(ctx context.Context, sessionID string) ([]Presence, error)
+	ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error)
 	ListSessionMembers(ctx context.Context, arg ListSessionMembersParams) ([]SessionMember, error)
 	// Intentional cross-org exception: returns sessions across all orgs for the
 	// authenticated account. The caller receives org_id on each row so it can
@@ -62,11 +65,15 @@ type Querier interface {
 	RemoveSessionMember(ctx context.Context, arg RemoveSessionMemberParams) error
 	RevokeAllOAuthTokensForAccount(ctx context.Context, arg RevokeAllOAuthTokensForAccountParams) error
 	RevokeOAuthToken(ctx context.Context, arg RevokeOAuthTokenParams) error
+	SetFinalizeLock(ctx context.Context, arg SetFinalizeLockParams) error
 	SetSessionBaseSHA(ctx context.Context, arg SetSessionBaseSHAParams) error
+	SetSessionEndReason(ctx context.Context, arg SetSessionEndReasonParams) error
 	TouchOAuthTokenLastUsed(ctx context.Context, arg TouchOAuthTokenLastUsedParams) error
 	UpdateAccountDisplayName(ctx context.Context, arg UpdateAccountDisplayNameParams) error
+	UpdateSessionGoalScopeMode(ctx context.Context, arg UpdateSessionGoalScopeModeParams) error
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	UpsertPresence(ctx context.Context, arg UpsertPresenceParams) error
+	UpsertRefMode(ctx context.Context, arg UpsertRefModeParams) error
 }
 
 var _ Querier = (*Queries)(nil)

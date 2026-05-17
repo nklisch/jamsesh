@@ -30,9 +30,11 @@ CREATE TABLE sessions (
     writable_scope TEXT NOT NULL,
     default_mode TEXT NOT NULL CHECK (default_mode IN ('sync','isolated')),
     base_sha TEXT,
-    status TEXT NOT NULL CHECK (status IN ('active','ended','archived')),
+    status TEXT NOT NULL CHECK (status IN ('active','finalizing','ended','archived')),
     created_at TIMESTAMPTZ NOT NULL,
-    ended_at TIMESTAMPTZ
+    ended_at TIMESTAMPTZ,
+    end_reason TEXT,
+    finalize_locked_by_account_id TEXT REFERENCES accounts(id)
 );
 CREATE INDEX sessions_org_idx ON sessions(org_id);
 
@@ -140,3 +142,14 @@ CREATE TABLE org_invites (
 );
 CREATE INDEX org_invites_org_idx ON org_invites(org_id);
 CREATE INDEX org_invites_email_idx ON org_invites(recipient_email);
+
+-- ---------------------------------------------------------------------------
+-- ref_modes table (00006_sessions_lifecycle migration)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE ref_modes (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    ref TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('sync','isolated')),
+    PRIMARY KEY (session_id, ref)
+);

@@ -102,6 +102,18 @@ func (a *accountsOnlyStrict) RefreshToken(_ context.Context, _ openapi.RefreshTo
 func (a *accountsOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
 	panic("RevokeToken: not wired in accounts tests")
 }
+func (a *accountsOnlyStrict) CreateSession(_ context.Context, _ openapi.CreateSessionRequestObject) (openapi.CreateSessionResponseObject, error) {
+	panic("CreateSession: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) PatchSession(_ context.Context, _ openapi.PatchSessionRequestObject) (openapi.PatchSessionResponseObject, error) {
+	panic("PatchSession: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) FinalizeSession(_ context.Context, _ openapi.FinalizeSessionRequestObject) (openapi.FinalizeSessionResponseObject, error) {
+	panic("FinalizeSession: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) AbandonSession(_ context.Context, _ openapi.AbandonSessionRequestObject) (openapi.AbandonSessionResponseObject, error) {
+	panic("AbandonSession: not wired in accounts tests")
+}
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 

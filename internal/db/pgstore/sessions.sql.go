@@ -8,12 +8,30 @@ package pgstore
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const clearFinalizeLock = `-- name: ClearFinalizeLock :exec
+UPDATE sessions
+SET finalize_locked_by_account_id = NULL
+WHERE org_id = $1 AND id = $2
+`
+
+type ClearFinalizeLockParams struct {
+	OrgID string `json:"org_id"`
+	ID    string `json:"id"`
+}
+
+func (q *Queries) ClearFinalizeLock(ctx context.Context, arg ClearFinalizeLockParams) error {
+	_, err := q.db.Exec(ctx, clearFinalizeLock, arg.OrgID, arg.ID)
+	return err
+}
 
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at
+RETURNING id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at, end_reason, finalize_locked_by_account_id
 `
 
 type CreateSessionParams struct {
@@ -54,6 +72,8 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.Status,
 		&i.CreatedAt,
 		&i.EndedAt,
+		&i.EndReason,
+		&i.FinalizeLockedByAccountID,
 	)
 	return i, err
 }
@@ -74,7 +94,7 @@ func (q *Queries) DeleteSession(ctx context.Context, arg DeleteSessionParams) er
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at
+SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at, end_reason, finalize_locked_by_account_id
 FROM sessions
 WHERE org_id = $1 AND id = $2
 `
@@ -98,12 +118,14 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (Session
 		&i.Status,
 		&i.CreatedAt,
 		&i.EndedAt,
+		&i.EndReason,
+		&i.FinalizeLockedByAccountID,
 	)
 	return i, err
 }
 
 const listSessionsForOrg = `-- name: ListSessionsForOrg :many
-SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at
+SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at, end_reason, finalize_locked_by_account_id
 FROM sessions
 WHERE org_id = $1
 ORDER BY created_at DESC
@@ -129,6 +151,8 @@ func (q *Queries) ListSessionsForOrg(ctx context.Context, orgID string) ([]Sessi
 			&i.Status,
 			&i.CreatedAt,
 			&i.EndedAt,
+			&i.EndReason,
+			&i.FinalizeLockedByAccountID,
 		); err != nil {
 			return nil, err
 		}
@@ -138,6 +162,23 @@ func (q *Queries) ListSessionsForOrg(ctx context.Context, orgID string) ([]Sessi
 		return nil, err
 	}
 	return items, nil
+}
+
+const setFinalizeLock = `-- name: SetFinalizeLock :exec
+UPDATE sessions
+SET finalize_locked_by_account_id = $1
+WHERE org_id = $2 AND id = $3
+`
+
+type SetFinalizeLockParams struct {
+	FinalizeLockedByAccountID pgtype.Text `json:"finalize_locked_by_account_id"`
+	OrgID                     string      `json:"org_id"`
+	ID                        string      `json:"id"`
+}
+
+func (q *Queries) SetFinalizeLock(ctx context.Context, arg SetFinalizeLockParams) error {
+	_, err := q.db.Exec(ctx, setFinalizeLock, arg.FinalizeLockedByAccountID, arg.OrgID, arg.ID)
+	return err
 }
 
 const setSessionBaseSHA = `-- name: SetSessionBaseSHA :exec
@@ -154,6 +195,54 @@ type SetSessionBaseSHAParams struct {
 
 func (q *Queries) SetSessionBaseSHA(ctx context.Context, arg SetSessionBaseSHAParams) error {
 	_, err := q.db.Exec(ctx, setSessionBaseSHA, arg.BaseSha, arg.OrgID, arg.ID)
+	return err
+}
+
+const setSessionEndReason = `-- name: SetSessionEndReason :exec
+UPDATE sessions
+SET end_reason = $1, ended_at = $2
+WHERE org_id = $3 AND id = $4
+`
+
+type SetSessionEndReasonParams struct {
+	EndReason pgtype.Text `json:"end_reason"`
+	EndedAt   *time.Time  `json:"ended_at"`
+	OrgID     string      `json:"org_id"`
+	ID        string      `json:"id"`
+}
+
+func (q *Queries) SetSessionEndReason(ctx context.Context, arg SetSessionEndReasonParams) error {
+	_, err := q.db.Exec(ctx, setSessionEndReason,
+		arg.EndReason,
+		arg.EndedAt,
+		arg.OrgID,
+		arg.ID,
+	)
+	return err
+}
+
+const updateSessionGoalScopeMode = `-- name: UpdateSessionGoalScopeMode :exec
+UPDATE sessions
+SET goal = $1, writable_scope = $2, default_mode = $3
+WHERE org_id = $4 AND id = $5
+`
+
+type UpdateSessionGoalScopeModeParams struct {
+	Goal          string `json:"goal"`
+	WritableScope string `json:"writable_scope"`
+	DefaultMode   string `json:"default_mode"`
+	OrgID         string `json:"org_id"`
+	ID            string `json:"id"`
+}
+
+func (q *Queries) UpdateSessionGoalScopeMode(ctx context.Context, arg UpdateSessionGoalScopeModeParams) error {
+	_, err := q.db.Exec(ctx, updateSessionGoalScopeMode,
+		arg.Goal,
+		arg.WritableScope,
+		arg.DefaultMode,
+		arg.OrgID,
+		arg.ID,
+	)
 	return err
 }
 

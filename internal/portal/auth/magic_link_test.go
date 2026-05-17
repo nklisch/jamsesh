@@ -126,6 +126,18 @@ func (m *magicLinkOnlyStrict) CreateOrgInvite(_ context.Context, _ openapi.Creat
 func (m *magicLinkOnlyStrict) AcceptOrgInvite(_ context.Context, _ openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
 	panic("AcceptOrgInvite: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) CreateSession(_ context.Context, _ openapi.CreateSessionRequestObject) (openapi.CreateSessionResponseObject, error) {
+	panic("CreateSession: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) PatchSession(_ context.Context, _ openapi.PatchSessionRequestObject) (openapi.PatchSessionResponseObject, error) {
+	panic("PatchSession: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) FinalizeSession(_ context.Context, _ openapi.FinalizeSessionRequestObject) (openapi.FinalizeSessionResponseObject, error) {
+	panic("FinalizeSession: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) AbandonSession(_ context.Context, _ openapi.AbandonSessionRequestObject) (openapi.AbandonSessionResponseObject, error) {
+	panic("AbandonSession: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

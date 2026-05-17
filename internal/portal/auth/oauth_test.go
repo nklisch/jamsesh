@@ -83,6 +83,18 @@ func (o *oauthOnlyStrict) CreateOrgInvite(_ context.Context, _ openapi.CreateOrg
 func (o *oauthOnlyStrict) AcceptOrgInvite(_ context.Context, _ openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
 	panic("AcceptOrgInvite: not wired in OAuth tests")
 }
+func (o *oauthOnlyStrict) CreateSession(_ context.Context, _ openapi.CreateSessionRequestObject) (openapi.CreateSessionResponseObject, error) {
+	panic("CreateSession: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) PatchSession(_ context.Context, _ openapi.PatchSessionRequestObject) (openapi.PatchSessionResponseObject, error) {
+	panic("PatchSession: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) FinalizeSession(_ context.Context, _ openapi.FinalizeSessionRequestObject) (openapi.FinalizeSessionResponseObject, error) {
+	panic("FinalizeSession: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) AbandonSession(_ context.Context, _ openapi.AbandonSessionRequestObject) (openapi.AbandonSessionResponseObject, error) {
+	panic("AbandonSession: not wired in OAuth tests")
+}
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-sessions-rest-sessions-lifecycle
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-api-sessions-rest
 depends_on: []
@@ -45,3 +45,20 @@ Schema extensions for `sessions` + new `ref_modes` table + 4 lifecycle endpoints
 
 - Scope narrowing detection: parse old + new scope as glob sets; if any old glob is not implied by any new glob, it's narrowing. Simplest: require new scope to be a superset (each old entry literally appears in new) OR use a stricter "scope is append-only" rule. Pick the strict append-only rule for v1.
 - Atomicity: storage.CreateRepo creates a directory on disk. Tx rollback can't undo that — so call CreateRepo AFTER the session row commit; on failure, call storage.RemoveRepo. Order: BEGIN → INSERT session → INSERT session_member → COMMIT → CreateRepo → on err, delete session via separate query. Document this; the invariant "session row exists ⟹ repo exists" allows momentary inconsistency on a process crash between the COMMIT and CreateRepo (acceptable; reconciliation sweep cleans up).
+
+## Implementation notes
+
+All units implemented and tested:
+
+- **Migration 00006**: Recreates sessions table (SQLite) / ALTER TABLE (Postgres) to add `end_reason`, `finalize_locked_by_account_id` columns and extend status CHECK to include 'finalizing'. New `ref_modes` table added.
+- **Schema files** (sqlite.sql, postgres.sql): Updated with new columns and ref_modes table.
+- **SQL queries**: Added `UpdateSessionGoalScopeMode`, `SetSessionEndReason`, `SetFinalizeLock`, `ClearFinalizeLock` to sessions.sql; new ref_modes.sql with `UpsertRefMode`, `GetRefMode`, `ListRefModesForSession`.
+- **sqlc regen**: Both sqlitestore and pgstore regenerated cleanly.
+- **store.go**: Added `RefMode` domain type, `RefModeStore` sub-interface; extended `SessionStore` with new methods; added `RefModeStore` to `TxStore` and `Store`.
+- **Adapters**: Both sqlite_adapter.go and postgres_adapter.go updated with new method implementations + mapper functions.
+- **handler.go** (`internal/portal/sessions/`): `Handler` struct with `CreateSession`, `PatchSession`, `FinalizeSession`, `AbandonSession`. Atomic Tx+repo creation with compensation pattern. Scope narrowing detection via strict append-only rule. Idempotent finalize (already-finalizing → 200 no-op). Creator-only enforcement for Patch and Abandon.
+- **openapi.yaml**: Added `Session`, `MemberSummary`, `CreateSessionRequest`, `PatchSessionRequest` schemas; 4 paths for sessions lifecycle.
+- **Regen**: server.gen.go and types.gen.ts regenerated.
+- **cmd/portal/main.go**: SessionsHandler constructed and wired; 4 routes registered.
+- **Tests**: 12 tests covering all acceptance criteria including Tx rollback on repo failure, scope narrowing rejection, idempotent finalize, double-abandon prevention, creator-only enforcement.
+- **Build**: `go build ./...` and `go test ./...` clean.

@@ -191,6 +191,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orgs/{orgID}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a new session in the org; the authenticated account becomes the creator */
+        post: operations["createSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update goal, scope (widening only), or default_mode; creator only */
+        patch: operations["patchSession"];
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition session to finalizing; idempotent if already finalizing */
+        post: operations["finalizeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Abandon the session without finalizing; sets status=ended, end_reason=abandoned; creator only */
+        post: operations["abandonSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -588,6 +656,128 @@ export interface components {
             /** @description Raw invite token from the email link query parameter */
             token: string;
         };
+        MemberSummary: {
+            /**
+             * @description Account UUID
+             * @example 01926e42-0000-7000-a000-000000000000
+             */
+            account_id: string;
+            /**
+             * @description Member's role in the session (creator or member)
+             * @example creator
+             */
+            role: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the member joined the session
+             */
+            joined_at: string;
+        };
+        Session: {
+            /**
+             * @description Session UUID
+             * @example 01926e42-0000-7000-a000-000000000010
+             */
+            id: string;
+            /**
+             * @description Owning org UUID
+             * @example 01926e42-0000-7000-a000-000000000001
+             */
+            org_id: string;
+            /**
+             * @description Short display name for the session
+             * @example Fix auth bug
+             */
+            name: string;
+            /**
+             * @description Free-text description of the session's objective
+             * @example Resolve the token refresh race condition in auth middleware
+             */
+            goal: string;
+            /**
+             * @description JSON array of path glob strings defining the writable scope
+             * @example ["src/auth/**","tests/auth/**"]
+             */
+            scope: string;
+            /**
+             * @description Default ref mode for session participants
+             * @example sync
+             * @enum {string}
+             */
+            default_mode: "sync" | "isolated";
+            /**
+             * @description Lifecycle status of the session
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "finalizing" | "ended" | "archived";
+            /** @description The base commit SHA this session branched from; null until first push */
+            base_sha?: string | null;
+            /**
+             * @description Why the session ended; null while active
+             * @example abandoned
+             */
+            end_reason?: string | null;
+            /** @description Account ID holding the finalize-flow lock; null when unlocked */
+            finalize_locked_by_account_id?: string | null;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the session was created
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the session ended; null while active
+             */
+            ended_at?: string | null;
+            /** @description Current session members */
+            members: components["schemas"]["MemberSummary"][];
+        };
+        CreateSessionRequest: {
+            /**
+             * @description Short display name for the session
+             * @example Fix auth bug
+             */
+            name: string;
+            /**
+             * @description Free-text description of the session's objective
+             * @example Resolve the token refresh race condition in auth middleware
+             */
+            goal: string;
+            /**
+             * @description JSON array of path glob strings defining the writable scope
+             * @example ["src/auth/**","tests/auth/**"]
+             */
+            scope: string;
+            /**
+             * @description Default ref mode for session participants
+             * @example sync
+             * @enum {string}
+             */
+            default_mode: "sync" | "isolated";
+        };
+        /**
+         * @description Fields that can be updated on an active session. All fields are optional;
+         *     only present fields are updated. Scope is append-only (narrowing is rejected).
+         */
+        PatchSessionRequest: {
+            /**
+             * @description Updated session goal
+             * @example Also fix the logout path
+             */
+            goal?: string;
+            /**
+             * @description Updated JSON array of path globs. Must be a superset of the current scope
+             *     (scope narrowing is rejected with 400 session.scope_narrowing_rejected).
+             * @example ["src/auth/**","tests/auth/**","src/logout/**"]
+             */
+            scope?: string;
+            /**
+             * @description Updated default ref mode
+             * @enum {string}
+             */
+            default_mode?: "sync" | "isolated";
+        };
     };
     responses: {
         /** @description missing or invalid bearer token */
@@ -941,6 +1131,159 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             /** @description Invite already accepted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Session created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    patchSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Session updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Scope narrowing rejected or invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    finalizeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session is finalizing (or was already finalizing) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Session has already ended */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    abandonSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session abandoned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Session has already ended */
             409: {
                 headers: {
                     [name: string]: unknown;

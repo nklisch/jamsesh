@@ -122,16 +122,26 @@ func pgOrgMemberWithAccount(orgID string, row pgstore.ListOrgMembersRow) OrgMemb
 
 func pgSession(row pgstore.Session) Session {
 	return Session{
-		ID:            row.ID,
-		OrgID:         row.OrgID,
-		Name:          row.Name,
-		Goal:          row.Goal,
-		WritableScope: row.WritableScope,
-		DefaultMode:   row.DefaultMode,
-		BaseSHA:       row.BaseSha,
-		Status:        row.Status,
-		CreatedAt:     row.CreatedAt,
-		EndedAt:       row.EndedAt,
+		ID:                        row.ID,
+		OrgID:                     row.OrgID,
+		Name:                      row.Name,
+		Goal:                      row.Goal,
+		WritableScope:             row.WritableScope,
+		DefaultMode:               row.DefaultMode,
+		BaseSHA:                   row.BaseSha,
+		Status:                    row.Status,
+		CreatedAt:                 row.CreatedAt,
+		EndedAt:                   row.EndedAt,
+		EndReason:                 pgTextToPtr(row.EndReason),
+		FinalizeLockedByAccountID: pgTextToPtr(row.FinalizeLockedByAccountID),
+	}
+}
+
+func pgRefMode(row pgstore.RefMode) RefMode {
+	return RefMode{
+		SessionID: row.SessionID,
+		Ref:       row.Ref,
+		Mode:      row.Mode,
 	}
 }
 
@@ -407,6 +417,40 @@ func (a *postgresAdapter) SetSessionBaseSHA(ctx context.Context, p SetSessionBas
 		OrgID:   p.OrgID,
 		ID:      p.ID,
 		BaseSha: p.BaseSHA,
+	}))
+}
+
+func (a *postgresAdapter) UpdateSessionGoalScopeMode(ctx context.Context, p UpdateSessionGoalScopeModeParams) error {
+	return mapPostgresErr(a.q.UpdateSessionGoalScopeMode(ctx, pgstore.UpdateSessionGoalScopeModeParams{
+		OrgID:         p.OrgID,
+		ID:            p.ID,
+		Goal:          p.Goal,
+		WritableScope: p.WritableScope,
+		DefaultMode:   p.DefaultMode,
+	}))
+}
+
+func (a *postgresAdapter) SetSessionEndReason(ctx context.Context, p SetSessionEndReasonParams) error {
+	return mapPostgresErr(a.q.SetSessionEndReason(ctx, pgstore.SetSessionEndReasonParams{
+		OrgID:     p.OrgID,
+		ID:        p.ID,
+		EndReason: ptrToPgText(p.EndReason),
+		EndedAt:   p.EndedAt,
+	}))
+}
+
+func (a *postgresAdapter) SetFinalizeLock(ctx context.Context, p SetFinalizeLockParams) error {
+	return mapPostgresErr(a.q.SetFinalizeLock(ctx, pgstore.SetFinalizeLockParams{
+		OrgID:                     p.OrgID,
+		ID:                        p.ID,
+		FinalizeLockedByAccountID: ptrToPgText(p.AccountID),
+	}))
+}
+
+func (a *postgresAdapter) ClearFinalizeLock(ctx context.Context, p ClearFinalizeLockParams) error {
+	return mapPostgresErr(a.q.ClearFinalizeLock(ctx, pgstore.ClearFinalizeLockParams{
+		OrgID: p.OrgID,
+		ID:    p.ID,
 	}))
 }
 
@@ -732,6 +776,41 @@ func (a *postgresAdapter) ListPresenceForSession(ctx context.Context, sessionID 
 }
 
 // ---------------------------------------------------------------------------
+// RefModeStore
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) UpsertRefMode(ctx context.Context, p UpsertRefModeParams) error {
+	return mapPostgresErr(a.q.UpsertRefMode(ctx, pgstore.UpsertRefModeParams{
+		SessionID: p.SessionID,
+		Ref:       p.Ref,
+		Mode:      p.Mode,
+	}))
+}
+
+func (a *postgresAdapter) GetRefMode(ctx context.Context, p GetRefModeParams) (RefMode, error) {
+	row, err := a.q.GetRefMode(ctx, pgstore.GetRefModeParams{
+		SessionID: p.SessionID,
+		Ref:       p.Ref,
+	})
+	if err != nil {
+		return RefMode{}, mapPostgresErr(err)
+	}
+	return pgRefMode(row), nil
+}
+
+func (a *postgresAdapter) ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error) {
+	rows, err := a.q.ListRefModesForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	out := make([]RefMode, len(rows))
+	for i, r := range rows {
+		out[i] = pgRefMode(r)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
 // WithTx
 // ---------------------------------------------------------------------------
 
@@ -976,6 +1055,18 @@ func (s *postgresTxStore) UpdateSessionStatus(ctx context.Context, p UpdateSessi
 func (s *postgresTxStore) SetSessionBaseSHA(ctx context.Context, p SetSessionBaseSHAParams) error {
 	return mapPostgresErr(s.q.SetSessionBaseSHA(ctx, pgstore.SetSessionBaseSHAParams{OrgID: p.OrgID, ID: p.ID, BaseSha: p.BaseSHA}))
 }
+func (s *postgresTxStore) UpdateSessionGoalScopeMode(ctx context.Context, p UpdateSessionGoalScopeModeParams) error {
+	return mapPostgresErr(s.q.UpdateSessionGoalScopeMode(ctx, pgstore.UpdateSessionGoalScopeModeParams{OrgID: p.OrgID, ID: p.ID, Goal: p.Goal, WritableScope: p.WritableScope, DefaultMode: p.DefaultMode}))
+}
+func (s *postgresTxStore) SetSessionEndReason(ctx context.Context, p SetSessionEndReasonParams) error {
+	return mapPostgresErr(s.q.SetSessionEndReason(ctx, pgstore.SetSessionEndReasonParams{OrgID: p.OrgID, ID: p.ID, EndReason: ptrToPgText(p.EndReason), EndedAt: p.EndedAt}))
+}
+func (s *postgresTxStore) SetFinalizeLock(ctx context.Context, p SetFinalizeLockParams) error {
+	return mapPostgresErr(s.q.SetFinalizeLock(ctx, pgstore.SetFinalizeLockParams{OrgID: p.OrgID, ID: p.ID, FinalizeLockedByAccountID: ptrToPgText(p.AccountID)}))
+}
+func (s *postgresTxStore) ClearFinalizeLock(ctx context.Context, p ClearFinalizeLockParams) error {
+	return mapPostgresErr(s.q.ClearFinalizeLock(ctx, pgstore.ClearFinalizeLockParams{OrgID: p.OrgID, ID: p.ID}))
+}
 func (s *postgresTxStore) DeleteSession(ctx context.Context, p DeleteSessionParams) error {
 	return mapPostgresErr(s.q.DeleteSession(ctx, pgstore.DeleteSessionParams{OrgID: p.OrgID, ID: p.ID}))
 }
@@ -1193,4 +1284,27 @@ func (s *postgresTxStore) ListPendingOrgInvitesForEmail(ctx context.Context, p L
 		invites[i] = pgOrgInvite(r)
 	}
 	return invites, nil
+}
+
+// RefModeStore
+func (s *postgresTxStore) UpsertRefMode(ctx context.Context, p UpsertRefModeParams) error {
+	return mapPostgresErr(s.q.UpsertRefMode(ctx, pgstore.UpsertRefModeParams{SessionID: p.SessionID, Ref: p.Ref, Mode: p.Mode}))
+}
+func (s *postgresTxStore) GetRefMode(ctx context.Context, p GetRefModeParams) (RefMode, error) {
+	row, err := s.q.GetRefMode(ctx, pgstore.GetRefModeParams{SessionID: p.SessionID, Ref: p.Ref})
+	if err != nil {
+		return RefMode{}, mapPostgresErr(err)
+	}
+	return pgRefMode(row), nil
+}
+func (s *postgresTxStore) ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error) {
+	rows, err := s.q.ListRefModesForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	out := make([]RefMode, len(rows))
+	for i, r := range rows {
+		out[i] = pgRefMode(r)
+	}
+	return out, nil
 }

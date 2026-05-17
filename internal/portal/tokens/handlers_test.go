@@ -65,6 +65,18 @@ func (t *tokensOnlyHandler) CreateOrgInvite(_ context.Context, _ openapi.CreateO
 func (t *tokensOnlyHandler) AcceptOrgInvite(_ context.Context, _ openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
 	panic("AcceptOrgInvite: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) CreateSession(_ context.Context, _ openapi.CreateSessionRequestObject) (openapi.CreateSessionResponseObject, error) {
+	panic("CreateSession: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) PatchSession(_ context.Context, _ openapi.PatchSessionRequestObject) (openapi.PatchSessionResponseObject, error) {
+	panic("PatchSession: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) FinalizeSession(_ context.Context, _ openapi.FinalizeSessionRequestObject) (openapi.FinalizeSessionResponseObject, error) {
+	panic("FinalizeSession: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) AbandonSession(_ context.Context, _ openapi.AbandonSessionRequestObject) (openapi.AbandonSessionResponseObject, error) {
+	panic("AbandonSession: not implemented in token handler tests")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

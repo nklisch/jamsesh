@@ -108,17 +108,25 @@ type Presence struct {
 	LastActiveAt pgtype.Timestamptz `json:"last_active_at"`
 }
 
+type RefMode struct {
+	SessionID string `json:"session_id"`
+	Ref       string `json:"ref"`
+	Mode      string `json:"mode"`
+}
+
 type Session struct {
-	ID            string     `json:"id"`
-	OrgID         string     `json:"org_id"`
-	Name          string     `json:"name"`
-	Goal          string     `json:"goal"`
-	WritableScope string     `json:"writable_scope"`
-	DefaultMode   string     `json:"default_mode"`
-	BaseSha       *string    `json:"base_sha"`
-	Status        string     `json:"status"`
-	CreatedAt     time.Time  `json:"created_at"`
-	EndedAt       *time.Time `json:"ended_at"`
+	ID                        string      `json:"id"`
+	OrgID                     string      `json:"org_id"`
+	Name                      string      `json:"name"`
+	Goal                      string      `json:"goal"`
+	WritableScope             string      `json:"writable_scope"`
+	DefaultMode               string      `json:"default_mode"`
+	BaseSha                   *string     `json:"base_sha"`
+	Status                    string      `json:"status"`
+	CreatedAt                 time.Time   `json:"created_at"`
+	EndedAt                   *time.Time  `json:"ended_at"`
+	EndReason                 pgtype.Text `json:"end_reason"`
+	FinalizeLockedByAccountID pgtype.Text `json:"finalize_locked_by_account_id"`
 }
 
 type SessionMember struct {

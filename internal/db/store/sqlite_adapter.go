@@ -126,16 +126,26 @@ func sqliteOrgMemberWithAccount(row sqlitestore.ListOrgMembersRow) OrgMemberWith
 
 func sqliteSession(row sqlitestore.Session) Session {
 	return Session{
-		ID:            row.ID,
-		OrgID:         row.OrgID,
-		Name:          row.Name,
-		Goal:          row.Goal,
-		WritableScope: row.WritableScope,
-		DefaultMode:   row.DefaultMode,
-		BaseSHA:       row.BaseSha,
-		Status:        row.Status,
-		CreatedAt:     row.CreatedAt,
-		EndedAt:       row.EndedAt,
+		ID:                        row.ID,
+		OrgID:                     row.OrgID,
+		Name:                      row.Name,
+		Goal:                      row.Goal,
+		WritableScope:             row.WritableScope,
+		DefaultMode:               row.DefaultMode,
+		BaseSHA:                   row.BaseSha,
+		Status:                    row.Status,
+		CreatedAt:                 row.CreatedAt,
+		EndedAt:                   row.EndedAt,
+		EndReason:                 nullStringToPtr(row.EndReason),
+		FinalizeLockedByAccountID: nullStringToPtr(row.FinalizeLockedByAccountID),
+	}
+}
+
+func sqliteRefMode(row sqlitestore.RefMode) RefMode {
+	return RefMode{
+		SessionID: row.SessionID,
+		Ref:       row.Ref,
+		Mode:      row.Mode,
 	}
 }
 
@@ -408,6 +418,40 @@ func (a *sqliteAdapter) SetSessionBaseSHA(ctx context.Context, p SetSessionBaseS
 		OrgID:   p.OrgID,
 		ID:      p.ID,
 		BaseSha: p.BaseSHA,
+	}))
+}
+
+func (a *sqliteAdapter) UpdateSessionGoalScopeMode(ctx context.Context, p UpdateSessionGoalScopeModeParams) error {
+	return mapSQLiteErr(a.q.UpdateSessionGoalScopeMode(ctx, sqlitestore.UpdateSessionGoalScopeModeParams{
+		OrgID:         p.OrgID,
+		ID:            p.ID,
+		Goal:          p.Goal,
+		WritableScope: p.WritableScope,
+		DefaultMode:   p.DefaultMode,
+	}))
+}
+
+func (a *sqliteAdapter) SetSessionEndReason(ctx context.Context, p SetSessionEndReasonParams) error {
+	return mapSQLiteErr(a.q.SetSessionEndReason(ctx, sqlitestore.SetSessionEndReasonParams{
+		OrgID:     p.OrgID,
+		ID:        p.ID,
+		EndReason: ptrToNullString(p.EndReason),
+		EndedAt:   p.EndedAt,
+	}))
+}
+
+func (a *sqliteAdapter) SetFinalizeLock(ctx context.Context, p SetFinalizeLockParams) error {
+	return mapSQLiteErr(a.q.SetFinalizeLock(ctx, sqlitestore.SetFinalizeLockParams{
+		OrgID:                     p.OrgID,
+		ID:                        p.ID,
+		FinalizeLockedByAccountID: ptrToNullString(p.AccountID),
+	}))
+}
+
+func (a *sqliteAdapter) ClearFinalizeLock(ctx context.Context, p ClearFinalizeLockParams) error {
+	return mapSQLiteErr(a.q.ClearFinalizeLock(ctx, sqlitestore.ClearFinalizeLockParams{
+		OrgID: p.OrgID,
+		ID:    p.ID,
 	}))
 }
 
@@ -819,6 +863,41 @@ func (a *sqliteAdapter) ListPendingOrgInvitesForEmail(ctx context.Context, p Lis
 }
 
 // ---------------------------------------------------------------------------
+// RefModeStore
+// ---------------------------------------------------------------------------
+
+func (a *sqliteAdapter) UpsertRefMode(ctx context.Context, p UpsertRefModeParams) error {
+	return mapSQLiteErr(a.q.UpsertRefMode(ctx, sqlitestore.UpsertRefModeParams{
+		SessionID: p.SessionID,
+		Ref:       p.Ref,
+		Mode:      p.Mode,
+	}))
+}
+
+func (a *sqliteAdapter) GetRefMode(ctx context.Context, p GetRefModeParams) (RefMode, error) {
+	row, err := a.q.GetRefMode(ctx, sqlitestore.GetRefModeParams{
+		SessionID: p.SessionID,
+		Ref:       p.Ref,
+	})
+	if err != nil {
+		return RefMode{}, mapSQLiteErr(err)
+	}
+	return sqliteRefMode(row), nil
+}
+
+func (a *sqliteAdapter) ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error) {
+	rows, err := a.q.ListRefModesForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	out := make([]RefMode, len(rows))
+	for i, r := range rows {
+		out[i] = sqliteRefMode(r)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
 // WithTx
 // ---------------------------------------------------------------------------
 
@@ -976,6 +1055,18 @@ func (s *sqliteTxStore) UpdateSessionStatus(ctx context.Context, p UpdateSession
 }
 func (s *sqliteTxStore) SetSessionBaseSHA(ctx context.Context, p SetSessionBaseSHAParams) error {
 	return mapSQLiteErr(s.q.SetSessionBaseSHA(ctx, sqlitestore.SetSessionBaseSHAParams{OrgID: p.OrgID, ID: p.ID, BaseSha: p.BaseSHA}))
+}
+func (s *sqliteTxStore) UpdateSessionGoalScopeMode(ctx context.Context, p UpdateSessionGoalScopeModeParams) error {
+	return mapSQLiteErr(s.q.UpdateSessionGoalScopeMode(ctx, sqlitestore.UpdateSessionGoalScopeModeParams{OrgID: p.OrgID, ID: p.ID, Goal: p.Goal, WritableScope: p.WritableScope, DefaultMode: p.DefaultMode}))
+}
+func (s *sqliteTxStore) SetSessionEndReason(ctx context.Context, p SetSessionEndReasonParams) error {
+	return mapSQLiteErr(s.q.SetSessionEndReason(ctx, sqlitestore.SetSessionEndReasonParams{OrgID: p.OrgID, ID: p.ID, EndReason: ptrToNullString(p.EndReason), EndedAt: p.EndedAt}))
+}
+func (s *sqliteTxStore) SetFinalizeLock(ctx context.Context, p SetFinalizeLockParams) error {
+	return mapSQLiteErr(s.q.SetFinalizeLock(ctx, sqlitestore.SetFinalizeLockParams{OrgID: p.OrgID, ID: p.ID, FinalizeLockedByAccountID: ptrToNullString(p.AccountID)}))
+}
+func (s *sqliteTxStore) ClearFinalizeLock(ctx context.Context, p ClearFinalizeLockParams) error {
+	return mapSQLiteErr(s.q.ClearFinalizeLock(ctx, sqlitestore.ClearFinalizeLockParams{OrgID: p.OrgID, ID: p.ID}))
 }
 func (s *sqliteTxStore) DeleteSession(ctx context.Context, p DeleteSessionParams) error {
 	return mapSQLiteErr(s.q.DeleteSession(ctx, sqlitestore.DeleteSessionParams{OrgID: p.OrgID, ID: p.ID}))
@@ -1190,4 +1281,27 @@ func (s *sqliteTxStore) ListPendingOrgInvitesForEmail(ctx context.Context, p Lis
 		invites[i] = sqliteOrgInvite(r)
 	}
 	return invites, nil
+}
+
+// RefModeStore
+func (s *sqliteTxStore) UpsertRefMode(ctx context.Context, p UpsertRefModeParams) error {
+	return mapSQLiteErr(s.q.UpsertRefMode(ctx, sqlitestore.UpsertRefModeParams{SessionID: p.SessionID, Ref: p.Ref, Mode: p.Mode}))
+}
+func (s *sqliteTxStore) GetRefMode(ctx context.Context, p GetRefModeParams) (RefMode, error) {
+	row, err := s.q.GetRefMode(ctx, sqlitestore.GetRefModeParams{SessionID: p.SessionID, Ref: p.Ref})
+	if err != nil {
+		return RefMode{}, mapSQLiteErr(err)
+	}
+	return sqliteRefMode(row), nil
+}
+func (s *sqliteTxStore) ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error) {
+	rows, err := s.q.ListRefModesForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	out := make([]RefMode, len(rows))
+	for i, r := range rows {
+		out[i] = sqliteRefMode(r)
+	}
+	return out, nil
 }
