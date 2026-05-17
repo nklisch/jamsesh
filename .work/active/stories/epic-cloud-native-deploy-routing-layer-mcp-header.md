@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-mcp-header
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: []
@@ -51,3 +51,36 @@ Edit:
   Claude Code's plugin contract (confirm during impl).
 - If multiple sessions are bound (rare — one CC instance, one binding),
   the helper returns the most-recent or the only one.
+
+## Implementation notes
+
+### Approach
+
+Added `state.CurrentSessionID() (string, bool)` to `cmd/jamsesh/state/state.go`.
+It reads `CLAUDE_SESSION_ID` env var (the CC instance identifier), walks
+`${CLAUDE_PLUGIN_DATA}/sessions/` looking for a directory whose `instance_id`
+file matches, and returns the directory name (the jamsesh session ID). Returns
+`("", false)` when the env var is unset or no binding is found.
+
+The local state layout was confirmed from `docs/ARCHITECTURE.md` and
+`cmd/jamsesh/sessioncmd/join.go` (which writes `instance_id`):
+
+```
+${CLAUDE_PLUGIN_DATA}/sessions/<jamsesh-session-id>/instance_id  ← CC instance ID
+${CLAUDE_PLUGIN_DATA}/sessions/<jamsesh-session-id>/ref          ← bound ref
+```
+
+### Files changed
+
+- `cmd/jamsesh/state/state.go` — added `CurrentSessionID()` helper
+- `cmd/jamsesh/mcpheaders/mcpheaders.go` — emits `Jam-Session-Id` when bound
+- `cmd/jamsesh/mcpheaders/mcpheaders_test.go` — three test cases added
+
+### Incidental fix
+
+Repaired a pre-existing bug in `internal/router/extract/extract.go` (from the
+parallel routing-layer-core story): `/auth/` with a trailing slash was
+incorrectly falling through the system-route guard after trailing-slash
+stripping turned it into `/auth`, which doesn't match
+`strings.HasPrefix(path, "/auth/")`. Added `path == "/auth"` as an additional
+condition. All `TestSessionID_SystemRoutes` subtests now pass.

@@ -43,19 +43,30 @@ func findModRoot(t *testing.T) string {
 	}
 }
 
+// writeFile is a test helper that creates a file (and any missing parent
+// directories) with the given content and mode 0o600.
+func writeFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("MkdirAll %q: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile %q: %v", path, err)
+	}
+}
+
 // TestMcpHeaders_tokenPresent builds the binary and runs `jamsesh mcp-headers`
-// with a real token file, verifying the JSON output.
+// with a real token file but no bound session. Only Authorization should be
+// present.
 func TestMcpHeaders_tokenPresent(t *testing.T) {
 	bin := buildBinary(t)
 	dataDir := t.TempDir()
 
-	// Write a token file.
-	if err := os.WriteFile(filepath.Join(dataDir, "token"), []byte("my-test-token"), 0o600); err != nil {
-		t.Fatalf("WriteFile token: %v", err)
-	}
+	writeFile(t, filepath.Join(dataDir, "token"), "my-test-token")
 
 	cmd := exec.Command(bin, "mcp-headers")
-	cmd.Env = append(os.Environ(), "CLAUDE_PLUGIN_DATA="+dataDir)
+	// No CLAUDE_SESSION_ID → no Jam-Session-Id header.
+	cmd.Env = append(os.Environ(), "CLAUDE_PLUGIN_DATA="+dataDir, "CLAUDE_SESSION_ID=")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("jamsesh mcp-headers: %v (output: %s)", err, out)
@@ -68,6 +79,83 @@ func TestMcpHeaders_tokenPresent(t *testing.T) {
 	want := "Bearer my-test-token"
 	if headers["Authorization"] != want {
 		t.Errorf("Authorization = %q, want %q", headers["Authorization"], want)
+	}
+	if _, present := headers["Jam-Session-Id"]; present {
+		t.Errorf("Jam-Session-Id unexpectedly present: %q", headers["Jam-Session-Id"])
+	}
+}
+
+// TestMcpHeaders_tokenAndSession verifies that when a CC instance has a bound
+// session, both Authorization and Jam-Session-Id are emitted.
+func TestMcpHeaders_tokenAndSession(t *testing.T) {
+	bin := buildBinary(t)
+	dataDir := t.TempDir()
+
+	const (
+		ccInstanceID = "cc-inst-abc123"
+		jamSessionID = "jamsesh-session-xyz789"
+	)
+
+	writeFile(t, filepath.Join(dataDir, "token"), "my-test-token")
+	// Write the instance_id binding file under sessions/<jamSessionID>/instance_id.
+	writeFile(t,
+		filepath.Join(dataDir, "sessions", jamSessionID, "instance_id"),
+		ccInstanceID,
+	)
+
+	cmd := exec.Command(bin, "mcp-headers")
+	cmd.Env = append(os.Environ(),
+		"CLAUDE_PLUGIN_DATA="+dataDir,
+		"CLAUDE_SESSION_ID="+ccInstanceID,
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("jamsesh mcp-headers: %v (output: %s)", err, out)
+	}
+
+	var headers map[string]string
+	if err := json.Unmarshal(out, &headers); err != nil {
+		t.Fatalf("decoding output JSON: %v (raw: %s)", err, out)
+	}
+	if got := headers["Authorization"]; got != "Bearer my-test-token" {
+		t.Errorf("Authorization = %q, want %q", got, "Bearer my-test-token")
+	}
+	if got := headers["Jam-Session-Id"]; got != jamSessionID {
+		t.Errorf("Jam-Session-Id = %q, want %q", got, jamSessionID)
+	}
+}
+
+// TestMcpHeaders_tokenNoSession verifies that when a token exists but the CC
+// instance has no bound session, only Authorization is emitted.
+func TestMcpHeaders_tokenNoSession(t *testing.T) {
+	bin := buildBinary(t)
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(dataDir, "token"), "my-test-token")
+	// sessions/ dir exists but no entry matches the instance ID.
+	if err := os.MkdirAll(filepath.Join(dataDir, "sessions"), 0o700); err != nil {
+		t.Fatalf("MkdirAll sessions: %v", err)
+	}
+
+	cmd := exec.Command(bin, "mcp-headers")
+	cmd.Env = append(os.Environ(),
+		"CLAUDE_PLUGIN_DATA="+dataDir,
+		"CLAUDE_SESSION_ID=some-unbound-instance",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("jamsesh mcp-headers: %v (output: %s)", err, out)
+	}
+
+	var headers map[string]string
+	if err := json.Unmarshal(out, &headers); err != nil {
+		t.Fatalf("decoding output JSON: %v (raw: %s)", err, out)
+	}
+	if got := headers["Authorization"]; got != "Bearer my-test-token" {
+		t.Errorf("Authorization = %q, want %q", got, "Bearer my-test-token")
+	}
+	if _, present := headers["Jam-Session-Id"]; present {
+		t.Errorf("Jam-Session-Id unexpectedly present: %q", headers["Jam-Session-Id"])
 	}
 }
 
