@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-sessions-rest
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-api-events-log, epic-portal-foundation-http-skeleton, epic-portal-foundation-accounts, epic-portal-foundation-auth-flows, epic-portal-git-storage]
@@ -144,5 +144,65 @@ under the standard error contract.
   must not emit duplicate `session.ended` events. Design pass locks the
   status-transition state machine.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+## Design decisions
+
+- **Package**: `internal/portal/sessions/` with a `Handler` satisfying the strict-server interface for all sessions-rest endpoints. Per-endpoint methods on Handler.
+- **Schema additions** (00006 migration): extend `sessions` table with `end_reason`, `finalize_locked_by_account_id`; add `invites` table.
+- **Pagination cursor**: `base64url(json{filter_hash, last_seq, last_id})`. Filter hash = SHA-256 of normalized query params. Cursor reuse with changed filter → `pagination.cursor_filter_mismatch` 400.
+- **POST /sessions transaction**: open Tx; insert session row; insert session_member row (role=creator); call `storage.CreateRepo(ctx, orgID, sessionID)`; if repo creation fails → rollback Tx + return error. Then emit `session.created` event (best-effort).
+- **PATCH /sessions/<id>**: scope-narrowing rejected with 400 (`session.scope_narrowing_rejected`); scope-widening + goal/default-mode change allowed for creator.
+- **finalize/abandon idempotency**: check current status; if already in target state, return 200 with current row (no-op, no event). State-machine: active → finalizing → ended (finalize/abandon both terminate). Once ended, no transitions.
+- **digest endpoint**: reads from `events` table since cursor; assembles a plain-text block + a structured JSON sidecar; returns `{text, next_cursor}`. The text format follows `docs/PROTOCOL.md > Session state > Digest`.
+- **refs endpoint**: opens bare repo via `storage`, iterates refs, returns `{ref, sha, mode}` per ref. Mode comes from a per-ref metadata table OR a naming convention — for v1, store `(session_id, ref) → mode` in a small `ref_modes` table created by THIS feature's migration. Or simpler: ref-mode lives in PROTOCOL.md as a session-level + per-ref attribute; for v1, the session has a `default_mode` and any non-default mode lives on the ref itself via the ref-name suffix (e.g., `-isolated`). Pick whichever is cleanest. Going with a `ref_modes` table for explicitness.
+
+Actually scrap that — `epic-portal-git-pre-receive` already references mode but doesn't manage it. The session has `default_mode` (already in schema). Per-ref mode override is a v1 feature. Let me add a `ref_modes` table here.
+
+- **invites table**: `id, org_id, session_id, inviter_account_id, invitee_email, invitee_account_id (nullable), token_hash, expires_at, accepted_at, accepted_by_account_id (nullable)`. Reuses the magic-link pattern but session-scoped.
+- **Story decomposition**: 3 stories.
+  1. `sessions-lifecycle` — schema additions (status enum, end_reason, finalize_lock, ref_modes table); POST/PATCH/finalize/abandon endpoints; openapi schemas. depends_on: []
+  2. `listing-state-digest-refs` — GET /sessions, GET /sessions/<id>, GET /sessions/<id>/refs, GET /sessions/<id>/digest; cursor pagination helper. depends_on: [sessions-lifecycle]
+  3. `session-invites-and-member-remove` — invites table + 3 endpoints + member-remove endpoint. depends_on: [sessions-lifecycle]
+
+## Implementation Units (high-level)
+
+### Story 1: sessions-lifecycle
+
+- Schema 00006: add `end_reason TEXT`, `finalize_locked_by_account_id TEXT REFERENCES accounts(id)` to sessions; new `ref_modes(session_id, ref, mode, PK(session_id, ref))` table
+- Queries: UpdateSessionGoalScopeMode, UpdateSessionStatus (extend existing), SetSessionEndReason, GetSessionWithLock
+- Handler: `CreateSession`, `PatchSession`, `FinalizeSession`, `AbandonSession`
+- openapi.yaml: 4 paths + schemas `Session`, `CreateSessionRequest`, `PatchSessionRequest`, `MemberSummary`
+
+### Story 2: listing-state-digest-refs
+
+- Cursor pagination helper `internal/portal/pagination/cursor.go` — encode/decode + filter-hash invalidation
+- Queries: ListSessionsForOrgWithCursor, ListEventsSinceForDigest (subset projection)
+- Handler: `ListSessions`, `GetSession`, `ListRefs`, `GetDigest`
+- Digest assembly: query events since cursor, group by type; format text block per PROTOCOL.md
+- openapi.yaml: 4 paths + schemas `SessionListResponse`, `RefListResponse`, `Ref`, `DigestResponse`
+
+### Story 3: session-invites-and-member-remove
+
+- Schema 00007: `invites` table
+- Queries: InsertInvite, GetInviteByID, GetInviteByTokenHash, MarkInviteAccepted, ListPendingForSession
+- Handler: `InviteToSession`, `AcceptSessionInvite`, `RemoveSessionMember`
+- Send via existing senders.Sender
+- openapi.yaml: 3 paths + schemas `Invite`, `InviteRequest`, `AcceptInviteRequest`
+
+## Implementation Order
+
+1. sessions-lifecycle (foundation: schema + CRUD)
+2. (parallel) listing-state-digest-refs + session-invites-and-member-remove
+
+## Testing
+
+- Per-endpoint integration tests against in-memory SQLite
+- POST /sessions: tx rollback on repo failure verified
+- PATCH: scope narrow rejected
+- finalize/abandon: idempotent
+- Cursor: round-trip + filter-hash mismatch
+- Invite accept: token validation + member binding
+
+## Risks
+
+- **Size ceiling**: 11 endpoints across 3 stories is the right cut.
+- **Cursor design**: base64(JSON) opaque cursor is more debuggable than just a seq number. Filter-hash invalidation prevents cross-filter cursor reuse confusion.
