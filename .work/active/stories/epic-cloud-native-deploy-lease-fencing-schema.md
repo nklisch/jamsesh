@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing-schema
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy-lease-fencing
 depends_on: []
@@ -121,3 +121,18 @@ the `.sql` source files exactly.
   Postgres skipped — requires `JAMSESH_TEST_PG_DSN`)
 - [x] `Store` interface gains the new query methods; both adapters
   implement them (`go build ./...` and `go test ./...` both pass)
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- `sqlc` was not installed in the implementation environment; the agent hand-wrote `internal/db/pgstore/leases.sql.go`, `internal/db/sqlitestore/leases.sql.go`, and additions to `models.go` / `querier.go`. The hand-written code compiles, passes tests, and matches established codebase patterns — but if a developer later runs `make generate-db` with sqlc installed, regen could produce diffs. → backlog item `lease-fencing-schema-verify-sqlc-regen` for the verification follow-up.
+
+**Nits**:
+- SQLite migration uses `TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP` for the timestamp columns, while PG uses `timestamptz NOT NULL DEFAULT now()`. Standard cross-dialect pattern; the timestamp comparison in `released_at` retention queries (PG-only) works fine.
+
+**Notes**: Substantial schema work — migration files for both dialects with proper structural mirror, sqlc queries split per the existing convention (`db/queries/postgres/leases.sql` for all 5, `db/queries/sqlite/leases.sql` for the 3 dialect-common ones), Store interface additions with `LeaseStore` interface embedded in both `Store` and `TxStore`, adapter implementations for both dialects. PG-only methods on the sqlite adapter return explicit `fmt.Errorf` rather than panicking — safe defensive design. `expectedTables` list in `migrate_test.go` updated. `stubStore` in `handlerauth_test.go` updated.
+
+The hand-written sqlc concern is the only meaningful risk; everything else is clean.

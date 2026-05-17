@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-hint-cache
 kind: story
-stage: review
+stage: done
 tags: [infra]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: []
@@ -63,3 +63,13 @@ New:
 - 12 unit tests cover all acceptance criteria, TTL refresh, value update
   on re-Set, absent-key Invalidate, and map-cleanup after expiry. All pass
   under `go test -race`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Idiomatic Go LRU implementation. `container/list` (doubly-linked, front=MRU) + `map[string]*list.Element` under `sync.Mutex` is the standard pattern. Expired entries are deleted from both structures on Get, preventing unbounded map growth. `Set` correctly updates-and-promotes for existing keys vs evict-then-insert at capacity. `New` panics on `maxEntries <= 0 || ttl <= 0` — fail-fast at startup is the right call. 12 tests cover all acceptance criteria + edge cases including concurrent Get/Set/Invalidate under `-race`.

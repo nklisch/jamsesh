@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-mcp-header
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: []
@@ -84,3 +84,15 @@ incorrectly falling through the system-route guard after trailing-slash
 stripping turned it into `/auth`, which doesn't match
 `strings.HasPrefix(path, "/auth/")`. Added `path == "/auth"` as an additional
 condition. All `TestSessionID_SystemRoutes` subtests now pass.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Small, well-scoped change. `state.CurrentSessionID()` reads `CLAUDE_SESSION_ID` env var and walks `${CLAUDE_PLUGIN_DATA}/sessions/` looking for a matching `instance_id` file — implementation matches the documented local-state layout in `docs/ARCHITECTURE.md`. Falls back gracefully when env var unset or no binding found. Three new tests cover all three states (token+session, token-no-session, no-token).
+
+Incidental fix: agent caught and fixed a `/auth/` trailing-slash bug in `internal/router/extract/extract.go` (introduced by parallel sibling `routing-layer-core` story). The trailing-slash strip turned `/auth/` into `/auth` which then didn't match the `HasPrefix(path, "/auth/")` guard. The fix adds `path == "/auth"` as an additional system-route case. Reasonable defensive call; could have been handled as a separate story but the parent feature is still WIP so inline-fix is acceptable.

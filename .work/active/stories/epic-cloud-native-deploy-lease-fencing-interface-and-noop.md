@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing-interface-and-noop
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy-lease-fencing
 depends_on: []
@@ -79,3 +79,13 @@ Three new files under `internal/portal/lease/`:
   - Consumer `select` shape test mimicking object-storage-sync / hydration-handoff usage
 
 All tests pass `go test -race ./internal/portal/lease/...`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Clean interface + Noop shim. `sync.Once` gates `close(h.lost)` for idempotent Release with no double-close panic risk. `Acquire` checks `ctx.Err()` first (respects pre-cancelled contexts — small detail, easy to miss). 9 external-package tests cover the consumer `select` shape that downstream code (object-storage-sync, hydration-handoff) will rely on. Compile-time interface compliance check is a nice touch.
