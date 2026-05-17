@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-session-list-screen
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-portal-ui-session-list
 depends_on: []
@@ -37,3 +37,10 @@ Implement the SessionList screen + NewSessionDrawer; wire into routing.
 - Design-system components in use: Card, Badge, ModePill, AuthorDot, Button.
 - Use Svelte 5 runes + snippets per the project conventions.
 - Mockup HTML lives at `.mockups/screens/epic-portal-ui-session-list/option-1.html` — implement faithfully.
+
+## Implementation notes
+
+- `frontend/src/lib/screens/SessionList.svelte` — full screen wrapped in Chrome; fetches sessions from `GET /api/orgs/{orgID}/sessions`; `$derived` filteredSessions + counts; WS subscriptions per session (session.finalizing/ended update status in-place; commit.arrived/presence.updated refetch the individual session); `navigate()` on row click.
+- `frontend/src/lib/components/NewSessionDrawer.svelte` — right-side drawer overlay; form fields: name, goal, scope (comma-sep globs → JSON array), default_mode toggle (sync/isolated); `POST /api/orgs/{orgID}/sessions`; emits `oncreated(session)` on success; closes on `onclose()` / Escape / backdrop click.
+- `frontend/src/App.svelte` — replaced `SessionsLanding` import with `SessionList`; removed `Chrome` placeholder for session-view, replaced with `SessionViewShell`.
+- 13 tests green; svelte-check clean; build clean.

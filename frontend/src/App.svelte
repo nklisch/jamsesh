@@ -2,9 +2,9 @@
   import { current, navigate } from '$lib/router.svelte';
   import { auth } from '$lib/auth.svelte';
   import Login from '$lib/screens/Login.svelte';
-  import SessionsLanding from '$lib/screens/SessionsLanding.svelte';
+  import SessionList from '$lib/screens/SessionList.svelte';
+  import SessionViewShell from '$lib/screens/SessionViewShell.svelte';
   import NotFound from '$lib/screens/NotFound.svelte';
-  import Chrome from '$lib/components/Chrome.svelte';
 
   // Auth gate: any non-login route requires authentication.
   // Runs reactively on every route change.
@@ -18,17 +18,12 @@
 {#if current.name === 'login'}
   <Login />
 {:else if current.name === 'sessions'}
-  <SessionsLanding />
+  <SessionList orgId={current.params.orgId} />
 {:else if current.name === 'session-view'}
-  <!-- Placeholder: full session-view shell lands in epic-portal-ui-session-view-shell -->
-  <Chrome
-    orgChip={current.params.orgId}
-    sessionChip={current.params.sessionId}
-  >
-    {#snippet children()}
-      <p>Session view placeholder — landing in epic-portal-ui-session-view-shell.</p>
-    {/snippet}
-  </Chrome>
+  <SessionViewShell
+    orgId={current.params.orgId}
+    sessionId={current.params.sessionId}
+  />
 {:else}
   <NotFound />
 {/if}
