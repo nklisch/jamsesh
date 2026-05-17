@@ -18,6 +18,8 @@ import (
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/prereceive"
+	"jamsesh/internal/portal/storage"
+	"jamsesh/internal/portal/storage/objectstore"
 )
 
 // maxCommitsPerUpdate caps the number of commits processed per ref update on
@@ -26,8 +28,22 @@ const maxCommitsPerUpdate = 1000
 
 // Emitter emits commit.arrived events for accepted ref updates.
 // Construct via &Emitter{Log: log}.
+//
+// In clustered mode, set Syncer to a non-nil *objectstore.Syncer and
+// RepoRoot to the storage root directory. After event emission, EmitForUpdates
+// calls Syncer.SyncPushPath so the push does not ack until object-storage sync
+// completes (RPO=0 contract).
+//
+// In single-instance mode (Syncer == nil), the sync step is skipped entirely
+// and local disk remains the system of record. No other changes are needed.
 type Emitter struct {
 	Log *events.Log
+	// Syncer is the object-storage sync pipeline. When non-nil, EmitForUpdates
+	// calls SyncPushPath after emitting events. When nil, no sync is performed.
+	Syncer *objectstore.Syncer
+	// Storage is the local-FS storage service used to compute the bare-repo path
+	// for the sync call. Required when Syncer is non-nil; unused otherwise.
+	Storage storage.Service
 }
 
 // RefUpdate describes one ref that was accepted during a push.
@@ -58,6 +74,20 @@ func (e *Emitter) EmitForUpdates(
 			return err
 		}
 	}
+
+	// Clustered mode: mirror push state to object storage before acking the
+	// push. This is the RPO=0 contract — the git client does not see a success
+	// response until objects + refs are durable in object storage.
+	//
+	// In single-instance mode (e.Syncer == nil) this block is skipped entirely;
+	// local disk remains the system of record with no additional latency.
+	if e.Syncer != nil {
+		repoPath := e.Storage.RepoPath(session.OrgID, session.ID)
+		if _, err := e.Syncer.SyncPushPath(ctx, session.ID, repoPath); err != nil {
+			return fmt.Errorf("postreceive: object-storage sync: %w", err)
+		}
+	}
+
 	return nil
 }
 

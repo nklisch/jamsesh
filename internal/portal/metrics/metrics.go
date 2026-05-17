@@ -93,6 +93,27 @@ type Registry struct {
 	// provided as a standalone counter for simpler alerting rules.
 	LeaseFencingTokensIssuedTotal prometheus.Counter
 
+	// ── Object-storage sync metrics ───────────────────────────────────────────
+	// These fields track the object-storage sync pipeline. They are populated
+	// only in clustered mode when a Syncer is configured; nil in single-instance
+	// mode. Use nil checks before incrementing.
+
+	// ObjectStorageUploadsTotal counts SyncPush completions by outcome.
+	// Label "result" is one of: ok, fenced, precondition, error, backpressure.
+	ObjectStorageUploadsTotal *prometheus.CounterVec
+
+	// ObjectStorageUploadBytesTotal tracks cumulative bytes uploaded to object
+	// storage. Includes all object, pack, idx, and manifest writes.
+	ObjectStorageUploadBytesTotal prometheus.Counter
+
+	// ObjectStorageUploadDurationSeconds observes the total wall-clock duration
+	// of each SyncPush call (from start through manifest save).
+	ObjectStorageUploadDurationSeconds prometheus.Histogram
+
+	// ObjectStorageBackpressureTotal counts SyncPush calls that were rejected
+	// because the per-session in-flight count exceeded QueueSize.
+	ObjectStorageBackpressureTotal prometheus.Counter
+
 	reg *prometheus.Registry
 }
 
@@ -206,6 +227,34 @@ func New() *Registry {
 	})
 	reg.MustRegister(leaseFencingTokensIssuedTotal)
 
+	// ── Object-storage sync metrics ───────────────────────────────────────────
+
+	objectStorageUploadsTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "jamsesh_object_storage_uploads_total",
+		Help: "Total number of SyncPush completions, labeled by result " +
+			"(ok, fenced, precondition, error, backpressure).",
+	}, []string{"result"})
+	reg.MustRegister(objectStorageUploadsTotal)
+
+	objectStorageUploadBytesTotal := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "jamsesh_object_storage_upload_bytes_total",
+		Help: "Cumulative bytes uploaded to object storage across all SyncPush calls.",
+	})
+	reg.MustRegister(objectStorageUploadBytesTotal)
+
+	objectStorageUploadDurationSeconds := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "jamsesh_object_storage_upload_duration_seconds",
+		Help:    "Wall-clock duration of each SyncPush call (start through manifest save), in seconds.",
+		Buckets: prometheus.DefBuckets,
+	})
+	reg.MustRegister(objectStorageUploadDurationSeconds)
+
+	objectStorageBackpressureTotal := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "jamsesh_object_storage_backpressure_total",
+		Help: "Total number of SyncPush calls rejected due to per-session queue-size backpressure.",
+	})
+	reg.MustRegister(objectStorageBackpressureTotal)
+
 	return &Registry{
 		HTTPRequestsTotal:             httpRequestsTotal,
 		HTTPRequestDuration:           httpRequestDuration,
@@ -220,8 +269,12 @@ func New() *Registry {
 		LeaseHoldsCurrently:           leaseHoldsCurrently,
 		LeaseHoldDurationSeconds:      leaseHoldDurationSeconds,
 		LeaseLostTotal:                leaseLostTotal,
-		LeaseFencingTokensIssuedTotal: leaseFencingTokensIssuedTotal,
-		reg:                           reg,
+		LeaseFencingTokensIssuedTotal:      leaseFencingTokensIssuedTotal,
+		ObjectStorageUploadsTotal:          objectStorageUploadsTotal,
+		ObjectStorageUploadBytesTotal:      objectStorageUploadBytesTotal,
+		ObjectStorageUploadDurationSeconds: objectStorageUploadDurationSeconds,
+		ObjectStorageBackpressureTotal:     objectStorageBackpressureTotal,
+		reg:                                reg,
 	}
 }
 
