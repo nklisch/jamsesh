@@ -5,8 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
-	"regexp"
 	"strings"
 	"time"
 
@@ -108,7 +106,7 @@ func createAccountAndOrg(ctx context.Context, s store.Store, id Identity) (store
 		return store.Account{}, store.Org{}, fmt.Errorf("auth: create account: %w", err)
 	}
 
-	org, err := createOrgWithSlug(ctx, s, id.Email, now)
+	org, err := CreateOrgWithSlug(ctx, s, emailPrefix(id.Email), now)
 	if err != nil {
 		return store.Account{}, store.Org{}, err
 	}
@@ -125,50 +123,6 @@ func createAccountAndOrg(ctx context.Context, s store.Store, id Identity) (store
 	return acc, org, nil
 }
 
-// createOrgWithSlug derives a slug from the email prefix and retries with a
-// random suffix on unique-constraint violations.
-func createOrgWithSlug(ctx context.Context, s store.Store, email string, now time.Time) (store.Org, error) {
-	baseSlug := slugFromEmail(email)
-
-	// First attempt: clean slug.
-	org, err := s.CreateOrg(ctx, store.CreateOrgParams{
-		ID:        uuid.New().String(),
-		Name:      baseSlug,
-		Slug:      baseSlug,
-		CreatedAt: now,
-	})
-	if err == nil {
-		return org, nil
-	}
-	if !errors.Is(err, store.ErrUniqueViolation) {
-		return store.Org{}, fmt.Errorf("auth: create org: %w", err)
-	}
-
-	// Collision: append a random 6-char alphanumeric suffix.
-	slug := baseSlug + "-" + randomSuffix(6)
-	org, err = s.CreateOrg(ctx, store.CreateOrgParams{
-		ID:        uuid.New().String(),
-		Name:      slug,
-		Slug:      slug,
-		CreatedAt: now,
-	})
-	if err != nil {
-		return store.Org{}, fmt.Errorf("auth: create org (retry): %w", err)
-	}
-	return org, nil
-}
-
-// slugFromEmail derives a URL-safe slug from an email address. It takes the
-// part before "@", lowercases it, replaces non-alphanumeric characters with
-// hyphens, and trims leading/trailing hyphens.
-func slugFromEmail(email string) string {
-	prefix := emailPrefix(email)
-	// Replace non-alphanumeric runs with single hyphens.
-	re := regexp.MustCompile(`[^a-z0-9]+`)
-	slug := re.ReplaceAllString(strings.ToLower(prefix), "-")
-	return strings.Trim(slug, "-")
-}
-
 // emailPrefix returns the part of an email address before "@".
 func emailPrefix(email string) string {
 	if i := strings.Index(email, "@"); i > 0 {
@@ -177,15 +131,3 @@ func emailPrefix(email string) string {
 	return email
 }
 
-const alphanumChars = "abcdefghijklmnopqrstuvwxyz0123456789"
-
-// randomSuffix returns n random lowercase alphanumeric characters.
-func randomSuffix(n int) string {
-	// rand.Intn is fine for non-secret slug disambiguation.
-	rng := rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = alphanumChars[rng.Intn(len(alphanumChars))]
-	}
-	return string(b)
-}

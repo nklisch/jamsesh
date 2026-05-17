@@ -46,6 +46,14 @@ func (t *tokensOnlyHandler) OauthCallback(_ context.Context, _ openapi.OauthCall
 	panic("OauthCallback: not implemented in token handler tests")
 }
 
+func (t *tokensOnlyHandler) GetMe(_ context.Context, _ openapi.GetMeRequestObject) (openapi.GetMeResponseObject, error) {
+	panic("GetMe: not implemented in token handler tests")
+}
+
+func (t *tokensOnlyHandler) CreateOrg(_ context.Context, _ openapi.CreateOrgRequestObject) (openapi.CreateOrgResponseObject, error) {
+	panic("CreateOrg: not implemented in token handler tests")
+}
+
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 
 // newTestEnv creates a fresh in-memory SQLite store, builds the tokens.Service

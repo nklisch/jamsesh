@@ -523,6 +523,80 @@ components:
           enum: [finalize, abandon, timeout]
           description: The reason the session ended
 
+    # ---------------------------------------------------------------------------
+    # Accounts & orgs schemas
+    # ---------------------------------------------------------------------------
+
+    MeOrgMembership:
+      type: object
+      required: [id, name, slug, role]
+      properties:
+        id:
+          type: string
+          description: Org UUID
+          example: "01926e42-0000-7000-a000-000000000001"
+        name:
+          type: string
+          description: Org display name
+          example: "acme"
+        slug:
+          type: string
+          description: URL-safe org slug
+          example: "acme"
+        role:
+          type: string
+          description: The authenticated account's role in this org
+          example: "creator"
+
+    MeResponse:
+      type: object
+      required: [id, email, display_name, orgs]
+      properties:
+        id:
+          type: string
+          description: Account UUID
+          example: "01926e42-0000-7000-a000-000000000000"
+        email:
+          type: string
+          format: email
+          description: Verified email address
+          example: user@example.com
+        display_name:
+          type: string
+          description: Human-readable display name
+          example: "Ada Lovelace"
+        orgs:
+          type: array
+          items:
+            $ref: '#/components/schemas/MeOrgMembership'
+          description: All org memberships for this account
+
+    OrgRef:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id:
+          type: string
+          description: Org UUID
+          example: "01926e42-0000-7000-a000-000000000001"
+        name:
+          type: string
+          description: Org display name
+          example: "acme"
+        slug:
+          type: string
+          description: URL-safe org slug
+          example: "acme"
+
+    CreateOrgBody:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Desired org name; used to derive the slug
+          example: "acme"
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -693,5 +767,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/me:
+    get:
+      summary: Return the authenticated account's profile and org memberships
+      operationId: getMe
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Account info with org memberships
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/orgs:
+    post:
+      summary: Create a new org; the authenticated account becomes its creator
+      operationId: createOrg
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrgBody'
+      responses:
+        '201':
+          description: Org created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgRef'
         '401':
           $ref: '#/components/responses/Unauthorized'

@@ -107,6 +107,14 @@ func (m *magicLinkOnlyStrict) OauthCallback(_ context.Context, _ openapi.OauthCa
 	panic("OauthCallback: not wired in this test")
 }
 
+func (m *magicLinkOnlyStrict) GetMe(_ context.Context, _ openapi.GetMeRequestObject) (openapi.GetMeResponseObject, error) {
+	panic("GetMe: not wired in this test")
+}
+
+func (m *magicLinkOnlyStrict) CreateOrg(_ context.Context, _ openapi.CreateOrgRequestObject) (openapi.CreateOrgResponseObject, error) {
+	panic("CreateOrg: not wired in this test")
+}
+
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 
 // ---------------------------------------------------------------------------

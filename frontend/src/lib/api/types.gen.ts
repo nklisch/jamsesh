@@ -106,6 +106,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the authenticated account's profile and org memberships */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a new org; the authenticated account becomes its creator */
+        post: operations["createOrg"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -379,6 +413,72 @@ export interface components {
              */
             reason: "finalize" | "abandon" | "timeout";
         };
+        MeOrgMembership: {
+            /**
+             * @description Org UUID
+             * @example 01926e42-0000-7000-a000-000000000001
+             */
+            id: string;
+            /**
+             * @description Org display name
+             * @example acme
+             */
+            name: string;
+            /**
+             * @description URL-safe org slug
+             * @example acme
+             */
+            slug: string;
+            /**
+             * @description The authenticated account's role in this org
+             * @example creator
+             */
+            role: string;
+        };
+        MeResponse: {
+            /**
+             * @description Account UUID
+             * @example 01926e42-0000-7000-a000-000000000000
+             */
+            id: string;
+            /**
+             * Format: email
+             * @description Verified email address
+             * @example user@example.com
+             */
+            email: string;
+            /**
+             * @description Human-readable display name
+             * @example Ada Lovelace
+             */
+            display_name: string;
+            /** @description All org memberships for this account */
+            orgs: components["schemas"]["MeOrgMembership"][];
+        };
+        OrgRef: {
+            /**
+             * @description Org UUID
+             * @example 01926e42-0000-7000-a000-000000000001
+             */
+            id: string;
+            /**
+             * @description Org display name
+             * @example acme
+             */
+            name: string;
+            /**
+             * @description URL-safe org slug
+             * @example acme
+             */
+            slug: string;
+        };
+        CreateOrgBody: {
+            /**
+             * @description Desired org name; used to derive the slug
+             * @example acme
+             */
+            name: string;
+        };
     };
     responses: {
         /** @description missing or invalid bearer token */
@@ -597,6 +697,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenPair"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account info with org memberships */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createOrg: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrgBody"];
+            };
+        };
+        responses: {
+            /** @description Org created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgRef"];
                 };
             };
             401: components["responses"]["Unauthorized"];

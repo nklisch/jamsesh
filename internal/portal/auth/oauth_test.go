@@ -64,6 +64,14 @@ func (o *oauthOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRe
 	panic("RevokeToken: not wired in OAuth tests")
 }
 
+func (o *oauthOnlyStrict) GetMe(_ context.Context, _ openapi.GetMeRequestObject) (openapi.GetMeResponseObject, error) {
+	panic("GetMe: not wired in OAuth tests")
+}
+
+func (o *oauthOnlyStrict) CreateOrg(_ context.Context, _ openapi.CreateOrgRequestObject) (openapi.CreateOrgResponseObject, error) {
+	panic("CreateOrg: not wired in OAuth tests")
+}
+
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 
 // ---------------------------------------------------------------------------

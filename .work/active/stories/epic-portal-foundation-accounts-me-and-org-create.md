@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-accounts-me-and-org-create
 kind: story
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: epic-portal-foundation-accounts
 depends_on: []
@@ -41,3 +41,25 @@ manual-org-creation endpoint.
 - Reuse the slug-generation helper from `internal/portal/auth/provision.go` if it's already callable as a public function; otherwise factor it out into a shared util.
 - The `/api/me` endpoint is consumed by the SPA's `auth.loadCurrentUser` (currently a no-op). After this story, the SPA can populate the avatar + breadcrumb chips.
 - Routes go in the authenticated group (BearerMiddleware applied).
+
+## Implementation notes
+
+### Files created
+- `internal/portal/auth/slug.go` — `SlugFromName`, `CreateOrgWithSlug`, `randomSuffix`, `alphanumChars` extracted from `provision.go` into a shared helper (same `auth` package)
+- `internal/portal/auth/middleware.go` — `RequireOrgRole(store, roles...)` middleware; injects resolved `*store.OrgMember` via `OrgMemberFromContext` for downstream handler convenience
+- `internal/portal/accounts/handlers.go` — `Handler` with `GetMe` and `CreateOrg` satisfying `openapi.StrictServerInterface`
+- `internal/portal/auth/middleware_test.go` — 5 middleware tests: not-member→403, wrong-role→403, correct-role→200 (×2), context injection
+- `internal/portal/accounts/handlers_test.go` — 6 handler tests: GetMe happy path, multiple orgs, no-auth 401; CreateOrg happy path, slug-collision suffix, no-auth 401
+
+### Files modified
+- `docs/openapi.yaml` — added `MeOrgMembership`, `MeResponse`, `OrgRef`, `CreateOrgBody` schemas; `GET /api/me` and `POST /api/orgs` paths
+- `internal/portal/auth/provision.go` — refactored to call `CreateOrgWithSlug` (shared), removed duplicate `createOrgWithSlug`, `slugFromEmail`, `randomSuffix`
+- `internal/api/openapi/server.gen.go` — regenerated (added `GetMe`, `CreateOrg` to `StrictServerInterface`)
+- `frontend/src/lib/api/types.gen.ts` — regenerated with new account/org types
+- `cmd/portal/main.go` — added `accounts.Handler` to `combinedHandler`, delegate methods, authenticated routes for `/me` and `/orgs`
+- `internal/portal/auth/magic_link_test.go`, `oauth_test.go`, `internal/portal/tokens/handlers_test.go` — added `GetMe` and `CreateOrg` stub methods to satisfy updated interface
+
+### Design decisions
+- `RequireOrgRole` errors are always `auth.insufficient_permission` 403; no distinction between "not a member" and "wrong role" (prevents membership enumeration)
+- `OrgMemberFromContext` is provided as a convenience for future org-scoped handlers that want to skip a redundant store lookup
+- `accounts.Handler` uses named field (`AccountsHandler`) in `combinedHandler` to avoid Go embedded-field name collision with `tokens.Handler`; delegate methods are 2 lines each

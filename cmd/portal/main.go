@@ -25,6 +25,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db"
+	"jamsesh/internal/portal/accounts"
 	"jamsesh/internal/portal/assets"
 	"jamsesh/internal/portal/auth"
 	"jamsesh/internal/portal/config"
@@ -43,6 +44,17 @@ type combinedHandler struct {
 	*tokens.Handler
 	*auth.MagicLinkHandler
 	*auth.OAuthHandler
+	AccountsHandler *accounts.Handler
+}
+
+// GetMe delegates to the accounts handler.
+func (c *combinedHandler) GetMe(ctx context.Context, req openapi.GetMeRequestObject) (openapi.GetMeResponseObject, error) {
+	return c.AccountsHandler.GetMe(ctx, req)
+}
+
+// CreateOrg delegates to the accounts handler.
+func (c *combinedHandler) CreateOrg(ctx context.Context, req openapi.CreateOrgRequestObject) (openapi.CreateOrgResponseObject, error) {
+	return c.AccountsHandler.CreateOrg(ctx, req)
 }
 
 // compile-time assertion that combinedHandler satisfies the full interface.
@@ -115,11 +127,15 @@ func main() {
 	// Build the OAuth handler.
 	oauthHandler := auth.NewOAuthHandler(providers, dbStore, tokenSvc, cfg.PortalURL)
 
+	// Build the accounts handler (GET /api/me, POST /api/orgs).
+	accountsHandler := accounts.New(dbStore)
+
 	// Compose the combined handler that satisfies the full StrictServerInterface.
 	strictAPI := openapi.NewStrictHandler(&combinedHandler{
 		Handler:          tokenHandler,
 		MagicLinkHandler: magicLinkHandler,
 		OAuthHandler:     oauthHandler,
+		AccountsHandler:  accountsHandler,
 	}, nil)
 
 	// Wire the embedded SPA handler. assets.Handler() returns a handler that
@@ -154,6 +170,8 @@ func main() {
 			r.Group(func(r chi.Router) {
 				r.Use(tokens.BearerMiddleware(tokenSvc))
 				r.Post("/auth/revoke", strictAPI.RevokeToken)
+				r.Get("/me", strictAPI.GetMe)
+				r.Post("/orgs", strictAPI.CreateOrg)
 			})
 		},
 	})

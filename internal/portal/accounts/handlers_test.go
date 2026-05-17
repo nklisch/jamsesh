@@ -1,0 +1,331 @@
+package accounts_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"jamsesh/internal/api/openapi"
+	"jamsesh/internal/db"
+	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/accounts"
+	"jamsesh/internal/portal/tokens"
+)
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+func openStore(t *testing.T) store.Store {
+	t.Helper()
+	s, err := db.Open(context.Background(), "sqlite", "file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+func seedAccount(t *testing.T, s store.Store, email string) store.Account {
+	t.Helper()
+	acc, err := s.CreateAccount(context.Background(), store.CreateAccountParams{
+		ID:          uuid.New().String(),
+		Email:       email,
+		DisplayName: strings.Split(email, "@")[0],
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("seed account %s: %v", email, err)
+	}
+	return acc
+}
+
+func seedOrg(t *testing.T, s store.Store, name, slug string) store.Org {
+	t.Helper()
+	org, err := s.CreateOrg(context.Background(), store.CreateOrgParams{
+		ID:        uuid.New().String(),
+		Name:      name,
+		Slug:      slug,
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("seed org %s: %v", name, err)
+	}
+	return org
+}
+
+func seedMember(t *testing.T, s store.Store, orgID, accountID, role string) {
+	t.Helper()
+	if err := s.AddOrgMember(context.Background(), store.AddOrgMemberParams{
+		OrgID:     orgID,
+		AccountID: accountID,
+		Role:      role,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("seed member: %v", err)
+	}
+}
+
+// accountsOnlyStrict wraps accounts.Handler and panics on methods it doesn't own.
+type accountsOnlyStrict struct {
+	*accounts.Handler
+}
+
+func (a *accountsOnlyStrict) ExchangeMagicLink(_ context.Context, _ openapi.ExchangeMagicLinkRequestObject) (openapi.ExchangeMagicLinkResponseObject, error) {
+	panic("ExchangeMagicLink: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) RequestMagicLink(_ context.Context, _ openapi.RequestMagicLinkRequestObject) (openapi.RequestMagicLinkResponseObject, error) {
+	panic("RequestMagicLink: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) OauthCallback(_ context.Context, _ openapi.OauthCallbackRequestObject) (openapi.OauthCallbackResponseObject, error) {
+	panic("OauthCallback: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) StartOAuth(_ context.Context, _ openapi.StartOAuthRequestObject) (openapi.StartOAuthResponseObject, error) {
+	panic("StartOAuth: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) RefreshToken(_ context.Context, _ openapi.RefreshTokenRequestObject) (openapi.RefreshTokenResponseObject, error) {
+	panic("RefreshToken: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
+	panic("RevokeToken: not wired in accounts tests")
+}
+
+var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
+
+type accountsTestEnv struct {
+	srv *httptest.Server
+	svc tokens.Service
+	s   store.Store
+}
+
+func newAccountsTestEnv(t *testing.T) *accountsTestEnv {
+	t.Helper()
+	s := openStore(t)
+	svc := tokens.New(s)
+	h := accounts.New(s)
+	strictAPI := openapi.NewStrictHandler(&accountsOnlyStrict{h}, nil)
+
+	r := chi.NewRouter()
+	r.Group(func(r chi.Router) {
+		r.Use(tokens.BearerMiddleware(svc))
+		r.Get("/api/me", strictAPI.GetMe)
+		r.Post("/api/orgs", strictAPI.CreateOrg)
+	})
+
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	return &accountsTestEnv{srv: srv, svc: svc, s: s}
+}
+
+func (e *accountsTestEnv) bearerToken(t *testing.T, accountID string) string {
+	t.Helper()
+	pair, err := e.svc.Issue(context.Background(), accountID)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+	return pair.AccessToken
+}
+
+func getJSON(t *testing.T, srv *httptest.Server, path, bearer string) *http.Response {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+path, nil)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
+}
+
+func postJSON(t *testing.T, srv *httptest.Server, path, bearer string, body any) *http.Response {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/me tests
+// ---------------------------------------------------------------------------
+
+func TestGetMe_HappyPath(t *testing.T) {
+	env := newAccountsTestEnv(t)
+
+	acc := seedAccount(t, env.s, "alice@example.com")
+	org := seedOrg(t, env.s, "alice-org", "alice-org")
+	seedMember(t, env.s, org.ID, acc.ID, "creator")
+
+	tok := env.bearerToken(t, acc.ID)
+	resp := getJSON(t, env.srv, "/api/me", tok)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if body["id"] != acc.ID {
+		t.Errorf("id: got %v, want %s", body["id"], acc.ID)
+	}
+	if body["email"] != acc.Email {
+		t.Errorf("email: got %v, want %s", body["email"], acc.Email)
+	}
+	if body["display_name"] != acc.DisplayName {
+		t.Errorf("display_name: got %v, want %s", body["display_name"], acc.DisplayName)
+	}
+
+	orgs, ok := body["orgs"].([]any)
+	if !ok || len(orgs) != 1 {
+		t.Fatalf("expected 1 org, got %v", body["orgs"])
+	}
+	m := orgs[0].(map[string]any)
+	if m["id"] != org.ID {
+		t.Errorf("org id: got %v, want %s", m["id"], org.ID)
+	}
+	if m["role"] != "creator" {
+		t.Errorf("org role: got %v, want creator", m["role"])
+	}
+}
+
+func TestGetMe_MultipleOrgs(t *testing.T) {
+	env := newAccountsTestEnv(t)
+
+	acc := seedAccount(t, env.s, "bob@example.com")
+	org1 := seedOrg(t, env.s, "org-one", "org-one")
+	org2 := seedOrg(t, env.s, "org-two", "org-two")
+	seedMember(t, env.s, org1.ID, acc.ID, "creator")
+	seedMember(t, env.s, org2.ID, acc.ID, "member")
+
+	tok := env.bearerToken(t, acc.ID)
+	resp := getJSON(t, env.srv, "/api/me", tok)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+	orgs := body["orgs"].([]any)
+	if len(orgs) != 2 {
+		t.Errorf("expected 2 orgs, got %d", len(orgs))
+	}
+}
+
+func TestGetMe_NoAuth_Returns401(t *testing.T) {
+	env := newAccountsTestEnv(t)
+
+	resp := getJSON(t, env.srv, "/api/me", "")
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/orgs tests
+// ---------------------------------------------------------------------------
+
+func TestCreateOrg_HappyPath(t *testing.T) {
+	env := newAccountsTestEnv(t)
+
+	acc := seedAccount(t, env.s, "carol@example.com")
+	tok := env.bearerToken(t, acc.ID)
+
+	resp := postJSON(t, env.srv, "/api/orgs", tok, map[string]any{"name": "New Org"})
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+
+	if body["name"] != "New Org" {
+		t.Errorf("name: got %v, want 'New Org'", body["name"])
+	}
+	if body["slug"] != "new-org" {
+		t.Errorf("slug: got %v, want 'new-org'", body["slug"])
+	}
+	if body["id"] == nil || body["id"] == "" {
+		t.Error("expected non-empty id")
+	}
+
+	// Verify the authenticated account is now a creator member.
+	orgID := body["id"].(string)
+	m, err := env.s.GetOrgMember(context.Background(), store.GetOrgMemberParams{
+		OrgID:     orgID,
+		AccountID: acc.ID,
+	})
+	if err != nil {
+		t.Fatalf("get org member: %v", err)
+	}
+	if m.Role != "creator" {
+		t.Errorf("expected role creator, got %s", m.Role)
+	}
+}
+
+func TestCreateOrg_SlugCollision_AppendsSuffix(t *testing.T) {
+	env := newAccountsTestEnv(t)
+
+	acc := seedAccount(t, env.s, "dave@example.com")
+	tok := env.bearerToken(t, acc.ID)
+
+	// Pre-create an org that would collide with the slug of "collision-test".
+	_, err := env.s.CreateOrg(context.Background(), store.CreateOrgParams{
+		ID:        uuid.New().String(),
+		Name:      "collision-test",
+		Slug:      "collision-test",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("pre-create org: %v", err)
+	}
+
+	resp := postJSON(t, env.srv, "/api/orgs", tok, map[string]any{"name": "Collision Test"})
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+
+	slug, _ := body["slug"].(string)
+	if !strings.HasPrefix(slug, "collision-test-") {
+		t.Errorf("expected slug with suffix, got %q", slug)
+	}
+}
+
+func TestCreateOrg_NoAuth_Returns401(t *testing.T) {
+	env := newAccountsTestEnv(t)
+
+	resp := postJSON(t, env.srv, "/api/orgs", "", map[string]any{"name": "No Auth Org"})
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
