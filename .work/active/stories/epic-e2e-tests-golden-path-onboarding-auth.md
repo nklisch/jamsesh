@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path-onboarding-auth
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-golden-path
 depends_on: [epic-e2e-tests-golden-path-ccdriver-env-fix]
@@ -131,3 +131,18 @@ The same `token=([A-Za-z0-9]+)` regex used for magic-link tokens extracts it.
 
 `go.mod` and `go.sum` for both `jamsesh` root and `jamsesh/tests/e2e` are
 unchanged. All helpers use stdlib only.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**:
+- Hardcoded `alice@example.com` / `bob@example.com` could conflict if tests share a MailHog container across processes. Filed as `onboarding-test-randomize-emails` in `.work/backlog/`.
+
+**Nits**:
+- Token regex `[A-Za-z0-9]+` broader than actual `[0-9a-f]+` from `hex.EncodeToString`. Functionally correct but doesn't document the contract.
+- `magicLinkTokenRE` and `inviteTokenRE` are identical — could be one constant.
+- Playwright extension grew from 1 test to 3 (beyond story scope, but extra coverage is welcome).
+
+**Notes**: The invite-token-vs-magic-link-token ordering (capture invite from MailHog before Bob's magic-link email arrives) is a subtle correctness point well-caught at implementation time and documented in the implementation notes. The 7-step flow reads top-to-bottom as documentation of the user journey. Helpers (`signInViaMagicLink`, `createOrg`, `inviteToOrg`, etc.) compose naturally for the next journey stories. `binary.Build` uses `sync.Once` correctly; `mailhog.LatestMessageTo` polls with a reasonable timeout.
