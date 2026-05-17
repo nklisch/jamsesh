@@ -166,6 +166,56 @@ func (q *Queries) ListSessionsForOrg(ctx context.Context, orgID string) ([]Sessi
 	return items, nil
 }
 
+const listSessionsForOrgWithCursor = `-- name: ListSessionsForOrgWithCursor :many
+SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at, end_reason, finalize_locked_by_account_id
+FROM sessions
+WHERE org_id = ? AND created_at < ?
+ORDER BY created_at DESC
+LIMIT ?
+`
+
+type ListSessionsForOrgWithCursorParams struct {
+	OrgID     string    `json:"org_id"`
+	CreatedAt time.Time `json:"created_at"`
+	Limit     int64     `json:"limit"`
+}
+
+func (q *Queries) ListSessionsForOrgWithCursor(ctx context.Context, arg ListSessionsForOrgWithCursorParams) ([]Session, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionsForOrgWithCursor, arg.OrgID, arg.CreatedAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Session
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.Goal,
+			&i.WritableScope,
+			&i.DefaultMode,
+			&i.BaseSha,
+			&i.Status,
+			&i.CreatedAt,
+			&i.EndedAt,
+			&i.EndReason,
+			&i.FinalizeLockedByAccountID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setFinalizeLock = `-- name: SetFinalizeLock :exec
 UPDATE sessions
 SET finalize_locked_by_account_id = ?

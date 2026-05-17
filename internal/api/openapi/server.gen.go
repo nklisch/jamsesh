@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -188,18 +189,36 @@ func (e PatchSessionRequestDefaultMode) Valid() bool {
 	}
 }
 
+// Defines values for RefMode.
+const (
+	RefModeIsolated RefMode = "isolated"
+	RefModeSync     RefMode = "sync"
+)
+
+// Valid indicates whether the value is a known member of the RefMode enum.
+func (e RefMode) Valid() bool {
+	switch e {
+	case RefModeIsolated:
+		return true
+	case RefModeSync:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SessionDefaultMode.
 const (
-	Isolated SessionDefaultMode = "isolated"
-	Sync     SessionDefaultMode = "sync"
+	SessionDefaultModeIsolated SessionDefaultMode = "isolated"
+	SessionDefaultModeSync     SessionDefaultMode = "sync"
 )
 
 // Valid indicates whether the value is a known member of the SessionDefaultMode enum.
 func (e SessionDefaultMode) Valid() bool {
 	switch e {
-	case Isolated:
+	case SessionDefaultModeIsolated:
 		return true
-	case Sync:
+	case SessionDefaultModeSync:
 		return true
 	default:
 		return false
@@ -432,6 +451,19 @@ type CreateSessionRequest struct {
 // CreateSessionRequestDefaultMode Default ref mode for session participants
 type CreateSessionRequestDefaultMode string
 
+// DigestResponse Turn-start digest for the local binary's additionalContext injection.
+// Contains a formatted text block summarising activity since the cursor,
+// and a next_cursor for the next call.
+type DigestResponse struct {
+	// NextCursor Max event seq seen in this digest. Pass as `since` on the next call.
+	NextCursor int64 `json:"next_cursor"`
+
+	// Text Formatted plain-text digest following PROTOCOL.md > Session state > Digest.
+	// Includes peer commit activity, comments, conflicts, mode changes, and
+	// a current-state summary (goal, your refs, draft tip).
+	Text string `json:"text"`
+}
+
 // ErrorEnvelope defines model for ErrorEnvelope.
 type ErrorEnvelope struct {
 	// Details Optional structured context for the error. Shape is
@@ -657,6 +689,21 @@ type PresenceUpdatedPayload struct {
 	UserId string `json:"user_id"`
 }
 
+// Ref A git ref in the session bare repository with its current mode.
+type Ref struct {
+	// Mode Collaboration mode for this ref (per-ref override or session default)
+	Mode RefMode `json:"mode"`
+
+	// Ref Full ref name (e.g. refs/heads/jam/<session>/<user>/<branch>)
+	Ref string `json:"ref"`
+
+	// Sha Current tip commit SHA (40 hex chars)
+	Sha string `json:"sha"`
+}
+
+// RefMode Collaboration mode for this ref (per-ref override or session default)
+type RefMode string
+
 // RefForkedPayload A participant forked a new session ref. PROTOCOL.md canonical fields: ref, parent_sha, mode.
 type RefForkedPayload struct {
 	// Mode The collaboration mode of the new ref (sync or isolated)
@@ -667,6 +714,12 @@ type RefForkedPayload struct {
 
 	// Ref The new ref name (e.g. jam/<session>/<user>/<branch>)
 	Ref string `json:"ref"`
+}
+
+// RefListResponse All refs in the session repository with mode annotations.
+type RefListResponse struct {
+	// Refs All session refs (jam/* namespace)
+	Refs []Ref `json:"refs"`
 }
 
 // Session defines model for Session.
@@ -732,6 +785,16 @@ type SessionFinalizingPayload struct {
 	ByUserId string `json:"by_user_id"`
 }
 
+// SessionListResponse Cursor-paginated list of sessions.
+type SessionListResponse struct {
+	// Items Sessions on this page, ordered by created_at DESC
+	Items []Session `json:"items"`
+
+	// NextCursor Opaque cursor token. Pass as `cursor` query parameter to fetch the
+	// next page. Absent or null when there are no more pages.
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+
 // TokenPair defines model for TokenPair.
 type TokenPair struct {
 	AccessExpiresAt  time.Time `json:"access_expires_at"`
@@ -773,6 +836,23 @@ type RefreshTokenJSONBody struct {
 type RevokeTokenJSONBody struct {
 	RevokeAll bool   `json:"revoke_all,omitempty"`
 	Token     string `json:"token"`
+}
+
+// ListSessionsParams defines parameters for ListSessions.
+type ListSessionsParams struct {
+	// Cursor Opaque cursor from a previous response's next_cursor field.
+	// Omit to start from the first page.
+	Cursor string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Maximum number of sessions to return per page
+	Limit int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetSessionDigestParams defines parameters for GetSessionDigest.
+type GetSessionDigestParams struct {
+	// Since Event seq to start from (exclusive). Pass 0 or omit to get all events.
+	// Use the next_cursor from the previous response on subsequent calls.
+	Since int64 `form:"since,omitempty" json:"since,omitempty"`
 }
 
 // ExchangeMagicLinkJSONRequestBody defines body for ExchangeMagicLink for application/json ContentType.
@@ -1165,18 +1245,30 @@ type ServerInterface interface {
 	// List members of an org (requires creator or member role)
 	// (GET /api/orgs/{orgID}/members)
 	ListOrgMembers(w http.ResponseWriter, r *http.Request, orgID string)
+	// List sessions visible to the caller (active + recent), cursor-paginated
+	// (GET /api/orgs/{orgID}/sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request, orgID string, params ListSessionsParams)
 	// Create a new session in the org; the authenticated account becomes the creator
 	// (POST /api/orgs/{orgID}/sessions)
 	CreateSession(w http.ResponseWriter, r *http.Request, orgID string)
+	// Get a session's metadata and member list
+	// (GET /api/orgs/{orgID}/sessions/{sessionID})
+	GetSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
 	// Update goal, scope (widening only), or default_mode; creator only
 	// (PATCH /api/orgs/{orgID}/sessions/{sessionID})
 	PatchSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
 	// Abandon the session without finalizing; sets status=ended, end_reason=abandoned; creator only
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/abandon)
 	AbandonSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
+	// Assembled turn-start digest for additionalContext injection
+	// (GET /api/orgs/{orgID}/sessions/{sessionID}/digest)
+	GetSessionDigest(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, params GetSessionDigestParams)
 	// Transition session to finalizing; idempotent if already finalizing
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize)
 	FinalizeSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
+	// List all refs in the session bare repository with mode and tip SHA
+	// (GET /api/orgs/{orgID}/sessions/{sessionID}/refs)
+	ListSessionRefs(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -1249,9 +1341,21 @@ func (_ Unimplemented) ListOrgMembers(w http.ResponseWriter, r *http.Request, or
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List sessions visible to the caller (active + recent), cursor-paginated
+// (GET /api/orgs/{orgID}/sessions)
+func (_ Unimplemented) ListSessions(w http.ResponseWriter, r *http.Request, orgID string, params ListSessionsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Create a new session in the org; the authenticated account becomes the creator
 // (POST /api/orgs/{orgID}/sessions)
 func (_ Unimplemented) CreateSession(w http.ResponseWriter, r *http.Request, orgID string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a session's metadata and member list
+// (GET /api/orgs/{orgID}/sessions/{sessionID})
+func (_ Unimplemented) GetSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1267,9 +1371,21 @@ func (_ Unimplemented) AbandonSession(w http.ResponseWriter, r *http.Request, or
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Assembled turn-start digest for additionalContext injection
+// (GET /api/orgs/{orgID}/sessions/{sessionID}/digest)
+func (_ Unimplemented) GetSessionDigest(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, params GetSessionDigestParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Transition session to finalizing; idempotent if already finalizing
 // (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize)
 func (_ Unimplemented) FinalizeSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List all refs in the session bare repository with mode and tip SHA
+// (GET /api/orgs/{orgID}/sessions/{sessionID}/refs)
+func (_ Unimplemented) ListSessionRefs(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1517,6 +1633,67 @@ func (siw *ServerInterfaceWrapper) ListOrgMembers(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSessionsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r, orgID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateSession operation middleware
 func (siw *ServerInterfaceWrapper) CreateSession(w http.ResponseWriter, r *http.Request) {
 
@@ -1540,6 +1717,47 @@ func (siw *ServerInterfaceWrapper) CreateSession(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateSession(w, r, orgID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSession operation middleware
+func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", chi.URLParam(r, "sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSession(w, r, orgID, sessionID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1631,6 +1849,63 @@ func (siw *ServerInterfaceWrapper) AbandonSession(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetSessionDigest operation middleware
+func (siw *ServerInterfaceWrapper) GetSessionDigest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", chi.URLParam(r, "sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSessionDigestParams
+
+	// ------------- Optional query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "since", r.URL.Query(), &params.Since, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "since"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "since", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSessionDigest(w, r, orgID, sessionID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // FinalizeSession operation middleware
 func (siw *ServerInterfaceWrapper) FinalizeSession(w http.ResponseWriter, r *http.Request) {
 
@@ -1663,6 +1938,47 @@ func (siw *ServerInterfaceWrapper) FinalizeSession(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.FinalizeSession(w, r, orgID, sessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSessionRefs operation middleware
+func (siw *ServerInterfaceWrapper) ListSessionRefs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", chi.URLParam(r, "sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessionRefs(w, r, orgID, sessionID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1819,7 +2135,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/orgs/{orgID}/members", wrapper.ListOrgMembers)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/orgs/{orgID}/sessions", wrapper.ListSessions)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions", wrapper.CreateSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}", wrapper.GetSession)
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}", wrapper.PatchSession)
@@ -1828,7 +2150,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/abandon", wrapper.AbandonSession)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/digest", wrapper.GetSessionDigest)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/finalize", wrapper.FinalizeSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/refs", wrapper.ListSessionRefs)
 	})
 
 	return r
@@ -2310,6 +2638,71 @@ func (response ListOrgMembers403JSONResponse) VisitListOrgMembersResponse(w http
 	return err
 }
 
+type ListSessionsRequestObject struct {
+	OrgID  string `json:"orgID"`
+	Params ListSessionsParams
+}
+
+type ListSessionsResponseObject interface {
+	VisitListSessionsResponse(w http.ResponseWriter) error
+}
+
+type ListSessions200JSONResponse SessionListResponse
+
+func (response ListSessions200JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessions400JSONResponse ErrorEnvelope
+
+func (response ListSessions400JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessions401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListSessions401JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessions403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListSessions403JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateSessionRequestObject struct {
 	OrgID string `json:"orgID"`
 	Body  *CreateSessionJSONRequestBody
@@ -2371,6 +2764,71 @@ func (response CreateSession403JSONResponse) VisitCreateSessionResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionRequestObject struct {
+	OrgID     string `json:"orgID"`
+	SessionID string `json:"sessionID"`
+}
+
+type GetSessionResponseObject interface {
+	VisitGetSessionResponse(w http.ResponseWriter) error
+}
+
+type GetSession200JSONResponse Session
+
+func (response GetSession200JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSession401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetSession401JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSession403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetSession403JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSession404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSession404JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2534,6 +2992,72 @@ func (response AbandonSession409JSONResponse) VisitAbandonSessionResponse(w http
 	return err
 }
 
+type GetSessionDigestRequestObject struct {
+	OrgID     string `json:"orgID"`
+	SessionID string `json:"sessionID"`
+	Params    GetSessionDigestParams
+}
+
+type GetSessionDigestResponseObject interface {
+	VisitGetSessionDigestResponse(w http.ResponseWriter) error
+}
+
+type GetSessionDigest200JSONResponse DigestResponse
+
+func (response GetSessionDigest200JSONResponse) VisitGetSessionDigestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionDigest401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetSessionDigest401JSONResponse) VisitGetSessionDigestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionDigest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetSessionDigest403JSONResponse) VisitGetSessionDigestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionDigest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSessionDigest404JSONResponse) VisitGetSessionDigestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type FinalizeSessionRequestObject struct {
 	OrgID     string `json:"orgID"`
 	SessionID string `json:"sessionID"`
@@ -2613,6 +3137,71 @@ func (response FinalizeSession409JSONResponse) VisitFinalizeSessionResponse(w ht
 	return err
 }
 
+type ListSessionRefsRequestObject struct {
+	OrgID     string `json:"orgID"`
+	SessionID string `json:"sessionID"`
+}
+
+type ListSessionRefsResponseObject interface {
+	VisitListSessionRefsResponse(w http.ResponseWriter) error
+}
+
+type ListSessionRefs200JSONResponse RefListResponse
+
+func (response ListSessionRefs200JSONResponse) VisitListSessionRefsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionRefs401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListSessionRefs401JSONResponse) VisitListSessionRefsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionRefs403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListSessionRefs403JSONResponse) VisitListSessionRefsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionRefs404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListSessionRefs404JSONResponse) VisitListSessionRefsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Exchange a magic-link token for a portal token pair
@@ -2648,18 +3237,30 @@ type StrictServerInterface interface {
 	// List members of an org (requires creator or member role)
 	// (GET /api/orgs/{orgID}/members)
 	ListOrgMembers(ctx context.Context, request ListOrgMembersRequestObject) (ListOrgMembersResponseObject, error)
+	// List sessions visible to the caller (active + recent), cursor-paginated
+	// (GET /api/orgs/{orgID}/sessions)
+	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
 	// Create a new session in the org; the authenticated account becomes the creator
 	// (POST /api/orgs/{orgID}/sessions)
 	CreateSession(ctx context.Context, request CreateSessionRequestObject) (CreateSessionResponseObject, error)
+	// Get a session's metadata and member list
+	// (GET /api/orgs/{orgID}/sessions/{sessionID})
+	GetSession(ctx context.Context, request GetSessionRequestObject) (GetSessionResponseObject, error)
 	// Update goal, scope (widening only), or default_mode; creator only
 	// (PATCH /api/orgs/{orgID}/sessions/{sessionID})
 	PatchSession(ctx context.Context, request PatchSessionRequestObject) (PatchSessionResponseObject, error)
 	// Abandon the session without finalizing; sets status=ended, end_reason=abandoned; creator only
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/abandon)
 	AbandonSession(ctx context.Context, request AbandonSessionRequestObject) (AbandonSessionResponseObject, error)
+	// Assembled turn-start digest for additionalContext injection
+	// (GET /api/orgs/{orgID}/sessions/{sessionID}/digest)
+	GetSessionDigest(ctx context.Context, request GetSessionDigestRequestObject) (GetSessionDigestResponseObject, error)
 	// Transition session to finalizing; idempotent if already finalizing
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize)
 	FinalizeSession(ctx context.Context, request FinalizeSessionRequestObject) (FinalizeSessionResponseObject, error)
+	// List all refs in the session bare repository with mode and tip SHA
+	// (GET /api/orgs/{orgID}/sessions/{sessionID}/refs)
+	ListSessionRefs(ctx context.Context, request ListSessionRefsRequestObject) (ListSessionRefsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -3025,6 +3626,33 @@ func (sh *strictHandler) ListOrgMembers(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// ListSessions operation middleware
+func (sh *strictHandler) ListSessions(w http.ResponseWriter, r *http.Request, orgID string, params ListSessionsParams) {
+	var request ListSessionsRequestObject
+
+	request.OrgID = orgID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessions(ctx, request.(ListSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionsResponseObject); ok {
+		if err := validResponse.VisitListSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CreateSession operation middleware
 func (sh *strictHandler) CreateSession(w http.ResponseWriter, r *http.Request, orgID string) {
 	var request CreateSessionRequestObject
@@ -3051,6 +3679,33 @@ func (sh *strictHandler) CreateSession(w http.ResponseWriter, r *http.Request, o
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateSessionResponseObject); ok {
 		if err := validResponse.VisitCreateSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSession operation middleware
+func (sh *strictHandler) GetSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
+	var request GetSessionRequestObject
+
+	request.OrgID = orgID
+	request.SessionID = sessionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSession(ctx, request.(GetSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSessionResponseObject); ok {
+		if err := validResponse.VisitGetSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3119,6 +3774,34 @@ func (sh *strictHandler) AbandonSession(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// GetSessionDigest operation middleware
+func (sh *strictHandler) GetSessionDigest(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, params GetSessionDigestParams) {
+	var request GetSessionDigestRequestObject
+
+	request.OrgID = orgID
+	request.SessionID = sessionID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSessionDigest(ctx, request.(GetSessionDigestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSessionDigest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSessionDigestResponseObject); ok {
+		if err := validResponse.VisitGetSessionDigestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // FinalizeSession operation middleware
 func (sh *strictHandler) FinalizeSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
 	var request FinalizeSessionRequestObject
@@ -3146,111 +3829,154 @@ func (sh *strictHandler) FinalizeSession(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// ListSessionRefs operation middleware
+func (sh *strictHandler) ListSessionRefs(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
+	var request ListSessionRefsRequestObject
+
+	request.OrgID = orgID
+	request.SessionID = sessionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessionRefs(ctx, request.(ListSessionRefsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessionRefs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionRefsResponseObject); ok {
+		if err := validResponse.VisitListSessionRefsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"wPOKQki0067u/i8AAP//",
+	"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",
+	"MYTw/ub/AgAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

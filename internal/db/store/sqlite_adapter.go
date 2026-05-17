@@ -405,6 +405,22 @@ func (a *sqliteAdapter) ListSessionsForOrg(ctx context.Context, orgID string) ([
 	return sessions, nil
 }
 
+func (a *sqliteAdapter) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
+	rows, err := a.q.ListSessionsForOrgWithCursor(ctx, sqlitestore.ListSessionsForOrgWithCursorParams{
+		OrgID:     p.OrgID,
+		CreatedAt: p.Before,
+		Limit:     p.Limit,
+	})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	sessions := make([]Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = sqliteSession(r)
+	}
+	return sessions, nil
+}
+
 func (a *sqliteAdapter) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
 	return mapSQLiteErr(a.q.UpdateSessionStatus(ctx, sqlitestore.UpdateSessionStatusParams{
 		OrgID:  p.OrgID,
@@ -716,6 +732,30 @@ func (a *sqliteAdapter) InsertEvent(ctx context.Context, p InsertEventParams) er
 
 func (a *sqliteAdapter) ListEventsSince(ctx context.Context, p ListEventsSinceParams) ([]Event, error) {
 	rows, err := a.q.ListEventsSince(ctx, sqlitestore.ListEventsSinceParams{
+		SessionID: p.SessionID,
+		Seq:       p.SinceSeq,
+		Limit:     p.Limit,
+	})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	events := make([]Event, len(rows))
+	for i, r := range rows {
+		events[i] = Event{
+			ID:        r.ID,
+			OrgID:     r.OrgID,
+			SessionID: r.SessionID,
+			Seq:       r.Seq,
+			Type:      r.Type,
+			Payload:   r.Payload,
+			CreatedAt: r.CreatedAt,
+		}
+	}
+	return events, nil
+}
+
+func (a *sqliteAdapter) ListEventsSinceForDigest(ctx context.Context, p ListEventsSinceForDigestParams) ([]Event, error) {
+	rows, err := a.q.ListEventsSinceForDigest(ctx, sqlitestore.ListEventsSinceForDigestParams{
 		SessionID: p.SessionID,
 		Seq:       p.SinceSeq,
 		Limit:     p.Limit,
@@ -1050,6 +1090,17 @@ func (s *sqliteTxStore) ListSessionsForOrg(ctx context.Context, orgID string) ([
 	}
 	return sessions, nil
 }
+func (s *sqliteTxStore) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
+	rows, err := s.q.ListSessionsForOrgWithCursor(ctx, sqlitestore.ListSessionsForOrgWithCursorParams{OrgID: p.OrgID, CreatedAt: p.Before, Limit: p.Limit})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	sessions := make([]Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = sqliteSession(r)
+	}
+	return sessions, nil
+}
 func (s *sqliteTxStore) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
 	return mapSQLiteErr(s.q.UpdateSessionStatus(ctx, sqlitestore.UpdateSessionStatusParams{OrgID: p.OrgID, ID: p.ID, Status: p.Status}))
 }
@@ -1209,6 +1260,17 @@ func (s *sqliteTxStore) InsertEvent(ctx context.Context, p InsertEventParams) er
 }
 func (s *sqliteTxStore) ListEventsSince(ctx context.Context, p ListEventsSinceParams) ([]Event, error) {
 	rows, err := s.q.ListEventsSince(ctx, sqlitestore.ListEventsSinceParams{SessionID: p.SessionID, Seq: p.SinceSeq, Limit: p.Limit})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	events := make([]Event, len(rows))
+	for i, r := range rows {
+		events[i] = Event{ID: r.ID, OrgID: r.OrgID, SessionID: r.SessionID, Seq: r.Seq, Type: r.Type, Payload: r.Payload, CreatedAt: r.CreatedAt}
+	}
+	return events, nil
+}
+func (s *sqliteTxStore) ListEventsSinceForDigest(ctx context.Context, p ListEventsSinceForDigestParams) ([]Event, error) {
+	rows, err := s.q.ListEventsSinceForDigest(ctx, sqlitestore.ListEventsSinceForDigestParams{SessionID: p.SessionID, Seq: p.SinceSeq, Limit: p.Limit})
 	if err != nil {
 		return nil, mapSQLiteErr(err)
 	}

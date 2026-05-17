@@ -108,6 +108,24 @@ func (h *sessionsOnlyStrict) AcceptOrgInvite(_ context.Context, _ openapi.Accept
 var _ openapi.StrictServerInterface = (*sessionsOnlyStrict)(nil)
 
 // ---------------------------------------------------------------------------
+// HTTP helpers (extended)
+// ---------------------------------------------------------------------------
+
+func getRequest(t *testing.T, srv *httptest.Server, path, bearer string) *http.Response {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+path, nil)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
+}
+
+// ---------------------------------------------------------------------------
 // Test environment
 // ---------------------------------------------------------------------------
 
@@ -148,10 +166,14 @@ func newTestEnv(t *testing.T) *testEnv {
 	r := chi.NewRouter()
 	r.Group(func(r chi.Router) {
 		r.Use(tokens.BearerMiddleware(svc))
+		r.Get("/api/orgs/{orgID}/sessions", apiWrapper.ListSessions)
 		r.Post("/api/orgs/{orgID}/sessions", apiWrapper.CreateSession)
+		r.Get("/api/orgs/{orgID}/sessions/{sessionID}", apiWrapper.GetSession)
 		r.Patch("/api/orgs/{orgID}/sessions/{sessionID}", apiWrapper.PatchSession)
 		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/finalize", apiWrapper.FinalizeSession)
 		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/abandon", apiWrapper.AbandonSession)
+		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/refs", apiWrapper.ListSessionRefs)
+		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/digest", apiWrapper.GetSessionDigest)
 	})
 
 	srv := httptest.NewServer(r)

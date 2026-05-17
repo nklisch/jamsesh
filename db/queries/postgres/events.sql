@@ -18,3 +18,18 @@ FROM events
 WHERE session_id = $1 AND seq > $2
 ORDER BY seq ASC
 LIMIT $3;
+
+-- name: ListEventsSinceForDigest :many
+SELECT id, org_id, session_id, seq, type, payload, created_at
+FROM events
+WHERE session_id = $1 AND seq > $2
+  AND type = ANY(ARRAY[
+    'commit.arrived',
+    'comment.added',
+    'comment.resolved',
+    'conflict.detected',
+    'conflict.resolved',
+    'mode.changed'
+  ])
+ORDER BY seq ASC
+LIMIT $3;

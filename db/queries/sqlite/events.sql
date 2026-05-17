@@ -18,3 +18,18 @@ FROM events
 WHERE session_id = ? AND seq > ?
 ORDER BY seq ASC
 LIMIT ?;
+
+-- name: ListEventsSinceForDigest :many
+SELECT id, org_id, session_id, seq, type, payload, created_at
+FROM events
+WHERE session_id = ? AND seq > ?
+  AND type IN (
+    'commit.arrived',
+    'comment.added',
+    'comment.resolved',
+    'conflict.detected',
+    'conflict.resolved',
+    'mode.changed'
+  )
+ORDER BY seq ASC
+LIMIT ?;

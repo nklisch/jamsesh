@@ -77,6 +77,18 @@ func (t *tokensOnlyHandler) FinalizeSession(_ context.Context, _ openapi.Finaliz
 func (t *tokensOnlyHandler) AbandonSession(_ context.Context, _ openapi.AbandonSessionRequestObject) (openapi.AbandonSessionResponseObject, error) {
 	panic("AbandonSession: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) ListSessions(_ context.Context, _ openapi.ListSessionsRequestObject) (openapi.ListSessionsResponseObject, error) {
+	panic("ListSessions: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) GetSession(_ context.Context, _ openapi.GetSessionRequestObject) (openapi.GetSessionResponseObject, error) {
+	panic("GetSession: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) ListSessionRefs(_ context.Context, _ openapi.ListSessionRefsRequestObject) (openapi.ListSessionRefsResponseObject, error) {
+	panic("ListSessionRefs: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) GetSessionDigest(_ context.Context, _ openapi.GetSessionDigestRequestObject) (openapi.GetSessionDigestResponseObject, error) {
+	panic("GetSessionDigest: not implemented in token handler tests")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

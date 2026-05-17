@@ -439,6 +439,9 @@ type SessionStore interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	GetSession(ctx context.Context, orgID, id string) (Session, error)
 	ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error)
+	// ListSessionsForOrgWithCursor returns sessions ordered by created_at DESC
+	// with created_at < before (cursor-based pagination).
+	ListSessionsForOrgWithCursor(ctx context.Context, arg ListSessionsForOrgWithCursorParams) ([]Session, error)
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	UpdateSessionGoalScopeMode(ctx context.Context, arg UpdateSessionGoalScopeModeParams) error
 	SetSessionBaseSHA(ctx context.Context, arg SetSessionBaseSHAParams) error
@@ -532,6 +535,20 @@ type ListEventsSinceParams struct {
 	Limit     int64
 }
 
+// ListEventsSinceForDigestParams are the parameters for the ListEventsSinceForDigest query.
+type ListEventsSinceForDigestParams struct {
+	SessionID string
+	SinceSeq  int64
+	Limit     int64
+}
+
+// ListSessionsForOrgWithCursorParams are the parameters for cursor-paginated session listing.
+type ListSessionsForOrgWithCursorParams struct {
+	OrgID     string
+	Before    time.Time // exclusive upper bound on created_at
+	Limit     int64
+}
+
 // UpsertPresenceParams are the parameters for UpsertPresence.
 type UpsertPresenceParams struct {
 	OrgID        string
@@ -557,6 +574,9 @@ type EventLogStore interface {
 	InsertEvent(ctx context.Context, p InsertEventParams) error
 	// ListEventsSince returns events with seq > sinceSeq in ascending order.
 	ListEventsSince(ctx context.Context, p ListEventsSinceParams) ([]Event, error)
+	// ListEventsSinceForDigest returns only digest-relevant event types
+	// (commit.arrived, comment.*, conflict.*, mode.changed) with seq > sinceSeq.
+	ListEventsSinceForDigest(ctx context.Context, p ListEventsSinceForDigestParams) ([]Event, error)
 }
 
 // PresenceStore covers presence upserts and reads.

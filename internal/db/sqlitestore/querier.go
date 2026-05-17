@@ -45,6 +45,7 @@ type Querier interface {
 	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
 	InsertOrgInvite(ctx context.Context, arg InsertOrgInviteParams) (OrgInvite, error)
 	ListEventsSince(ctx context.Context, arg ListEventsSinceParams) ([]Event, error)
+	ListEventsSinceForDigest(ctx context.Context, arg ListEventsSinceForDigestParams) ([]Event, error)
 	ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OauthToken, error)
 	ListOrgMembers(ctx context.Context, orgID string) ([]ListOrgMembersRow, error)
 	ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error)
@@ -59,6 +60,7 @@ type Querier interface {
 	// file that does not restrict by org_id in WHERE.
 	ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]ListSessionMembershipsForAccountRow, error)
 	ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error)
+	ListSessionsForOrgWithCursor(ctx context.Context, arg ListSessionsForOrgWithCursorParams) ([]Session, error)
 	MarkOrgInviteAccepted(ctx context.Context, arg MarkOrgInviteAcceptedParams) error
 	RemoveOrgMember(ctx context.Context, arg RemoveOrgMemberParams) error
 	RemoveSessionMember(ctx context.Context, arg RemoveSessionMemberParams) error

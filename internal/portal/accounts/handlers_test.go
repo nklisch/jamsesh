@@ -114,6 +114,18 @@ func (a *accountsOnlyStrict) FinalizeSession(_ context.Context, _ openapi.Finali
 func (a *accountsOnlyStrict) AbandonSession(_ context.Context, _ openapi.AbandonSessionRequestObject) (openapi.AbandonSessionResponseObject, error) {
 	panic("AbandonSession: not wired in accounts tests")
 }
+func (a *accountsOnlyStrict) ListSessions(_ context.Context, _ openapi.ListSessionsRequestObject) (openapi.ListSessionsResponseObject, error) {
+	panic("ListSessions: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) GetSession(_ context.Context, _ openapi.GetSessionRequestObject) (openapi.GetSessionResponseObject, error) {
+	panic("GetSession: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) ListSessionRefs(_ context.Context, _ openapi.ListSessionRefsRequestObject) (openapi.ListSessionRefsResponseObject, error) {
+	panic("ListSessionRefs: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) GetSessionDigest(_ context.Context, _ openapi.GetSessionDigestRequestObject) (openapi.GetSessionDigestResponseObject, error) {
+	panic("GetSessionDigest: not wired in accounts tests")
+}
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 

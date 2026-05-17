@@ -100,6 +100,26 @@ func (c *combinedHandler) AbandonSession(ctx context.Context, req openapi.Abando
 	return c.SessionsHandler.AbandonSession(ctx, req)
 }
 
+// ListSessions delegates to the sessions handler.
+func (c *combinedHandler) ListSessions(ctx context.Context, req openapi.ListSessionsRequestObject) (openapi.ListSessionsResponseObject, error) {
+	return c.SessionsHandler.ListSessions(ctx, req)
+}
+
+// GetSession delegates to the sessions handler.
+func (c *combinedHandler) GetSession(ctx context.Context, req openapi.GetSessionRequestObject) (openapi.GetSessionResponseObject, error) {
+	return c.SessionsHandler.GetSession(ctx, req)
+}
+
+// ListSessionRefs delegates to the sessions handler.
+func (c *combinedHandler) ListSessionRefs(ctx context.Context, req openapi.ListSessionRefsRequestObject) (openapi.ListSessionRefsResponseObject, error) {
+	return c.SessionsHandler.ListSessionRefs(ctx, req)
+}
+
+// GetSessionDigest delegates to the sessions handler.
+func (c *combinedHandler) GetSessionDigest(ctx context.Context, req openapi.GetSessionDigestRequestObject) (openapi.GetSessionDigestResponseObject, error) {
+	return c.SessionsHandler.GetSessionDigest(ctx, req)
+}
+
 // compile-time assertion that combinedHandler satisfies the full interface.
 var _ openapi.StrictServerInterface = (*combinedHandler)(nil)
 
@@ -260,11 +280,15 @@ func main() {
 				// so no org-role gate applies yet.
 				r.Post("/orgs/{orgID}/invites/{inviteID}/accept", apiWrapper.AcceptOrgInvite)
 
-				// Sessions: any org member can create; other ops are checked in the handler.
+				// Sessions: any org member can create/list; other ops are checked in the handler.
+				r.Get("/orgs/{orgID}/sessions", apiWrapper.ListSessions)
 				r.Post("/orgs/{orgID}/sessions", apiWrapper.CreateSession)
+				r.Get("/orgs/{orgID}/sessions/{sessionID}", apiWrapper.GetSession)
 				r.Patch("/orgs/{orgID}/sessions/{sessionID}", apiWrapper.PatchSession)
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize", apiWrapper.FinalizeSession)
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/abandon", apiWrapper.AbandonSession)
+				r.Get("/orgs/{orgID}/sessions/{sessionID}/refs", apiWrapper.ListSessionRefs)
+				r.Get("/orgs/{orgID}/sessions/{sessionID}/digest", apiWrapper.GetSessionDigest)
 			})
 		},
 	})

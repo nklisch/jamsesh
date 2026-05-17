@@ -1,14 +1,14 @@
 ---
 id: epic-portal-api-sessions-rest-listing-state-digest-refs
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-api-sessions-rest
 depends_on: [epic-portal-api-sessions-rest-sessions-lifecycle]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Sessions REST — Listing, State, Digest, Refs
@@ -42,3 +42,15 @@ Add the 4 read endpoints: list sessions, get session, list refs, get digest. Plu
 
 - Cursor format: base64url(json{filter_hash, last_seq, last_id}). On request, decode and verify filter_hash matches a recomputed hash of the current query params.
 - The digest's "current state" section reads session metadata + your-refs from session_members + ref_modes.
+
+## Implementation notes
+
+- `internal/portal/pagination/cursor.go` — `Encode`/`Decode` + `FilterHash` + `NewCursor`. Cursor stores `last_created_at_ns` (Unix nanoseconds) as the exclusive upper bound for the `created_at DESC` sort. Filter hash is SHA-256 of sorted `k=v` pairs.
+- `internal/portal/sessions/listing.go` — `ListSessions` handler. Fetches `limit+1` rows to detect next page; builds cursor from last row's `created_at`+`id`. Returns 400 `pagination.cursor_filter_mismatch` on hash mismatch.
+- `internal/portal/sessions/state.go` — `GetSession` (org+session member check), `ListSessionRefs` (opens bare repo via `git.PlainOpen`, iterates refs under `refs/heads/jam/<sessionID>/`, looks up mode from `ref_modes` or session `default_mode`), `GetSessionDigest` (fetches digest-relevant events, assembles plain-text block per PROTOCOL.md sections: peer activity, comments, conflicts, mode changes, state summary).
+- SQL: `ListSessionsForOrgWithCursor` (`WHERE org_id=? AND created_at < ? ORDER BY created_at DESC LIMIT ?`), `ListEventsSinceForDigest` (filters to 6 digest-relevant event types).
+- Both queries added to sqlite and postgres dialect files; sqlc regenerated; store interface + both adapters (outer + TxStore) updated.
+- `docs/openapi.yaml`: 4 new paths (GET /sessions, GET /sessions/{id}, GET /sessions/{id}/refs, GET /sessions/{id}/digest) + 4 schemas (SessionListResponse, Ref, RefListResponse, DigestResponse). GET methods added to existing path blocks (no duplicate keys).
+- `cmd/portal/main.go`: 4 new route registrations + 4 new combinedHandler delegations.
+- Test shims in auth, accounts, tokens packages updated for 4 new interface methods.
+- All existing tests pass; 9 new tests added in `listing_state_test.go` covering cursor round-trip, filter mismatch, empty repo refs, member auth, digest assembly.

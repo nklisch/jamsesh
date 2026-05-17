@@ -198,7 +198,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List sessions visible to the caller (active + recent), cursor-paginated */
+        get: operations["listSessions"];
         put?: never;
         /** Create a new session in the org; the authenticated account becomes the creator */
         post: operations["createSession"];
@@ -215,7 +216,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get a session's metadata and member list */
+        get: operations["getSession"];
         put?: never;
         post?: never;
         delete?: never;
@@ -253,6 +255,40 @@ export interface paths {
         put?: never;
         /** Abandon the session without finalizing; sets status=ended, end_reason=abandoned; creator only */
         post: operations["abandonSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}/refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all refs in the session bare repository with mode and tip SHA */
+        get: operations["listSessionRefs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assembled turn-start digest for additionalContext injection */
+        get: operations["getSessionDigest"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -778,6 +814,58 @@ export interface components {
              */
             default_mode?: "sync" | "isolated";
         };
+        /** @description Cursor-paginated list of sessions. */
+        SessionListResponse: {
+            /** @description Sessions on this page, ordered by created_at DESC */
+            items: components["schemas"]["Session"][];
+            /**
+             * @description Opaque cursor token. Pass as `cursor` query parameter to fetch the
+             *     next page. Absent or null when there are no more pages.
+             */
+            next_cursor?: string | null;
+        };
+        /** @description A git ref in the session bare repository with its current mode. */
+        Ref: {
+            /**
+             * @description Full ref name (e.g. refs/heads/jam/<session>/<user>/<branch>)
+             * @example refs/heads/jam/01JVXYZ/01ACCABC/main
+             */
+            ref: string;
+            /**
+             * @description Current tip commit SHA (40 hex chars)
+             * @example abc123def456abc123def456abc123def456abc1
+             */
+            sha: string;
+            /**
+             * @description Collaboration mode for this ref (per-ref override or session default)
+             * @example sync
+             * @enum {string}
+             */
+            mode: "sync" | "isolated";
+        };
+        /** @description All refs in the session repository with mode annotations. */
+        RefListResponse: {
+            /** @description All session refs (jam/* namespace) */
+            refs: components["schemas"]["Ref"][];
+        };
+        /**
+         * @description Turn-start digest for the local binary's additionalContext injection.
+         *     Contains a formatted text block summarising activity since the cursor,
+         *     and a next_cursor for the next call.
+         */
+        DigestResponse: {
+            /**
+             * @description Formatted plain-text digest following PROTOCOL.md > Session state > Digest.
+             *     Includes peer commit activity, comments, conflicts, mode changes, and
+             *     a current-state summary (goal, your refs, draft tip).
+             */
+            text: string;
+            /**
+             * Format: int64
+             * @description Max event seq seen in this digest. Pass as `since` on the next call.
+             */
+            next_cursor: number;
+        };
     };
     responses: {
         /** @description missing or invalid bearer token */
@@ -1141,6 +1229,48 @@ export interface operations {
             };
         };
     };
+    listSessions: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Opaque cursor from a previous response's next_cursor field.
+                 *     Omit to start from the first page.
+                 */
+                cursor?: string;
+                /** @description Maximum number of sessions to return per page */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated session list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListResponse"];
+                };
+            };
+            /** @description Invalid or mismatched cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     createSession: {
         parameters: {
             query?: never;
@@ -1177,6 +1307,34 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session metadata with member list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     patchSession: {
@@ -1292,6 +1450,68 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+        };
+    };
+    listSessionRefs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ref list with mode annotations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSessionDigest: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Event seq to start from (exclusive). Pass 0 or omit to get all events.
+                 *     Use the next_cursor from the previous response on subsequent calls.
+                 */
+                since?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Formatted digest text and next cursor */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

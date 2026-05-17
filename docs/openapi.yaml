@@ -785,6 +785,77 @@ components:
           enum: [sync, isolated]
           description: Updated default ref mode
 
+    # ---------------------------------------------------------------------------
+    # Sessions listing, state, refs, digest schemas
+    # ---------------------------------------------------------------------------
+
+    SessionListResponse:
+      type: object
+      required: [items]
+      description: Cursor-paginated list of sessions.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+          description: Sessions on this page, ordered by created_at DESC
+        next_cursor:
+          type: string
+          nullable: true
+          description: |
+            Opaque cursor token. Pass as `cursor` query parameter to fetch the
+            next page. Absent or null when there are no more pages.
+
+    Ref:
+      type: object
+      required: [ref, sha, mode]
+      description: A git ref in the session bare repository with its current mode.
+      properties:
+        ref:
+          type: string
+          description: Full ref name (e.g. refs/heads/jam/<session>/<user>/<branch>)
+          example: "refs/heads/jam/01JVXYZ/01ACCABC/main"
+        sha:
+          type: string
+          description: Current tip commit SHA (40 hex chars)
+          example: "abc123def456abc123def456abc123def456abc1"
+        mode:
+          type: string
+          enum: [sync, isolated]
+          description: Collaboration mode for this ref (per-ref override or session default)
+          example: "sync"
+
+    RefListResponse:
+      type: object
+      required: [refs]
+      description: All refs in the session repository with mode annotations.
+      properties:
+        refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ref'
+          description: All session refs (jam/* namespace)
+
+    DigestResponse:
+      type: object
+      required: [text, next_cursor]
+      description: |
+        Turn-start digest for the local binary's additionalContext injection.
+        Contains a formatted text block summarising activity since the cursor,
+        and a next_cursor for the next call.
+      properties:
+        text:
+          type: string
+          description: |
+            Formatted plain-text digest following PROTOCOL.md > Session state > Digest.
+            Includes peer commit activity, comments, conflicts, mode changes, and
+            a current-state summary (goal, your refs, draft tip).
+        next_cursor:
+          type: integer
+          format: int64
+          description: |
+            Max event seq seen in this digest. Pass as `since` on the next call.
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -1098,6 +1169,52 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/orgs/{orgID}/sessions:
+    get:
+      summary: List sessions visible to the caller (active + recent), cursor-paginated
+      operationId: listSessions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Opaque cursor from a previous response's next_cursor field.
+            Omit to start from the first page.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Maximum number of sessions to return per page
+      responses:
+        '200':
+          description: Paginated session list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        '400':
+          description: Invalid or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       summary: Create a new session in the org; the authenticated account becomes the creator
       operationId: createSession
@@ -1135,6 +1252,37 @@ paths:
           $ref: '#/components/responses/Forbidden'
 
   /api/orgs/{orgID}/sessions/{sessionID}:
+    get:
+      summary: Get a session's metadata and member list
+      operationId: getSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      responses:
+        '200':
+          description: Session metadata with member list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     patch:
       summary: Update goal, scope (widening only), or default_mode; creator only
       operationId: patchSession
@@ -1256,3 +1404,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/refs:
+    get:
+      summary: List all refs in the session bare repository with mode and tip SHA
+      operationId: listSessionRefs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      responses:
+        '200':
+          description: Ref list with mode annotations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/digest:
+    get:
+      summary: Assembled turn-start digest for additionalContext injection
+      operationId: getSessionDigest
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            default: 0
+          description: |
+            Event seq to start from (exclusive). Pass 0 or omit to get all events.
+            Use the next_cursor from the previous response on subsequent calls.
+      responses:
+        '200':
+          description: Formatted digest text and next cursor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DigestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'

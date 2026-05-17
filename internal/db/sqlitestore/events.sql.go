@@ -119,3 +119,56 @@ func (q *Queries) ListEventsSince(ctx context.Context, arg ListEventsSinceParams
 	}
 	return items, nil
 }
+
+const listEventsSinceForDigest = `-- name: ListEventsSinceForDigest :many
+SELECT id, org_id, session_id, seq, type, payload, created_at
+FROM events
+WHERE session_id = ? AND seq > ?
+  AND type IN (
+    'commit.arrived',
+    'comment.added',
+    'comment.resolved',
+    'conflict.detected',
+    'conflict.resolved',
+    'mode.changed'
+  )
+ORDER BY seq ASC
+LIMIT ?
+`
+
+type ListEventsSinceForDigestParams struct {
+	SessionID string `json:"session_id"`
+	Seq       int64  `json:"seq"`
+	Limit     int64  `json:"limit"`
+}
+
+func (q *Queries) ListEventsSinceForDigest(ctx context.Context, arg ListEventsSinceForDigestParams) ([]Event, error) {
+	rows, err := q.db.QueryContext(ctx, listEventsSinceForDigest, arg.SessionID, arg.Seq, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Event
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.SessionID,
+			&i.Seq,
+			&i.Type,
+			&i.Payload,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -47,3 +47,10 @@ WHERE org_id = ? AND id = ?;
 -- name: DeleteSession :exec
 DELETE FROM sessions
 WHERE org_id = ? AND id = ?;
+
+-- name: ListSessionsForOrgWithCursor :many
+SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at, end_reason, finalize_locked_by_account_id
+FROM sessions
+WHERE org_id = ? AND created_at < ?
+ORDER BY created_at DESC
+LIMIT ?;

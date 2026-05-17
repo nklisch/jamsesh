@@ -404,6 +404,22 @@ func (a *postgresAdapter) ListSessionsForOrg(ctx context.Context, orgID string) 
 	return sessions, nil
 }
 
+func (a *postgresAdapter) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
+	rows, err := a.q.ListSessionsForOrgWithCursor(ctx, pgstore.ListSessionsForOrgWithCursorParams{
+		OrgID:     p.OrgID,
+		CreatedAt: p.Before,
+		Limit:     int32(p.Limit),
+	})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	sessions := make([]Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = pgSession(r)
+	}
+	return sessions, nil
+}
+
 func (a *postgresAdapter) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
 	return mapPostgresErr(a.q.UpdateSessionStatus(ctx, pgstore.UpdateSessionStatusParams{
 		OrgID:  p.OrgID,
@@ -715,6 +731,30 @@ func (a *postgresAdapter) InsertEvent(ctx context.Context, p InsertEventParams) 
 
 func (a *postgresAdapter) ListEventsSince(ctx context.Context, p ListEventsSinceParams) ([]Event, error) {
 	rows, err := a.q.ListEventsSince(ctx, pgstore.ListEventsSinceParams{
+		SessionID: p.SessionID,
+		Seq:       int32(p.SinceSeq),
+		Limit:     int32(p.Limit),
+	})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	events := make([]Event, len(rows))
+	for i, r := range rows {
+		events[i] = Event{
+			ID:        r.ID,
+			OrgID:     r.OrgID,
+			SessionID: r.SessionID,
+			Seq:       int64(r.Seq),
+			Type:      r.Type,
+			Payload:   r.Payload,
+			CreatedAt: r.CreatedAt,
+		}
+	}
+	return events, nil
+}
+
+func (a *postgresAdapter) ListEventsSinceForDigest(ctx context.Context, p ListEventsSinceForDigestParams) ([]Event, error) {
+	rows, err := a.q.ListEventsSinceForDigest(ctx, pgstore.ListEventsSinceForDigestParams{
 		SessionID: p.SessionID,
 		Seq:       int32(p.SinceSeq),
 		Limit:     int32(p.Limit),
@@ -1049,6 +1089,17 @@ func (s *postgresTxStore) ListSessionsForOrg(ctx context.Context, orgID string) 
 	}
 	return sessions, nil
 }
+func (s *postgresTxStore) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
+	rows, err := s.q.ListSessionsForOrgWithCursor(ctx, pgstore.ListSessionsForOrgWithCursorParams{OrgID: p.OrgID, CreatedAt: p.Before, Limit: int32(p.Limit)})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	sessions := make([]Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = pgSession(r)
+	}
+	return sessions, nil
+}
 func (s *postgresTxStore) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
 	return mapPostgresErr(s.q.UpdateSessionStatus(ctx, pgstore.UpdateSessionStatusParams{OrgID: p.OrgID, ID: p.ID, Status: p.Status}))
 }
@@ -1208,6 +1259,17 @@ func (s *postgresTxStore) InsertEvent(ctx context.Context, p InsertEventParams) 
 }
 func (s *postgresTxStore) ListEventsSince(ctx context.Context, p ListEventsSinceParams) ([]Event, error) {
 	rows, err := s.q.ListEventsSince(ctx, pgstore.ListEventsSinceParams{SessionID: p.SessionID, Seq: int32(p.SinceSeq), Limit: int32(p.Limit)})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	events := make([]Event, len(rows))
+	for i, r := range rows {
+		events[i] = Event{ID: r.ID, OrgID: r.OrgID, SessionID: r.SessionID, Seq: int64(r.Seq), Type: r.Type, Payload: r.Payload, CreatedAt: r.CreatedAt}
+	}
+	return events, nil
+}
+func (s *postgresTxStore) ListEventsSinceForDigest(ctx context.Context, p ListEventsSinceForDigestParams) ([]Event, error) {
+	rows, err := s.q.ListEventsSinceForDigest(ctx, pgstore.ListEventsSinceForDigestParams{SessionID: p.SessionID, Seq: int32(p.SinceSeq), Limit: int32(p.Limit)})
 	if err != nil {
 		return nil, mapPostgresErr(err)
 	}

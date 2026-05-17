@@ -95,6 +95,18 @@ func (o *oauthOnlyStrict) FinalizeSession(_ context.Context, _ openapi.FinalizeS
 func (o *oauthOnlyStrict) AbandonSession(_ context.Context, _ openapi.AbandonSessionRequestObject) (openapi.AbandonSessionResponseObject, error) {
 	panic("AbandonSession: not wired in OAuth tests")
 }
+func (o *oauthOnlyStrict) ListSessions(_ context.Context, _ openapi.ListSessionsRequestObject) (openapi.ListSessionsResponseObject, error) {
+	panic("ListSessions: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) GetSession(_ context.Context, _ openapi.GetSessionRequestObject) (openapi.GetSessionResponseObject, error) {
+	panic("GetSession: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) ListSessionRefs(_ context.Context, _ openapi.ListSessionRefsRequestObject) (openapi.ListSessionRefsResponseObject, error) {
+	panic("ListSessionRefs: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) GetSessionDigest(_ context.Context, _ openapi.GetSessionDigestRequestObject) (openapi.GetSessionDigestResponseObject, error) {
+	panic("GetSessionDigest: not wired in OAuth tests")
+}
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 
