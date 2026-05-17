@@ -386,3 +386,24 @@ Common error codes:
 - `push.missing_trailer` (with `details.missing` listing absent trailers)
 - `fork.target_not_found`
 - `fork.invalid_target_ref`
+
+### Dependency-failure codes
+
+The `dep.*` family signals that a runtime dependency the portal needs to
+serve the request is unavailable. The request itself is well-formed; the
+caller should retry after a brief delay, except where noted. Every `dep.*`
+response except `dep.git_subprocess_failed` carries a `Retry-After`
+header with a coarse retry hint in seconds.
+
+| Code                              | Status | Retry-After | Meaning                                                                 |
+|-----------------------------------|--------|-------------|-------------------------------------------------------------------------|
+| `dep.smtp_unavailable`            | 503    | `5`         | Outbound email delivery (magic link, invite) failed at the transport.   |
+| `dep.db_unavailable`              | 503    | `2`         | A database query failed for a non-business reason (connection refused, timeout, I/O error). `store.ErrNotFound` and `store.ErrUniqueViolation` continue to surface as their existing 404 / 409 codes. |
+| `dep.oauth_provider_unavailable`  | 503    | `10`        | Outbound HTTP to an OAuth provider (e.g. GitHub) failed (non-2xx response, transport error). Distinct from `oauth.provider_not_configured` (503 startup-time config gap). |
+| `dep.git_subprocess_failed`       | 500    | —           | The local `git-upload-pack` / `git-receive-pack` / `git http-backend` subprocess failed (spawn error, non-zero exit). Not transient — operator intervention is typically required. |
+
+A 503 from this family communicates retryability at the transport level;
+the `error` code disambiguates which specific dependency is down so the
+SPA / plugin can surface a targeted message. The portal logs the
+underlying cause (pg connection error, SMTP handshake failure, etc.) at
+error level; the response body never includes internal trace detail.
