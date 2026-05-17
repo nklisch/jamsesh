@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-protocol-doc
 kind: story
-stage: review
+stage: done
 tags: [portal, documentation]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -79,3 +79,26 @@ the section.
 No further edits to `docs/PROTOCOL.md` are required from this story. All
 verification checklist items above are satisfied by the design-commit
 state.
+
+## Review
+
+**Verdict: Approve**
+
+Paper-trail story confirmed clean. Verified against
+`docs/PROTOCOL.md > HTTP error contract > Dependency-failure codes`
+(lines 390-409):
+
+- All four `dep.*` codes present with correct status + Retry-After:
+  `dep.smtp_unavailable` (503/5), `dep.db_unavailable` (503/2),
+  `dep.oauth_provider_unavailable` (503/10),
+  `dep.git_subprocess_failed` (500/—).
+- `store.ErrNotFound` / `store.ErrUniqueViolation` carve-out preserved
+  in the `dep.db_unavailable` row.
+- Rationale paragraph (retryability + disambiguation) and operator-
+  logging contract both present.
+- No "previously…" / "v1.x…" / "before this change…" prose anywhere
+  in the section — foundation-doc rolling-forward principle honored.
+- Implementing commit `7442c28` is story-body-only (single file
+  changed; stage bump + Implementation notes append).
+
+Findings: 0 blockers / 0 important / 0 nits.
