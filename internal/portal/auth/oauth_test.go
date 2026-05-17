@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/portal/auth"
+	"jamsesh/internal/portal/deperr"
+	"jamsesh/internal/portal/httperr"
 	portaloauth "jamsesh/internal/portal/oauth"
 	"jamsesh/internal/portal/tokens"
 )
@@ -169,7 +172,14 @@ func newOAuthTestEnv(t *testing.T, providerName string, provider portaloauth.Pro
 	providers := map[string]portaloauth.Provider{providerName: provider}
 	handler := auth.NewOAuthHandler(providers, s, tokenSvc, "https://portal.example.com")
 
-	strictAPI := openapi.NewStrictHandler(&oauthOnlyStrict{handler}, nil)
+	// Wire the strict handler with the dep-envelope translator so tests
+	// observe the same error-handling pipeline as production.
+	strictAPI := openapi.NewStrictHandlerWithOptions(
+		&oauthOnlyStrict{handler}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
 
 	r := chi.NewRouter()
 	r.Post("/api/auth/oauth/start", strictAPI.StartOAuth)
@@ -230,7 +240,12 @@ func TestOAuthStart_UnconfiguredProvider_Returns503(t *testing.T) {
 	tokenSvc := tokens.New(s)
 	providers := map[string]portaloauth.Provider{"github": nil}
 	handler := auth.NewOAuthHandler(providers, s, tokenSvc, "https://portal.example.com")
-	strictAPI := openapi.NewStrictHandler(&oauthOnlyStrict{handler}, nil)
+	strictAPI := openapi.NewStrictHandlerWithOptions(
+		&oauthOnlyStrict{handler}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
 
 	r := chi.NewRouter()
 	r.Post("/api/auth/oauth/start", strictAPI.StartOAuth)
@@ -399,10 +414,15 @@ func TestOAuthCallback_ProviderMismatch_Returns400(t *testing.T) {
 	}
 }
 
-func TestOAuthCallback_ExchangeError_Returns500(t *testing.T) {
+// TestOAuthCallback_ExchangeError_ReturnsDepEnvelope verifies the
+// strict-handler translator funnels Provider.Exchange failures (a
+// transport/HTTP problem talking to GitHub) into the typed dep envelope:
+// HTTP 503 with `error = dep.oauth_provider_unavailable` and a
+// Retry-After hint.
+func TestOAuthCallback_ExchangeError_ReturnsDepEnvelope(t *testing.T) {
 	provider := &stubProvider{
 		name: "github",
-		err:  errors.New("upstream failure"),
+		err:  errors.New("github returned 503"),
 	}
 	env := newOAuthTestEnv(t, "github", provider)
 
@@ -421,9 +441,65 @@ func TestOAuthCallback_ExchangeError_Returns500(t *testing.T) {
 	})
 	defer resp.Body.Close()
 
-	// Exchange error is internal — the strict handler returns 500.
-	if resp.StatusCode != http.StatusInternalServerError {
-		t.Errorf("status = %d, want 500", resp.StatusCode)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/json; charset=utf-8")
+	}
+	if ra := resp.Header.Get("Retry-After"); ra != "10" {
+		t.Errorf("Retry-After = %q, want %q", ra, "10")
+	}
+
+	body := decodeJSONResponse(t, resp)
+	if code, _ := body["error"].(string); code != "dep.oauth_provider_unavailable" {
+		t.Errorf("error code: want %q, got %q", "dep.oauth_provider_unavailable", code)
+	}
+}
+
+// TestOauthCallback_WrapsExchangeError_WithDepSentinel is a unit-level
+// check that OauthCallback wraps Provider.Exchange failures with the
+// deperr.ErrOAuthProvider sentinel, independent of the HTTP surface.
+// This guards against accidental drift if someone refactors the wrap
+// site without re-running the integration test above.
+func TestOauthCallback_WrapsExchangeError_WithDepSentinel(t *testing.T) {
+	s := openStore(t)
+	tokenSvc := tokens.New(s)
+	exchangeFailure := errors.New("dial tcp: connection refused")
+	provider := &stubProvider{name: "github", err: exchangeFailure}
+	providers := map[string]portaloauth.Provider{"github": provider}
+	handler := auth.NewOAuthHandler(providers, s, tokenSvc, "https://portal.example.com")
+
+	// Seed a valid state nonce so the callback reaches the Exchange call.
+	nonce, err := portaloauth.GenerateNonce()
+	if err != nil {
+		t.Fatalf("GenerateNonce: %v", err)
+	}
+	if err := portaloauth.StoreState(context.Background(), s, nonce, "github",
+		"https://portal.example.com/auth/oauth/callback"); err != nil {
+		t.Fatalf("StoreState: %v", err)
+	}
+
+	_, err = handler.OauthCallback(context.Background(), openapi.OauthCallbackRequestObject{
+		Body: &openapi.OauthCallbackJSONRequestBody{
+			Provider: "github",
+			Code:     "code",
+			State:    nonce,
+		},
+	})
+	if err == nil {
+		t.Fatal("OauthCallback: expected error, got nil")
+	}
+	if !errors.Is(err, deperr.ErrOAuthProvider) {
+		t.Errorf("error does not match deperr.ErrOAuthProvider: %v", err)
+	}
+	// The underlying transport error must still be readable in the
+	// rendered error string so operator logs preserve the cause. The
+	// deperr wrapper intentionally uses %v (not %w) for the cause so the
+	// sentinel chain has a single root — but the message must still carry
+	// the original text.
+	if msg := err.Error(); !strings.Contains(msg, exchangeFailure.Error()) {
+		t.Errorf("error message missing original cause %q: %q", exchangeFailure.Error(), msg)
 	}
 }
 

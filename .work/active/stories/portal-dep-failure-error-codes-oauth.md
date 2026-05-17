@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-oauth
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -101,3 +101,58 @@ the happy path and for every existing business-error branch.
 ## Rollback
 
 `git revert`. Same as the other story 2/4/5 patches — independent.
+
+## Implementation notes
+
+### Files touched
+
+- `internal/portal/auth/oauth.go` — added `jamsesh/internal/portal/deperr`
+  import; wrapped the `provider.Exchange` error with
+  `deperr.WrapOAuthProvider` per the design. No other call site in the
+  file was a dep-class wrap candidate (`ConsumeState` failures route
+  through `store.ErrNotFound` to a 400, `FindOrProvision` errors are
+  DB-class and owned by the sibling `portal-dep-failure-error-codes-db`
+  story, `tokensSvc.Issue` is internal token logic, not a runtime dep).
+- `internal/portal/auth/oauth_test.go`:
+  - Imported `deperr`, `httperr`, and `strings`.
+  - Switched `newOAuthTestEnv` (and the unconfigured-provider sub-test)
+    from `openapi.NewStrictHandler(...)` to
+    `openapi.NewStrictHandlerWithOptions(...)` with
+    `httperr.WriteFromError` wired as the response-error handler — the
+    test pipeline now mirrors production (`cmd/portal/main.go`).
+  - Replaced the legacy `TestOAuthCallback_ExchangeError_Returns500`
+    with `TestOAuthCallback_ExchangeError_ReturnsDepEnvelope`: asserts
+    HTTP 503, `Content-Type: application/json; charset=utf-8`,
+    `Retry-After: 10`, and `error = dep.oauth_provider_unavailable`.
+  - Added `TestOauthCallback_WrapsExchangeError_WithDepSentinel` as a
+    unit-level check that the handler returns an error matching
+    `deperr.ErrOAuthProvider` and that the original transport-error
+    string survives in the rendered error message.
+
+### Internal-HTTP audit of `internal/portal/oauth/`
+
+Per the story's "audit pass expected to be a no-op", reviewed
+`github.go`'s three call helpers (`exchangeCode`, `fetchUser`,
+`fetchPrimaryEmail`). Every error path already returns an annotated
+error wrapped in `&ErrExchange{Provider, Cause}` from
+`GitHub.Exchange`. No code changes required inside the provider
+package — the single wrap at the OauthCallback call site catches all
+of them.
+
+### Parked gap: provider error taxonomy
+
+`Provider.Exchange` currently bundles transport/HTTP failures *and*
+RFC 6749 business errors (e.g. token endpoint 200 OK with
+`{"error":"bad_verification_code"}`) into one `*ErrExchange` return.
+The wrap at OauthCallback treats every failure as dep-class — correct
+for transport, slightly mis-classifying for `invalid_grant`. Parked as
+`.work/backlog/portal-oauth-provider-error-taxonomy.md` (sketch:
+introduce an `oauth.ErrBadGrant` sentinel in the provider package,
+classify in OauthCallback before wrapping). No active test depends on
+the distinction in v1.
+
+### Verification
+
+- `go test ./internal/portal/auth/... ./internal/portal/oauth/...`:
+  PASS (45 tests, 0 failures across both packages).
+- `go build ./...`: PASS.

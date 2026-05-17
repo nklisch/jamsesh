@@ -8,6 +8,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	portaloauth "jamsesh/internal/portal/oauth"
 	"jamsesh/internal/portal/tokens"
 )
@@ -121,9 +122,17 @@ func (h *OAuthHandler) OauthCallback(
 	}
 
 	// Exchange the authorization code for an Identity via the provider.
+	//
+	// Every error path inside Provider.Exchange (token-exchange non-2xx,
+	// transport failures, /user lookup, /user/emails lookup, decode
+	// errors) is a dep-class failure — the GitHub provider has no
+	// business-error returns at this layer. Wrap so the strict-handler
+	// translator (httperr.WriteFromError) emits a typed
+	// `dep.oauth_provider_unavailable` envelope (503, Retry-After: 10).
 	ghIdentity, err := provider.Exchange(ctx, code, stateRow.RedirectURI)
 	if err != nil {
-		return nil, fmt.Errorf("oauth callback: exchange: %w", err)
+		return nil, deperr.WrapOAuthProvider(
+			fmt.Errorf("oauth callback: exchange: %w", err))
 	}
 
 	// Map the provider Identity to the shared auth.Identity type used by
