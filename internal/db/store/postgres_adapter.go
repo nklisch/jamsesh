@@ -969,6 +969,83 @@ func (a *postgresAdapter) ListPendingOrgInvitesForEmail(ctx context.Context, p L
 	return invites, nil
 }
 
+// ---------------------------------------------------------------------------
+// SessionInviteStore
+// ---------------------------------------------------------------------------
+
+func pgSessionInvite(row pgstore.SessionInvite) SessionInvite {
+	return SessionInvite{
+		ID:                  row.ID,
+		OrgID:               row.OrgID,
+		SessionID:           row.SessionID,
+		InviterAccountID:    row.InviterAccountID,
+		InviteeEmail:        row.InviteeEmail,
+		TokenHash:           row.TokenHash,
+		CreatedAt:           row.CreatedAt,
+		ExpiresAt:           row.ExpiresAt,
+		AcceptedAt:          row.AcceptedAt,
+		AcceptedByAccountID: pgTextToPtr(row.AcceptedByAccountID),
+	}
+}
+
+func (a *postgresAdapter) InsertSessionInvite(ctx context.Context, p InsertSessionInviteParams) (SessionInvite, error) {
+	row, err := a.q.InsertSessionInvite(ctx, pgstore.InsertSessionInviteParams{
+		ID:                  p.ID,
+		OrgID:               p.OrgID,
+		SessionID:           p.SessionID,
+		InviterAccountID:    p.InviterAccountID,
+		InviteeEmail:        p.InviteeEmail,
+		TokenHash:           p.TokenHash,
+		CreatedAt:           p.CreatedAt,
+		ExpiresAt:           p.ExpiresAt,
+		AcceptedAt:          p.AcceptedAt,
+		AcceptedByAccountID: ptrToPgText(p.AcceptedByAccountID),
+	})
+	if err != nil {
+		return SessionInvite{}, mapPostgresErr(err)
+	}
+	return pgSessionInvite(row), nil
+}
+
+func (a *postgresAdapter) GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error) {
+	row, err := a.q.GetSessionInviteByID(ctx, id)
+	if err != nil {
+		return SessionInvite{}, mapPostgresErr(err)
+	}
+	return pgSessionInvite(row), nil
+}
+
+func (a *postgresAdapter) GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error) {
+	row, err := a.q.GetSessionInviteByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return SessionInvite{}, mapPostgresErr(err)
+	}
+	return pgSessionInvite(row), nil
+}
+
+func (a *postgresAdapter) MarkSessionInviteAccepted(ctx context.Context, p MarkSessionInviteAcceptedParams) error {
+	return mapPostgresErr(a.q.MarkSessionInviteAccepted(ctx, pgstore.MarkSessionInviteAcceptedParams{
+		ID:                  p.ID,
+		AcceptedAt:          &p.AcceptedAt,
+		AcceptedByAccountID: ptrToPgText(&p.AcceptedByAccountID),
+	}))
+}
+
+func (a *postgresAdapter) ListPendingSessionInvitesForSession(ctx context.Context, p ListPendingSessionInvitesForSessionParams) ([]SessionInvite, error) {
+	rows, err := a.q.ListPendingSessionInvitesForSession(ctx, pgstore.ListPendingSessionInvitesForSessionParams{
+		SessionID: p.SessionID,
+		ExpiresAt: p.Now,
+	})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	invites := make([]SessionInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = pgSessionInvite(r)
+	}
+	return invites, nil
+}
+
 // Delegate all TxStore methods to the underlying *pgstore.Queries.
 // OrgStore
 func (s *postgresTxStore) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, error) {
@@ -1369,4 +1446,41 @@ func (s *postgresTxStore) ListRefModesForSession(ctx context.Context, sessionID 
 		out[i] = pgRefMode(r)
 	}
 	return out, nil
+}
+
+// SessionInviteStore (TxStore)
+func (s *postgresTxStore) InsertSessionInvite(ctx context.Context, p InsertSessionInviteParams) (SessionInvite, error) {
+	row, err := s.q.InsertSessionInvite(ctx, pgstore.InsertSessionInviteParams{ID: p.ID, OrgID: p.OrgID, SessionID: p.SessionID, InviterAccountID: p.InviterAccountID, InviteeEmail: p.InviteeEmail, TokenHash: p.TokenHash, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, AcceptedAt: p.AcceptedAt, AcceptedByAccountID: ptrToPgText(p.AcceptedByAccountID)})
+	if err != nil {
+		return SessionInvite{}, mapPostgresErr(err)
+	}
+	return pgSessionInvite(row), nil
+}
+func (s *postgresTxStore) GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error) {
+	row, err := s.q.GetSessionInviteByID(ctx, id)
+	if err != nil {
+		return SessionInvite{}, mapPostgresErr(err)
+	}
+	return pgSessionInvite(row), nil
+}
+func (s *postgresTxStore) GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error) {
+	row, err := s.q.GetSessionInviteByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return SessionInvite{}, mapPostgresErr(err)
+	}
+	return pgSessionInvite(row), nil
+}
+func (s *postgresTxStore) MarkSessionInviteAccepted(ctx context.Context, p MarkSessionInviteAcceptedParams) error {
+	return mapPostgresErr(s.q.MarkSessionInviteAccepted(ctx, pgstore.MarkSessionInviteAcceptedParams{ID: p.ID, AcceptedAt: &p.AcceptedAt, AcceptedByAccountID: ptrToPgText(&p.AcceptedByAccountID)}))
+}
+func (s *postgresTxStore) ListPendingSessionInvitesForSession(ctx context.Context, p ListPendingSessionInvitesForSessionParams) ([]SessionInvite, error) {
+	rows, err := s.q.ListPendingSessionInvitesForSession(ctx, pgstore.ListPendingSessionInvitesForSessionParams{SessionID: p.SessionID, ExpiresAt: p.Now})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	invites := make([]SessionInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = pgSessionInvite(r)
+	}
+	return invites, nil
 }

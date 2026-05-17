@@ -276,6 +276,12 @@ type AcceptInviteBody struct {
 	Token string `json:"token"`
 }
 
+// AcceptInviteRequest Request body for accepting a session invite.
+type AcceptInviteRequest struct {
+	// Token Raw invite token from the email link query parameter
+	Token string `json:"token"`
+}
+
 // CommentAddedPayload A comment was posted in the session. Payload is the full comment per PROTOCOL.md comment schema. PROTOCOL.md canonical fields: id, session_id, author_id, author_kind, anchor, body, addressed_to, kind, created_at, resolved_at, resolved_by, resolution_note.
 type CommentAddedPayload struct {
 	// AddressedTo Addressing token (e.g. "@user", "@user/branch", "@all-agents")
@@ -508,6 +514,21 @@ type EventEnvelopeType string
 // EventEnvelopeVersion Envelope version; always 1
 type EventEnvelopeVersion int
 
+// Invite A pending session invite record.
+type Invite struct {
+	// ExpiresAt ISO-8601 timestamp when the invite expires
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Id Invite UUID
+	Id string `json:"id"`
+
+	// InviteeEmail Email address of the invitee
+	InviteeEmail openapi_types.Email `json:"invitee_email"`
+
+	// SessionId Session this invite is for
+	SessionId string `json:"session_id"`
+}
+
 // InviteBody defines model for InviteBody.
 type InviteBody struct {
 	// Email Email address to invite
@@ -524,6 +545,12 @@ type InviteRef struct {
 
 	// RecipientEmail Email address the invite was sent to
 	RecipientEmail openapi_types.Email `json:"recipient_email"`
+}
+
+// InviteRequest Request body for inviting an account to a session by email.
+type InviteRequest struct {
+	// Email Email address of the invitee
+	Email openapi_types.Email `json:"email"`
 }
 
 // MagicLinkExchangeBody defines model for MagicLinkExchangeBody.
@@ -887,6 +914,12 @@ type CreateSessionJSONRequestBody = CreateSessionRequest
 
 // PatchSessionJSONRequestBody defines body for PatchSession for application/json ContentType.
 type PatchSessionJSONRequestBody = PatchSessionRequest
+
+// InviteToSessionJSONRequestBody defines body for InviteToSession for application/json ContentType.
+type InviteToSessionJSONRequestBody = InviteRequest
+
+// AcceptSessionInviteJSONRequestBody defines body for AcceptSessionInvite for application/json ContentType.
+type AcceptSessionInviteJSONRequestBody = AcceptInviteRequest
 
 // AsCommitArrivedPayload returns the union data inside the EventEnvelope_Payload as a CommitArrivedPayload
 func (t EventEnvelope_Payload) AsCommitArrivedPayload() (CommitArrivedPayload, error) {
@@ -1266,6 +1299,15 @@ type ServerInterface interface {
 	// Transition session to finalizing; idempotent if already finalizing
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize)
 	FinalizeSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
+	// Invite a user to a session by email; sends a magic-link-style join email
+	// (POST /api/orgs/{orgID}/sessions/{sessionID}/invites)
+	InviteToSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
+	// Accept a session invite; binds the caller to the session as a member
+	// (POST /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept)
+	AcceptSessionInvite(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, inviteID string)
+	// Remove a member from a session; creator only
+	// (POST /api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove)
+	RemoveSessionMember(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, accountID string)
 	// List all refs in the session bare repository with mode and tip SHA
 	// (GET /api/orgs/{orgID}/sessions/{sessionID}/refs)
 	ListSessionRefs(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
@@ -1380,6 +1422,24 @@ func (_ Unimplemented) GetSessionDigest(w http.ResponseWriter, r *http.Request, 
 // Transition session to finalizing; idempotent if already finalizing
 // (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize)
 func (_ Unimplemented) FinalizeSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Invite a user to a session by email; sends a magic-link-style join email
+// (POST /api/orgs/{orgID}/sessions/{sessionID}/invites)
+func (_ Unimplemented) InviteToSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Accept a session invite; binds the caller to the session as a member
+// (POST /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept)
+func (_ Unimplemented) AcceptSessionInvite(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, inviteID string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Remove a member from a session; creator only
+// (POST /api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove)
+func (_ Unimplemented) RemoveSessionMember(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, accountID string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1947,6 +2007,147 @@ func (siw *ServerInterfaceWrapper) FinalizeSession(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// InviteToSession operation middleware
+func (siw *ServerInterfaceWrapper) InviteToSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", chi.URLParam(r, "sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteToSession(w, r, orgID, sessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptSessionInvite operation middleware
+func (siw *ServerInterfaceWrapper) AcceptSessionInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", chi.URLParam(r, "sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "inviteID" -------------
+	var inviteID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "inviteID", chi.URLParam(r, "inviteID"), &inviteID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "inviteID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptSessionInvite(w, r, orgID, sessionID, inviteID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveSessionMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveSessionMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", chi.URLParam(r, "sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accountID" -------------
+	var accountID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accountID", chi.URLParam(r, "accountID"), &accountID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accountID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveSessionMember(w, r, orgID, sessionID, accountID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSessionRefs operation middleware
 func (siw *ServerInterfaceWrapper) ListSessionRefs(w http.ResponseWriter, r *http.Request) {
 
@@ -2154,6 +2355,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/finalize", wrapper.FinalizeSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/invites", wrapper.InviteToSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", wrapper.AcceptSessionInvite)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove", wrapper.RemoveSessionMember)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/refs", wrapper.ListSessionRefs)
@@ -3137,6 +3347,213 @@ func (response FinalizeSession409JSONResponse) VisitFinalizeSessionResponse(w ht
 	return err
 }
 
+type InviteToSessionRequestObject struct {
+	OrgID     string `json:"orgID"`
+	SessionID string `json:"sessionID"`
+	Body      *InviteToSessionJSONRequestBody
+}
+
+type InviteToSessionResponseObject interface {
+	VisitInviteToSessionResponse(w http.ResponseWriter) error
+}
+
+type InviteToSession201JSONResponse Invite
+
+func (response InviteToSession201JSONResponse) VisitInviteToSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteToSession401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response InviteToSession401JSONResponse) VisitInviteToSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteToSession403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response InviteToSession403JSONResponse) VisitInviteToSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteToSession404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response InviteToSession404JSONResponse) VisitInviteToSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptSessionInviteRequestObject struct {
+	OrgID     string `json:"orgID"`
+	SessionID string `json:"sessionID"`
+	InviteID  string `json:"inviteID"`
+	Body      *AcceptSessionInviteJSONRequestBody
+}
+
+type AcceptSessionInviteResponseObject interface {
+	VisitAcceptSessionInviteResponse(w http.ResponseWriter) error
+}
+
+type AcceptSessionInvite200JSONResponse Session
+
+func (response AcceptSessionInvite200JSONResponse) VisitAcceptSessionInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptSessionInvite401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response AcceptSessionInvite401JSONResponse) VisitAcceptSessionInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptSessionInvite403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response AcceptSessionInvite403JSONResponse) VisitAcceptSessionInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptSessionInvite404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AcceptSessionInvite404JSONResponse) VisitAcceptSessionInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptSessionInvite409JSONResponse ErrorEnvelope
+
+func (response AcceptSessionInvite409JSONResponse) VisitAcceptSessionInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveSessionMemberRequestObject struct {
+	OrgID     string `json:"orgID"`
+	SessionID string `json:"sessionID"`
+	AccountID string `json:"accountID"`
+}
+
+type RemoveSessionMemberResponseObject interface {
+	VisitRemoveSessionMemberResponse(w http.ResponseWriter) error
+}
+
+type RemoveSessionMember204Response struct {
+}
+
+func (response RemoveSessionMember204Response) VisitRemoveSessionMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveSessionMember401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RemoveSessionMember401JSONResponse) VisitRemoveSessionMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveSessionMember403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RemoveSessionMember403JSONResponse) VisitRemoveSessionMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveSessionMember404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RemoveSessionMember404JSONResponse) VisitRemoveSessionMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSessionRefsRequestObject struct {
 	OrgID     string `json:"orgID"`
 	SessionID string `json:"sessionID"`
@@ -3258,6 +3675,15 @@ type StrictServerInterface interface {
 	// Transition session to finalizing; idempotent if already finalizing
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize)
 	FinalizeSession(ctx context.Context, request FinalizeSessionRequestObject) (FinalizeSessionResponseObject, error)
+	// Invite a user to a session by email; sends a magic-link-style join email
+	// (POST /api/orgs/{orgID}/sessions/{sessionID}/invites)
+	InviteToSession(ctx context.Context, request InviteToSessionRequestObject) (InviteToSessionResponseObject, error)
+	// Accept a session invite; binds the caller to the session as a member
+	// (POST /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept)
+	AcceptSessionInvite(ctx context.Context, request AcceptSessionInviteRequestObject) (AcceptSessionInviteResponseObject, error)
+	// Remove a member from a session; creator only
+	// (POST /api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove)
+	RemoveSessionMember(ctx context.Context, request RemoveSessionMemberRequestObject) (RemoveSessionMemberResponseObject, error)
 	// List all refs in the session bare repository with mode and tip SHA
 	// (GET /api/orgs/{orgID}/sessions/{sessionID}/refs)
 	ListSessionRefs(ctx context.Context, request ListSessionRefsRequestObject) (ListSessionRefsResponseObject, error)
@@ -3829,6 +4255,103 @@ func (sh *strictHandler) FinalizeSession(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// InviteToSession operation middleware
+func (sh *strictHandler) InviteToSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
+	var request InviteToSessionRequestObject
+
+	request.OrgID = orgID
+	request.SessionID = sessionID
+
+	var body InviteToSessionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.InviteToSession(ctx, request.(InviteToSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "InviteToSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(InviteToSessionResponseObject); ok {
+		if err := validResponse.VisitInviteToSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcceptSessionInvite operation middleware
+func (sh *strictHandler) AcceptSessionInvite(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, inviteID string) {
+	var request AcceptSessionInviteRequestObject
+
+	request.OrgID = orgID
+	request.SessionID = sessionID
+	request.InviteID = inviteID
+
+	var body AcceptSessionInviteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptSessionInvite(ctx, request.(AcceptSessionInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptSessionInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptSessionInviteResponseObject); ok {
+		if err := validResponse.VisitAcceptSessionInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveSessionMember operation middleware
+func (sh *strictHandler) RemoveSessionMember(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, accountID string) {
+	var request RemoveSessionMemberRequestObject
+
+	request.OrgID = orgID
+	request.SessionID = sessionID
+	request.AccountID = accountID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveSessionMember(ctx, request.(RemoveSessionMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveSessionMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveSessionMemberResponseObject); ok {
+		if err := validResponse.VisitRemoveSessionMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListSessionRefs operation middleware
 func (sh *strictHandler) ListSessionRefs(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
 	var request ListSessionRefsRequestObject
@@ -3861,122 +4384,127 @@ func (sh *strictHandler) ListSessionRefs(w http.ResponseWriter, r *http.Request,
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"MYTw/ub/AgAA//8=",
+	"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",
+	"XC4k2ifvrv4vAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

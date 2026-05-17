@@ -856,6 +856,53 @@ components:
           description: |
             Max event seq seen in this digest. Pass as `since` on the next call.
 
+    # ---------------------------------------------------------------------------
+    # Session invites schemas
+    # ---------------------------------------------------------------------------
+
+    InviteRequest:
+      type: object
+      required: [email]
+      description: Request body for inviting an account to a session by email.
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address of the invitee
+          example: peer@example.com
+
+    Invite:
+      type: object
+      required: [id, session_id, invitee_email, expires_at]
+      description: A pending session invite record.
+      properties:
+        id:
+          type: string
+          description: Invite UUID
+          example: "01926e42-0000-7000-a000-000000000020"
+        session_id:
+          type: string
+          description: Session this invite is for
+          example: "01926e42-0000-7000-a000-000000000010"
+        invitee_email:
+          type: string
+          format: email
+          description: Email address of the invitee
+          example: peer@example.com
+        expires_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the invite expires
+
+    AcceptInviteRequest:
+      type: object
+      required: [token]
+      description: Request body for accepting a session invite.
+      properties:
+        token:
+          type: string
+          description: Raw invite token from the email link query parameter
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -1474,6 +1521,131 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DigestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/invites:
+    post:
+      summary: Invite a user to a session by email; sends a magic-link-style join email
+      operationId: inviteToSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteRequest'
+      responses:
+        '201':
+          description: Invite created and email sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invite'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept:
+    post:
+      summary: Accept a session invite; binds the caller to the session as a member
+      operationId: acceptSessionInvite
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: inviteID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Invite ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInviteRequest'
+      responses:
+        '200':
+          description: Invite accepted; returns session with updated member list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Invite already accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove:
+    post:
+      summary: Remove a member from a session; creator only
+      operationId: removeSessionMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: accountID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Account ID to remove
+      responses:
+        '204':
+          description: Member removed
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

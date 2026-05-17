@@ -35,6 +35,7 @@ type TxStore interface {
 	PresenceStore
 	OrgInviteStore
 	RefModeStore
+	SessionInviteStore
 }
 
 // Store is the unified data-access interface for the portal. All handler and
@@ -54,6 +55,7 @@ type Store interface {
 	PresenceStore
 	OrgInviteStore
 	RefModeStore
+	SessionInviteStore
 
 	// WithTx opens a dialect-appropriate transaction, calls fn with a TxStore
 	// backed by that transaction, and commits on success or rolls back on any
@@ -600,6 +602,20 @@ type OrgInvite struct {
 	AcceptedByAccountID *string
 }
 
+// SessionInvite is a pending or accepted session membership invite.
+type SessionInvite struct {
+	ID                  string
+	OrgID               string
+	SessionID           string
+	InviterAccountID    string
+	InviteeEmail        string
+	TokenHash           string
+	CreatedAt           time.Time
+	ExpiresAt           time.Time
+	AcceptedAt          *time.Time
+	AcceptedByAccountID *string
+}
+
 // ---------------------------------------------------------------------------
 // OrgInvite parameter types
 // ---------------------------------------------------------------------------
@@ -632,6 +648,34 @@ type ListPendingOrgInvitesForEmailParams struct {
 	Now   time.Time
 }
 
+// ---------------------------------------------------------------------------
+// SessionInvite parameter types
+// ---------------------------------------------------------------------------
+
+type InsertSessionInviteParams struct {
+	ID                  string
+	OrgID               string
+	SessionID           string
+	InviterAccountID    string
+	InviteeEmail        string
+	TokenHash           string
+	CreatedAt           time.Time
+	ExpiresAt           time.Time
+	AcceptedAt          *time.Time
+	AcceptedByAccountID *string
+}
+
+type MarkSessionInviteAcceptedParams struct {
+	ID                  string
+	AcceptedAt          time.Time
+	AcceptedByAccountID string
+}
+
+type ListPendingSessionInvitesForSessionParams struct {
+	SessionID string
+	Now       time.Time
+}
+
 // OrgInviteStore covers org invite lifecycle.
 type OrgInviteStore interface {
 	InsertOrgInvite(ctx context.Context, arg InsertOrgInviteParams) (OrgInvite, error)
@@ -640,6 +684,15 @@ type OrgInviteStore interface {
 	MarkOrgInviteAccepted(ctx context.Context, arg MarkOrgInviteAcceptedParams) error
 	ListPendingOrgInvitesForOrg(ctx context.Context, arg ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error)
 	ListPendingOrgInvitesForEmail(ctx context.Context, arg ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error)
+}
+
+// SessionInviteStore covers session invite lifecycle.
+type SessionInviteStore interface {
+	InsertSessionInvite(ctx context.Context, arg InsertSessionInviteParams) (SessionInvite, error)
+	GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error)
+	GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error)
+	MarkSessionInviteAccepted(ctx context.Context, arg MarkSessionInviteAcceptedParams) error
+	ListPendingSessionInvitesForSession(ctx context.Context, arg ListPendingSessionInvitesForSessionParams) ([]SessionInvite, error)
 }
 
 // OAuthStateStore covers the transient OAuth state-nonce table.

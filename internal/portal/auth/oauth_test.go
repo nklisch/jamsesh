@@ -107,6 +107,15 @@ func (o *oauthOnlyStrict) ListSessionRefs(_ context.Context, _ openapi.ListSessi
 func (o *oauthOnlyStrict) GetSessionDigest(_ context.Context, _ openapi.GetSessionDigestRequestObject) (openapi.GetSessionDigestResponseObject, error) {
 	panic("GetSessionDigest: not wired in OAuth tests")
 }
+func (o *oauthOnlyStrict) InviteToSession(_ context.Context, _ openapi.InviteToSessionRequestObject) (openapi.InviteToSessionResponseObject, error) {
+	panic("InviteToSession: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) AcceptSessionInvite(_ context.Context, _ openapi.AcceptSessionInviteRequestObject) (openapi.AcceptSessionInviteResponseObject, error) {
+	panic("AcceptSessionInvite: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) RemoveSessionMember(_ context.Context, _ openapi.RemoveSessionMemberRequestObject) (openapi.RemoveSessionMemberResponseObject, error) {
+	panic("RemoveSessionMember: not wired in OAuth tests")
+}
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 

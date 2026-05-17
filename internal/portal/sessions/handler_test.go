@@ -24,6 +24,24 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Sender stub
+// ---------------------------------------------------------------------------
+
+// stubSender records sent emails for assertions in tests.
+type stubSender struct {
+	sent []stubEmail
+}
+
+type stubEmail struct {
+	recipient, subject, body string
+}
+
+func (s *stubSender) Send(_ context.Context, recipient, subject, body string) error {
+	s.sent = append(s.sent, stubEmail{recipient, subject, body})
+	return nil
+}
+
+// ---------------------------------------------------------------------------
 // Storage stub
 // ---------------------------------------------------------------------------
 
@@ -154,7 +172,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	svc := tokens.New(s)
 	stor := newStubStorage()
 	log := events.New(s)
-	h := sessions.New(s, stor, log)
+	h := sessions.New(s, stor, log, &stubSender{}, "http://localhost:8443")
 	strictAPI := openapi.NewStrictHandler(&sessionsOnlyStrict{h}, nil)
 	apiWrapper := &openapi.ServerInterfaceWrapper{
 		Handler: strictAPI,
@@ -174,6 +192,9 @@ func newTestEnv(t *testing.T) *testEnv {
 		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/abandon", apiWrapper.AbandonSession)
 		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/refs", apiWrapper.ListSessionRefs)
 		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/digest", apiWrapper.GetSessionDigest)
+		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/invites", apiWrapper.InviteToSession)
+		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", apiWrapper.AcceptSessionInvite)
+		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove", apiWrapper.RemoveSessionMember)
 	})
 
 	srv := httptest.NewServer(r)

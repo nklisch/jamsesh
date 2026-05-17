@@ -3,6 +3,9 @@
 // PATCH /api/orgs/{orgID}/sessions/{sessionID} — update goal/scope/mode
 // POST /api/orgs/{orgID}/sessions/{sessionID}/finalize — transition to finalizing
 // POST /api/orgs/{orgID}/sessions/{sessionID}/abandon — terminate session
+// POST /api/orgs/{orgID}/sessions/{sessionID}/invites — invite member by email
+// POST /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept — accept invite
+// POST /api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove — remove member
 package sessions
 
 import (
@@ -17,20 +20,23 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
 
 // Handler implements the openapi.StrictServerInterface session lifecycle methods.
 type Handler struct {
-	store   store.Store
-	storage storage.Service
-	events  *events.Log
+	store     store.Store
+	storage   storage.Service
+	events    *events.Log
+	sender    senders.Sender
+	portalURL string
 }
 
 // New constructs a Handler.
-func New(s store.Store, stor storage.Service, log *events.Log) *Handler {
-	return &Handler{store: s, storage: stor, events: log}
+func New(s store.Store, stor storage.Service, log *events.Log, sender senders.Sender, portalURL string) *Handler {
+	return &Handler{store: s, storage: stor, events: log, sender: sender, portalURL: portalURL}
 }
 
 // ---------------------------------------------------------------------------

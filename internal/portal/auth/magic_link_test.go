@@ -150,6 +150,15 @@ func (m *magicLinkOnlyStrict) ListSessionRefs(_ context.Context, _ openapi.ListS
 func (m *magicLinkOnlyStrict) GetSessionDigest(_ context.Context, _ openapi.GetSessionDigestRequestObject) (openapi.GetSessionDigestResponseObject, error) {
 	panic("GetSessionDigest: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) InviteToSession(_ context.Context, _ openapi.InviteToSessionRequestObject) (openapi.InviteToSessionResponseObject, error) {
+	panic("InviteToSession: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) AcceptSessionInvite(_ context.Context, _ openapi.AcceptSessionInviteRequestObject) (openapi.AcceptSessionInviteResponseObject, error) {
+	panic("AcceptSessionInvite: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) RemoveSessionMember(_ context.Context, _ openapi.RemoveSessionMemberRequestObject) (openapi.RemoveSessionMemberResponseObject, error) {
+	panic("RemoveSessionMember: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

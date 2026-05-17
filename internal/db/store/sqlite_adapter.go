@@ -903,6 +903,83 @@ func (a *sqliteAdapter) ListPendingOrgInvitesForEmail(ctx context.Context, p Lis
 }
 
 // ---------------------------------------------------------------------------
+// SessionInviteStore
+// ---------------------------------------------------------------------------
+
+func sqliteSessionInvite(row sqlitestore.SessionInvite) SessionInvite {
+	return SessionInvite{
+		ID:                  row.ID,
+		OrgID:               row.OrgID,
+		SessionID:           row.SessionID,
+		InviterAccountID:    row.InviterAccountID,
+		InviteeEmail:        row.InviteeEmail,
+		TokenHash:           row.TokenHash,
+		CreatedAt:           row.CreatedAt,
+		ExpiresAt:           row.ExpiresAt,
+		AcceptedAt:          row.AcceptedAt,
+		AcceptedByAccountID: nullStringToPtr(row.AcceptedByAccountID),
+	}
+}
+
+func (a *sqliteAdapter) InsertSessionInvite(ctx context.Context, p InsertSessionInviteParams) (SessionInvite, error) {
+	row, err := a.q.InsertSessionInvite(ctx, sqlitestore.InsertSessionInviteParams{
+		ID:                  p.ID,
+		OrgID:               p.OrgID,
+		SessionID:           p.SessionID,
+		InviterAccountID:    p.InviterAccountID,
+		InviteeEmail:        p.InviteeEmail,
+		TokenHash:           p.TokenHash,
+		CreatedAt:           p.CreatedAt,
+		ExpiresAt:           p.ExpiresAt,
+		AcceptedAt:          p.AcceptedAt,
+		AcceptedByAccountID: ptrToNullString(p.AcceptedByAccountID),
+	})
+	if err != nil {
+		return SessionInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteSessionInvite(row), nil
+}
+
+func (a *sqliteAdapter) GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error) {
+	row, err := a.q.GetSessionInviteByID(ctx, id)
+	if err != nil {
+		return SessionInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteSessionInvite(row), nil
+}
+
+func (a *sqliteAdapter) GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error) {
+	row, err := a.q.GetSessionInviteByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return SessionInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteSessionInvite(row), nil
+}
+
+func (a *sqliteAdapter) MarkSessionInviteAccepted(ctx context.Context, p MarkSessionInviteAcceptedParams) error {
+	return mapSQLiteErr(a.q.MarkSessionInviteAccepted(ctx, sqlitestore.MarkSessionInviteAcceptedParams{
+		ID:                  p.ID,
+		AcceptedAt:          &p.AcceptedAt,
+		AcceptedByAccountID: ptrToNullString(&p.AcceptedByAccountID),
+	}))
+}
+
+func (a *sqliteAdapter) ListPendingSessionInvitesForSession(ctx context.Context, p ListPendingSessionInvitesForSessionParams) ([]SessionInvite, error) {
+	rows, err := a.q.ListPendingSessionInvitesForSession(ctx, sqlitestore.ListPendingSessionInvitesForSessionParams{
+		SessionID: p.SessionID,
+		ExpiresAt: p.Now,
+	})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	invites := make([]SessionInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = sqliteSessionInvite(r)
+	}
+	return invites, nil
+}
+
+// ---------------------------------------------------------------------------
 // RefModeStore
 // ---------------------------------------------------------------------------
 
@@ -1366,4 +1443,41 @@ func (s *sqliteTxStore) ListRefModesForSession(ctx context.Context, sessionID st
 		out[i] = sqliteRefMode(r)
 	}
 	return out, nil
+}
+
+// SessionInviteStore (TxStore)
+func (s *sqliteTxStore) InsertSessionInvite(ctx context.Context, p InsertSessionInviteParams) (SessionInvite, error) {
+	row, err := s.q.InsertSessionInvite(ctx, sqlitestore.InsertSessionInviteParams{ID: p.ID, OrgID: p.OrgID, SessionID: p.SessionID, InviterAccountID: p.InviterAccountID, InviteeEmail: p.InviteeEmail, TokenHash: p.TokenHash, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, AcceptedAt: p.AcceptedAt, AcceptedByAccountID: ptrToNullString(p.AcceptedByAccountID)})
+	if err != nil {
+		return SessionInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteSessionInvite(row), nil
+}
+func (s *sqliteTxStore) GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error) {
+	row, err := s.q.GetSessionInviteByID(ctx, id)
+	if err != nil {
+		return SessionInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteSessionInvite(row), nil
+}
+func (s *sqliteTxStore) GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error) {
+	row, err := s.q.GetSessionInviteByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return SessionInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteSessionInvite(row), nil
+}
+func (s *sqliteTxStore) MarkSessionInviteAccepted(ctx context.Context, p MarkSessionInviteAcceptedParams) error {
+	return mapSQLiteErr(s.q.MarkSessionInviteAccepted(ctx, sqlitestore.MarkSessionInviteAcceptedParams{ID: p.ID, AcceptedAt: &p.AcceptedAt, AcceptedByAccountID: ptrToNullString(&p.AcceptedByAccountID)}))
+}
+func (s *sqliteTxStore) ListPendingSessionInvitesForSession(ctx context.Context, p ListPendingSessionInvitesForSessionParams) ([]SessionInvite, error) {
+	rows, err := s.q.ListPendingSessionInvitesForSession(ctx, sqlitestore.ListPendingSessionInvitesForSessionParams{SessionID: p.SessionID, ExpiresAt: p.Now})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	invites := make([]SessionInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = sqliteSessionInvite(r)
+	}
+	return invites, nil
 }

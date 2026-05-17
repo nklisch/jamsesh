@@ -120,6 +120,21 @@ func (c *combinedHandler) GetSessionDigest(ctx context.Context, req openapi.GetS
 	return c.SessionsHandler.GetSessionDigest(ctx, req)
 }
 
+// InviteToSession delegates to the sessions handler.
+func (c *combinedHandler) InviteToSession(ctx context.Context, req openapi.InviteToSessionRequestObject) (openapi.InviteToSessionResponseObject, error) {
+	return c.SessionsHandler.InviteToSession(ctx, req)
+}
+
+// AcceptSessionInvite delegates to the sessions handler.
+func (c *combinedHandler) AcceptSessionInvite(ctx context.Context, req openapi.AcceptSessionInviteRequestObject) (openapi.AcceptSessionInviteResponseObject, error) {
+	return c.SessionsHandler.AcceptSessionInvite(ctx, req)
+}
+
+// RemoveSessionMember delegates to the sessions handler.
+func (c *combinedHandler) RemoveSessionMember(ctx context.Context, req openapi.RemoveSessionMemberRequestObject) (openapi.RemoveSessionMemberResponseObject, error) {
+	return c.SessionsHandler.RemoveSessionMember(ctx, req)
+}
+
 // compile-time assertion that combinedHandler satisfies the full interface.
 var _ openapi.StrictServerInterface = (*combinedHandler)(nil)
 
@@ -197,8 +212,8 @@ func main() {
 	storageSvc := storage.New(cfg.Storage, dbStore)
 	eventLog := events.New(dbStore)
 
-	// Build the sessions handler (lifecycle endpoints).
-	sessionsHandler := sessions.New(dbStore, storageSvc, eventLog)
+	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
+	sessionsHandler := sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
 
 	// Compose the combined handler that satisfies the full StrictServerInterface.
 	strictAPI := openapi.NewStrictHandler(&combinedHandler{
@@ -289,6 +304,9 @@ func main() {
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/abandon", apiWrapper.AbandonSession)
 				r.Get("/orgs/{orgID}/sessions/{sessionID}/refs", apiWrapper.ListSessionRefs)
 				r.Get("/orgs/{orgID}/sessions/{sessionID}/digest", apiWrapper.GetSessionDigest)
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/invites", apiWrapper.InviteToSession)
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", apiWrapper.AcceptSessionInvite)
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove", apiWrapper.RemoveSessionMember)
 			})
 		},
 	})

@@ -129,6 +129,19 @@ type Session struct {
 	FinalizeLockedByAccountID pgtype.Text `json:"finalize_locked_by_account_id"`
 }
 
+type SessionInvite struct {
+	ID                  string      `json:"id"`
+	OrgID               string      `json:"org_id"`
+	SessionID           string      `json:"session_id"`
+	InviterAccountID    string      `json:"inviter_account_id"`
+	InviteeEmail        string      `json:"invitee_email"`
+	TokenHash           string      `json:"token_hash"`
+	CreatedAt           time.Time   `json:"created_at"`
+	ExpiresAt           time.Time   `json:"expires_at"`
+	AcceptedAt          *time.Time  `json:"accepted_at"`
+	AcceptedByAccountID pgtype.Text `json:"accepted_by_account_id"`
+}
+
 type SessionMember struct {
 	OrgID     string    `json:"org_id"`
 	SessionID string    `json:"session_id"`

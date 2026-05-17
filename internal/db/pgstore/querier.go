@@ -40,11 +40,14 @@ type Querier interface {
 	GetOrgMember(ctx context.Context, arg GetOrgMemberParams) (OrgMember, error)
 	GetRefMode(ctx context.Context, arg GetRefModeParams) (RefMode, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
+	GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error)
+	GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error)
 	GetSessionMember(ctx context.Context, arg GetSessionMemberParams) (SessionMember, error)
 	InsertArchivedSession(ctx context.Context, arg InsertArchivedSessionParams) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) error
 	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
 	InsertOrgInvite(ctx context.Context, arg InsertOrgInviteParams) (OrgInvite, error)
+	InsertSessionInvite(ctx context.Context, arg InsertSessionInviteParams) (SessionInvite, error)
 	ListEventsSince(ctx context.Context, arg ListEventsSinceParams) ([]Event, error)
 	ListEventsSinceForDigest(ctx context.Context, arg ListEventsSinceForDigestParams) ([]Event, error)
 	ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OauthToken, error)
@@ -52,6 +55,7 @@ type Querier interface {
 	ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error)
 	ListPendingOrgInvitesForEmail(ctx context.Context, arg ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error)
 	ListPendingOrgInvitesForOrg(ctx context.Context, arg ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error)
+	ListPendingSessionInvitesForSession(ctx context.Context, arg ListPendingSessionInvitesForSessionParams) ([]SessionInvite, error)
 	ListPresenceForSession(ctx context.Context, sessionID string) ([]Presence, error)
 	ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error)
 	ListSessionMembers(ctx context.Context, arg ListSessionMembersParams) ([]SessionMember, error)
@@ -63,6 +67,7 @@ type Querier interface {
 	ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error)
 	ListSessionsForOrgWithCursor(ctx context.Context, arg ListSessionsForOrgWithCursorParams) ([]Session, error)
 	MarkOrgInviteAccepted(ctx context.Context, arg MarkOrgInviteAcceptedParams) error
+	MarkSessionInviteAccepted(ctx context.Context, arg MarkSessionInviteAcceptedParams) error
 	RemoveOrgMember(ctx context.Context, arg RemoveOrgMemberParams) error
 	RemoveSessionMember(ctx context.Context, arg RemoveSessionMemberParams) error
 	RevokeAllOAuthTokensForAccount(ctx context.Context, arg RevokeAllOAuthTokensForAccountParams) error
