@@ -1,7 +1,7 @@
 ---
 id: backlog-replace-gobwas-glob
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, prereceive, dependency]
 parent: null
 depends_on: []
@@ -55,5 +55,3 @@ panic-triggering inputs.
 - [ ] Fuzz harness `FuzzPathScopeValidate` passes with the new library
 - [ ] `go.mod` / `go.sum` updated; no residual `gobwas/glob` dependency
 - [ ] Update `docs-scope-glob-validation-rules` backlog if glob syntax changes
-</content>
-</invoke>
