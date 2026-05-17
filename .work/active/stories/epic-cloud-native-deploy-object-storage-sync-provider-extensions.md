@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync-provider-extensions
 kind: story
-stage: review
+stage: done
 tags: [portal, research]
 parent: epic-cloud-native-deploy-object-storage-sync
 depends_on: [epic-cloud-native-deploy-object-storage-sync-backend]
@@ -108,3 +108,24 @@ For each provider, document:
   (`epic-cloud-native-deploy-object-storage-sync-wiring`) — factory.go does
   not exist yet; story body correctly anticipates this
 - Full project test suite passes: `go test ./...` all green
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- GCS native SDK adds ~20MB binary growth from gRPC. Documented and accepted (workload identity value > size); the `disable_grpc_modules` build-tag escape hatch is noted for follow-on. Worth tracking total clustered-mode binary size as more native SDKs accumulate.
+
+**Notes**: Research-first approach honored — `docs/research/object-storage-providers.md` documents both decisions with rationale before code landed. Both providers ended up choosing native SDK (rather than thin REST) because workload-identity auth was the deciding factor on both sides.
+
+GCS uses `int64` generation numbers instead of ETag strings; bridged transparently via decimal-string encoding in the ETag field. Callers treat ETag opaquely so the semantic burden is zero. `Conditions{DoesNotExist: true}` is the create-only primitive — cleaner than the S3 `IfNoneMatch: "*"` dance.
+
+Azure uses ETag strings natively — exact match to the Backend interface, no bridging needed. `bloberror.HasCode` is the right way to do typed error checks against Azure's API.
+
+Both impls use `metaKeyFencingToken = "jamsesh-fencing-token"` — consistent with S3 impl, easy operator inspection across providers.
+
+Factory registration (`gs://`, `azblob://`) deferred to wiring story — correct, since `factory.go` doesn't exist yet.
+
+Tests gated cleanly on `JAMSESH_TEST_GCS_BUCKET` / `JAMSESH_TEST_AZURE_URL`. Skip messages are descriptive.

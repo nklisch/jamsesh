@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync-manifest
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy-object-storage-sync
 depends_on: [epic-cloud-native-deploy-object-storage-sync-backend]
@@ -88,3 +88,19 @@ Test coverage includes all acceptance criteria plus two additional cases:
   tokens) is NOT fenced — required for the initial write where both sides are 0.
 - `TestManifestStore_Save_ErrFencedIsDistinctFromErrPrecondition`: verifies
   the two sentinel errors are not aliased, since callers must distinguish them.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Clean implementation. The create-only guard inside `Save` (using the Load-returned ETag to detect existing manifest when `ifMatch=""`) is a thoughtful API decision — the Backend.Put contract treats empty ifMatch as overwrite, but the manifest layer's semantics differ. Adding the guard at the ManifestStore boundary keeps the API clean without forcing Backend impls to grow a separate "create-only" primitive.
+
+Fencing pre-flight reuses the Load result for both the token check and the ETag lookup — single round-trip, two pieces of information. Good API design.
+
+13 unit tests using an in-memory `memBackend` — no S3 dependency for manifest tests. The two extra tests beyond acceptance criteria (`FencingTokenEqualOnDisk` and `ErrFencedIsDistinctFromErrPrecondition`) are exactly the right edge cases to guard.
+
+Save defaults Version=1 and overwrites UpdatedAt to time.Now().UTC() — on-disk values are authoritative, callers don't need to manage them.
