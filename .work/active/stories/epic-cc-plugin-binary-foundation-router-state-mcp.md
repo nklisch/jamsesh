@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-binary-foundation-router-state-mcp
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: epic-cc-plugin-binary-foundation
 depends_on: []
@@ -46,3 +46,28 @@ the binary builds and `jamsesh mcp-headers` works (assuming
 - Use the `internal/buildinfo` package (already exists) to source the Version string for `--version`.
 - The `auth` subcommand should be registered with a stub Action that prints "auth subcommand lands in the next story". The cli structure is here; behavior comes from the oauth-browser-and-device story.
 - Token files MUST be mode 0600. The test enforces this.
+
+## Implementation notes
+
+Files created:
+- `cmd/jamsesh/main.go` — urfave/cli/v3 app wired with `auth` stub and `mcp-headers` subcommands; signal.NotifyContext for graceful interrupt; `buildinfo.Version` for `--version`.
+- `cmd/jamsesh/auth/auth.go` — stub Command() printing "auth subcommand lands in the next story".
+- `cmd/jamsesh/state/state.go` — `PluginDataDir()`, `Read()`, `Write()` (atomic via temp+rename+chmod before rename), typed wrappers `ReadToken`/`WriteToken`/`ReadRefreshToken`/`WriteRefreshToken`/`ReadPortalURL` with env→file→default precedence.
+- `cmd/jamsesh/state/state_test.go` — round-trip, ErrNotExist propagation, no-temp-leakage after successful Write, mode 0600 enforcement, whitespace trimming, ReadPortalURL precedence.
+- `cmd/jamsesh/hookio/hookio.go` — generic `Run[I, O any]` reading stdin, calling handler, encoding output; error envelope `{"error":…,"message":…}` on failure.
+- `cmd/jamsesh/hookio/hookio_test.go` — happy path, malformed JSON, handler error, empty-object input.
+- `cmd/jamsesh/mcpheaders/mcpheaders.go` — `mcp-headers` Command() reading token via state.ReadToken, exiting 2 with stderr message on missing token.
+- `cmd/jamsesh/mcpheaders/mcpheaders_test.go` — integration tests building the binary; token-present outputs `{"Authorization":"Bearer …"}`; missing token exits 2 with non-empty stderr.
+
+Dependency added: `github.com/urfave/cli/v3 v3.9.0`
+
+All acceptance criteria verified:
+- `go build ./cmd/jamsesh` — produces binary
+- `jamsesh --help` lists `auth`, `mcp-headers`
+- `jamsesh --version` prints `jamsesh version dev`
+- `CLAUDE_PLUGIN_DATA=$tmp jamsesh mcp-headers` → `{"Authorization":"Bearer bogus"}`
+- Missing token → exit 2 + stderr (covered by mcpheaders_test.go)
+- Atomic write: no temp leakage (state_test.go TestWrite_atomicNoTempLeakage)
+- Mode 0600 enforced (state_test.go TestWrite_mode0600)
+- hookio round-trip green
+- `go test ./cmd/jamsesh/...` — all green

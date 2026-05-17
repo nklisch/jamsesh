@@ -1,0 +1,139 @@
+// Package state provides read/write helpers for the Claude plugin's local
+// data directory, rooted at ${CLAUDE_PLUGIN_DATA}. All credential files are
+// written at mode 0600. All writes are atomic via temp-file + rename.
+package state
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// DefaultPortalURL is the fallback portal URL when neither the env var nor
+// the portal_url file is present.
+const DefaultPortalURL = "https://jamsesh.example.com"
+
+// PluginDataDir returns the value of CLAUDE_PLUGIN_DATA, or an error if
+// the environment variable is unset or empty.
+func PluginDataDir() (string, error) {
+	dir := os.Getenv("CLAUDE_PLUGIN_DATA")
+	if dir == "" {
+		return "", errors.New("CLAUDE_PLUGIN_DATA is not set; this binary must be invoked by the Claude Code plugin runtime")
+	}
+	return dir, nil
+}
+
+// Read returns the contents of <PluginDataDir>/<name>. Returns
+// fs.ErrNotExist (unwrapped from the underlying os error) when the file
+// does not exist so callers can use errors.Is(err, fs.ErrNotExist).
+func Read(name string) ([]byte, error) {
+	dir, err := PluginDataDir()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("state file %q not found: %w", name, fs.ErrNotExist)
+		}
+		return nil, fmt.Errorf("reading state file %q: %w", name, err)
+	}
+	return data, nil
+}
+
+// Write atomically writes data to <PluginDataDir>/<name> with the given
+// mode. Atomicity is achieved by writing to a sibling temp file and then
+// renaming it over the target. The temp file is always removed on failure.
+func Write(name string, data []byte, mode fs.FileMode) error {
+	dir, err := PluginDataDir()
+	if err != nil {
+		return err
+	}
+	target := filepath.Join(dir, name)
+
+	// Write to a temp file in the same directory so the rename is atomic
+	// (same filesystem).
+	tmp, err := os.CreateTemp(dir, ".jamsesh-write-*")
+	if err != nil {
+		return fmt.Errorf("creating temp file for %q: %w", name, err)
+	}
+	tmpName := tmp.Name()
+
+	// Ensure temp is cleaned up on any failure path.
+	success := false
+	defer func() {
+		if !success {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("writing temp file for %q: %w", name, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing temp file for %q: %w", name, err)
+	}
+
+	// Apply the requested permission before the rename so the target never
+	// briefly appears with wrong permissions.
+	if err := os.Chmod(tmpName, mode); err != nil {
+		return fmt.Errorf("setting mode on temp file for %q: %w", name, err)
+	}
+
+	if err := os.Rename(tmpName, target); err != nil {
+		return fmt.Errorf("renaming temp file to %q: %w", name, err)
+	}
+	success = true
+	return nil
+}
+
+// ReadToken reads the "token" file and returns it with leading/trailing
+// whitespace trimmed.
+func ReadToken() (string, error) {
+	data, err := Read("token")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// WriteToken writes the access token to "token" at mode 0600.
+func WriteToken(t string) error {
+	return Write("token", []byte(t), 0o600)
+}
+
+// ReadRefreshToken reads the "refresh_token" file and returns it trimmed.
+func ReadRefreshToken() (string, error) {
+	data, err := Read("refresh_token")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// WriteRefreshToken writes the refresh token to "refresh_token" at mode 0600.
+func WriteRefreshToken(t string) error {
+	return Write("refresh_token", []byte(t), 0o600)
+}
+
+// ReadPortalURL resolves the portal URL with the following precedence:
+//  1. JAMSESH_PORTAL_URL environment variable
+//  2. ${CLAUDE_PLUGIN_DATA}/portal_url file (trimmed)
+//  3. DefaultPortalURL constant
+func ReadPortalURL() (string, error) {
+	if u := os.Getenv("JAMSESH_PORTAL_URL"); u != "" {
+		return u, nil
+	}
+	data, err := Read("portal_url")
+	if err == nil {
+		if u := strings.TrimSpace(string(data)); u != "" {
+			return u, nil
+		}
+	}
+	// Ignore ErrNotExist or empty file — fall through to default.
+	return DefaultPortalURL, nil
+}

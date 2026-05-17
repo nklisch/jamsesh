@@ -1,17 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
+import { createRawSnippet } from 'svelte';
 import Badge from './Badge.svelte';
+
+function textSnippet(text: string) {
+  return createRawSnippet(() => ({
+    render: () => `<span>${text}</span>`,
+  }));
+}
 
 describe('Badge', () => {
   it('renders children', () => {
-    render(Badge, { props: { children: () => 'sync' } });
+    render(Badge, { props: { children: textSnippet('sync') } });
     expect(screen.getByText('sync')).toBeInTheDocument();
   });
 
   it('defaults to variant=neutral', () => {
-    render(Badge, { props: { children: () => 'test' } });
-    const el = screen.getByText('test');
-    expect(el).toHaveClass('pill-neutral');
+    render(Badge, { props: { children: textSnippet('test') } });
+    const pill = screen.getByText('test').closest('.pill');
+    expect(pill).toHaveClass('pill-neutral');
   });
 
   const variants = [
@@ -27,13 +34,15 @@ describe('Badge', () => {
 
   for (const variant of variants) {
     it(`applies pill-${variant} class for variant="${variant}"`, () => {
-      render(Badge, { props: { variant, children: () => variant } });
-      expect(screen.getByText(variant)).toHaveClass(`pill-${variant}`);
+      render(Badge, { props: { variant, children: textSnippet(variant) } });
+      const pill = screen.getByText(variant).closest('.pill');
+      expect(pill).toHaveClass(`pill-${variant}`);
     });
   }
 
   it('always has the base pill class', () => {
-    render(Badge, { props: { children: () => 'base' } });
-    expect(screen.getByText('base')).toHaveClass('pill');
+    render(Badge, { props: { children: textSnippet('base') } });
+    const pill = screen.getByText('base').closest('.pill');
+    expect(pill).toHaveClass('pill');
   });
 });
