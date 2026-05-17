@@ -1,14 +1,14 @@
 ---
 id: epic-portal-ui-session-list
 kind: feature
-stage: drafting
+stage: implementing
 tags: [ui]
 parent: epic-portal-ui
 depends_on: [epic-portal-ui-foundation, epic-portal-ui-design-system]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Portal UI — Session List
@@ -74,6 +74,35 @@ new-session-creation wizard itself (see Decomposition risks).
 - "Just invited" sessions get an accent border + `new` badge
 - Ended sessions render at reduced opacity with `bg-tertiary`
 
-<!-- Feature-design will fill in component structure, data fetching, and
-the new-session-flow resolution when /agile-workflow:feature-design runs
-on this. Feature stays at stage: drafting per --mocks-only pass. -->
+## Design decisions
+
+- **New session button**: opens an inline drawer/modal in the portal UI calling POST /api/sessions (matching the locked sign-in card's portal-side flow).
+- **Mockup source**: `.mockups/screens/epic-portal-ui-session-list/option-1.html` is the locked design.
+- **WebSocket subscriptions**: v1 opens N concurrent WS connections, one per session in the list. Wasteful but simple. Future optimization: server-side multiplex.
+- **Pagination**: cursor-based with infinite scroll (load more on scroll-bottom).
+- **Single story**: `epic-portal-ui-session-list-screen`.
+
+## Implementation Units
+
+### Unit 1: SessionList screen
+
+**File**: `frontend/src/lib/screens/SessionList.svelte`
+
+State: sessions array, activeFilter (all|active|finalizing|ended), nextCursor, isLoading. On mount: fetch `/api/sessions`, subscribe to each session's WS feed. Row component renders per the mockup.
+
+### Unit 2: NewSessionDrawer
+
+**File**: `frontend/src/lib/components/NewSessionDrawer.svelte`
+
+Form modal: name, goal, scope (textarea comma-sep globs → JSON array), default_mode (toggle), invitees (multiline emails). On submit calls `client.POST` to the org's sessions endpoint.
+
+### Unit 3: Routing wire-up
+
+`App.svelte` route `/orgs/<orgID>/sessions` → SessionList. Update from the SessionsLanding placeholder.
+
+## Testing
+
+- Renders list of sessions
+- Filter chip filters work
+- New session drawer submits + prepends new session
+- Live WS event updates row in place

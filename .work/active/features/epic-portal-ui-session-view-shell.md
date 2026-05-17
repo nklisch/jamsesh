@@ -8,7 +8,7 @@ depends_on: [epic-portal-ui-foundation, epic-portal-ui-design-system]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Portal UI — Session View Shell
@@ -107,7 +107,29 @@ Does NOT cover: the artifact viewer or inline comments
 - Bottom-panel expansion-on-tab-click is the right default; collapsing
   the panel hides everything but the latest-event strip.
 
-<!-- Feature-design will fill in layout slots, subscription wiring, DAG
-renderer interface, and decompose further if needed when
-/agile-workflow:feature-design runs on this. Feature stays at
-stage: drafting until then. -->
+## Design decisions
+
+- **Mockup**: `.mockups/screens/epic-portal-ui-session-view-shell/option-5.html` (hybrid).
+- **TreeDag**: SVG-based, scoped to `TreeDag.svelte`. Per-ref columns, author-colored edges via `--author-N` tokens, mode badges, draft trunk highlighted. Click commit emits selection.
+- **Bottom panel tabs**: Activity (WS event stream) + Comments (REST + WS updates).
+- **Artifact slot**: empty `<div data-selected-sha={...}>` for the artifact-and-comments sibling feature to fill.
+- **Tree state**: collapsed/expanded/wide cycle persisted to localStorage per session.
+- **Single story** — `epic-portal-ui-session-view-shell-shell-and-tree`.
+
+## Implementation Units
+
+### Unit 1: SessionViewShell + zones
+
+`frontend/src/lib/screens/SessionViewShell.svelte` — three-zone layout per the option-5 mock. Header (session meta), tree rail (TreeDag), body (artifact slot + bottom panel).
+
+### Unit 2: TreeDag
+
+`frontend/src/lib/components/TreeDag.svelte` — SVG layout, column-per-ref, click → selection event.
+
+### Unit 3: ActivityFeed + CommentsTab
+
+`frontend/src/lib/components/ActivityFeed.svelte` and `CommentsTab.svelte` — bottom panel tabs.
+
+### Unit 4: Routing
+
+`App.svelte` route `/orgs/<orgID>/sessions/<sessionID>` → SessionViewShell.
