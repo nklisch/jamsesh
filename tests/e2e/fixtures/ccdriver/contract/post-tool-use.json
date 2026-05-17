@@ -1,0 +1,13 @@
+{
+  "session_id": "ses_abc123",
+  "transcript_path": "/tmp/transcript.json",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -m \"feat: add feature\""
+  },
+  "tool_response": {
+    "exit_code": 0,
+    "stdout": "[main abc1234] feat: add feature\n 1 file changed, 10 insertions(+)",
+    "stderr": ""
+  }
+}

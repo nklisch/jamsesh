@@ -1,4 +1,4 @@
-.PHONY: generate generate-db generate-api generate-api-go generate-api-ts frontend-build build go-build
+.PHONY: generate generate-db generate-api generate-api-go generate-api-ts frontend-build build go-build test-portal-image test-portal-image-clean
 
 generate: generate-db generate-api
 
@@ -49,3 +49,17 @@ test-e2e-playwright:
 
 # test-e2e: run the full e2e suite (Go then Playwright).
 test-e2e: test-e2e-go test-e2e-playwright
+
+# test-portal-image: build the portal Docker image used by e2e Testcontainers
+# fixtures. Reuses the project's existing Dockerfile (distroless-static) which
+# expects ${BINARY}-${TARGETOS}-${TARGETARCH}. Builds a static linux/amd64
+# binary (CGO_ENABLED=0) to satisfy distroless-static's no-libc constraint,
+# then removes the intermediate file after docker build.
+test-portal-image: frontend-build
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o portal-linux-amd64 ./cmd/portal
+	docker build --build-arg BINARY=portal --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 -t jamsesh/portal:e2e .
+	@rm -f portal-linux-amd64
+
+# test-portal-image-clean: remove the e2e portal image tag.
+test-portal-image-clean:
+	-docker rmi jamsesh/portal:e2e

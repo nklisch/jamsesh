@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-portal-image-build
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-module-skeleton]
@@ -69,3 +69,29 @@ to produce it too, from a fresh local `make go-build`.
 - Add a guard in the test: if `docker info` fails, `t.Skip("docker
   not available")` — the same pattern is used elsewhere in the
   codebase for `requireGit()`
+
+## Implementation notes
+
+### Files modified
+
+- `Makefile` — added `test-portal-image` and `test-portal-image-clean`
+  targets; both added to the `.PHONY` line.
+- `tests/e2e/scaffolding/portal_image_test.go` — new test file with
+  `requireDocker`, `requirePortalImage`, and `TestPortalImageHealthz`.
+
+### Discoveries during implementation
+
+1. **Static binary required.** `go build ./...` without `CGO_ENABLED=0`
+   produces a dynamically linked binary that cannot run inside
+   `gcr.io/distroless/static:nonroot`. The `test-portal-image` target
+   uses `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o
+   portal-linux-amd64 ./cmd/portal` directly (depending on
+   `frontend-build`) rather than delegating to `go-build`, which leaves
+   the host `portal` binary dynamically linked.
+
+2. **`JAMSESH_EMAIL_FROM` required at startup.** `senders.New()` is
+   called unconditionally in `main()` and returns a hard error if
+   `email.from` is empty (default SMTP host/port are already set in
+   config defaults, so only `From` was missing). The test passes
+   `-e JAMSESH_EMAIL_FROM=noreply@example.com`; SMTP dial is lazy so
+   the fake address never causes a connection attempt.

@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-ccdriver
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-module-skeleton]
@@ -73,3 +73,25 @@ real Claude Code in e2e tests — deterministic, fast, no network.
   and point to the contract file to update if the drift is intentional
 - Use the `testing.TB.TempDir()` pattern for `CLAUDE_PLUGIN_DATA` —
   the driver creates a clean per-test data dir
+
+## Implementation notes
+
+Files created:
+- `tests/e2e/fixtures/ccdriver/driver.go` — `Driver` struct with six exported methods (`StartSession`, `SubmitPrompt`, `PreToolUse`, `PostToolUse`, `Stop`, `SessionEnd`); internal generic `runHook[I, O any]` handles subprocess invocation
+- `tests/e2e/fixtures/ccdriver/payloads.go` — exported mirrors of the six private `<hook>Input`/`<hook>Output` types from `cmd/jamsesh/hooks/`; `PreToolUseInput.ToolInput` and `PostToolUseInput.ToolInput` are `json.RawMessage` matching the binary's wire format
+- `tests/e2e/fixtures/ccdriver/contract_test.go` — `package ccdriver_test` (external); single `TestPayloadContracts` with six `t.Run` subtests; supports `-update` flag to regenerate frozen files; failure messages include got/want diff and the path to update
+- `tests/e2e/fixtures/ccdriver/contract/session-start.json` — frozen payload
+- `tests/e2e/fixtures/ccdriver/contract/user-prompt-submit.json` — frozen payload
+- `tests/e2e/fixtures/ccdriver/contract/pre-tool-use.json` — frozen payload (includes `tool_input` with re-indented JSON object)
+- `tests/e2e/fixtures/ccdriver/contract/post-tool-use.json` — frozen payload (includes `tool_input` and `tool_response`)
+- `tests/e2e/fixtures/ccdriver/contract/stop.json` — frozen payload
+- `tests/e2e/fixtures/ccdriver/contract/session-end.json` — frozen payload
+- `tests/e2e/fixtures/ccdriver/README.md` — contract-drift mitigation pattern, wire-format table, usage example
+
+Deviations from story body:
+- `ToolResponse` is an exported type in `payloads.go` (required since `PostToolUseInput` embeds it and tests construct it directly); story body did not mention it explicitly but it follows naturally from the `postToolUseInput` private type
+- Contract test uses `package ccdriver_test` (external test) with an explicit import, consistent with the project's test style noted in the story
+
+Verification:
+- `cd tests/e2e && go test ./fixtures/ccdriver/... -v` → all six subtests PASS
+- `git diff go.mod` → empty (root module untouched)
