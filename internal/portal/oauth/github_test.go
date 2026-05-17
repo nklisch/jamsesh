@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"jamsesh/internal/portal/oauth"
 )
@@ -329,4 +330,67 @@ func isExchangeErr(err error, target **oauth.ErrExchange) bool {
 		return true
 	}
 	return false
+}
+
+// TestGitHub_DefaultHTTPClientHasTimeout verifies that the GitHub provider
+// injects a timeout when no HTTPClient is supplied. This guards against
+// regressions where a future refactor silently re-introduces http.DefaultClient
+// (which has Timeout == 0, enabling indefinite hangs on slow OAuth providers).
+func TestGitHub_DefaultHTTPClientHasTimeout(t *testing.T) {
+	g := oauth.NewGitHub(oauth.GitHubOptions{
+		ClientID:     "id",
+		ClientSecret: "secret",
+		// Intentionally no HTTPClient override — exercises the default path.
+	})
+
+	client := g.HTTPClientForTest()
+	if client.Timeout <= 0 {
+		t.Errorf("default HTTPClient.Timeout = %v; want > 0 (no timeout means indefinite hang on slow OAuth providers)", client.Timeout)
+	}
+	const maxSensibleTimeout = 30 * time.Second
+	if client.Timeout > maxSensibleTimeout {
+		t.Errorf("default HTTPClient.Timeout = %v; want <= %v (too generous — goroutine pileup risk)", client.Timeout, maxSensibleTimeout)
+	}
+}
+
+// TestGitHub_Exchange_TimesOutOnSlowProvider verifies that Exchange returns an
+// error when the OAuth provider is slower than the configured HTTP client
+// timeout. The test uses a short 100ms test-only timeout against a server that
+// sleeps 500ms, so it completes well under a second of wall-clock time.
+func TestGitHub_Exchange_TimesOutOnSlowProvider(t *testing.T) {
+	// Slow token endpoint — sleeps longer than the client timeout below.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login/oauth/access_token", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "should-never-reach"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// Use a custom HTTP client with a 100ms timeout — well under the 500ms
+	// server sleep, so the timeout fires first.
+	g := oauth.NewGitHub(oauth.GitHubOptions{
+		ClientID:     "id",
+		ClientSecret: "secret",
+		BaseURL:      srv.URL,
+		HTTPClient:   &http.Client{Timeout: 100 * time.Millisecond},
+	})
+
+	start := time.Now()
+	_, err := g.Exchange(context.Background(), "chaos-code", "https://example.com/cb")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Exchange() should have returned an error due to client timeout, got nil")
+	}
+	// Verify it did not wait for the server sleep to finish (would be ~500ms).
+	if elapsed > 400*time.Millisecond {
+		t.Errorf("Exchange() took %v — expected to abort at ~100ms timeout, not wait for the 500ms server sleep", elapsed)
+	}
+	// The error should mention timeout or deadline.
+	msg := err.Error()
+	if !strings.Contains(msg, "timeout") && !strings.Contains(msg, "deadline") && !strings.Contains(msg, "Timeout") {
+		t.Logf("Exchange() error = %v (does not mention timeout/deadline — acceptable if the transport wraps it)", err)
+	}
 }

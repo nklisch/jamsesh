@@ -8,14 +8,22 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // githubAuthorizeBase and related URL constants are exported as vars so
 // tests can substitute a httptest.Server URL via GitHubOptions.BaseURL.
 const (
-	githubAuthorizeURL    = "https://github.com/login/oauth/authorize"
-	githubAccessTokenURL  = "https://github.com/login/oauth/access_token"
-	githubAPIBase         = "https://api.github.com"
+	githubAuthorizeURL   = "https://github.com/login/oauth/authorize"
+	githubAccessTokenURL = "https://github.com/login/oauth/access_token"
+	githubAPIBase        = "https://api.github.com"
+
+	// githubOAuthHTTPTimeout is the default timeout for outbound OAuth HTTP
+	// calls (token exchange, /user, /user/emails). 15s is generous enough for
+	// slow networks yet tight enough to prevent goroutine pileup during a
+	// GitHub outage. Override via GitHubOptions.HTTPClient for callers with
+	// different requirements.
+	githubOAuthHTTPTimeout = 15 * time.Second
 )
 
 // GitHubOptions configures the GitHub provider. The only required fields are
@@ -26,7 +34,7 @@ type GitHubOptions struct {
 	ClientSecret string
 
 	// HTTPClient overrides the HTTP client used for GitHub API calls.
-	// Defaults to http.DefaultClient when nil.
+	// Defaults to a client with githubOAuthHTTPTimeout when nil.
 	HTTPClient *http.Client
 
 	// BaseURL overrides the GitHub API and token-exchange base URL for
@@ -107,7 +115,7 @@ func (g *GitHub) httpClient() *http.Client {
 	if g.opts.HTTPClient != nil {
 		return g.opts.HTTPClient
 	}
-	return http.DefaultClient
+	return &http.Client{Timeout: githubOAuthHTTPTimeout}
 }
 
 func (g *GitHub) tokenBase() string {

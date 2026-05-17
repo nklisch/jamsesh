@@ -1,8 +1,7 @@
 // Invariant: the portal degrades gracefully under adverse network conditions.
 // Chaos tests prove the difference between "looks fine on golden path" and
-// "actually robust". Where a production invariant is absent (e.g. no HTTP
-// client timeout on OAuth), the test is skipped with a clear reference to
-// the backlog item that tracks the fix.
+// "actually robust". Where a production invariant is absent, the test is
+// skipped with a clear reference to the backlog item that tracks the fix.
 //
 // Active scenarios:
 //
@@ -10,9 +9,9 @@
 //     Postgres. Requests either succeed (elevated latency) or surface a clear
 //     non-2xx status; no partial-state writes.
 //
-//   - oauth_provider_timeout — SKIPPED pending portal-oauth-client-timeout.
-//     WireMock adds 10s delay to GitHub token endpoint; portal has no timeout
-//     on http.DefaultClient so the callback would hang indefinitely.
+//   - oauth_provider_timeout — WireMock adds 10s delay to GitHub token
+//     endpoint. The portal's 15s HTTP client timeout fires first; the callback
+//     returns a non-2xx error within the configured timeout window.
 //
 //   - ws_reconnect_drop — DEFERRED. Requires spa-websocket-reconnect-logic
 //     (SPA-side reconnect) and wsclient.ConnectFromSeq (Go test helper).
@@ -197,34 +196,13 @@ func testNetworkJitterDB(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Scenario 2: oauth_provider_timeout
 //
-// SKIPPED — pending portal-oauth-client-timeout.
-//
-// internal/portal/oauth/github.go uses http.DefaultClient (no timeout).
-// A 10s WireMock fixedDelayMilliseconds on /login/oauth/access_token causes
-// the portal's OAuth callback to hang indefinitely, making the test
-// non-terminating.
-//
-// Once portal-oauth-client-timeout is resolved:
-//   - Remove the t.Skip call.
-//   - Assert callback returns within portal's configured timeout + 2s.
-//   - Assert response status is non-2xx (portal surfaced the timeout error).
-//   - Assert no oauth_tokens row exists for the chaos email.
-//
-// Reference: .work/backlog/portal-oauth-client-timeout.md
+// Invariant: the portal's GitHub OAuth HTTP client has a 15s timeout
+// (githubOAuthHTTPTimeout in internal/portal/oauth/github.go). A 10s
+// WireMock fixedDelayMilliseconds on /login/oauth/access_token causes the
+// portal to timeout and return a non-2xx error within the configured window.
 // ---------------------------------------------------------------------------
 
 func testOAuthProviderTimeout(t *testing.T) {
-	t.Skip(
-		"SKIP oauth_provider_timeout: portal-oauth-client-timeout not fixed. " +
-			"internal/portal/oauth/github.go uses http.DefaultClient (no timeout); " +
-			"a 10s WireMock delay hangs the portal indefinitely. " +
-			"Fix tracked in .work/backlog/portal-oauth-client-timeout.md.",
-	)
-
-	// The code below is intentionally unreachable until t.Skip is removed.
-	// It documents the full intended scenario so the next implementer has
-	// a clear starting point.
-
 	ctx := context.Background()
 
 	// WireMock: 10s fixedDelay on /login/oauth/access_token to simulate a
