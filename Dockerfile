@@ -1,15 +1,15 @@
 ARG BINARY=portal
-# debian:bookworm-slim provides git (needed for git init --bare, git merge-file)
-# while staying small. distroless/static cannot run git since it ships no glibc
-# and no external binaries. See .work/backlog/portal-docker-image-missing-git-binary.md
-FROM debian:bookworm-slim
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# alpine:3.21 + git is the runtime base: the portal shells out to `git init
+# --bare`, `git-receive-pack`, and `git-upload-pack`, so a git binary must be
+# present. The portal binary itself is built CGO_ENABLED=0 (fully static),
+# so musl libc is fine. ca-certificates supplies the trust roots needed for
+# outbound TLS (GitHub OAuth, transactional email providers).
+FROM alpine:3.21
 ARG BINARY
 ARG TARGETOS
 ARG TARGETARCH
+RUN apk add --no-cache git ca-certificates
 COPY ${BINARY}-${TARGETOS}-${TARGETARCH} /usr/local/bin/portal
 EXPOSE 8443
-USER nobody:nogroup
+USER nobody
 ENTRYPOINT ["/usr/local/bin/portal"]

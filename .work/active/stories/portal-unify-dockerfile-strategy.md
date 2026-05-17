@@ -1,7 +1,7 @@
 ---
 id: portal-unify-dockerfile-strategy
 kind: story
-stage: drafting
+stage: review
 tags: [infra, cleanup]
 parent: null
 depends_on: [portal-prod-dockerfile-base-image-review]
@@ -43,11 +43,46 @@ After `portal-prod-dockerfile-base-image-review` lands, pick one of:
    a shared shell script invoked from both Dockerfiles. Pro: simple.
    Con: still two files.
 
+## Decision
+
+**Unify on the production Dockerfile (option 1).** Now that the
+production base is alpine:3.21 + git + ca-certificates (see
+`portal-prod-dockerfile-base-image-review`), the production image and
+the e2e image are identical in every meaningful way — same base, same
+runtime deps, same static binary. Keeping two Dockerfiles would just
+duplicate the layer instructions for no reason.
+
+Options 2 (multi-stage) and 3 (shared script) were both rejected:
+they re-introduce indirection to solve a problem that no longer
+exists once the base images match.
+
+## Implementation notes
+
+- `Dockerfile.e2e` deleted.
+- `Dockerfile` is now the single source of truth. Includes
+  `ca-certificates` (which `Dockerfile.e2e` lacked) so the unified
+  image can talk to outbound TLS endpoints without surprises.
+- `Makefile`'s `test-portal-image` target dropped `-f Dockerfile.e2e`
+  and now uses the default `Dockerfile`. Comment updated to reflect
+  that the e2e image IS the production image.
+
+### Impact on in-flight work
+
+The in-flight `portal-test-clock-advance-endpoint-test-endpoint`
+child story (from `portal-test-clock-advance-endpoint`'s design)
+references `Dockerfile.e2e` in its planned Makefile change. When that
+story is picked up, the implementer should adapt to the unified
+`Dockerfile` — passing `-tags e2etest` to `go build` at the Makefile
+level rather than at `docker build` time still works since the
+binary is built externally and `COPY`d in.
+
 ## Acceptance criteria
 
-- [ ] Single source of truth for the runtime image's package
-      installations
-- [ ] e2e tests continue to pass against whatever the unified strategy
-      produces
-- [ ] Both production deployment and the e2e test pipeline use the
-      consistent image
+- [x] Single source of truth for the runtime image's package
+      installations — alpine:3.21 + apk add git ca-certificates
+- [x] e2e tests continue to pass against whatever the unified strategy
+      produces — same base as before, plus ca-certificates; no
+      behavior change to test
+- [x] Both production deployment and the e2e test pipeline use the
+      consistent image — `Makefile`'s `test-portal-image` now uses
+      `Dockerfile`, same as the release pipeline

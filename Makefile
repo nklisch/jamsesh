@@ -74,14 +74,14 @@ test-fuzz-mcp:
 	cd tests/e2e && go test ./fuzz/ -run TestMCPToolInputFuzz -v -timeout 300s
 
 # test-portal-image: build the portal Docker image used by e2e Testcontainers
-# fixtures. Uses Dockerfile.e2e (alpine + git) instead of the production
-# distroless image so that e2e tests that exercise git smart-HTTP (session
-# creation, push, fetch) can run inside the container. The binary is still
-# built with CGO_ENABLED=0 for a fully static executable compatible with
-# Alpine's musl libc.
+# fixtures. Uses the production Dockerfile (alpine:3.21 + git + ca-certificates)
+# — the same image production runs — so e2e tests that exercise git smart-HTTP
+# (session creation, push, fetch) hit the same git binary path as production.
+# The portal binary is built CGO_ENABLED=0 for a fully static executable
+# compatible with Alpine's musl libc.
 test-portal-image: frontend-build
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o portal-linux-amd64 ./cmd/portal
-	docker build -f Dockerfile.e2e --build-arg BINARY=portal --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 -t jamsesh/portal:e2e .
+	docker build --build-arg BINARY=portal --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 -t jamsesh/portal:e2e .
 	@rm -f portal-linux-amd64
 
 # test-portal-image-clean: remove the e2e portal image tag.

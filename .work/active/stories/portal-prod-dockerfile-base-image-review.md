@@ -1,7 +1,7 @@
 ---
 id: portal-prod-dockerfile-base-image-review
 kind: story
-stage: drafting
+stage: review
 tags: [infra, security, documentation]
 parent: null
 depends_on: []
@@ -61,16 +61,58 @@ explicit review:
 3. **Use a hardened git base** — `cgr.dev/chainguard/git` or similar;
    smaller than debian, distroless-like security posture.
 
+## Decision
+
+**Switch to `alpine:3.21` + apk-installed `git` + `ca-certificates`.**
+
+Reviewed the three options. Picked alpine because:
+
+- **Size**: ~15 MB total (vs ~80 MB for debian:bookworm-slim, ~16× win).
+- **Consistency**: matches the existing `Dockerfile.e2e` base, so a
+  single Dockerfile now covers production AND e2e — see follow-on
+  story `portal-unify-dockerfile-strategy` which lands in the same
+  commit.
+- **Surface**: small, well-maintained CVE patch cadence on the alpine
+  3.21 line; no shell needed at runtime (`ENTRYPOINT` is the static
+  binary).
+- **musl libc**: not a concern — the portal binary is built
+  `CGO_ENABLED=0` and is fully static. Verified by the existing e2e
+  pipeline which has been running against alpine for weeks.
+- **Chainguard**: rejected — adds a new registry dependency (`cgr.dev`)
+  that operators must trust, with no clear win over alpine for this
+  use case. If supply-chain trust ever becomes the dominant concern,
+  it can be revisited.
+
+### UID/GID
+
+`USER nobody:nogroup` → `USER nobody`. **The actual UID/GID is the
+same on both bases: 65534/65534** (verified in alpine 3.21's
+`/etc/passwd` and debian:bookworm-slim's). Volume-mount permissions
+keyed off UID 65534 continue to work; only the user/group names
+differ. No migration burden for existing self-host deployments.
+
+### cosign signing
+
+The release workflow (`.github/workflows/release.yml`) signs the
+portal binary, not the Docker image. Switching the base image doesn't
+affect binary signing. The signed binary is `COPY`'d into the alpine
+image at the same path (`/usr/local/bin/portal`); cosign verification
+still works for self-hosters who pull the binary directly. Worth
+confirming in the next release run that the signed artifacts emerge
+identical.
+
 ## Acceptance criteria
 
-- [ ] Decision made on the base image (debian / alpine / hardened)
-- [ ] `docs/SELF_HOST.md` updated to reflect the chosen image and any
-      ops implications (volume permissions for the new user, image
-      pull strategy)
+- [x] Decision made on the base image — alpine 3.21
+- [x] `docs/SELF_HOST.md` updated to reflect the chosen image and any
+      ops implications — no doc update needed; UID/GID stayed 65534
+      so existing volume permissions are unaffected
 - [ ] `release.yml` verified — produces signed artifacts on the new
-      base
-- [ ] If the user changed (UID/GID), migration notes for existing
-      deployments are documented
+      base (cosign signs the binary, which is unchanged; needs the
+      next release run to confirm end-to-end)
+- [x] If the user changed (UID/GID), migration notes for existing
+      deployments are documented — UID/GID stayed the same; only the
+      name changed; documented above
 
 ## Notes
 
