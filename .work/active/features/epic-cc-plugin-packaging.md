@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-packaging
 kind: feature
-stage: drafting
+stage: implementing
 tags: [plugin]
 parent: epic-cc-plugin
 depends_on: []
@@ -102,5 +102,191 @@ this epic. Does NOT cover the multi-arch CI build pipeline — that's
   = expensive context for every user, every session. The ≤2500-word
   budget is the safety valve; design pass treats it as a hard limit.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+## Design decisions
+
+Resolved at feature-design time (autopilot, judgment branch):
+
+- **Plugin manifest path**: `.claude-plugin/plugin.json` per CC
+  plugin convention (NOT `plugin.json` at root).
+- **Manifest schema**: minimal — `name`, `version`, `description`,
+  `author`, `homepage` (URL to portal). Multi-arch binary
+  registration is via CC's marketplace metadata, not plugin.json
+  per se; plugin.json declares the binary entry-point name and
+  expected location (`bin/jamsesh`); the marketplace repo's
+  `marketplace.json` lists per-arch URLs.
+- **Hook registration shape**: `hooks/hooks.json` per CC plugin
+  hook spec. Each hook entry maps a CC event to a command line.
+- **MCP config**: `.mcp.json` with one server entry pointing at
+  the portal's `/mcp` endpoint, using `headersHelper` to invoke
+  `bin/jamsesh mcp-headers` at connection time.
+- **Skills as slash commands**: each `skills/<name>/SKILL.md` has
+  YAML frontmatter (`name`, `description`, `argument-hint`) plus
+  body text that instructs Claude to run `jamsesh <name>
+  $ARGUMENTS`. Five user-facing skills land here: join, status,
+  fork, mode, finalize.
+- **Teaching skill (`skills/jamsesh/SKILL.md`)**: auto-loaded via
+  `triggers:` in the frontmatter. Body budget ≤2500 words (hard
+  limit). Operational primer covering modes, trailer conventions,
+  addressed-comment syntax, conflict-resolution flow, digest
+  reading, MCP tool usage. Points at docs/VISION.md and
+  docs/PROTOCOL.md for deeper context.
+- **Skill auto-load triggers**: the teaching skill is keyed off
+  the presence of `${CLAUDE_PLUGIN_DATA}/sessions/` or the
+  session-bound state; exact mechanism follows CC's auto-load
+  protocol. Reference: the CC plugin docs for `auto-load:` or
+  equivalent frontmatter.
+- **Story decomposition**: single story. The artifacts are all
+  static-content authoring with a single review concern (does the
+  teaching skill stay ≤2500 words while covering the required
+  topics).
+
+## Architectural choice
+
+This feature is pure static artifacts — no code, no build step.
+The plugin install flow (handled by CC + the marketplace repo)
+fetches `bin/jamsesh` per-arch from the GitHub releases produced
+by `epic-distribution-build-pipeline`. This feature ships the
+markdown + json + yaml; the binary it references lives in a
+separate artifact channel.
+
+## Implementation Units
+
+### Unit 1: `.claude-plugin/plugin.json`
+
+```json
+{
+  "$schema": "https://schemas.anthropic.com/claude-plugin/manifest.json",
+  "name": "jamsesh",
+  "version": "0.1.0",
+  "description": "Multi-agent jamming for codebases — coordinated Claude Code sessions producing PR-shaped branches without merge headaches.",
+  "author": {
+    "name": "jamsesh maintainers",
+    "url": "https://github.com/<owner>/jamsesh"
+  },
+  "homepage": "https://github.com/<owner>/jamsesh",
+  "license": "Apache-2.0",
+  "bin": "bin/jamsesh"
+}
+```
+
+### Unit 2: `hooks/hooks.json`
+
+```json
+{
+  "hooks": {
+    "SessionStart":      "bin/jamsesh hook session-start",
+    "UserPromptSubmit":  "bin/jamsesh hook user-prompt-submit",
+    "PreToolUse":        "bin/jamsesh hook pre-tool-use",
+    "PostToolUse":       "bin/jamsesh hook post-tool-use",
+    "Stop":              "bin/jamsesh hook stop",
+    "SessionEnd":        "bin/jamsesh hook session-end"
+  }
+}
+```
+
+(Exact field names depend on CC's hook-registration schema —
+implementer verifies against current CC plugin docs.)
+
+### Unit 3: `.mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "jamsesh": {
+      "type": "streamable-http",
+      "url": "${JAMSESH_PORTAL_URL}/mcp",
+      "headersHelper": ["bin/jamsesh", "mcp-headers"]
+    }
+  }
+}
+```
+
+The `headersHelper` array is invoked synchronously at MCP
+connection time; CC parses its stdout JSON and merges into the
+request headers.
+
+### Unit 4: Auto-loaded teaching skill
+
+**File**: `skills/jamsesh/SKILL.md`
+
+Frontmatter:
+
+```yaml
+---
+name: jamsesh
+description: jamsesh dual-mode model, trailer conventions, addressed comments, conflict resolution, digest reading
+auto-load: true   # or whatever CC's frontmatter requires; verify
+triggers:
+  - "git commit"
+  - "jam session"
+  - "session"
+---
+```
+
+Body sections (≤2500 words total):
+
+1. **What jamsesh does** (~150 words) — multi-agent jam,
+   draft as continuous-integration ref, push-per-commit, auto-merger
+2. **Dual mode** (~250 words) — sync vs isolated, when to choose, how to switch
+3. **Commit trailers** (~400 words) — required (`Jam-Session`, `Jam-Turn`, `Jam-Author`), optional (`Resolves-Conflict`, `Auto-Merger`, `Source-Commit`, `Source-Ref`, `Jam-Auto-Commit`); examples
+4. **Addressed comments** (~400 words) — `@user`, `@user/branch`, `@all-agents`, `@all-humans`, `@everyone`, `@auto-merger`; kinds (question / suggestion / action-request / fyi); when to address
+5. **Reading the digest** (~250 words) — structured sections (commits, comments, conflicts, mode-changes); how to act on each
+6. **Conflict resolution flow** (~350 words) — recognize, rebase, resolve, commit with `Resolves-Conflict: <event-id>` trailer
+7. **MCP tools** (~400 words) — `post_comment`, `resolve_comment`, `fork`, `query_session_state` with one-line usage examples
+8. **Pointers** (~150 words) — `docs/VISION.md`, `docs/PROTOCOL.md`, `docs/UX.md` for deeper reading; this skill is operational, not exhaustive
+
+Word count enforced at implement time via `wc -w` check; the
+acceptance criterion is "≤2500 words".
+
+### Unit 5: User-facing slash-command skills
+
+**Files**: `skills/{join,status,fork,mode,finalize}/SKILL.md`
+
+Each is a thin wrapper: ≤30 words of body + frontmatter naming
+the slash command.
+
+```yaml
+---
+name: join
+description: Join a jamsesh session by id, URL, or invite link
+argument-hint: "<session-id-or-url> [--as <branch>] [--from <commit>]"
+---
+
+Run `bin/jamsesh join $ARGUMENTS` and surface the result. Print errors
+to the user with their exit codes intact.
+```
+
+Same pattern for `status`, `fork`, `mode`, `finalize`. Each
+delegates to the matching `jamsesh` subcommand. The five subcommands
+themselves are implemented in `epic-cc-plugin-session-commands`
+(and `epic-finalize-flow-plugin-finalize-command` for finalize);
+this feature only authors the skill files.
+
+## Implementation Order
+
+Single story.
+
+## Testing
+
+- `wc -w skills/jamsesh/SKILL.md` ≤ 2500
+- `jq < .claude-plugin/plugin.json` parses
+- `jq < hooks/hooks.json` parses
+- `jq < .mcp.json` parses
+- Each `skills/<name>/SKILL.md` has valid YAML frontmatter
+
+No Go tests — pure markdown/json.
+
+## Risks
+
+- **CC plugin schema churn**: the `plugin.json`, `hooks.json`,
+  and `.mcp.json` schemas may evolve. Mitigation: pin against
+  the current CC plugin spec as a known-good baseline; revisit
+  on CC plugin version bumps.
+- **Teaching skill drift vs PROTOCOL.md**: trailer conventions
+  and event types live in PROTOCOL.md as canonical. If they
+  change, the teaching skill rots. Mitigation: gate-docs at
+  release time catches drift between this skill's text and
+  `docs/PROTOCOL.md`.
+- **Word budget vs coverage**: 2500 words is tight. Prioritize
+  the operational essentials; defer exhaustive examples to
+  `docs/PROTOCOL.md` and `docs/UX.md`.
