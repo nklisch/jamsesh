@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-fuzzing-mcp-tool-input
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-tests-fuzzing
 depends_on: []
@@ -123,3 +123,15 @@ classify the response:
 - Makefile target added: `make test-fuzz-mcp` runs the harness
   with `-timeout 300s`.
 - The test is skipped under `go test -short`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- 782 lines in one file is large — generator helpers could split into a sibling file. Inherent to property-based testing; not actionable.
+- Hand-rolled `callRawTool` duplicates some SSE-handshake logic from `mcpclient` — intentional duplication (fuzz needs raw bytes; mcpclient is typed) but worth a code comment cross-referencing the typed client.
+
+**Notes**: Harness ran 22 seeds + 200 random iterations → no 5xx responses, meaning the MCP layer handles malformed input cleanly. The generator covers wrong types, null bytes, SQL injection, path traversal, unicode, huge strings, and unknown tool names — solid breadth. Reproducible via `MCP_FUZZ_SEED` env var.
