@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-db
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -246,3 +246,67 @@ test env, matching `cmd/portal/main.go`'s production wiring.
 No existing tests required updates: pre-existing 500-asserting tests
 target non-DB failure modes (storage disk failures, go-git open
 failures) that correctly remain plain 500s.
+
+## Review
+
+**Verdict.** Approve.
+
+Spot-checked five representative production files (`accounts/handlers.go`,
+`sessions/handler.go`, `comments/handlers.go`,
+`finalize/lock_acquire.go`, `auth/oauth.go`): every wrap site puts the
+business-sentinel branch (`errors.Is(err, store.ErrNotFound)` /
+`store.ErrUniqueViolation`) ahead of the `WrapDBIfTransient` return,
+preserving the existing 404 / 409 envelopes. Transaction wraps go on
+the outer `txErr` site, matching the design's "outer return is where
+the dep classification matters" rule (`sessions/handler.go:95`,
+`accounts/orgs.go:197`). The `RequireSessionMember` / `RequireOrgMember`
+"hard error" path is wrapped (e.g. `comments/handlers.go:38`,
+`sessions/handler.go:57,142,297`) so a DB blip during the membership
+guard still surfaces as `dep.db_unavailable` rather than a bare 500.
+
+Reviewed the four new dep-failure tests
+(`accounts/handlers_test.go`, `sessions/listing_state_test.go`,
+`comments/service_test.go`, `finalize/lock_release_test.go`). Each
+injects a real `failingStore` double, validates the upstream auth path,
+and asserts the right slice of the contract — HTTP-level tests check
+`{503, Retry-After: 2, error: dep.db_unavailable}`; the finalize
+handler-direct test asserts `errors.Is(err, deperr.ErrDB)` since
+finalize uses a handler-call shape rather than HTTP-roundtrip. The two
+`newAccountsTestEnvWithStore` / `newTestEnvWithStore` injection
+helpers were extended carefully — they wire `httperr.WriteFromError`
+explicitly to mirror `cmd/portal/main.go` so the translator runs
+under test.
+
+Verified the comments/service.go skip: every `fmt.Errorf` inside the
+service is consumed by the handler's outer `deperr.WrapDBIfTransient`
+in `comments/handlers.go:38,100,135,169,231`. No double-wrap.
+
+Repo-wide audit (`grep fmt.Errorf` minus the documented skip list)
+shows only non-DB sites remaining — disk failures (`storage/`,
+`sessions/files.go` blob reads), git open/resolve (`finalize/plan.go`),
+provider transport errors in `oauth/github.go`, nonce/rand reads,
+config validation, prereceive scope parsing. All correctly remain
+plain 500s per design.
+
+Build, vet, and `go test ./internal/portal/...` all green across 25
+packages.
+
+**Skip list assessment.** Reasonable and consistent with the parent
+feature's out-of-scope policy. `events/log.go`, `automerger`, and
+`postreceive` are background workers with no HTTP surface;
+`mcpendpoint` flows through the MCP SDK envelope; `auth/provision.go`
+and `auth/slug.go` are called from outer-wrapped handlers (verified
+via `accounts/handlers.go:88` and `auth/oauth.go:149`); `githttp/`
+already had its own `WrapDBIfTransient` from the git-subprocess
+sibling. Service-layer skip is sound — wrapping inside `Service.List`
+would double-wrap when the handler's outer `WrapDBIfTransient` runs.
+
+**Findings.** None.
+
+- Blockers: 0
+- Important: 0
+- Nits: 0
+
+No parked items.
+
+Advancing review → done.
