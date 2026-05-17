@@ -13,6 +13,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -44,7 +45,7 @@ func (h *Handler) GetSession(ctx context.Context, req openapi.GetSessionRequestO
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: get: org member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get: org member: %w", err))
 	}
 
 	sess, err := h.store.GetSession(ctx, orgID, sessionID)
@@ -57,7 +58,7 @@ func (h *Handler) GetSession(ctx context.Context, req openapi.GetSessionRequestO
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: get: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get: %w", err))
 	}
 
 	// Verify caller is a session member (in addition to org member).
@@ -74,7 +75,7 @@ func (h *Handler) GetSession(ctx context.Context, req openapi.GetSessionRequestO
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: get: session member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get: session member: %w", err))
 	}
 
 	members, _ := h.store.ListSessionMembers(ctx, store.ListSessionMembersParams{
@@ -117,7 +118,7 @@ func (h *Handler) ListSessionRefs(ctx context.Context, req openapi.ListSessionRe
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: list refs: org member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list refs: org member: %w", err))
 	}
 
 	// Fetch the session for default_mode.
@@ -131,7 +132,7 @@ func (h *Handler) ListSessionRefs(ctx context.Context, req openapi.ListSessionRe
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: list refs: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list refs: get session: %w", err))
 	}
 
 	// Verify caller is a session member.
@@ -148,13 +149,13 @@ func (h *Handler) ListSessionRefs(ctx context.Context, req openapi.ListSessionRe
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: list refs: session member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list refs: session member: %w", err))
 	}
 
 	// Load all per-ref mode overrides for this session.
 	refModeRows, err := h.store.ListRefModesForSession(ctx, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("sessions: list refs: ref modes: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list refs: ref modes: %w", err))
 	}
 	refModeMap := make(map[string]string, len(refModeRows))
 	for _, rm := range refModeRows {
@@ -244,7 +245,7 @@ func (h *Handler) GetSessionDigest(ctx context.Context, req openapi.GetSessionDi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: digest: org member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: digest: org member: %w", err))
 	}
 
 	sess, err := h.store.GetSession(ctx, orgID, sessionID)
@@ -257,7 +258,7 @@ func (h *Handler) GetSessionDigest(ctx context.Context, req openapi.GetSessionDi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: digest: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: digest: get session: %w", err))
 	}
 
 	// Verify caller is a session member.
@@ -274,7 +275,7 @@ func (h *Handler) GetSessionDigest(ctx context.Context, req openapi.GetSessionDi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: digest: session member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: digest: session member: %w", err))
 	}
 
 	const digestEventLimit = 500
@@ -284,7 +285,7 @@ func (h *Handler) GetSessionDigest(ctx context.Context, req openapi.GetSessionDi
 		Limit:     digestEventLimit,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("sessions: digest: list events: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: digest: list events: %w", err))
 	}
 
 	// Find the max seq seen.

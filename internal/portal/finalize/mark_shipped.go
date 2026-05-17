@@ -9,6 +9,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -47,7 +48,7 @@ func (h *Handler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessio
 
 	verdict, err := checkSessionMembership(ctx, h.store, orgID, sessionID, acc.ID)
 	if err != nil {
-		return nil, fmt.Errorf("finalize: membership check: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: membership check: %w", err))
 	}
 	switch verdict {
 	case memberNotOrgMember:
@@ -83,7 +84,7 @@ func (h *Handler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessio
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("finalize: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: get session: %w", err))
 	}
 
 	finalBranch := ""
@@ -134,7 +135,7 @@ func (h *Handler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessio
 		ID:     sessionID,
 		Status: "ended",
 	}); err != nil {
-		return nil, fmt.Errorf("finalize: update session status: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: update session status: %w", err))
 	}
 	if err := h.store.SetSessionEndReason(ctx, store.SetSessionEndReasonParams{
 		OrgID:     orgID,
@@ -142,7 +143,7 @@ func (h *Handler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessio
 		EndReason: &endReason,
 		EndedAt:   &now,
 	}); err != nil {
-		return nil, fmt.Errorf("finalize: set session end reason: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: set session end reason: %w", err))
 	}
 
 	// Release any held finalize lock for the session — the run completed,
@@ -154,7 +155,7 @@ func (h *Handler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessio
 			ID:         existing.ID,
 			ReleasedAt: now,
 		}); relErr != nil {
-			return nil, fmt.Errorf("finalize: release finalize lock on ship: %w", relErr)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: release finalize lock on ship: %w", relErr))
 		}
 		// Clear the sessions pointer only if it still points at this holder
 		// (mirror lock_release.go's defensive check).
@@ -163,11 +164,11 @@ func (h *Handler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessio
 				OrgID: orgID,
 				ID:    sessionID,
 			}); clearErr != nil {
-				return nil, fmt.Errorf("finalize: clear sessions pointer on ship: %w", clearErr)
+				return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: clear sessions pointer on ship: %w", clearErr))
 			}
 		}
 	} else if !errors.Is(lockErr, store.ErrNotFound) {
-		return nil, fmt.Errorf("finalize: lookup active lock on ship: %w", lockErr)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: lookup active lock on ship: %w", lockErr))
 	}
 
 	// Reflect the updated columns onto the in-memory row before serializing.

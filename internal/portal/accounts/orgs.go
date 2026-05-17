@@ -15,6 +15,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/handlerauth"
 )
 
@@ -28,7 +29,7 @@ const (
 func (h *Handler) ListOrgMembers(ctx context.Context, req openapi.ListOrgMembersRequestObject) (openapi.ListOrgMembersResponseObject, error) {
 	members, err := h.store.ListOrgMembers(ctx, req.OrgID)
 	if err != nil {
-		return nil, fmt.Errorf("accounts: list org members (org=%s): %w", req.OrgID, err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: list org members (org=%s): %w", req.OrgID, err))
 	}
 
 	refs := make(openapi.ListOrgMembers200JSONResponse, 0, len(members))
@@ -75,12 +76,12 @@ func (h *Handler) CreateOrgInvite(ctx context.Context, req openapi.CreateOrgInvi
 		AcceptedByAccountID: nil,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("accounts: insert org invite: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: insert org invite: %w", err))
 	}
 
 	org, err := h.store.GetOrgByID(ctx, req.OrgID)
 	if err != nil {
-		return nil, fmt.Errorf("accounts: get org (org=%s): %w", req.OrgID, err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: get org (org=%s): %w", req.OrgID, err))
 	}
 
 	acceptURL := h.portalURL + "/orgs/" + req.OrgID + "/invites/" + invite.ID + "/accept?token=" + raw
@@ -91,7 +92,7 @@ func (h *Handler) CreateOrgInvite(ctx context.Context, req openapi.CreateOrgInvi
 		"\n\nThis invite expires in 7 days.\n"
 
 	if err := h.sender.Send(ctx, recipientEmail, subject, body); err != nil {
-		return nil, fmt.Errorf("accounts: send invite email: %w", err)
+		return nil, deperr.WrapSMTP(fmt.Errorf("accounts: send invite email: %w", err))
 	}
 
 	return openapi.CreateOrgInvite201JSONResponse{
@@ -119,7 +120,7 @@ func (h *Handler) AcceptOrgInvite(ctx context.Context, req openapi.AcceptOrgInvi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("accounts: get org invite (id=%s): %w", req.InviteID, err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: get org invite (id=%s): %w", req.InviteID, err))
 	}
 
 	// Verify token hash.
@@ -194,7 +195,7 @@ func (h *Handler) AcceptOrgInvite(ctx context.Context, req openapi.AcceptOrgInvi
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("accounts: accept org invite tx: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: accept org invite tx: %w", err))
 	}
 
 	return openapi.AcceptOrgInvite200JSONResponse{

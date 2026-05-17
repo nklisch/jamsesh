@@ -9,6 +9,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -50,7 +51,7 @@ func (h *Handler) PatchFinalizeLock(ctx context.Context, req openapi.PatchFinali
 
 	verdict, err := checkSessionMembership(ctx, h.store, orgID, sessionID, acc.ID)
 	if err != nil {
-		return nil, fmt.Errorf("finalize: membership check: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: membership check: %w", err))
 	}
 	switch verdict {
 	case memberNotOrgMember:
@@ -86,7 +87,7 @@ func (h *Handler) PatchFinalizeLock(ctx context.Context, req openapi.PatchFinali
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("finalize: get lock: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: get lock: %w", err))
 	}
 
 	// Cross-session id mismatch ⇒ 404 (don't leak existence on other sessions).
@@ -177,13 +178,13 @@ func (h *Handler) PatchFinalizeLock(ctx context.Context, req openapi.PatchFinali
 		CommitMessage:      commitMessage,
 		LastActivityAt:     now,
 	}); err != nil {
-		return nil, fmt.Errorf("finalize: update lock curation: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: update lock curation: %w", err))
 	}
 
 	// Re-fetch for response consistency.
 	updated, err := h.store.GetFinalizeLockByID(ctx, lock.ID)
 	if err != nil {
-		return nil, fmt.Errorf("finalize: re-fetch lock: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: re-fetch lock: %w", err))
 	}
 
 	return openapi.PatchFinalizeLock200JSONResponse(finalizeLockToOpenAPI(updated)), nil

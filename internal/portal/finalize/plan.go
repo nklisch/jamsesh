@@ -13,6 +13,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -50,7 +51,7 @@ func (h *Handler) GetFinalizePlan(ctx context.Context, req openapi.GetFinalizePl
 
 	verdict, err := checkSessionMembership(ctx, h.store, orgID, sessionID, acc.ID)
 	if err != nil {
-		return nil, fmt.Errorf("finalize: membership check: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: membership check: %w", err))
 	}
 	switch verdict {
 	case memberNotOrgMember:
@@ -86,7 +87,7 @@ func (h *Handler) GetFinalizePlan(ctx context.Context, req openapi.GetFinalizePl
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("finalize: get lock: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: get lock: %w", err))
 	}
 
 	// Cross-session id mismatch ⇒ 404 (don't leak existence on other sessions).
@@ -154,7 +155,7 @@ func (h *Handler) GetFinalizePlan(ctx context.Context, req openapi.GetFinalizePl
 	// Look up the session goal for default-subject derivation.
 	sess, err := h.store.GetSession(ctx, orgID, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("finalize: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: get session: %w", err))
 	}
 
 	// Build the per-commit list (PlanCommit DTOs).

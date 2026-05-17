@@ -8,6 +8,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/pagination"
 	"jamsesh/internal/portal/tokens"
 )
@@ -46,7 +47,7 @@ func (h *Handler) ListSessions(ctx context.Context, req openapi.ListSessionsRequ
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: list: get org member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list: get org member: %w", err))
 	}
 
 	// Determine page limit (clamped to [1, maxPageLimit]).
@@ -89,7 +90,7 @@ func (h *Handler) ListSessions(ctx context.Context, req openapi.ListSessionsRequ
 		Limit:  limit + 1,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("sessions: list: query: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list: query: %w", err))
 	}
 
 	hasNext := int64(len(rows)) > limit

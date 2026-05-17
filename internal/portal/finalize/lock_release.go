@@ -8,6 +8,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -35,7 +36,7 @@ func (h *Handler) ReleaseFinalizeLock(ctx context.Context, req openapi.ReleaseFi
 
 	verdict, err := checkSessionMembership(ctx, h.store, orgID, sessionID, acc.ID)
 	if err != nil {
-		return nil, fmt.Errorf("finalize: membership check: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: membership check: %w", err))
 	}
 	switch verdict {
 	case memberNotOrgMember:
@@ -71,7 +72,7 @@ func (h *Handler) ReleaseFinalizeLock(ctx context.Context, req openapi.ReleaseFi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("finalize: get lock: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: get lock: %w", err))
 	}
 
 	// Cross-session id mismatch ⇒ 404.
@@ -104,7 +105,7 @@ func (h *Handler) ReleaseFinalizeLock(ctx context.Context, req openapi.ReleaseFi
 		ID:         lock.ID,
 		ReleasedAt: now,
 	}); err != nil {
-		return nil, fmt.Errorf("finalize: release lock: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: release lock: %w", err))
 	}
 
 	// Clear the sessions pointer if it points at this lock's holder.

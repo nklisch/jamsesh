@@ -11,6 +11,7 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/auth"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/handlerauth"
 	"jamsesh/internal/portal/senders"
 )
@@ -40,7 +41,7 @@ func (h *Handler) GetMe(ctx context.Context, _ openapi.GetMeRequestObject) (open
 
 	orgs, err := h.store.ListOrgsForAccount(ctx, acc.ID)
 	if err != nil {
-		return nil, fmt.Errorf("accounts: list orgs for account %s: %w", acc.ID, err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: list orgs for account %s: %w", acc.ID, err))
 	}
 
 	// Build memberships by loading each org_member row.
@@ -53,7 +54,7 @@ func (h *Handler) GetMe(ctx context.Context, _ openapi.GetMeRequestObject) (open
 			AccountID: acc.ID,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("accounts: get org member (org=%s account=%s): %w", org.ID, acc.ID, err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: get org member (org=%s account=%s): %w", org.ID, acc.ID, err))
 		}
 		memberships = append(memberships, openapi.MeOrgMembership{
 			Id:   org.ID,
@@ -84,7 +85,7 @@ func (h *Handler) CreateOrg(ctx context.Context, req openapi.CreateOrgRequestObj
 	now := time.Now().UTC()
 	org, err := auth.CreateOrgWithSlug(ctx, h.store, req.Body.Name, now)
 	if err != nil {
-		return nil, fmt.Errorf("accounts: create org: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: create org: %w", err))
 	}
 
 	if err := h.store.AddOrgMember(ctx, store.AddOrgMemberParams{
@@ -93,7 +94,7 @@ func (h *Handler) CreateOrg(ctx context.Context, req openapi.CreateOrgRequestObj
 		Role:      "creator",
 		CreatedAt: now,
 	}); err != nil {
-		return nil, fmt.Errorf("accounts: add org member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: add org member: %w", err))
 	}
 
 	return openapi.CreateOrg201JSONResponse{

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/comments"
 	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -136,18 +138,28 @@ var _ openapi.StrictServerInterface = (*commentsOnlyStrict)(nil)
 
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
-
 	s, err := db.Open(context.Background(), "sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
+	return newTestEnvWithStore(t, s, s)
+}
 
-	log := events.New(s)
+// newTestEnvWithStore builds a comments testEnv that wires the handler against
+// handlerStore (which may wrap a real store to inject DB failures), while
+// keeping baseStore for fixture seeding and token issuance. The strict-handler
+// translator is wired so deperr-wrapped errors surface as typed envelopes.
+func newTestEnvWithStore(t *testing.T, handlerStore, baseStore store.Store) *testEnv {
+	t.Helper()
+
+	s := handlerStore
+
+	log := events.New(baseStore)
 	svc := &comments.Service{Store: s, Log: log}
 	handler := comments.NewHandler(svc)
 
-	tokenSvc := tokens.New(s)
+	tokenSvc := tokens.New(baseStore)
 
 	// Seed: org + account + session member.
 	ctx := context.Background()
@@ -156,28 +168,28 @@ func newTestEnv(t *testing.T) *testEnv {
 	accID := ulid.Make().String()
 	sessID := ulid.Make().String()
 
-	if _, err := s.CreateOrg(ctx, store.CreateOrgParams{
+	if _, err := baseStore.CreateOrg(ctx, store.CreateOrgParams{
 		ID: orgID, Name: "testorg", Slug: fmt.Sprintf("testorg-%s", orgID[:8]), CreatedAt: now,
 	}); err != nil {
 		t.Fatalf("create org: %v", err)
 	}
-	if _, err := s.CreateAccount(ctx, store.CreateAccountParams{
+	if _, err := baseStore.CreateAccount(ctx, store.CreateAccountParams{
 		ID: accID, Email: fmt.Sprintf("user%s@example.com", accID[:8]), DisplayName: "Test User", CreatedAt: now,
 	}); err != nil {
 		t.Fatalf("create account: %v", err)
 	}
-	if err := s.AddOrgMember(ctx, store.AddOrgMemberParams{
+	if err := baseStore.AddOrgMember(ctx, store.AddOrgMemberParams{
 		OrgID: orgID, AccountID: accID, Role: "member", CreatedAt: now,
 	}); err != nil {
 		t.Fatalf("add org member: %v", err)
 	}
-	if _, err := s.CreateSession(ctx, store.CreateSessionParams{
+	if _, err := baseStore.CreateSession(ctx, store.CreateSessionParams{
 		ID: sessID, OrgID: orgID, Name: "test-session", Goal: "test goal",
 		WritableScope: `["**"]`, DefaultMode: "sync", Status: "active", CreatedAt: now,
 	}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if err := s.AddSessionMember(ctx, store.AddSessionMemberParams{
+	if err := baseStore.AddSessionMember(ctx, store.AddSessionMemberParams{
 		OrgID: orgID, SessionID: sessID, AccountID: accID, Role: "creator", JoinedAt: now,
 	}); err != nil {
 		t.Fatalf("add session member: %v", err)
@@ -190,8 +202,14 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	rawToken := pair.AccessToken
 
-	// Build HTTP test server.
-	strictAPI := openapi.NewStrictHandler(&commentsOnlyStrict{Handler: handler}, nil)
+	// Build HTTP test server. Wire the dep-failure translator so handler
+	// errors wrapped with deperr.WrapDB* surface as typed envelopes
+	// (mirrors cmd/portal/main.go production wiring).
+	strictAPI := openapi.NewStrictHandlerWithOptions(&commentsOnlyStrict{Handler: handler}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
 	apiWrapper := &openapi.ServerInterfaceWrapper{
 		Handler: strictAPI,
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -752,5 +770,50 @@ func TestHandlerCreateComment_CommitLevelAnchor(t *testing.T) {
 	anchor := c["anchor"].(map[string]any)
 	if anchor["file_path"] != nil && anchor["file_path"] != "" {
 		t.Errorf("want no file_path for commit-level comment, got %v", anchor["file_path"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Dep-failure tests
+// ---------------------------------------------------------------------------
+
+// failingListCommentsStore wraps a real store and returns a transient error
+// from ListCommentsForSession (the inner call made by Service.List),
+// simulating a DB connection failure.
+type failingListCommentsStore struct {
+	store.Store
+}
+
+func (f *failingListCommentsStore) ListCommentsForSession(_ context.Context, _ store.ListCommentsForSessionParams) ([]store.Comment, error) {
+	return nil, errors.New("conn refused")
+}
+
+func TestHandlerListComments_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
+	s, err := db.Open(context.Background(), "sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	failing := &failingListCommentsStore{Store: s}
+	env := newTestEnvWithStore(t, failing, s)
+
+	path := fmt.Sprintf("/api/orgs/%s/sessions/%s/comments", env.orgID, env.sessID)
+	resp := env.get(t, path)
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Retry-After"); got != "2" {
+		t.Errorf("expected Retry-After: 2, got %q", got)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "dep.db_unavailable" {
+		t.Errorf("expected error=dep.db_unavailable, got %v", body["error"])
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"jamsesh/internal/api/openapi"
+	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/pagination"
 )
 
@@ -356,5 +357,47 @@ func TestCursorFilterMismatch(t *testing.T) {
 	_, err := pagination.Decode(encoded, filter2)
 	if !errors.Is(err, pagination.ErrFilterMismatch) {
 		t.Errorf("expected ErrFilterMismatch, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Dep-failure tests
+// ---------------------------------------------------------------------------
+
+// failingListSessionsStore wraps a real store and returns a transient error
+// from ListSessionsForOrgWithCursor, simulating a DB connection failure.
+type failingListSessionsStore struct {
+	store.Store
+}
+
+func (f *failingListSessionsStore) ListSessionsForOrgWithCursor(_ context.Context, _ store.ListSessionsForOrgWithCursorParams) ([]store.Session, error) {
+	return nil, errors.New("conn refused")
+}
+
+func TestListSessions_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
+	real := openStore(t)
+	acc := seedAccount(t, real, "depfail@example.com")
+	org := seedOrg(t, real, "Dep Fail Org", "dep-fail-org")
+	seedOrgMember(t, real, org.ID, acc.ID, "creator")
+
+	failing := &failingListSessionsStore{Store: real}
+	env := newTestEnvWithStore(t, failing, real)
+
+	token := env.bearerToken(t, acc.ID)
+	resp := getRequest(t, env.srv, "/api/orgs/"+org.ID+"/sessions", token)
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Retry-After"); got != "2" {
+		t.Errorf("expected Retry-After: 2, got %q", got)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "dep.db_unavailable" {
+		t.Errorf("expected error=dep.db_unavailable, got %v", body["error"])
 	}
 }

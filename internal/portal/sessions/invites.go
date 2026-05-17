@@ -15,6 +15,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -52,7 +53,7 @@ func (h *Handler) InviteToSession(ctx context.Context, req openapi.InviteToSessi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: invite: get org member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: invite: get org member: %w", err))
 	}
 
 	// Verify session exists.
@@ -65,7 +66,7 @@ func (h *Handler) InviteToSession(ctx context.Context, req openapi.InviteToSessi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: invite: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: invite: get session: %w", err))
 	}
 
 	// Verify caller is a session member.
@@ -82,7 +83,7 @@ func (h *Handler) InviteToSession(ctx context.Context, req openapi.InviteToSessi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: invite: get session member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: invite: get session member: %w", err))
 	}
 
 	raw, hash, err := generateSessionInviteToken()
@@ -107,7 +108,7 @@ func (h *Handler) InviteToSession(ctx context.Context, req openapi.InviteToSessi
 		AcceptedByAccountID: nil,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("sessions: invite: insert invite: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: invite: insert invite: %w", err))
 	}
 
 	// Send email via the Sender. Build the accept URL.
@@ -119,7 +120,7 @@ func (h *Handler) InviteToSession(ctx context.Context, req openapi.InviteToSessi
 		"\n\nThis invite expires in 7 days.\n"
 
 	if err := h.sender.Send(ctx, inviteeEmail, subject, body); err != nil {
-		return nil, fmt.Errorf("sessions: invite: send email: %w", err)
+		return nil, deperr.WrapSMTP(fmt.Errorf("sessions: invite: send email: %w", err))
 	}
 
 	return openapi.InviteToSession201JSONResponse{
@@ -156,7 +157,7 @@ func (h *Handler) AcceptSessionInvite(ctx context.Context, req openapi.AcceptSes
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: accept invite: get invite: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: accept invite: get invite: %w", err))
 	}
 
 	// Verify token hash.
@@ -225,13 +226,13 @@ func (h *Handler) AcceptSessionInvite(ctx context.Context, req openapi.AcceptSes
 		return nil
 	})
 	if txErr != nil {
-		return nil, fmt.Errorf("sessions: accept invite tx: %w", txErr)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: accept invite tx: %w", txErr))
 	}
 
 	// Fetch the updated session + members for the response.
 	sess, err := h.store.GetSession(ctx, orgID, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("sessions: accept invite: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: accept invite: get session: %w", err))
 	}
 	members, _ := h.store.ListSessionMembers(ctx, store.ListSessionMembersParams{
 		OrgID:     orgID,

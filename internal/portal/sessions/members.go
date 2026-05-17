@@ -7,6 +7,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -37,7 +38,7 @@ func (h *Handler) RemoveSessionMember(ctx context.Context, req openapi.RemoveSes
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: remove member: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: remove member: get session: %w", err))
 	}
 
 	// Verify caller is the session creator.
@@ -79,7 +80,7 @@ func (h *Handler) RemoveSessionMember(ctx context.Context, req openapi.RemoveSes
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: remove member: get target session member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: remove member: get target session member: %w", err))
 	}
 
 	if err := h.store.RemoveSessionMember(ctx, store.RemoveSessionMemberParams{
@@ -87,7 +88,7 @@ func (h *Handler) RemoveSessionMember(ctx context.Context, req openapi.RemoveSes
 		SessionID: sessionID,
 		AccountID: targetAccountID,
 	}); err != nil {
-		return nil, fmt.Errorf("sessions: remove member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: remove member: %w", err))
 	}
 
 	return openapi.RemoveSessionMember204Response{}, nil

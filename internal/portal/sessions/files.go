@@ -15,6 +15,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -54,7 +55,7 @@ func (h *Handler) GetSessionFile(ctx context.Context, req openapi.GetSessionFile
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: files: get org member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: files: get org member: %w", err))
 	}
 
 	// Require session membership.
@@ -71,7 +72,7 @@ func (h *Handler) GetSessionFile(ctx context.Context, req openapi.GetSessionFile
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: files: get session member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: files: get session member: %w", err))
 	}
 
 	// Verify session exists.
@@ -84,7 +85,7 @@ func (h *Handler) GetSessionFile(ctx context.Context, req openapi.GetSessionFile
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: files: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: files: get session: %w", err))
 	}
 
 	// Open the bare repo.

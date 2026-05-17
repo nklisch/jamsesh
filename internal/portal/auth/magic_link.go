@@ -13,6 +13,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/tokens"
 )
@@ -78,9 +79,9 @@ func NewMagicLinkHandlerWithClock(
 }
 
 // RequestMagicLink implements POST /api/auth/magic-link/request.
-// Returns 204 on success. Sending errors are surfaced to the caller via a
-// wrapped error so the strict handler returns 500 — better than silently
-// swallowing delivery failures.
+// Returns 204 on success. Sending errors are wrapped with
+// deperr.WrapSMTP so the strict-handler translator emits a typed
+// dep.smtp_unavailable 503 envelope instead of an opaque 500.
 func (h *MagicLinkHandler) RequestMagicLink(
 	ctx context.Context,
 	req openapi.RequestMagicLinkRequestObject,
@@ -100,7 +101,7 @@ func (h *MagicLinkHandler) RequestMagicLink(
 		ExpiresAt: now.Add(magicLinkTTL),
 		UsedAt:    nil,
 	}); err != nil {
-		return nil, fmt.Errorf("magic-link: store token: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("magic-link: store token: %w", err))
 	}
 
 	magicURL := h.portalURL + "/auth/magic-link?token=" + raw
@@ -108,7 +109,7 @@ func (h *MagicLinkHandler) RequestMagicLink(
 		"\n\nThis link expires in 15 minutes and can only be used once.\n"
 
 	if err := h.sender.Send(ctx, email, magicLinkSubject, body); err != nil {
-		return nil, fmt.Errorf("magic-link: send email: %w", err)
+		return nil, deperr.WrapSMTP(fmt.Errorf("magic-link: send email: %w", err))
 	}
 
 	return openapi.RequestMagicLink204Response{}, nil
@@ -128,7 +129,7 @@ func (h *MagicLinkHandler) ExchangeMagicLink(
 		if errors.Is(err, store.ErrNotFound) {
 			return magicLinkUnauthorized("auth.invalid_token", "invalid or expired token"), nil
 		}
-		return nil, fmt.Errorf("magic-link: lookup token: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("magic-link: lookup token: %w", err))
 	}
 
 	now := h.clock.Now()
@@ -156,12 +157,12 @@ func (h *MagicLinkHandler) ExchangeMagicLink(
 	}
 	acc, _, err := FindOrProvision(ctx, h.store, id)
 	if err != nil {
-		return nil, fmt.Errorf("magic-link: provision account: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("magic-link: provision account: %w", err))
 	}
 
 	pair, err := h.tokensSvc.Issue(ctx, acc.ID)
 	if err != nil {
-		return nil, fmt.Errorf("magic-link: issue tokens: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("magic-link: issue tokens: %w", err))
 	}
 
 	return openapi.ExchangeMagicLink200JSONResponse{

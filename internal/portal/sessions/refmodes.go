@@ -10,6 +10,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -51,7 +52,7 @@ func (h *Handler) UpsertRefMode(ctx context.Context, req openapi.UpsertRefModeRe
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: ref-modes: get org member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: ref-modes: get org member: %w", err))
 	}
 
 	// Require session membership.
@@ -68,7 +69,7 @@ func (h *Handler) UpsertRefMode(ctx context.Context, req openapi.UpsertRefModeRe
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: ref-modes: get session member: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: ref-modes: get session member: %w", err))
 	}
 
 	// Verify session exists.
@@ -81,7 +82,7 @@ func (h *Handler) UpsertRefMode(ctx context.Context, req openapi.UpsertRefModeRe
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: ref-modes: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: ref-modes: get session: %w", err))
 	}
 
 	// Fetch the old mode for the event payload (best-effort).
@@ -100,7 +101,7 @@ func (h *Handler) UpsertRefMode(ctx context.Context, req openapi.UpsertRefModeRe
 		Ref:       ref,
 		Mode:      mode,
 	}); err != nil {
-		return nil, fmt.Errorf("sessions: ref-modes: upsert: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: ref-modes: upsert: %w", err))
 	}
 
 	// Emit mode.changed event (best-effort; failure does not abort the response).

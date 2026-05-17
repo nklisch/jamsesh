@@ -144,3 +144,14 @@ func contextWithAccount(ctx context.Context, acct *store.Account) context.Contex
 // complain about unused imports when only behaviour through env.handler is
 // exercised.
 var _ = finalize.FinalizeLockTTL
+
+// newFinalizeHandlerWith builds a finalize.Handler backed by the supplied
+// store. Dep-failure tests use this to inject a wrapping store that returns
+// transient errors from selected store methods, exercising the
+// deperr.WrapDBIfTransient discipline at handler return paths.
+func newFinalizeHandlerWith(t *testing.T, s store.Store) *finalize.Handler {
+	t.Helper()
+	log := events.New(s)
+	tokSvc := tokens.New(s)
+	return finalize.New(s, &stubStorage{}, log, tokSvc, "https://portal.test")
+}

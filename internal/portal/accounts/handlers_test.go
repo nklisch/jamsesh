@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"jamsesh/internal/db"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/accounts"
+	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -180,9 +182,22 @@ type accountsTestEnv struct {
 func newAccountsTestEnv(t *testing.T) *accountsTestEnv {
 	t.Helper()
 	s := openStore(t)
+	return newAccountsTestEnvWithStore(t, s)
+}
+
+// newAccountsTestEnvWithStore lets dep-failure tests inject a wrapping store
+// that returns transient DB errors from selected methods. The strict-handler
+// translator is wired explicitly so deperr-wrapped errors surface as typed
+// envelopes instead of the default plain-text 500 (mirrors cmd/portal/main.go).
+func newAccountsTestEnvWithStore(t *testing.T, s store.Store) *accountsTestEnv {
+	t.Helper()
 	svc := tokens.New(s)
 	h := accounts.New(s, &noopSender{}, "https://portal.example.com")
-	strictAPI := openapi.NewStrictHandler(&accountsOnlyStrict{h}, nil)
+	strictAPI := openapi.NewStrictHandlerWithOptions(&accountsOnlyStrict{h}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
 
 	r := chi.NewRouter()
 	r.Group(func(r chi.Router) {
@@ -398,5 +413,47 @@ func TestCreateOrg_NoAuth_Returns401(t *testing.T) {
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Dep-failure tests
+// ---------------------------------------------------------------------------
+
+// failingListOrgsStore wraps a real store and returns a transient error from
+// ListOrgsForAccount, simulating a DB connection failure.
+type failingListOrgsStore struct {
+	store.Store
+}
+
+func (f *failingListOrgsStore) ListOrgsForAccount(_ context.Context, _ string) ([]store.Org, error) {
+	return nil, errors.New("conn refused")
+}
+
+func TestGetMe_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
+	realStore := openStore(t)
+	// Seed an account so BearerMiddleware can validate the token before the
+	// handler reaches the failing call site.
+	acc := seedAccount(t, realStore, "depfail@example.com")
+
+	failing := &failingListOrgsStore{Store: realStore}
+	env := newAccountsTestEnvWithStore(t, failing)
+
+	tok := env.bearerToken(t, acc.ID)
+	resp := getJSON(t, env.srv, "/api/me", tok)
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Retry-After"); got != "2" {
+		t.Errorf("expected Retry-After: 2, got %q", got)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "dep.db_unavailable" {
+		t.Errorf("expected error=dep.db_unavailable, got %v", body["error"])
 	}
 }

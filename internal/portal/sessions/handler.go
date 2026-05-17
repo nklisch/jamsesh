@@ -19,6 +19,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/handlerauth"
 	"jamsesh/internal/portal/senders"
@@ -53,7 +54,7 @@ func (h *Handler) CreateSession(ctx context.Context, req openapi.CreateSessionRe
 	acc, _, fail, ok := handlerauth.RequireOrgMember(ctx, h.store, orgID)
 	if !ok {
 		if fail.Err != nil {
-			return nil, fmt.Errorf("sessions: get org member: %w", fail.Err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get org member: %w", fail.Err))
 		}
 		return createSessionFail(fail), nil
 	}
@@ -91,7 +92,7 @@ func (h *Handler) CreateSession(ctx context.Context, req openapi.CreateSessionRe
 		return nil
 	})
 	if txErr != nil {
-		return nil, fmt.Errorf("sessions: create transaction: %w", txErr)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: create transaction: %w", txErr))
 	}
 
 	// Create the bare git repo AFTER the Tx commits. On failure, delete the
@@ -138,7 +139,7 @@ func (h *Handler) PatchSession(ctx context.Context, req openapi.PatchSessionRequ
 	_, member, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
 	if !ok {
 		if fail.Err != nil {
-			return nil, fmt.Errorf("sessions: get session member: %w", fail.Err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get session member: %w", fail.Err))
 		}
 		return patchSessionFail(fail), nil
 	}
@@ -163,7 +164,7 @@ func (h *Handler) PatchSession(ctx context.Context, req openapi.PatchSessionRequ
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get session: %w", err))
 	}
 
 	// Apply patch fields — use zero-value sentinel for "not provided" since
@@ -196,13 +197,13 @@ func (h *Handler) PatchSession(ctx context.Context, req openapi.PatchSessionRequ
 		WritableScope: scope,
 		DefaultMode:   mode,
 	}); err != nil {
-		return nil, fmt.Errorf("sessions: update session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: update session: %w", err))
 	}
 
 	// Re-fetch to return consistent response.
 	sess, err = h.store.GetSession(ctx, orgID, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("sessions: re-fetch session after patch: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: re-fetch session after patch: %w", err))
 	}
 
 	members, _ := h.store.ListSessionMembers(ctx, store.ListSessionMembersParams{
@@ -236,7 +237,7 @@ func (h *Handler) FinalizeSession(ctx context.Context, req openapi.FinalizeSessi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get session: %w", err))
 	}
 
 	switch sess.Status {
@@ -260,7 +261,7 @@ func (h *Handler) FinalizeSession(ctx context.Context, req openapi.FinalizeSessi
 		ID:     sessionID,
 		Status: "finalizing",
 	}); err != nil {
-		return nil, fmt.Errorf("sessions: update session status: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: update session status: %w", err))
 	}
 
 	sess.Status = "finalizing"
@@ -293,7 +294,7 @@ func (h *Handler) AbandonSession(ctx context.Context, req openapi.AbandonSession
 	_, member, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
 	if !ok {
 		if fail.Err != nil {
-			return nil, fmt.Errorf("sessions: get session member: %w", fail.Err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get session member: %w", fail.Err))
 		}
 		return abandonSessionFail(fail), nil
 	}
@@ -318,7 +319,7 @@ func (h *Handler) AbandonSession(ctx context.Context, req openapi.AbandonSession
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("sessions: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get session: %w", err))
 	}
 
 	if sess.Status == "ended" || sess.Status == "archived" {
@@ -337,7 +338,7 @@ func (h *Handler) AbandonSession(ctx context.Context, req openapi.AbandonSession
 		ID:     sessionID,
 		Status: "ended",
 	}); err != nil {
-		return nil, fmt.Errorf("sessions: update session status: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: update session status: %w", err))
 	}
 	if err := h.store.SetSessionEndReason(ctx, store.SetSessionEndReasonParams{
 		OrgID:     orgID,
@@ -345,7 +346,7 @@ func (h *Handler) AbandonSession(ctx context.Context, req openapi.AbandonSession
 		EndReason: &endReason,
 		EndedAt:   &now,
 	}); err != nil {
-		return nil, fmt.Errorf("sessions: set session end reason: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: set session end reason: %w", err))
 	}
 
 	sess.Status = "ended"

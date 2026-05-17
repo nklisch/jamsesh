@@ -11,6 +11,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -55,7 +56,7 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 
 	verdict, err := checkSessionMembership(ctx, h.store, orgID, sessionID, acc.ID)
 	if err != nil {
-		return nil, fmt.Errorf("finalize: membership check: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: membership check: %w", err))
 	}
 	switch verdict {
 	case memberNotOrgMember:
@@ -91,7 +92,7 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("finalize: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: get session: %w", err))
 	}
 
 	now := time.Now().UTC()
@@ -101,7 +102,7 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 	hadExisting := true
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
-			return nil, fmt.Errorf("finalize: get active lock: %w", err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: get active lock: %w", err))
 		}
 		hadExisting = false
 	}
@@ -124,7 +125,7 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 				ID:         existing.ID,
 				ReleasedAt: now,
 			}); err != nil {
-				return nil, fmt.Errorf("finalize: release stale lock: %w", err)
+				return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: release stale lock: %w", err))
 			}
 			hadExisting = false
 		} else if !override {
@@ -163,7 +164,7 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 		BaseSHA:             "",
 		Mode:                "squash",
 	}); err != nil {
-		return nil, fmt.Errorf("finalize: insert lock: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: insert lock: %w", err))
 	}
 
 	if supersedeOldID != "" {
@@ -171,7 +172,7 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 			ID:                 supersedeOldID,
 			SupersededByLockID: newLockID,
 		}); err != nil {
-			return nil, fmt.Errorf("finalize: supersede lock: %w", err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: supersede lock: %w", err))
 		}
 	}
 
@@ -181,7 +182,7 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 		ID:        sessionID,
 		AccountID: &accID,
 	}); err != nil {
-		return nil, fmt.Errorf("finalize: set sessions pointer: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: set sessions pointer: %w", err))
 	}
 
 	if sess.Status == "active" {
@@ -190,7 +191,7 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 			ID:     sessionID,
 			Status: "finalizing",
 		}); err != nil {
-			return nil, fmt.Errorf("finalize: update session status: %w", err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: update session status: %w", err))
 		}
 		emitFinalizing = true
 	}

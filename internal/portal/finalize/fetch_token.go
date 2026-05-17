@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"jamsesh/internal/api/openapi"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -42,7 +43,7 @@ func (h *Handler) IssueFetchToken(ctx context.Context, req openapi.IssueFetchTok
 
 	verdict, err := checkSessionMembership(ctx, h.store, orgID, sessionID, acc.ID)
 	if err != nil {
-		return nil, fmt.Errorf("finalize: membership check: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: membership check: %w", err))
 	}
 	switch verdict {
 	case memberNotOrgMember:
@@ -70,7 +71,7 @@ func (h *Handler) IssueFetchToken(ctx context.Context, req openapi.IssueFetchTok
 
 	raw, expiresAt, err := h.tokens.IssueShortLived(ctx, acc.ID, fetchTokenTTL)
 	if err != nil {
-		return nil, fmt.Errorf("finalize: issue short-lived token: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: issue short-lived token: %w", err))
 	}
 
 	remoteURL, err := composeFetchRemoteURL(h.portalURL, orgID, sessionID, raw)

@@ -74,7 +74,7 @@ func (h *OAuthHandler) StartOAuth(
 	redirectURI := h.portalURL + "/auth/oauth/callback"
 
 	if err := portaloauth.StoreState(ctx, h.store, nonce, providerName, redirectURI); err != nil {
-		return nil, fmt.Errorf("oauth start: store state: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("oauth start: store state: %w", err))
 	}
 
 	authorizeURL := provider.AuthorizeURL(nonce, redirectURI)
@@ -102,7 +102,7 @@ func (h *OAuthHandler) OauthCallback(
 		if errors.Is(err, store.ErrNotFound) {
 			return oauthBadRequest("oauth.invalid_state", "invalid or already-used state nonce"), nil
 		}
-		return nil, fmt.Errorf("oauth callback: consume state: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("oauth callback: consume state: %w", err))
 	}
 
 	// Guard: expired nonce (ConsumeOAuthState returns it regardless of expiry
@@ -146,12 +146,12 @@ func (h *OAuthHandler) OauthCallback(
 
 	acc, _, err := FindOrProvision(ctx, h.store, id)
 	if err != nil {
-		return nil, fmt.Errorf("oauth callback: provision account: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("oauth callback: provision account: %w", err))
 	}
 
 	pair, err := h.tokensSvc.Issue(ctx, acc.ID)
 	if err != nil {
-		return nil, fmt.Errorf("oauth callback: issue tokens: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("oauth callback: issue tokens: %w", err))
 	}
 
 	return openapi.OauthCallback200JSONResponse{

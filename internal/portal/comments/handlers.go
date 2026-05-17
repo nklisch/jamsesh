@@ -7,6 +7,7 @@ import (
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/handlerauth"
 )
 
@@ -34,7 +35,7 @@ func (h *Handler) CreateComment(ctx context.Context, req openapi.CreateCommentRe
 	acc, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.s, orgID, sessionID)
 	if !ok {
 		if fail.Err != nil {
-			return nil, fmt.Errorf("comments: create: %w", fail.Err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("comments: create: %w", fail.Err))
 		}
 		return createCommentFail(fail), nil
 	}
@@ -58,7 +59,7 @@ func (h *Handler) CreateComment(ctx context.Context, req openapi.CreateCommentRe
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("comments: create: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("comments: create: get session: %w", err))
 	}
 
 	// Build optional pointer fields.
@@ -96,7 +97,7 @@ func (h *Handler) CreateComment(ctx context.Context, req openapi.CreateCommentRe
 		Kind:            string(body.Kind),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("comments: create: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("comments: create: %w", err))
 	}
 
 	return openapi.CreateComment201JSONResponse(storeCommentToAPI(comment)), nil
@@ -116,7 +117,7 @@ func (h *Handler) ListComments(ctx context.Context, req openapi.ListCommentsRequ
 	_, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.s, orgID, sessionID)
 	if !ok {
 		if fail.Err != nil {
-			return nil, fmt.Errorf("comments: list: %w", fail.Err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("comments: list: %w", fail.Err))
 		}
 		return listCommentsFail(fail), nil
 	}
@@ -131,7 +132,7 @@ func (h *Handler) ListComments(ctx context.Context, req openapi.ListCommentsRequ
 				},
 			}, nil
 		}
-		return nil, fmt.Errorf("comments: list: get session: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("comments: list: get session: %w", err))
 	}
 
 	// Parse the resolved filter.
@@ -165,7 +166,7 @@ func (h *Handler) ListComments(ctx context.Context, req openapi.ListCommentsRequ
 				Message: "cursor could not be decoded or does not match current filters",
 			}), nil
 		}
-		return nil, fmt.Errorf("comments: list: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("comments: list: %w", err))
 	}
 
 	items := make([]openapi.Comment, len(rows))
@@ -194,7 +195,7 @@ func (h *Handler) ResolveComment(ctx context.Context, req openapi.ResolveComment
 	acc, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.s, orgID, sessionID)
 	if !ok {
 		if fail.Err != nil {
-			return nil, fmt.Errorf("comments: resolve: %w", fail.Err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("comments: resolve: %w", fail.Err))
 		}
 		return resolveCommentFail(fail), nil
 	}
@@ -227,7 +228,7 @@ func (h *Handler) ResolveComment(ctx context.Context, req openapi.ResolveComment
 				Message: "comment is already resolved",
 			}), nil
 		}
-		return nil, fmt.Errorf("comments: resolve: %w", err)
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("comments: resolve: %w", err))
 	}
 
 	return openapi.ResolveComment200JSONResponse(storeCommentToAPI(resolved)), nil

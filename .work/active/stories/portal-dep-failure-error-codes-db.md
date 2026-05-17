@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-db
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -163,3 +163,86 @@ already exists.
 
 `git revert`. The translator and existing 404/409 paths are
 independent; nothing requires a coordinated rollback.
+
+## Implementation notes
+
+Surgical wrap-and-go pass applying `deperr.WrapDBIfTransient` to every
+handler error path that bubbles a non-sentinel store error to the
+strict-handler boundary. The wrap is `errors.Is`-safe for
+`store.ErrNotFound` and `store.ErrUniqueViolation`, so existing 404/409
+branches are untouched.
+
+**Scope.** 95 wrap sites across 19 production files in
+`internal/portal/`:
+
+- `accounts/handlers.go` (3), `accounts/orgs.go` (4)
+- `sessions/handler.go` (10), `sessions/listing.go` (2),
+  `sessions/files.go` (3), `sessions/invites.go` (6),
+  `sessions/members.go` (3), `sessions/refmodes.go` (4),
+  `sessions/state.go` (10)
+- `comments/handlers.go` (7)
+- `finalize/lock_acquire.go` (7), `finalize/lock_patch.go` (4),
+  `finalize/lock_release.go` (3), `finalize/plan.go` (4),
+  `finalize/fetch_token.go` (2), `finalize/mark_shipped.go` (5)
+- `auth/magic_link.go` (4), `auth/oauth.go` (3 — DB parts only;
+  provider-exchange wrap landed in story `oauth`)
+
+(Plus 1 prior `WrapDBIfTransient` in `githttp/receive_pack.go` from the
+git-subprocess sibling, untouched here.)
+
+**Intentionally skipped.**
+
+- `comments/service.go` — service-layer DB errors bubble up via the
+  handler's existing `fmt.Errorf("comments: ...: %w", err)` wrap, which
+  the handler-level `WrapDBIfTransient` then classifies. Wrapping
+  inside the service would double-wrap and obscure the chain. Matches
+  the design's "outer return is where the dep classification matters"
+  rule.
+- `events/log.go`, `automerger/*.go`, `postreceive/*.go` — background-
+  worker DB calls with no HTTP surface, explicitly out of scope per
+  the parent feature's "what's explicitly out of scope" section.
+- `mcpendpoint/*.go` — MCP tool errors flow through the MCP SDK's own
+  envelope, not the strict-handler translator. Out of scope per the
+  feature design (no MCP code in the taxonomy).
+- Non-DB error sites in audited files (git refs iteration, go-git
+  open/read, JSON marshal/unmarshal, random-byte generation, URL
+  parse, `storage.CreateRepo` disk write): left as plain
+  `fmt.Errorf(...)`, which the translator routes to the existing
+  `ErrInternal` (500) path. These are not dep failures.
+- `auth/provision.go`, `auth/slug.go` — store calls inside these are
+  invoked from `magic_link` and `oauth` handlers and accounts handlers
+  whose outer return paths already wrap with `WrapDBIfTransient`.
+  Wrapping inside the helpers would double-wrap; sentinel chain is
+  preserved by `errors.Is`.
+
+**Tests.** Four representative HTTP-level dep-failure tests added,
+each stubbing a single store method to return `errors.New("conn refused")`
+and asserting the response is `503` with `Retry-After: 2` and
+`{error: "dep.db_unavailable"}`:
+
+- `accounts/handlers_test.go`: `TestGetMe_DBUnavailable_Returns503DepDBUnavailable`
+- `sessions/listing_state_test.go`: `TestListSessions_DBUnavailable_Returns503DepDBUnavailable`
+- `comments/service_test.go`: `TestHandlerListComments_DBUnavailable_Returns503DepDBUnavailable`
+- `finalize/lock_release_test.go`: `TestReleaseFinalizeLock_DBUnavailable_WrapsAsDepDB`
+  — the finalize tests call the handler directly (no HTTP); this
+  asserts `errors.Is(err, deperr.ErrDB)` to prove the wrap is in place
+  for the production translator to consume.
+
+The accounts and comments test envs were extended with
+`newAccountsTestEnvWithStore` / `newTestEnvWithStore` helpers so a
+wrapping store can be injected while keeping the original test
+helpers backwards-compatible. The strict-handler translator
+(`httperr.WriteFromError`) is now wired explicitly in the comments
+test env, matching `cmd/portal/main.go`'s production wiring.
+
+**Verification.**
+
+- `go build ./...` clean
+- `go vet ./internal/portal/...` clean
+- `go test ./internal/portal/...` all packages pass (44 packages,
+  100% green on `-count=1`)
+- `go test ./...` repo-wide pass
+
+No existing tests required updates: pre-existing 500-asserting tests
+target non-DB failure modes (storage disk failures, go-git open
+failures) that correctly remain plain 500s.
