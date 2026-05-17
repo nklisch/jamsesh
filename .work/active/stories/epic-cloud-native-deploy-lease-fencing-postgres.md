@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing-postgres
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy-lease-fencing
 depends_on: [epic-cloud-native-deploy-lease-fencing-interface-and-noop, epic-cloud-native-deploy-lease-fencing-schema]
@@ -77,3 +77,22 @@ New:
   if false-positives observed.
 - PodID: read from `HOSTNAME` env var (k8s default) or generated UUID at
   pod startup. Stored in `leases.pod_id` for observability.
+
+## Implementation notes
+
+- `PostgresManager` in `internal/portal/lease/postgres.go`. `pgHandle` is
+  unexported; all Handle interface methods are value-safe behind `sync.Once`.
+- Acquire sequence exactly matches the spec: `db.Conn(ctx)` → advisory lock →
+  fencing token via `Store.IssueLeaseFencingToken` → `InsertLease` upsert →
+  collision check (pod_id mismatch + released_at IS NULL) → heartbeat goroutine.
+- Release sequence: close `done` channel → `pg_advisory_unlock` (best-effort) →
+  `MarkLeaseReleased` (best-effort) → `conn.Close()`. All wrapped in `sync.Once`.
+- Heartbeat goroutine selects on a `done` channel (closed by Release) and a
+  ticker; any `PingContext` error closes `Lost()` and exits. No goroutine leak.
+- Integration tests in `internal/portal/lease/postgres_test.go` are gated on
+  `JAMSESH_TEST_PG_DSN`; skip cleanly when absent. Tests cover: acquire success,
+  monotonic fencing tokens, conflict (ErrAlreadyHeld), Lost fires on backend
+  terminate, Release idempotency, heartbeat keeps lease alive, Release-after-Lost
+  idempotency, and the collision defensive check.
+- `go test -race ./internal/portal/lease/...` passes (unit tests only without
+  PG DSN). Full `go build ./...` clean.
