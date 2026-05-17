@@ -1,0 +1,51 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "/login/oauth/access_token"
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "access_token": "test-access-token",
+          "token_type": "bearer",
+          "scope": "user:email"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "/user"
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "id": 42,
+          "login": "test-user",
+          "name": "Test User"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "/user/emails"
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": [
+          {
+            "email": "test@example.com",
+            "primary": true,
+            "verified": true
+          }
+        ]
+      }
+    }
+  ]
+}

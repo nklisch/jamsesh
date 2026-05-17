@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-testcontainers-fixtures
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-portal-image-build, epic-e2e-tests-infrastructure-portal-oauth-base-url]
@@ -94,3 +94,34 @@ up the full stack and asserts `GET /healthz` returns 200.
 - If the WireMock client library isn't available or is heavy, use
   `testcontainers.GenericContainer` directly with a Dockerfile-free
   mounted-mappings approach
+
+## Implementation notes
+
+### Files created / modified
+
+- `tests/e2e/go.mod` + `go.sum` — added `github.com/testcontainers/testcontainers-go@v0.42.0`, `github.com/testcontainers/testcontainers-go/modules/postgres@v0.42.0`, `github.com/lib/pq@v1.12.3`
+- `tests/e2e/fixtures/postgres/postgres.go` — shared container (`sync.Once`), per-test DB with `CREATE DATABASE test_<8hex>`, `t.Cleanup` drops DB; exposes `.DSN` (host-side) and `.ContainerDSN` (Docker bridge IP, for portal fixture)
+- `tests/e2e/fixtures/postgres/postgres_test.go` — self-test + isolation test
+- `tests/e2e/fixtures/mailhog/mailhog.go` — `GenericContainer` with `wait.ForAll(ForListeningPort, ForHTTP)`; exposes `.SMTPHost/Port` (host-side) and `.ContainerSMTPHost/Port` (Docker bridge)
+- `tests/e2e/fixtures/mailhog/mailhog_test.go` — self-test
+- `tests/e2e/fixtures/wiremock/wiremock.go` — `GenericContainer` with file mounts; exposes `.URL` (host-side) and `.ContainerURL` (Docker bridge)
+- `tests/e2e/fixtures/wiremock/wiremock_test.go` — self-test including stub response verification
+- `tests/e2e/fixtures/wiremock/mappings/github.json` — WireMock stubs for `/login/oauth/access_token`, `/user`, `/user/emails`
+- `tests/e2e/fixtures/toxiproxy/toxiproxy.go` — `GenericContainer` with `wait.ForHTTP("/proxies")`; exposes `.AdminURL`
+- `tests/e2e/fixtures/toxiproxy/toxiproxy_test.go` — self-test
+- `tests/e2e/fixtures/portal/portal.go` — `GenericContainer` with `wait.ForHTTP("/healthz")`; `requirePortalImage` skips with actionable message if image absent; `buildEnv` maps `Options` to `JAMSESH_*` env vars
+- `tests/e2e/fixtures/portal/portal_test.go` — SQLite in-memory self-test
+- `tests/e2e/scaffolding/healthz_test.go` — full-stack smoke spec
+- `tests/e2e/README.md` — updated with prerequisites, fixture table, container-vs-host addressing explanation
+
+### Key discovery: Docker bridge networking
+
+The portal runs inside a Docker container, so it cannot reach the host-mapped ports of Postgres, MailHog, or WireMock via `localhost`. All fixtures now expose `ContainerDSN` / `ContainerSMTPHost` / `ContainerURL` fields built from the Docker bridge IP (`c.ContainerIP(ctx)`). The smoke spec uses these container-side addresses when configuring the portal fixture. The host-side addresses remain available for test-process assertions.
+
+### API shape change (testcontainers-go v0.42.0)
+
+`network.Port.Int()` no longer exists. The correct method is `network.Port.Num() uint16`. All fixtures use `int(port.Num())` where an int is needed.
+
+### No build tags used
+
+Fixture self-tests skip cleanly via `requireDocker(t)` when Docker is unavailable. No `//go:build e2e` tag was added — the clean skip behavior makes the tag unnecessary.
