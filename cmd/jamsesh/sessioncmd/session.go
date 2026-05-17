@@ -13,14 +13,17 @@ import (
 	"jamsesh/cmd/jamsesh/state"
 )
 
-// resolveSession returns the jamsesh session ID for the current CC instance.
+// ResolveSession returns the jamsesh session ID for the current CC instance.
 // It reads the CC_SESSION_ID environment variable (the Claude Code instance
 // identifier) and maps it to the jamsesh session ID stored under
 // ${CLAUDE_PLUGIN_DATA}/sessions/<sessionID>/instance_id.
 //
 // If CC_SESSION_ID is not set, it falls back to reading the first session
 // found in the sessions/ directory (useful for single-session development).
-func resolveSession() (string, error) {
+//
+// Exported so sibling packages (e.g. cmd/jamsesh/finalizecmd) can reuse the
+// same CC-session-id resolution without duplicating the mapping logic.
+func ResolveSession() (string, error) {
 	dir, err := state.PluginDataDir()
 	if err != nil {
 		return "", err

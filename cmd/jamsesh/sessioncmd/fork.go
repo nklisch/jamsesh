@@ -50,7 +50,7 @@ func forkAction(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("--mode must be 'sync' or 'isolated'")
 	}
 
-	sessionID, err := resolveSession()
+	sessionID, err := ResolveSession()
 	if err != nil {
 		return err
 	}

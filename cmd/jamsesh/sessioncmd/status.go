@@ -45,7 +45,7 @@ func statusAction(ctx context.Context, cmd *cli.Command) error {
 	asJSON := cmd.Bool("json")
 
 	// Resolve the current session ID via the shared helper in session.go.
-	sessionID, err := resolveSession()
+	sessionID, err := ResolveSession()
 	if err != nil {
 		return fmt.Errorf("resolving current session: %w", err)
 	}

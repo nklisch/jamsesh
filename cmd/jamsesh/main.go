@@ -9,6 +9,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"jamsesh/cmd/jamsesh/auth"
+	"jamsesh/cmd/jamsesh/finalizecmd"
 	"jamsesh/cmd/jamsesh/hooks"
 	"jamsesh/cmd/jamsesh/mcpheaders"
 	"jamsesh/cmd/jamsesh/sessioncmd"
@@ -31,6 +32,8 @@ func main() {
 			sessioncmd.StatusCommand(),
 			sessioncmd.ForkCommand(),
 			sessioncmd.ModeCommand(),
+			finalizecmd.FinalizeCommand(),
+			finalizecmd.FinalizeRunCommand(),
 		},
 	}
 
