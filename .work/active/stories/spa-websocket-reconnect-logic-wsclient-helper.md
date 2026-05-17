@@ -1,7 +1,7 @@
 ---
 id: spa-websocket-reconnect-logic-wsclient-helper
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: spa-websocket-reconnect-logic
 depends_on: []
@@ -234,3 +234,54 @@ ok      jamsesh/tests/e2e/fixtures/wsclient     0.906s
 ```
 
 The whole `tests/e2e` module still builds cleanly (`go build ./...`).
+
+## Review
+
+**Verdict:** Approve.
+
+**Reviewer:** autonomous code review against commit `3b423a0`.
+
+**Acceptance criteria:** all five satisfied.
+
+- `ConnectFromSeq` writes a single `{"replay_from": N}` text frame before
+  starting the read loop when `replaySeq > 0` — verified by
+  `TestConnectFromSeq_WritesReplayFrame`.
+- `replaySeq <= 0` short-circuits without writing a frame — verified by
+  the Zero and Negative tests.
+- The shared `dial` helper is the single source of truth for URL +
+  subprotocol auth; `Connect`'s public signature is unchanged.
+- A fixture test drives the helper end-to-end against an in-process stub
+  gateway, seeds events 1..3, and asserts seqs 2 and 3 arrive when
+  `replaySeq = 1`.
+- `go test ./fixtures/wsclient/...` passes; no other tests in
+  `tests/e2e/...` regressed.
+
+**Design discrepancy (Testcontainer → httptest stub):** accepted. The
+portal-side replay protocol is already proven by
+`internal/portal/wsgateway/gateway_test.go::TestHandler_ReplayFromCursor`
+against a real in-process handler. The unit of verification this story
+owns is the *client* wire contract — that `ConnectFromSeq` emits exactly
+one `{"replay_from": N}` text frame for `N > 0` and nothing for `N <= 0`
+— and an in-process `httptest.Server` pins that contract precisely while
+keeping the test Docker-free. The real-portal coverage path is preserved
+via `ws_reconnect_after_drop` in
+`tests/e2e/failure/interrupted_ops_test.go`, which will exercise
+`ConnectFromSeq` against the live portal once that subtest is un-skipped
+by a consumer story.
+
+**Correctness note appreciated:** the agent's read-loop-before-Fatalf
+ordering in the write-error path is the right call — without it the
+`t.Cleanup`-registered `Close` blocks forever on `<-c.done` during
+teardown, since the read loop's `defer close(c.done)` would never run.
+
+**Findings:**
+
+- Blockers: 0
+- Important: 0
+- Nits: 2 (not parked, not actioned — recorded for context)
+  - `stubGateway.connectionsCh` is declared and signalled but never
+    read; the field is dead weight in the stub.
+  - Stub-emitted `Event.Timestamp` / `Event.SessionID` are zero; harmless
+    here but a small departure from the production envelope shape.
+
+Advancing stage `review → done`.
