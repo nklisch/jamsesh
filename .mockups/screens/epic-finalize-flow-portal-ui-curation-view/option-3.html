@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finalize curation — Option 3: Cart pattern (squash default)</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column; min-height: 100vh;
+    }
+
+    .app-chrome {
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark { font-weight: var(--font-weight-semibold); letter-spacing: -0.03em; }
+    .wordmark .dot { color: var(--color-accent); }
+    .breadcrumb { display: flex; gap: 6px; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .breadcrumb a { color: var(--color-text-link); text-decoration: none; }
+    .breadcrumb .sep { color: var(--color-text-tertiary); }
+    .breadcrumb .here { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .chrome-spacer { flex: 1; }
+    .avatar-sm {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--author-2); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+    }
+
+    .page-head {
+      padding: 22px 28px 16px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .page-head h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .page-head .sub { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .page-head .sub code { font: var(--font-size-xs) var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 6px; border-radius: 3px; color: var(--color-text-primary); }
+    .page-head .lock {
+      display: inline-flex; align-items: center; gap: 8px;
+      margin-left: 12px;
+      padding: 4px 10px; border-radius: var(--radius-full);
+      background: var(--color-accent-muted); color: var(--color-accent);
+      font: var(--font-weight-medium) 11px var(--font-mono);
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .page-head .lock::before { content:''; width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); }
+
+    /* Mode bar */
+    .mode-bar {
+      padding: 14px 28px;
+      display: flex; gap: 18px; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .mode-bar h3 {
+      margin: 0;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .seg {
+      display: inline-flex; border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md); overflow: hidden;
+      background: var(--color-bg-primary);
+    }
+    .seg button {
+      border: 0; background: transparent;
+      padding: 7px 16px;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      color: var(--color-text-secondary); cursor: pointer;
+      border-right: 1px solid var(--color-border-strong);
+    }
+    .seg button:last-child { border-right: 0; }
+    .seg button:hover { background: var(--color-bg-tertiary); color: var(--color-text-primary); }
+    .seg button.on {
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+    }
+    .mode-bar .mode-help {
+      flex: 1;
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      line-height: 1.4;
+    }
+    .mode-bar .mode-help strong { color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+
+    /* Body: source pool | cart */
+    .main {
+      flex: 1; display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+      gap: 0; min-height: 0;
+    }
+
+    .panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+
+    .panel-head {
+      padding: 14px 22px;
+      display: flex; align-items: center; gap: 12px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .panel-head h2 {
+      margin: 0; font-size: var(--font-size-base);
+      font-weight: var(--font-weight-semibold); letter-spacing: -0.01em;
+    }
+    .panel-head .meta {
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-secondary); margin-left: auto;
+    }
+
+    .source {
+      border-right: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+    }
+    .source .panel-body { overflow: auto; padding: 8px 14px 24px; flex: 1; }
+
+    .group-card {
+      margin: 10px 0;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-secondary);
+      overflow: hidden;
+    }
+    .group-card .group-head {
+      padding: 10px 14px;
+      display: flex; gap: 10px; align-items: center;
+      background: var(--color-bg-tertiary);
+      cursor: pointer;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .group-card .group-head .name {
+      font: var(--font-weight-semibold) var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-primary);
+    }
+    .group-card .group-head .tag {
+      font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 2px 7px; border-radius: var(--radius-full);
+    }
+    .group-card .group-head .tag.draft {
+      background: var(--color-accent-muted); color: var(--color-accent);
+    }
+    .group-card .group-head .tag.isolated {
+      background: var(--color-warning-muted); color: var(--color-warning);
+    }
+    .group-card .group-head .count {
+      margin-left: auto;
+      font: var(--font-size-xs) var(--font-mono); color: var(--color-text-tertiary);
+    }
+    .group-card .group-head .actions {
+      margin-left: 8px;
+    }
+    .group-card .group-head button {
+      border: 1px solid var(--color-border); background: var(--color-bg-secondary);
+      padding: 3px 8px; border-radius: var(--radius-sm);
+      font: var(--font-weight-medium) 11px var(--font-sans);
+      color: var(--color-text-primary); cursor: pointer;
+    }
+    .group-card .group-head button:hover { background: var(--color-bg-inverse); color: var(--color-text-inverse); }
+
+    .commit-row {
+      padding: 9px 14px 9px 36px;
+      display: grid; grid-template-columns: 1fr auto; gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      cursor: pointer;
+    }
+    .commit-row:last-child { border-bottom: 0; }
+    .commit-row:hover { background: var(--color-bg-tertiary); }
+    .commit-row.in-cart {
+      background: var(--color-accent-muted);
+      position: relative;
+    }
+    .commit-row.in-cart::before {
+      content: '✓'; position: absolute; left: 14px;
+      color: var(--color-accent); font-weight: var(--font-weight-semibold);
+    }
+    .commit-row .body { min-width: 0; }
+    .commit-row .top {
+      display: flex; gap: 7px; align-items: center;
+      font: var(--font-size-xs) var(--font-mono);
+      color: var(--color-text-tertiary);
+      margin-bottom: 3px;
+    }
+    .commit-row .top .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .commit-row .top .name { color: var(--color-text-secondary); font-weight: var(--font-weight-medium); }
+    .commit-row .top .sha { color: var(--color-text-secondary); }
+    .commit-row .msg {
+      font-size: var(--font-size-sm); color: var(--color-text-primary);
+      line-height: 1.35;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .add-btn {
+      width: 26px; height: 26px;
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-bg-primary); color: var(--color-text-primary);
+      border-radius: var(--radius-sm); cursor: pointer;
+      font: var(--font-weight-semibold) 14px var(--font-sans);
+      line-height: 1;
+    }
+    .add-btn:hover { background: var(--color-bg-inverse); color: var(--color-text-inverse); }
+    .commit-row.in-cart .add-btn { visibility: hidden; }
+
+    /* Cart panel */
+    .cart {
+      background: var(--color-bg-secondary);
+      display: flex; flex-direction: column; min-height: 0;
+    }
+
+    .cart-config {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+      display: grid; gap: 12px;
+    }
+    .field-row {
+      display: grid; grid-template-columns: 120px 1fr; gap: 14px;
+      align-items: center;
+    }
+    .field-row label {
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .field-row input[type="text"] {
+      padding: 8px 12px; border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-bg-secondary); color: var(--color-text-primary);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-mono);
+    }
+    .field-row input[type="text"]:focus { outline: 2px solid var(--color-accent); outline-offset: -1px; border-color: var(--color-accent); }
+
+    .msg-editor {
+      grid-column: 1 / -1;
+      display: grid; gap: 8px;
+    }
+    .msg-editor .label-row {
+      display: flex; align-items: baseline; gap: 10px;
+    }
+    .msg-editor label {
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .msg-editor .label-row .hint {
+      font-size: var(--font-size-xs); color: var(--color-text-tertiary);
+    }
+    .msg-editor textarea {
+      width: 100%; box-sizing: border-box;
+      min-height: 150px; resize: vertical;
+      padding: 10px 12px; border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-bg-secondary); color: var(--color-text-primary);
+      font: var(--font-size-sm)/1.55 var(--font-mono);
+    }
+    .msg-editor textarea:focus { outline: 2px solid var(--color-accent); outline-offset: -1px; border-color: var(--color-accent); }
+    .coauthors {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 4px 0;
+    }
+    .coauthors .chip {
+      display: inline-flex; gap: 6px; align-items: center;
+      padding: 3px 9px; border-radius: var(--radius-full);
+      background: var(--color-bg-tertiary); border: 1px solid var(--color-border);
+      font: var(--font-size-xs) var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .coauthors .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .coauthors .label {
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-tertiary);
+      align-self: center; margin-right: 4px;
+    }
+
+    .panel-head.cart-head {
+      padding-right: 14px;
+    }
+    .cart-head .reorder-hint {
+      font-size: var(--font-size-xs); color: var(--color-text-tertiary);
+      margin-left: 8px;
+    }
+
+    .cart-body { flex: 1; overflow: auto; padding: 12px 22px 16px; }
+
+    .cart-item {
+      display: grid; grid-template-columns: 32px 1fr auto auto; gap: 10px;
+      padding: 10px 14px;
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      margin-bottom: 8px;
+      align-items: center;
+    }
+    .cart-item .num {
+      width: 24px; height: 24px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--color-bg-tertiary); color: var(--color-text-secondary);
+      border-radius: var(--radius-sm);
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+    }
+    .cart-item .body { min-width: 0; }
+    .cart-item .top {
+      display: flex; gap: 7px; align-items: center;
+      font: var(--font-size-xs) var(--font-mono); color: var(--color-text-tertiary);
+      margin-bottom: 3px;
+    }
+    .cart-item .top .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .cart-item .top .name { color: var(--color-text-secondary); font-weight: var(--font-weight-medium); }
+    .cart-item .msg {
+      font-size: var(--font-size-sm); color: var(--color-text-primary);
+      line-height: 1.35;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .cart-item .reorder {
+      display: flex; flex-direction: column;
+    }
+    .cart-item .reorder button {
+      width: 22px; height: 16px; border: 0;
+      background: transparent; color: var(--color-text-tertiary);
+      cursor: pointer; font-size: 10px;
+    }
+    .cart-item .reorder button:hover { color: var(--color-text-primary); }
+    .cart-item .remove {
+      width: 26px; height: 26px;
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-bg-secondary); color: var(--color-danger);
+      border-radius: var(--radius-sm); cursor: pointer;
+      font: var(--font-weight-semibold) 13px var(--font-sans);
+    }
+    .cart-item .remove:hover { background: var(--color-danger-muted); }
+
+    .cart-foot {
+      padding: 14px 22px 18px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+    }
+    .summary-block {
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      line-height: 1.6;
+      margin-bottom: 14px;
+    }
+    .summary-block strong { color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+    .summary-block code { font: var(--font-size-xs) var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px; color: var(--color-text-primary); }
+    .stats {
+      display: flex; gap: 16px;
+      padding: 10px 12px; margin: 10px 0;
+      background: var(--color-bg-tertiary); border-radius: var(--radius-md);
+    }
+    .stats .stat {
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .stats .label {
+      font: 10px var(--font-mono); color: var(--color-text-tertiary);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .stats .val {
+      font: var(--font-weight-semibold) var(--font-size-base) var(--font-mono);
+      color: var(--color-text-primary);
+    }
+
+    .copy-box {
+      display: flex; align-items: stretch;
+      border: 1px solid var(--color-border-strong); border-radius: var(--radius-md);
+      overflow: hidden; background: var(--color-bg-secondary);
+      margin-bottom: 10px;
+    }
+    .copy-box code {
+      flex: 1; padding: 10px 12px;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-primary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .copy-box button {
+      border: 0; border-left: 1px solid var(--color-border);
+      background: var(--color-bg-tertiary); color: var(--color-text-primary);
+      padding: 0 14px; cursor: pointer;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+    }
+    .copy-box button:hover { background: var(--color-bg-inverse); color: var(--color-text-inverse); }
+    .primary {
+      width: 100%; padding: 12px;
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-semibold) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .primary:hover { opacity: 0.92; }
+
+    .mock-meta {
+      padding: 6px 16px;
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      font: 11px var(--font-mono); opacity: 0.85;
+    }
+  </style>
+</head>
+<body>
+  <div class="mock-meta">Option 3 — Cart pattern with squash mode (default). Mode bar at top; commit-message editor + co-authors live in the cart config block.</div>
+
+  <div class="app-chrome">
+    <div class="wordmark">jam<span class="dot">.</span>sesh</div>
+    <div class="breadcrumb">
+      <span>acme-eng</span><span class="sep">/</span>
+      <a href="#">auth-design-refresh</a><span class="sep">/</span>
+      <span class="here">finalize</span>
+    </div>
+    <div class="chrome-spacer"></div>
+    <div class="avatar-sm">na</div>
+  </div>
+
+  <div class="page-head">
+    <h1>Auth design refresh — finalize</h1>
+    <div class="sub">
+      Base <code>3f9a812</code> · pick the commits to ship.
+      <span class="lock">You hold the lock · 28:12</span>
+    </div>
+  </div>
+
+  <div class="mode-bar">
+    <h3>Finalization mode</h3>
+    <div class="seg">
+      <button class="on">Squash into one commit</button>
+      <button>Preserve all commits</button>
+    </div>
+    <div class="mode-help">
+      <strong>Squash</strong> creates a single commit on the target branch with
+      every contributor as a <code style="font-family:var(--font-mono);font-size:11px;background:var(--color-bg-tertiary);padding:1px 5px;border-radius:3px">Co-authored-by</code>
+      trailer. Matches the typical "clean PR" workflow. Switch to preserve
+      to keep multi-author history on the branch.
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Source pool -->
+    <div class="panel source">
+      <div class="panel-head">
+        <h2>Available commits</h2>
+        <div class="meta">14 total · 9 selected</div>
+      </div>
+      <div class="panel-body">
+
+        <div class="group-card">
+          <div class="group-head">
+            <span class="name">draft</span>
+            <span class="tag draft">auto-merged</span>
+            <span class="count">8 commits</span>
+            <span class="actions"><button>Add all</button></span>
+          </div>
+          <div class="commit-row in-cart">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span class="sha">a3f1b29</span></div>
+              <div class="msg">Add OAuth provider interface for login flow</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row in-cart">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-3)"></span><span class="name">devon</span><span class="sha">7c8e442</span></div>
+              <div class="msg">Wire session refresh middleware</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row in-cart">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span class="sha">b1d09a5</span></div>
+              <div class="msg">Implement Google + GitHub providers</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row in-cart">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-4)"></span><span class="name">priya</span><span class="sha">9af2c11</span></div>
+              <div class="msg">Add token revocation endpoint</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row in-cart">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-3)"></span><span class="name">devon</span><span class="sha">2e8b073</span></div>
+              <div class="msg">Refresh tokens on backgrounded sessions</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row in-cart">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span class="sha">f4c8d99</span></div>
+              <div class="msg">Audit log: account.login, account.logout events</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row in-cart">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-2)"></span><span class="name">kenji</span><span class="sha">e0a2c4d</span></div>
+              <div class="msg">Tests: provider fallback under rate limit</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row in-cart">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-4)"></span><span class="name">priya</span><span class="sha">d77e1a3</span></div>
+              <div class="msg">Docs: OAuth provider integration guide</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+        </div>
+
+        <div class="group-card">
+          <div class="group-head">
+            <span class="name">marisol/passkey-experiment</span>
+            <span class="tag isolated">isolated</span>
+            <span class="count">4 commits</span>
+            <span class="actions"><button>Add all</button></span>
+          </div>
+          <div class="commit-row in-cart">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span class="sha">5b3a8c2</span></div>
+              <div class="msg">Spike: WebAuthn registration endpoint</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span class="sha">2cf8e91</span></div>
+              <div class="msg">Spike: WebAuthn assertion verify</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span class="sha">a8e60d4</span></div>
+              <div class="msg">WIP: replace password flow with passkey</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span class="sha">7b1c44f</span></div>
+              <div class="msg">Notes: passkey + OAuth coexistence</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+        </div>
+
+        <div class="group-card">
+          <div class="group-head">
+            <span class="name">devon/observability-spike</span>
+            <span class="tag isolated">isolated</span>
+            <span class="count">2 commits</span>
+            <span class="actions"><button>Add all</button></span>
+          </div>
+          <div class="commit-row">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-3)"></span><span class="name">devon</span><span class="sha">3a0b91e</span></div>
+              <div class="msg">Trace spans on auth code paths</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+          <div class="commit-row">
+            <div class="body">
+              <div class="top"><span class="dot" style="background: var(--author-3)"></span><span class="name">devon</span><span class="sha">10a83cb</span></div>
+              <div class="msg">Metrics: login latency histogram</div>
+            </div>
+            <button class="add-btn">+</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Cart -->
+    <div class="panel cart">
+      <div class="cart-config">
+        <div class="field-row">
+          <label>Target branch</label>
+          <input type="text" value="jamsesh/auth-design-refresh">
+        </div>
+
+        <div class="msg-editor">
+          <div class="label-row">
+            <label>Commit message</label>
+            <span class="hint">Squash mode · pre-filled from session goal + commit subjects · editable</span>
+          </div>
+          <textarea>Auth design refresh: OAuth providers, session refresh, audit log
+
+- Add OAuth provider interface for login flow
+- Wire session refresh middleware
+- Implement Google + GitHub providers
+- Add token revocation endpoint
+- Refresh tokens on backgrounded sessions
+- Audit log: account.login, account.logout events
+- Tests: provider fallback under rate limit
+- Docs: OAuth provider integration guide
+- Spike: WebAuthn registration endpoint (passkey foundation)
+
+Co-authored-by: Marisol Vega &lt;marisol@acme-eng.com&gt;
+Co-authored-by: Devon Park &lt;devon@acme-eng.com&gt;
+Co-authored-by: Priya Rao &lt;priya@acme-eng.com&gt;
+Co-authored-by: Kenji Ito &lt;kenji@acme-eng.com&gt;</textarea>
+          <div class="coauthors">
+            <span class="label">Co-authors</span>
+            <span class="chip"><span class="dot" style="background: var(--author-1)"></span>marisol</span>
+            <span class="chip"><span class="dot" style="background: var(--author-3)"></span>devon</span>
+            <span class="chip"><span class="dot" style="background: var(--author-4)"></span>priya</span>
+            <span class="chip"><span class="dot" style="background: var(--author-2)"></span>kenji</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-head cart-head">
+        <h2>Commits to include</h2>
+        <span class="reorder-hint">Order affects the bulleted list in the message body</span>
+        <div class="meta" style="margin-left: auto;">9 commits</div>
+      </div>
+      <div class="cart-body">
+        <div class="cart-item">
+          <div class="num">1</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span>a3f1b29</span></div>
+            <div class="msg">Add OAuth provider interface for login flow</div>
+          </div>
+          <div class="reorder"><button>▲</button><button>▼</button></div>
+          <button class="remove">×</button>
+        </div>
+        <div class="cart-item">
+          <div class="num">2</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-3)"></span><span class="name">devon</span><span>7c8e442</span></div>
+            <div class="msg">Wire session refresh middleware</div>
+          </div>
+          <div class="reorder"><button>▲</button><button>▼</button></div>
+          <button class="remove">×</button>
+        </div>
+        <div class="cart-item">
+          <div class="num">3</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span>b1d09a5</span></div>
+            <div class="msg">Implement Google + GitHub providers</div>
+          </div>
+          <div class="reorder"><button>▲</button><button>▼</button></div>
+          <button class="remove">×</button>
+        </div>
+        <div class="cart-item">
+          <div class="num">4</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-4)"></span><span class="name">priya</span><span>9af2c11</span></div>
+            <div class="msg">Add token revocation endpoint</div>
+          </div>
+          <div class="reorder"><button>▲</button><button>▼</button></div>
+          <button class="remove">×</button>
+        </div>
+        <div class="cart-item">
+          <div class="num">5</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-3)"></span><span class="name">devon</span><span>2e8b073</span></div>
+            <div class="msg">Refresh tokens on backgrounded sessions</div>
+          </div>
+          <div class="reorder"><button>▲</button><button>▼</button></div>
+          <button class="remove">×</button>
+        </div>
+        <div class="cart-item">
+          <div class="num">6</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span>f4c8d99</span></div>
+            <div class="msg">Audit log: account.login, account.logout events</div>
+          </div>
+          <div class="reorder"><button>▲</button><button>▼</button></div>
+          <button class="remove">×</button>
+        </div>
+        <div class="cart-item">
+          <div class="num">7</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-2)"></span><span class="name">kenji</span><span>e0a2c4d</span></div>
+            <div class="msg">Tests: provider fallback under rate limit</div>
+          </div>
+          <div class="reorder"><button>▲</button><button>▼</button></div>
+          <button class="remove">×</button>
+        </div>
+        <div class="cart-item">
+          <div class="num">8</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-4)"></span><span class="name">priya</span><span>d77e1a3</span></div>
+            <div class="msg">Docs: OAuth provider integration guide</div>
+          </div>
+          <div class="reorder"><button>▲</button><button>▼</button></div>
+          <button class="remove">×</button>
+        </div>
+        <div class="cart-item">
+          <div class="num">9</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span><span class="name">marisol</span><span>5b3a8c2</span></div>
+            <div class="msg">Spike: WebAuthn registration endpoint</div>
+          </div>
+          <div class="reorder"><button>▲</button><button>▼</button></div>
+          <button class="remove">×</button>
+        </div>
+      </div>
+
+      <div class="cart-foot">
+        <div class="summary-block">
+          Creates <strong>jamsesh/auth-design-refresh</strong> from
+          <code>3f9a812</code>, squashes <strong>9 commits</strong> from
+          <strong>4 authors</strong> into one commit with the message above
+          and a <code>Co-authored-by</code> trailer for each contributor.
+          Conflicts during the squash surface in your working tree for your
+          own Claude Code to mediate. Nothing is pushed automatically.
+        </div>
+        <div class="stats">
+          <div class="stat"><span class="label">Mode</span><span class="val" style="font-size:13px">squash</span></div>
+          <div class="stat"><span class="label">Authors</span><span class="val">4</span></div>
+          <div class="stat"><span class="label">Files</span><span class="val">~22</span></div>
+          <div class="stat"><span class="label">Net</span><span class="val">+1,247 / −183</span></div>
+        </div>
+        <div class="copy-box">
+          <code>jamsesh finalize-run sess_a3f1:lock_7c8e</code>
+          <button>Copy</button>
+        </div>
+        <button class="primary">Run locally</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

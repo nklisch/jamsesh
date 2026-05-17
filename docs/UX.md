@@ -152,20 +152,36 @@ A team agrees the jam is complete and wants to ship the result.
 1. Any participant clicks "Finalize" in the portal UI, or runs
    `/jamsesh:finalize` in CC.
 2. The portal opens the finalize view:
-   - Default selection: the `draft` tip (most work already integrated).
-   - The human reviews the commit history that would be cherry-picked.
+   - Default selection: the leaf agent commits reachable from `draft` (the
+     auto-merger's merge commits are linearized out server-side).
+   - Default finalization mode: **squash into one commit** — matches the
+     conventional PR-shipping shape. The human can flip to **preserve all
+     commits** if they want multi-author history on the target branch.
    - They can: add commits from isolated refs that should be included,
      remove commits from the default selection, reorder, rename the target
-     branch.
-3. They click "Generate plan."
-4. The portal returns a copy-pasteable shell script (the cherry-pick plan).
-5. They run the script in their local source-repo checkout:
-   - The script fetches the session refs as a temporary remote.
+     branch. In squash mode they also edit the composed commit message
+     (pre-filled from the session goal + bulleted commit subjects +
+     `Co-authored-by` trailers for every contributor).
+3. They click "Run locally" (which copies a one-line `jamsesh finalize-run
+   <plan-id>` command to clipboard).
+4. The portal exposes the same plan via `GET /finalize-plan` so the binary
+   can fetch it on demand.
+5. They run `jamsesh finalize-run <plan-id>` in their local source-repo
+   checkout:
+   - The binary fetches the session commits — prefers the user's local
+     session checkout (filesystem path tracked at join time); falls back to
+     fetching from the portal via HTTPS with an ephemeral token if no local
+     checkout is present.
    - It creates the target branch from the session base.
-   - It cherry-picks the chosen commits.
-   - Conflicts during cherry-pick surface in their local editor.
+   - In squash mode: `git cherry-pick --no-commit` for each curated commit,
+     then one `git commit` with the composed message (author = the human
+     running finalize-run, `Co-authored-by` trailers for every contributor).
+   - In preserve mode: `git cherry-pick` per commit, preserving authors.
+   - Conflicts surface in their local editor.
    - Their normal Claude Code instance (separate from any jamsesh-bound
-     CC) helps resolve conflicts with full project context.
+     CC) helps resolve conflicts with full project context. The user drives
+     `git cherry-pick --continue` themselves; re-invoking `jamsesh
+     finalize-run` detects mid-pick state and reports what remains.
 6. Once the branch is clean: `git push origin <target-branch>`.
 7. The human opens whatever PR/MR/issue/announcement they want, on
    whatever forge their team uses. That part is outside jamsesh.

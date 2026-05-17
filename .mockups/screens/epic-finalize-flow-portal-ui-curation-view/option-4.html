@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finalize curation — Option 4: Tree-rooted</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column; min-height: 100vh;
+    }
+
+    .app-chrome {
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark { font-weight: var(--font-weight-semibold); letter-spacing: -0.03em; }
+    .wordmark .dot { color: var(--color-accent); }
+    .breadcrumb { display: flex; gap: 6px; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .breadcrumb a { color: var(--color-text-link); text-decoration: none; }
+    .breadcrumb .sep { color: var(--color-text-tertiary); }
+    .breadcrumb .here { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .chrome-spacer { flex: 1; }
+    .avatar-sm {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--author-2); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+    }
+
+    .page-head {
+      padding: 18px 24px 14px;
+      display: flex; align-items: center; gap: 18px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .page-head h1 {
+      margin: 0; font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold); letter-spacing: -0.02em;
+    }
+    .page-head .crumb { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .page-head .crumb code { font: var(--font-size-xs) var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 6px; border-radius: 3px; color: var(--color-text-primary); }
+    .page-head .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+    .lock-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 5px 10px; border-radius: var(--radius-full);
+      background: var(--color-accent-muted); color: var(--color-accent);
+      font: var(--font-weight-medium) 11px var(--font-mono);
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .lock-pill::before { content:''; width:6px; height:6px; border-radius:50%; background: var(--color-accent); }
+
+    /* Main: tree | side panel */
+    .main {
+      flex: 1; display: grid;
+      grid-template-columns: minmax(0, 1fr) 400px;
+      min-height: 0;
+    }
+
+    /* Tree pane */
+    .tree {
+      display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+      border-right: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .tree-head {
+      padding: 12px 20px;
+      display: flex; gap: 14px; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+    }
+    .tree-head h2 {
+      margin: 0; font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .tree-head .legend {
+      margin-left: auto; display: flex; gap: 14px;
+      font-size: var(--font-size-xs); color: var(--color-text-secondary);
+      align-items: center;
+    }
+    .tree-head .legend .swatch {
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .tree-head .legend .swatch .ring {
+      width: 13px; height: 13px; border-radius: 50%;
+      border: 2px solid var(--color-accent);
+      background: var(--color-bg-secondary);
+    }
+    .tree-head .legend .swatch .filled {
+      width: 13px; height: 13px; border-radius: 50%;
+      background: var(--color-accent);
+    }
+
+    .tree-svg-wrap { flex: 1; overflow: auto; padding: 16px 12px 32px; }
+
+    /* Side panel */
+    .side {
+      background: var(--color-bg-secondary);
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .side .section {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .side .section h2 {
+      margin: 0 0 10px;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .side .section .header-row {
+      display: flex; align-items: baseline; gap: 10px;
+    }
+    .side .section .header-row .count {
+      margin-left: auto;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+
+    label.field-label {
+      display: block; font-size: var(--font-size-sm);
+      color: var(--color-text-secondary); margin-bottom: 6px;
+    }
+    input.branch {
+      width: 100%; box-sizing: border-box;
+      padding: 8px 12px; border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-bg-primary); color: var(--color-text-primary);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-mono);
+    }
+    input.branch:focus { outline: 2px solid var(--color-accent); outline-offset: -1px; border-color: var(--color-accent); }
+    .help {
+      font-size: var(--font-size-xs); color: var(--color-text-tertiary);
+      margin-top: 6px; line-height: 1.4;
+    }
+
+    .ordered { flex: 1; overflow: auto; padding: 4px 0; }
+    .ordered-item {
+      padding: 8px 22px;
+      display: grid; grid-template-columns: 24px 1fr auto; gap: 10px;
+      align-items: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .ordered-item .num {
+      font: var(--font-weight-semibold) var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .ordered-item .body { min-width: 0; }
+    .ordered-item .top {
+      display: flex; gap: 6px; align-items: center;
+      font-size: var(--font-size-xs); color: var(--color-text-tertiary);
+      font-family: var(--font-mono); margin-bottom: 2px;
+    }
+    .ordered-item .top .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .ordered-item .msg {
+      font-size: var(--font-size-sm); color: var(--color-text-primary);
+      line-height: 1.3;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ordered-item .ctrls { display: flex; flex-direction: column; }
+    .ordered-item .ctrls button {
+      width: 22px; height: 14px; border: 0;
+      background: transparent; color: var(--color-text-tertiary);
+      cursor: pointer; font-size: 9px;
+    }
+    .ordered-item .ctrls button:hover { color: var(--color-text-primary); }
+
+    .summary {
+      padding: 14px 22px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+    .summary strong { color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+    .summary code { font: var(--font-size-xs) var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px; color: var(--color-text-primary); }
+
+    .cta {
+      padding: 14px 22px 18px;
+      background: var(--color-bg-secondary);
+      border-top: 1px solid var(--color-border);
+    }
+    .copy-box {
+      display: flex; align-items: stretch;
+      border: 1px solid var(--color-border-strong); border-radius: var(--radius-md);
+      overflow: hidden; background: var(--color-bg-primary);
+      margin-bottom: 10px;
+    }
+    .copy-box code {
+      flex: 1; padding: 10px 12px;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-primary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .copy-box button {
+      border: 0; border-left: 1px solid var(--color-border);
+      background: var(--color-bg-tertiary); color: var(--color-text-primary);
+      padding: 0 14px; cursor: pointer;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+    }
+    .copy-box button:hover { background: var(--color-bg-inverse); color: var(--color-text-inverse); }
+    .primary {
+      width: 100%; padding: 12px;
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-semibold) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .primary:hover { opacity: 0.92; }
+
+    /* SVG tree styles */
+    .tree-svg text {
+      font: var(--font-size-sm) var(--font-mono);
+      fill: var(--color-text-primary);
+    }
+    .tree-svg .commit-msg {
+      font: var(--font-size-sm) var(--font-sans);
+      fill: var(--color-text-primary);
+    }
+    .tree-svg .commit-meta {
+      font: var(--font-size-xs) var(--font-mono);
+      fill: var(--color-text-tertiary);
+    }
+    .tree-svg .ref-label {
+      font: var(--font-weight-semibold) var(--font-size-xs) var(--font-mono);
+      fill: var(--color-text-primary);
+    }
+    .tree-svg .branch-line {
+      stroke-width: 2; fill: none;
+    }
+    .tree-svg .commit-node {
+      cursor: pointer;
+    }
+    .tree-svg .commit-node circle.ring {
+      fill: var(--color-bg-secondary);
+      stroke-width: 2.5;
+    }
+    .tree-svg .commit-node circle.fill {
+      stroke-width: 2.5;
+    }
+    .tree-svg .number-badge {
+      fill: var(--color-bg-inverse);
+    }
+    .tree-svg .number-badge-text {
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      fill: var(--color-text-inverse);
+      text-anchor: middle;
+    }
+    .tree-svg .ref-pill {
+      fill: var(--color-bg-tertiary);
+      stroke: var(--color-border);
+    }
+    .tree-svg .base-marker {
+      stroke: var(--color-border-strong);
+      stroke-width: 1.5; stroke-dasharray: 4 3; fill: none;
+    }
+
+    .mock-meta {
+      padding: 6px 16px;
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      font: 11px var(--font-mono); opacity: 0.85;
+    }
+  </style>
+</head>
+<body>
+  <div class="mock-meta">Option 4 — Tree-rooted. Continues the session-view DAG aesthetic. Click commits to toggle into the selection (filled = picked, numbered = order).</div>
+
+  <div class="app-chrome">
+    <div class="wordmark">jam<span class="dot">.</span>sesh</div>
+    <div class="breadcrumb">
+      <span>acme-eng</span><span class="sep">/</span>
+      <a href="#">auth-design-refresh</a><span class="sep">/</span>
+      <span class="here">finalize</span>
+    </div>
+    <div class="chrome-spacer"></div>
+    <div class="avatar-sm">na</div>
+  </div>
+
+  <div class="page-head">
+    <h1>Auth design refresh — finalize</h1>
+    <div class="crumb">
+      Base <code>3f9a812</code> · session tree below · click commits to include
+    </div>
+    <div class="right">
+      <div class="lock-pill">You hold the lock · 28:12</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="tree">
+      <div class="tree-head">
+        <h2>Session tree</h2>
+        <div class="legend">
+          <span class="swatch"><span class="filled" style="background: var(--color-accent)"></span>Selected</span>
+          <span class="swatch"><span class="ring"></span>Available</span>
+        </div>
+      </div>
+      <div class="tree-svg-wrap">
+        <svg class="tree-svg" viewBox="0 0 760 740" width="100%" preserveAspectRatio="xMidYMin meet">
+          <!-- Base line -->
+          <line class="base-marker" x1="40" y1="700" x2="720" y2="700"></line>
+          <text x="40" y="720" class="commit-meta">base · 3f9a812 · main @ session start</text>
+
+          <!-- Lane labels -->
+          <g>
+            <rect class="ref-pill" x="32" y="18" width="170" height="22" rx="11"></rect>
+            <text x="50" y="33" class="ref-label" style="fill: var(--author-1)">marisol/main → draft</text>
+
+            <rect class="ref-pill" x="218" y="18" width="120" height="22" rx="11"></rect>
+            <text x="232" y="33" class="ref-label" style="fill: var(--author-3)">devon/main</text>
+
+            <rect class="ref-pill" x="354" y="18" width="110" height="22" rx="11"></rect>
+            <text x="368" y="33" class="ref-label" style="fill: var(--author-4)">priya/main</text>
+
+            <rect class="ref-pill" x="480" y="18" width="110" height="22" rx="11"></rect>
+            <text x="496" y="33" class="ref-label" style="fill: var(--author-2)">kenji/main</text>
+
+            <rect class="ref-pill" x="610" y="18" width="120" height="22" rx="11" style="fill: var(--color-warning-muted)"></rect>
+            <text x="624" y="33" class="ref-label" style="fill: var(--color-warning)">marisol/passkey ⚐</text>
+          </g>
+
+          <!-- Branch lines -->
+          <path class="branch-line" d="M 115 50 L 115 690" style="stroke: var(--author-1)"></path>
+          <path class="branch-line" d="M 275 50 L 275 690" style="stroke: var(--author-3)"></path>
+          <path class="branch-line" d="M 405 50 L 405 690" style="stroke: var(--author-4)"></path>
+          <path class="branch-line" d="M 535 50 L 535 690" style="stroke: var(--author-2)"></path>
+          <path class="branch-line" d="M 668 50 L 668 670" style="stroke: var(--author-1); stroke-dasharray: 4 3"></path>
+
+          <!-- Merge connectors into draft (left lane is draft surrogate) -->
+          <path class="branch-line" d="M 275 80 Q 195 80 115 100" style="stroke: var(--author-3); opacity: 0.6"></path>
+          <path class="branch-line" d="M 405 140 Q 260 140 115 160" style="stroke: var(--author-4); opacity: 0.6"></path>
+          <path class="branch-line" d="M 275 220 Q 195 220 115 240" style="stroke: var(--author-3); opacity: 0.6"></path>
+          <path class="branch-line" d="M 405 300 Q 260 300 115 320" style="stroke: var(--author-4); opacity: 0.6"></path>
+          <path class="branch-line" d="M 535 380 Q 325 380 115 400" style="stroke: var(--author-2); opacity: 0.6"></path>
+
+          <!-- Commits in draft (filled = selected) — order 1..8 from top to bottom-ish (newest at top is visual choice; we show oldest at top so numbering reads naturally) -->
+          <!-- We'll draw bottom-up so #1 is near base -->
+          <!-- #1 -->
+          <g class="commit-node">
+            <circle class="fill" cx="115" cy="640" r="11" style="fill: var(--author-1); stroke: var(--author-1)"></circle>
+            <circle class="number-badge" cx="115" cy="640" r="9"></circle>
+            <text class="number-badge-text" x="115" y="643.5">1</text>
+            <text class="commit-meta" x="135" y="637">a3f1b29 · marisol</text>
+            <text class="commit-msg" x="135" y="652">Add OAuth provider interface for login flow</text>
+          </g>
+
+          <!-- #2 (originated on devon, merged into draft) -->
+          <g class="commit-node">
+            <circle class="fill" cx="115" cy="580" r="11" style="fill: var(--author-3); stroke: var(--author-3)"></circle>
+            <circle class="number-badge" cx="115" cy="580" r="9"></circle>
+            <text class="number-badge-text" x="115" y="583.5">2</text>
+            <text class="commit-meta" x="135" y="577">7c8e442 · devon</text>
+            <text class="commit-msg" x="135" y="592">Wire session refresh middleware</text>
+          </g>
+
+          <!-- #3 marisol -->
+          <g class="commit-node">
+            <circle class="fill" cx="115" cy="520" r="11" style="fill: var(--author-1); stroke: var(--author-1)"></circle>
+            <circle class="number-badge" cx="115" cy="520" r="9"></circle>
+            <text class="number-badge-text" x="115" y="523.5">3</text>
+            <text class="commit-meta" x="135" y="517">b1d09a5 · marisol</text>
+            <text class="commit-msg" x="135" y="532">Implement Google + GitHub providers</text>
+          </g>
+
+          <!-- #4 priya -->
+          <g class="commit-node">
+            <circle class="fill" cx="115" cy="460" r="11" style="fill: var(--author-4); stroke: var(--author-4)"></circle>
+            <circle class="number-badge" cx="115" cy="460" r="9"></circle>
+            <text class="number-badge-text" x="115" y="463.5">4</text>
+            <text class="commit-meta" x="135" y="457">9af2c11 · priya</text>
+            <text class="commit-msg" x="135" y="472">Add token revocation endpoint</text>
+          </g>
+
+          <!-- #5 devon -->
+          <g class="commit-node">
+            <circle class="fill" cx="115" cy="400" r="11" style="fill: var(--author-3); stroke: var(--author-3)"></circle>
+            <circle class="number-badge" cx="115" cy="400" r="9"></circle>
+            <text class="number-badge-text" x="115" y="403.5">5</text>
+            <text class="commit-meta" x="135" y="397">2e8b073 · devon</text>
+            <text class="commit-msg" x="135" y="412">Refresh tokens on backgrounded sessions</text>
+          </g>
+
+          <!-- #6 marisol -->
+          <g class="commit-node">
+            <circle class="fill" cx="115" cy="340" r="11" style="fill: var(--author-1); stroke: var(--author-1)"></circle>
+            <circle class="number-badge" cx="115" cy="340" r="9"></circle>
+            <text class="number-badge-text" x="115" y="343.5">6</text>
+            <text class="commit-meta" x="135" y="337">f4c8d99 · marisol</text>
+            <text class="commit-msg" x="135" y="352">Audit log: account.login, account.logout events</text>
+          </g>
+
+          <!-- #7 kenji -->
+          <g class="commit-node">
+            <circle class="fill" cx="115" cy="280" r="11" style="fill: var(--author-2); stroke: var(--author-2)"></circle>
+            <circle class="number-badge" cx="115" cy="280" r="9"></circle>
+            <text class="number-badge-text" x="115" y="283.5">7</text>
+            <text class="commit-meta" x="135" y="277">e0a2c4d · kenji</text>
+            <text class="commit-msg" x="135" y="292">Tests: provider fallback under rate limit</text>
+          </g>
+
+          <!-- #8 priya -->
+          <g class="commit-node">
+            <circle class="fill" cx="115" cy="220" r="11" style="fill: var(--author-4); stroke: var(--author-4)"></circle>
+            <circle class="number-badge" cx="115" cy="220" r="9"></circle>
+            <text class="number-badge-text" x="115" y="223.5">8</text>
+            <text class="commit-meta" x="135" y="217">d77e1a3 · priya</text>
+            <text class="commit-msg" x="135" y="232">Docs: OAuth provider integration guide</text>
+          </g>
+
+          <!-- #9 (added from isolated marisol/passkey) -->
+          <g class="commit-node">
+            <circle class="fill" cx="668" cy="620" r="11" style="fill: var(--author-1); stroke: var(--author-1)"></circle>
+            <circle class="number-badge" cx="668" cy="620" r="9"></circle>
+            <text class="number-badge-text" x="668" y="623.5">9</text>
+            <text class="commit-meta" x="555" y="617" text-anchor="end">5b3a8c2</text>
+            <text class="commit-msg" x="555" y="632" text-anchor="end">WebAuthn registration (added)</text>
+          </g>
+
+          <!-- Available, unselected commits (rings) -->
+          <g class="commit-node">
+            <circle class="ring" cx="668" cy="560" r="9" style="stroke: var(--author-1)"></circle>
+            <text class="commit-meta" x="655" y="557" text-anchor="end">2cf8e91</text>
+            <text class="commit-msg" x="655" y="572" text-anchor="end" style="fill: var(--color-text-secondary)">WebAuthn assertion verify</text>
+          </g>
+          <g class="commit-node">
+            <circle class="ring" cx="668" cy="500" r="9" style="stroke: var(--author-1)"></circle>
+            <text class="commit-meta" x="655" y="497" text-anchor="end">a8e60d4</text>
+            <text class="commit-msg" x="655" y="512" text-anchor="end" style="fill: var(--color-text-secondary)">WIP: passkey-only flow</text>
+          </g>
+          <g class="commit-node">
+            <circle class="ring" cx="668" cy="440" r="9" style="stroke: var(--author-1)"></circle>
+            <text class="commit-meta" x="655" y="437" text-anchor="end">7b1c44f</text>
+            <text class="commit-msg" x="655" y="452" text-anchor="end" style="fill: var(--color-text-secondary)">Notes: passkey + OAuth</text>
+          </g>
+
+          <!-- Isolated obs spike commits at column 535ish? overlap. Use lower portion -->
+        </svg>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="section">
+        <label class="field-label" style="font: var(--font-weight-semibold) 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-text-secondary); margin-bottom: 8px;">Target branch</label>
+        <input class="branch" type="text" value="jamsesh/auth-design-refresh">
+        <div class="help">
+          Created from base <code>3f9a812</code>. Pre-flight checks branch
+          availability against your local checkout + source remote.
+        </div>
+      </div>
+
+      <div class="section" style="padding-bottom: 8px;">
+        <div class="header-row">
+          <h2>Cherry-pick order</h2>
+          <span class="count">9 commits</span>
+        </div>
+      </div>
+      <div class="ordered">
+        <div class="ordered-item">
+          <div class="num">1</div>
+          <div class="body"><div class="top"><span class="dot" style="background: var(--author-1)"></span>a3f1b29 · marisol</div><div class="msg">Add OAuth provider interface</div></div>
+          <div class="ctrls"><button>▲</button><button>▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">2</div>
+          <div class="body"><div class="top"><span class="dot" style="background: var(--author-3)"></span>7c8e442 · devon</div><div class="msg">Wire session refresh middleware</div></div>
+          <div class="ctrls"><button>▲</button><button>▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">3</div>
+          <div class="body"><div class="top"><span class="dot" style="background: var(--author-1)"></span>b1d09a5 · marisol</div><div class="msg">Implement Google + GitHub providers</div></div>
+          <div class="ctrls"><button>▲</button><button>▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">4</div>
+          <div class="body"><div class="top"><span class="dot" style="background: var(--author-4)"></span>9af2c11 · priya</div><div class="msg">Add token revocation endpoint</div></div>
+          <div class="ctrls"><button>▲</button><button>▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">5</div>
+          <div class="body"><div class="top"><span class="dot" style="background: var(--author-3)"></span>2e8b073 · devon</div><div class="msg">Refresh tokens on bg sessions</div></div>
+          <div class="ctrls"><button>▲</button><button>▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">6</div>
+          <div class="body"><div class="top"><span class="dot" style="background: var(--author-1)"></span>f4c8d99 · marisol</div><div class="msg">Audit log: login/logout events</div></div>
+          <div class="ctrls"><button>▲</button><button>▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">7</div>
+          <div class="body"><div class="top"><span class="dot" style="background: var(--author-2)"></span>e0a2c4d · kenji</div><div class="msg">Tests: provider fallback under rate limit</div></div>
+          <div class="ctrls"><button>▲</button><button>▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">8</div>
+          <div class="body"><div class="top"><span class="dot" style="background: var(--author-4)"></span>d77e1a3 · priya</div><div class="msg">Docs: OAuth provider integration guide</div></div>
+          <div class="ctrls"><button>▲</button><button>▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">9</div>
+          <div class="body"><div class="top"><span class="dot" style="background: var(--author-1)"></span>5b3a8c2 · marisol</div><div class="msg">Spike: WebAuthn registration endpoint</div></div>
+          <div class="ctrls"><button>▲</button><button>▼</button></div>
+        </div>
+      </div>
+
+      <div class="summary">
+        Creates <strong>jamsesh/auth-design-refresh</strong> from
+        <code>3f9a812</code>. <strong>9 commits</strong>, 4 authors.
+        Conflicts halt the script in your working tree for your own Claude Code
+        to mediate. Nothing pushed automatically.
+      </div>
+
+      <div class="cta">
+        <div class="copy-box">
+          <code>jamsesh finalize-run sess_a3f1:lock_7c8e</code>
+          <button>Copy</button>
+        </div>
+        <button class="primary">Run locally</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

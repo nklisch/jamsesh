@@ -324,24 +324,40 @@ cherry-picks and does not host a conflict resolver.
 
 1. Human hits "finalize" in the portal UI or runs `/jamsesh:finalize`.
 2. The portal UI presents the tree and curation interface:
-   - Default selection is the `draft` tip (most work already integrated)
+   - Default selection is the leaf agent commits reachable from `draft`
+     (auto-merger merge commits are linearized out server-side via a
+     first-parent walk)
    - The human can add or remove commits from isolated refs
-   - The human orders the final sequence and names the target branch
-3. The portal generates a **cherry-pick plan** — a copy-pasteable shell script
-   that the human runs in their local source-repo checkout:
+   - The human picks **finalization mode** — squash into one commit
+     (default, matches typical PR-shipping) or preserve all commits
+     (multi-author history on the target branch)
+   - The human orders the final sequence, names the target branch, and
+     (in squash mode) edits the composed commit message
+3. The portal generates a **finalize plan** delivered to the human as a
+   one-line command `jamsesh finalize-run <plan-id>`. The binary fetches
+   the plan body via `GET /finalize-plan` and runs it locally. The
+   plan body is a mode-aware shell sequence; in squash mode:
 
    ```bash
-   git remote add -f jamsesh https://<portal>/git/<org>/<session>.git
-   git fetch jamsesh
+   # Commit source: local-first (filesystem path to the user's session
+   # checkout, tracked at join time), HTTPS-fallback only when no local
+   # checkout is present.
+   git fetch <local-session-checkout-path>          # or HTTPS w/ ephemeral token
    git checkout -b <target-branch> <base-sha>
-   git cherry-pick <commit-1> <commit-2> ...
-   git remote remove jamsesh
+   git cherry-pick --no-commit <commit-1> <commit-2> ... <commit-N>
+   git commit --author="<runner>" -F <heredoc-message-with-coauthors>
    ```
 
-4. Conflicts during cherry-pick surface in the human's local environment —
+   In preserve mode the final two lines become `git cherry-pick <commit-1>
+   <commit-2> ...` and authors are kept per-commit.
+
+4. Conflicts during the cherry-pick surface in the human's local environment —
    their editor, their LSP, their test runner. They invoke their normal
    Claude Code (their own session, with full project context) to help
-   resolve.
+   resolve. The user drives `git cherry-pick --continue` / `--abort`
+   themselves; re-invoking `jamsesh finalize-run <plan-id>` detects mid-pick
+   state via `git status` and reports what remains. The binary never
+   drives `--continue` itself.
 5. Human pushes the resulting branch to their source remote:
    `git push origin <target-branch>`
 6. PR/MR is the human's choice — outside jamsesh.

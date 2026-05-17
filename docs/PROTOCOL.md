@@ -108,8 +108,9 @@ WebSocket.
 - `GET /api/sessions` — list sessions visible to the user (active + recent)
 - `GET /api/sessions/<id>` — session metadata
 - `PATCH /api/sessions/<id>` — update goal, scope (widen only), default_mode
-- `POST /api/sessions/<id>/finalize` — mark session as finalizing, generate
-  cherry-pick plan
+- `POST /api/sessions/<id>/finalize` — mark session as finalizing, acquire
+  a finalize lock for curation (see finalize-plan endpoint for the plan
+  body, which is squash-by-default with a preserve-all opt-in)
 - `POST /api/sessions/<id>/abandon` — close session without finalize
 - `POST /api/sessions/<id>/invites` — invite participants
 - `POST /api/sessions/<id>/members/<account_id>/remove` — remove a member
@@ -119,7 +120,12 @@ WebSocket.
 - `GET /api/sessions/<id>/digest?since=<seq>` — formatted digest for the next
   turn. Returns text suitable for `additionalContext` injection.
 - `GET /api/sessions/<id>/refs` — all refs in the session with mode and tip
-- `GET /api/sessions/<id>/finalize-plan` — the cherry-pick plan script
+- `GET /api/sessions/<id>/finalize-plan` — the finalize plan: mode-aware
+  shell script body (squash via `cherry-pick --no-commit` + composed
+  commit, or per-commit `cherry-pick` in preserve mode), plain-English
+  summary, composed commit message + `Co-authored-by` list (squash mode),
+  lock status, and HTTPS-fallback fetch source. See the OpenAPI YAML for
+  the precise response schema.
 
 ### Git smart-HTTP (separate path tree)
 

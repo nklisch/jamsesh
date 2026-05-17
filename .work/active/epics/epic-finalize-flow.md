@@ -8,7 +8,7 @@ depends_on: [epic-cc-plugin, epic-portal-ui, epic-auto-merger]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Finalize Flow
@@ -106,7 +106,7 @@ user's local environment with their own CC); it does NOT cover PR opening
   distinguishes `shipped` (cleanly finalized) from `abandoned` (closed
   without finalize) in archived-session stubs.
 
-Locked at epic-design time (this pass):
+Locked at epic-design time (initial pass):
 
 - **Plan persistence model**: plans are computed on-demand from the
   curation state stored in a `finalize_locks` table; `plan_id` is just
@@ -128,6 +128,126 @@ Locked at epic-design time (this pass):
 - **End-to-end validation as a feature?**: no. Each component
   feature owns its own integration tests; the gate-tests skill at
   release-deploy time coordinates if gaps surface.
+
+Locked at the `--only-questions` design-prep pass (2026-05-17):
+
+- **Conflict-resume model**: re-invokable command detects mid-pick.
+  When `jamsesh finalize-run` hits a cherry-pick conflict and halts,
+  the user resolves the conflict and runs `git cherry-pick --continue`
+  themselves (their own Claude Code instance mediates with full project
+  context). Re-invoking `jamsesh finalize-run <plan-id>` detects
+  mid-cherry-pick state via `git status` and reports the offending
+  commit plus what remains in the sequence. No separate
+  `finalize-resume` subcommand, no `.jamsesh-finalize-state.json`
+  scratch file — the binary rides on git's own state machine. Keeps
+  the plugin surface small and avoids state-file drift bugs.
+
+- **Commit-source strategy**: local-first with HTTPS fallback.
+  The binary first tries to fetch the session commits from the user's
+  local session checkout (filesystem path tracked in plugin state since
+  the join flow): `git fetch <local-checkout-path>`. No auth, no
+  network, fast. Falls back to fetching from the portal's git
+  smart-HTTP endpoint with an ephemeral fetch-only token embedded in
+  the remote URL (`https://x-access-token:<token>@portal/git/...`)
+  when the local checkout is missing — covers the case where the user
+  is finalizing from a different machine than where they joined. The
+  ephemeral token has a short TTL (~5 minutes) so even if cleanup
+  fails the credential expires on its own. The `jamsesh` remote is
+  removed at end of run either way.
+
+- **Merge commits in draft**: linearize via first-parent walk.
+  Plan-generation walks `draft` first-parent, follows each merge into
+  its second-parent branch, and emits the underlying agent commits in
+  chronological order. The auto-merger's merge commits themselves are
+  NOT in the cherry-pick list — only the leaf agent commits they
+  integrated. Produces a clean linear history on the finalized branch
+  and matches what reviewers expect to see in a PR.
+
+- **Finalization mode: squash by default, preserve-all opt-in.** The
+  default cherry-pick plan produces ONE commit on the target branch
+  containing all curated changes squashed together — matches the
+  conventional PR-shipping workflow and is what most teams want
+  90% of the time. The curation view has a "Finalization mode"
+  segmented control near the top of the cart; squash is pre-selected.
+  Users can flip to "Preserve N commits" when they explicitly want
+  multi-author history on the target branch (e.g., shipping a
+  research jam where per-author attribution at the git level
+  matters).
+
+  **Authorship in squash mode**: the squash commit's `author` is the
+  user running `jamsesh finalize-run` (the human kicking off the
+  ship). The commit message body ends with `Co-authored-by: Name
+  <email>` trailers for every distinct author whose commits are in
+  the squash. Renders as multi-author in GitHub/GitLab/Forgejo PR
+  UIs. Preserves jamsesh's identity model without diverging from
+  upstream conventions.
+
+  **Commit-message default**: session goal as subject (truncated to
+  72 chars; user-editable). Body = bulleted list of original commit
+  subjects in chronological order, followed by the Co-authored-by
+  trailers. Editable in the curation view before "Run locally"
+  copy-out.
+
+  **Script-body shape (squash mode)**:
+  ```
+  git fetch <local-path-or-portal>
+  git checkout -b <target> <base-sha>
+  git cherry-pick --no-commit <c1> <c2> ... <cN>
+  git commit --author="<runner>" -m "$(cat <<'EOF' ... EOF)"
+  ```
+  Cherry-pick `--no-commit` stages each curated commit's changes
+  into the index without recording per-commit history. The final
+  `git commit` records the single squashed commit with the
+  composed message.
+
+  **Conflicts in squash mode** surface as one resolution session
+  rather than per-commit. Mid-pick state detection still applies:
+  re-invoking `jamsesh finalize-run <plan-id>` after a conflict
+  detects the in-progress squash via `git status` (CHERRY_PICK_HEAD
+  present + staged changes) and reports remaining commits.
+
+- **Pre-flight checks in `finalize-run`** (run in this order before
+  any state-mutating git command):
+  1. **Target branch name collision** — `git rev-parse --verify
+     refs/heads/<target>` locally and `git ls-remote --heads origin
+     <target>` against the source remote. Abort with a clear message
+     if either exists; suggest a `--force-recreate` flag or a renamed
+     target.
+  2. **Dirty working tree** — prompt `Working tree is dirty. Stash
+     first? [Y/n]`. Bail on `n`. On `Y`, `git stash push -u` with a
+     jamsesh-tagged message; restore via `git stash pop` on clean
+     exit.
+  3. **Current branch matters** — record the current branch ref;
+     warn if it has unpushed commits relative to `origin/<branch>`;
+     offer `git checkout -` (or equivalent) on clean exit so the user
+     ends where they started.
+  4. **Source remote reachable** — `git ls-remote origin` to surface
+     auth/network issues up-front, not after a successful cherry-pick
+     when the user tries to push.
+
+## Mockups
+
+UI surface for the cross-component slice — the curation view is net-new for
+v1. Four layout directions explored at `--only-mocks` design-prep time:
+
+- `.mockups/screens/epic-finalize-flow-portal-ui-curation-view/index.html`
+  — navigator (open in browser to compare side-by-side)
+  - Option 1 — **Spreadsheet**: dense table, drag-by-order column, side-rail
+    summary + CTA. Strongest for scanning a long commit list quickly.
+  - Option 2 — **Two-column rivers**: draft on the left, isolated refs in
+    the middle, ordered cart on the right. Everything in view at once.
+  - Option 3 — **Cart pattern**: source pool of all commits on the left,
+    "your final branch" cart on the right with explicit add/remove/reorder.
+    Familiar mental model.
+  - Option 4 — **Tree-rooted**: continues the session-view DAG aesthetic.
+    Click commits in the tree to toggle into the selection; side panel
+    shows the ordered list. Lowest context-switch cost from the session
+    view.
+
+The feature-design pass on `epic-finalize-flow-portal-ui-curation-view`
+will pick a direction (or describe a hybrid) and iterate. Lock-conflict
+overlay and post-execution "ready to mark as shipped" state will be mocked
+as state variants of the chosen layout in that pass.
 
 ## Decomposition
 

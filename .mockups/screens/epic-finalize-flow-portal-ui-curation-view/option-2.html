@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finalize curation — Option 2: Two-column rivers</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column; min-height: 100vh;
+    }
+
+    .app-chrome {
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark { font-weight: var(--font-weight-semibold); letter-spacing: -0.03em; }
+    .wordmark .dot { color: var(--color-accent); }
+    .breadcrumb { display: flex; gap: 6px; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .breadcrumb a { color: var(--color-text-link); text-decoration: none; }
+    .breadcrumb .sep { color: var(--color-text-tertiary); }
+    .breadcrumb .here { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .chrome-spacer { flex: 1; }
+    .avatar-sm {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--author-2); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+    }
+
+    .page-head {
+      padding: 18px 24px 14px;
+      display: flex; align-items: center; gap: 20px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .page-head h1 {
+      margin: 0; font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold); letter-spacing: -0.02em;
+    }
+    .page-head .crumb { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .page-head .crumb code { font: var(--font-size-xs) var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 6px; border-radius: 3px; color: var(--color-text-primary); }
+    .page-head .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+    .lock-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 5px 10px; border-radius: var(--radius-full);
+      background: var(--color-accent-muted); color: var(--color-accent);
+      font: var(--font-weight-medium) 11px var(--font-mono);
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .lock-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); }
+
+    /* Main grid: sources | order */
+    .main {
+      flex: 1; display: grid;
+      grid-template-columns: 1fr 1fr 380px;
+      min-height: 0;
+    }
+
+    .col {
+      display: flex; flex-direction: column; min-height: 0;
+      border-right: 1px solid var(--color-border);
+      overflow: hidden;
+    }
+    .col:last-child { border-right: 0; }
+
+    .col-head {
+      padding: 14px 18px 10px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .col-head h2 {
+      margin: 0;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .col-head .sub {
+      margin-top: 4px; font-size: var(--font-size-sm); color: var(--color-text-secondary);
+    }
+    .col-head .sub strong { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .col-body { flex: 1; overflow: auto; padding: 8px 0; }
+
+    /* Commit row card */
+    .commit {
+      padding: 10px 18px;
+      display: grid; grid-template-columns: 24px 1fr; gap: 10px;
+      border-bottom: 1px solid var(--color-border);
+      cursor: pointer; transition: background 0.1s;
+    }
+    .commit:hover { background: var(--color-bg-tertiary); }
+    .commit.selected { background: var(--color-accent-muted); }
+    .commit .check {
+      display: flex; align-items: center; justify-content: center;
+    }
+    .commit .check input { accent-color: var(--color-accent); width: 16px; height: 16px; }
+    .commit .body { min-width: 0; }
+    .commit .top {
+      display: flex; align-items: center; gap: 8px;
+      font-size: var(--font-size-xs); color: var(--color-text-tertiary);
+      font-family: var(--font-mono);
+      margin-bottom: 4px;
+    }
+    .commit .top .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+    .commit .top .sha { color: var(--color-text-secondary); font-weight: var(--font-weight-medium); }
+    .commit .msg {
+      font-size: var(--font-size-sm); color: var(--color-text-primary);
+      line-height: 1.4; overflow: hidden;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    }
+
+    /* Isolated-ref group header */
+    .ref-group {
+      padding: 12px 18px 8px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+      position: sticky; top: 0; z-index: 1;
+    }
+    .ref-group:first-child { border-top: 0; }
+    .ref-group .label {
+      display: flex; align-items: center; gap: 8px;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-text-secondary);
+    }
+    .ref-group .label code {
+      font-weight: var(--font-weight-regular); text-transform: none;
+      letter-spacing: 0; color: var(--color-text-primary);
+      background: var(--color-bg-tertiary); padding: 1px 6px; border-radius: 3px;
+    }
+    .ref-group .label .badge {
+      margin-left: auto;
+      padding: 1px 7px; border-radius: var(--radius-full);
+      background: var(--color-warning-muted); color: var(--color-warning);
+      font-weight: var(--font-weight-medium);
+    }
+    .ref-group .meta {
+      font-size: var(--font-size-xs); color: var(--color-text-tertiary);
+      margin-top: 4px;
+    }
+
+    /* Right rail (Order + summary + CTA) */
+    .rail { background: var(--color-bg-secondary); display: flex; flex-direction: column; min-height: 0; }
+
+    .ordered-list {
+      flex: 1; overflow: auto;
+      padding: 4px 0;
+    }
+    .ordered-item {
+      display: grid; grid-template-columns: 28px 1fr auto; gap: 8px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--color-border);
+      align-items: center;
+    }
+    .ordered-item .num {
+      font: var(--font-weight-semibold) var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .ordered-item .body { min-width: 0; }
+    .ordered-item .top {
+      display: flex; gap: 6px; align-items: center;
+      font-size: var(--font-size-xs); color: var(--color-text-tertiary);
+      font-family: var(--font-mono);
+    }
+    .ordered-item .top .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .ordered-item .msg {
+      font-size: var(--font-size-sm); color: var(--color-text-primary);
+      line-height: 1.35; overflow: hidden;
+      display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+    }
+    .ordered-item .controls {
+      display: flex; flex-direction: column; gap: 1px; align-items: center;
+    }
+    .ordered-item .ctrl-btn {
+      width: 20px; height: 16px;
+      border: 0; background: transparent;
+      color: var(--color-text-tertiary); cursor: pointer;
+      font-size: 10px;
+    }
+    .ordered-item .ctrl-btn:hover { color: var(--color-text-primary); }
+
+    .rail-target {
+      padding: 14px 18px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+    }
+    .rail-target label {
+      display: block; font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary); margin-bottom: 8px;
+    }
+    .rail-target input {
+      width: 100%; box-sizing: border-box;
+      padding: 8px 10px; border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-bg-secondary); color: var(--color-text-primary);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-mono);
+    }
+    .rail-target input:focus { outline: 2px solid var(--color-accent); outline-offset: -1px; border-color: var(--color-accent); }
+    .rail-target .help { font-size: var(--font-size-xs); color: var(--color-text-tertiary); margin-top: 6px; line-height: 1.4; }
+
+    .rail-summary {
+      padding: 14px 18px;
+      border-top: 1px solid var(--color-border);
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      line-height: 1.55;
+    }
+    .rail-summary strong { color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+    .rail-summary code { font: var(--font-size-xs) var(--font-mono); background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px; color: var(--color-text-primary); }
+
+    .cta {
+      padding: 14px 18px;
+      background: var(--color-bg-secondary);
+      border-top: 1px solid var(--color-border);
+    }
+    .copy-box {
+      display: flex; align-items: stretch;
+      border: 1px solid var(--color-border-strong); border-radius: var(--radius-md);
+      overflow: hidden; background: var(--color-bg-primary);
+      margin-bottom: 10px;
+    }
+    .copy-box code {
+      flex: 1; padding: 10px 12px;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-primary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .copy-box button {
+      border: 0; border-left: 1px solid var(--color-border);
+      background: var(--color-bg-tertiary); color: var(--color-text-primary);
+      padding: 0 14px; cursor: pointer;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+    }
+    .copy-box button:hover { background: var(--color-bg-inverse); color: var(--color-text-inverse); }
+    .primary {
+      width: 100%; padding: 11px;
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-semibold) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .primary:hover { opacity: 0.92; }
+
+    .mock-meta {
+      padding: 6px 16px;
+      background: var(--color-bg-inverse); color: var(--color-text-inverse);
+      font: 11px var(--font-mono); opacity: 0.85;
+    }
+  </style>
+</head>
+<body>
+  <div class="mock-meta">Option 2 — Two-column rivers. Draft on the left, isolated refs on the right, ordered cart on the far right.</div>
+
+  <div class="app-chrome">
+    <div class="wordmark">jam<span class="dot">.</span>sesh</div>
+    <div class="breadcrumb">
+      <span>acme-eng</span><span class="sep">/</span>
+      <a href="#">auth-design-refresh</a><span class="sep">/</span>
+      <span class="here">finalize</span>
+    </div>
+    <div class="chrome-spacer"></div>
+    <div class="avatar-sm">na</div>
+  </div>
+
+  <div class="page-head">
+    <h1>Auth design refresh — finalize</h1>
+    <div class="crumb">
+      Base <code>3f9a812</code> · 9 of 14 commits selected
+    </div>
+    <div class="right">
+      <div class="lock-pill">You hold the lock · 28:12</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Column 1: Draft (default selected) -->
+    <div class="col">
+      <div class="col-head">
+        <h2>From draft</h2>
+        <div class="sub"><strong>8 commits</strong> auto-merged into <code>jam/auth/draft</code>. Default selected.</div>
+      </div>
+      <div class="col-body">
+        <div class="commit selected">
+          <div class="check"><input type="checkbox" checked></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span class="sha">a3f1b29</span></div>
+            <div class="msg">Add OAuth provider interface for login flow</div>
+          </div>
+        </div>
+        <div class="commit selected">
+          <div class="check"><input type="checkbox" checked></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-3)"></span>devon<span class="sha">7c8e442</span></div>
+            <div class="msg">Wire session refresh middleware</div>
+          </div>
+        </div>
+        <div class="commit selected">
+          <div class="check"><input type="checkbox" checked></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span class="sha">b1d09a5</span></div>
+            <div class="msg">Implement Google + GitHub providers</div>
+          </div>
+        </div>
+        <div class="commit selected">
+          <div class="check"><input type="checkbox" checked></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-4)"></span>priya<span class="sha">9af2c11</span></div>
+            <div class="msg">Add token revocation endpoint</div>
+          </div>
+        </div>
+        <div class="commit selected">
+          <div class="check"><input type="checkbox" checked></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-3)"></span>devon<span class="sha">2e8b073</span></div>
+            <div class="msg">Refresh tokens on backgrounded sessions</div>
+          </div>
+        </div>
+        <div class="commit selected">
+          <div class="check"><input type="checkbox" checked></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span class="sha">f4c8d99</span></div>
+            <div class="msg">Audit log: account.login, account.logout events</div>
+          </div>
+        </div>
+        <div class="commit selected">
+          <div class="check"><input type="checkbox" checked></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-2)"></span>kenji<span class="sha">e0a2c4d</span></div>
+            <div class="msg">Tests: provider fallback under rate limit</div>
+          </div>
+        </div>
+        <div class="commit selected">
+          <div class="check"><input type="checkbox" checked></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-4)"></span>priya<span class="sha">d77e1a3</span></div>
+            <div class="msg">Docs: OAuth provider integration guide</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 2: Isolated refs -->
+    <div class="col">
+      <div class="col-head">
+        <h2>From isolated refs</h2>
+        <div class="sub"><strong>6 commits</strong> across 2 refs. Off by default — toggle to include.</div>
+      </div>
+      <div class="col-body">
+        <div class="ref-group">
+          <div class="label">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--author-1)"></span>
+            <code>marisol/passkey-experiment</code>
+            <span class="badge">isolated</span>
+          </div>
+          <div class="meta">4 commits · last commit 2h ago</div>
+        </div>
+        <div class="commit selected">
+          <div class="check"><input type="checkbox" checked></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span class="sha">5b3a8c2</span></div>
+            <div class="msg">Spike: WebAuthn registration endpoint</div>
+          </div>
+        </div>
+        <div class="commit">
+          <div class="check"><input type="checkbox"></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span class="sha">2cf8e91</span></div>
+            <div class="msg">Spike: WebAuthn assertion verify</div>
+          </div>
+        </div>
+        <div class="commit">
+          <div class="check"><input type="checkbox"></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span class="sha">a8e60d4</span></div>
+            <div class="msg">WIP: replace password flow with passkey</div>
+          </div>
+        </div>
+        <div class="commit">
+          <div class="check"><input type="checkbox"></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span class="sha">7b1c44f</span></div>
+            <div class="msg">Notes: passkey + OAuth coexistence</div>
+          </div>
+        </div>
+
+        <div class="ref-group">
+          <div class="label">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--author-3)"></span>
+            <code>devon/observability-spike</code>
+            <span class="badge">isolated</span>
+          </div>
+          <div class="meta">2 commits · last commit 5h ago</div>
+        </div>
+        <div class="commit">
+          <div class="check"><input type="checkbox"></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-3)"></span>devon<span class="sha">3a0b91e</span></div>
+            <div class="msg">Trace spans on auth code paths</div>
+          </div>
+        </div>
+        <div class="commit">
+          <div class="check"><input type="checkbox"></div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-3)"></span>devon<span class="sha">10a83cb</span></div>
+            <div class="msg">Metrics: login latency histogram</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 3: Order + summary + CTA -->
+    <div class="col rail">
+      <div class="col-head">
+        <h2>Cherry-pick order</h2>
+        <div class="sub"><strong>9 commits</strong> · drag or use ↑/↓ to reorder</div>
+      </div>
+      <div class="ordered-list">
+        <div class="ordered-item">
+          <div class="num">1</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span>a3f1b29</span></div>
+            <div class="msg">Add OAuth provider interface for login flow</div>
+          </div>
+          <div class="controls"><button class="ctrl-btn">▲</button><button class="ctrl-btn">▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">2</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-3)"></span>devon<span>7c8e442</span></div>
+            <div class="msg">Wire session refresh middleware</div>
+          </div>
+          <div class="controls"><button class="ctrl-btn">▲</button><button class="ctrl-btn">▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">3</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span>b1d09a5</span></div>
+            <div class="msg">Implement Google + GitHub providers</div>
+          </div>
+          <div class="controls"><button class="ctrl-btn">▲</button><button class="ctrl-btn">▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">4</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-4)"></span>priya<span>9af2c11</span></div>
+            <div class="msg">Add token revocation endpoint</div>
+          </div>
+          <div class="controls"><button class="ctrl-btn">▲</button><button class="ctrl-btn">▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">5</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-3)"></span>devon<span>2e8b073</span></div>
+            <div class="msg">Refresh tokens on backgrounded sessions</div>
+          </div>
+          <div class="controls"><button class="ctrl-btn">▲</button><button class="ctrl-btn">▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">6</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span>f4c8d99</span></div>
+            <div class="msg">Audit log: account.login, account.logout events</div>
+          </div>
+          <div class="controls"><button class="ctrl-btn">▲</button><button class="ctrl-btn">▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">7</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-2)"></span>kenji<span>e0a2c4d</span></div>
+            <div class="msg">Tests: provider fallback under rate limit</div>
+          </div>
+          <div class="controls"><button class="ctrl-btn">▲</button><button class="ctrl-btn">▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">8</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-4)"></span>priya<span>d77e1a3</span></div>
+            <div class="msg">Docs: OAuth provider integration guide</div>
+          </div>
+          <div class="controls"><button class="ctrl-btn">▲</button><button class="ctrl-btn">▼</button></div>
+        </div>
+        <div class="ordered-item">
+          <div class="num">9</div>
+          <div class="body">
+            <div class="top"><span class="dot" style="background: var(--author-1)"></span>marisol<span>5b3a8c2</span></div>
+            <div class="msg">Spike: WebAuthn registration endpoint</div>
+          </div>
+          <div class="controls"><button class="ctrl-btn">▲</button><button class="ctrl-btn">▼</button></div>
+        </div>
+      </div>
+
+      <div class="rail-target">
+        <label>Target branch</label>
+        <input type="text" value="jamsesh/auth-design-refresh">
+        <div class="help">Created from <code>3f9a812</code>. Pre-flight checks branch-name availability.</div>
+      </div>
+
+      <div class="rail-summary">
+        Creates <strong>jamsesh/auth-design-refresh</strong>, cherry-picks
+        <strong>9 commits</strong> in order. Conflicts halt the script;
+        nothing pushed automatically.
+      </div>
+
+      <div class="cta">
+        <div class="copy-box">
+          <code>jamsesh finalize-run sess_a3f1:lock_7c8e</code>
+          <button>Copy</button>
+        </div>
+        <button class="primary">Run locally</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
