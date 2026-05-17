@@ -1,7 +1,7 @@
 ---
 id: dev-docker-compose-docs
 kind: story
-stage: implementing
+stage: review
 tags: [infra, documentation]
 parent: dev-docker-compose
 depends_on: [dev-docker-compose-setup]
@@ -118,3 +118,28 @@ criteria.
 
 `git revert` the commit. The README and Makefile revert to their
 pre-feature state; setup story's artifacts are untouched.
+
+## Implementation notes
+
+### What landed
+
+- `/Makefile`: appended four targets — `dev`, `dev-down`, `dev-down-v`,
+  `dev-rebuild` — with a fresh `.PHONY` line immediately above them,
+  matching the interspersed `.PHONY` pattern at lines 37 and 59.
+  Verified with `make -n dev / dev-down / dev-down-v / dev-rebuild` and
+  confirmed no regression to `make build` via `make -n build`.
+
+- `/README.md`: renamed `## Quickstart (Docker)` to `## Operator quickstart`.
+  Inserted `## Local development` above it (after "What it is"). The new
+  section documents the two-terminal model, `:5173` browse URL, `./.data/`
+  location, `make dev-down-v` reset, and cross-links `air` and
+  `#operator-quickstart`. The operator section's `./data/` path (no dot
+  prefix) is unchanged — it's correct for the production `docker run` path.
+
+### Skipped: `docs/SELF_HOST.md` cross-link
+
+The story flagged this as "possibly modify … judgment call by implementer".
+`docs/SELF_HOST.md` is operator-focused (production self-hosting); adding a
+contributor detour there would dilute its audience. The README's new "Local
+development" section cross-links `docs/SELF_HOST.md` for operators who land
+on the README — that's sufficient coverage. Skipping the reverse cross-link.

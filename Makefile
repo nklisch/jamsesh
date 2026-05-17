@@ -87,3 +87,23 @@ test-portal-image: frontend-build
 # test-portal-image-clean: remove the e2e portal image tag.
 test-portal-image-clean:
 	-docker rmi jamsesh/portal:e2e
+
+.PHONY: dev dev-down dev-down-v dev-rebuild
+
+# dev: bring up the local development stack via docker compose.
+# Builds the dev image on first run; subsequent runs reuse the build cache.
+# For hot frontend reload, run `cd frontend && npm run dev` in another terminal.
+dev:
+	docker compose up
+
+# dev-down: tear down the dev stack. Use `dev-down-v` to also drop .data/.
+dev-down:
+	docker compose down
+
+dev-down-v:
+	docker compose down -v
+	rm -rf .data
+
+# dev-rebuild: rebuild the dev image (use after go.mod / Dockerfile.dev edits).
+dev-rebuild:
+	docker compose up --build

@@ -20,7 +20,32 @@ source repo — on your own terms, with your own Claude Code instance. The porta
 never touches your source repo. Everything is real git: diff-able, recoverable,
 and attributable.
 
-## Quickstart (Docker)
+## Local development
+
+The fastest way to spin up a dev environment:
+
+```bash
+# Terminal 1 — bring up the portal (SQLite, plain HTTP on :8443)
+docker compose up
+
+# Terminal 2 — bring up the Vite dev server for the SPA (:5173)
+cd frontend && npm run dev
+```
+
+Then open <http://localhost:5173> in your browser. Editing any `.go`
+file rebuilds and restarts the portal binary inside the container via
+[`air`](https://github.com/air-verse/air); the Vite dev server hot-reloads
+the SPA on `.svelte` / `.ts` edits.
+
+Data — the SQLite database and per-session bare repos — lands in
+`./.data/` on your host. To wipe and start fresh: `make dev-down-v` (or
+`docker compose down -v && rm -rf .data`).
+
+For the operator-facing production deployment, see
+[Operator quickstart](#operator-quickstart) below and
+[docs/SELF_HOST.md](docs/SELF_HOST.md).
+
+## Operator quickstart
 
 ```bash
 docker run --rm -p 8443:8443 \
