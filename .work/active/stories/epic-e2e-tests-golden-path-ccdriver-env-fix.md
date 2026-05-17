@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path-ccdriver-env-fix
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, bug]
 parent: epic-e2e-tests-golden-path
 depends_on: []
@@ -67,3 +67,28 @@ This will likely be picked up by the `golden-path` feature's design
 pass (the first feature that integrates ccdriver with the real
 binary) — depend on it explicitly from any golden-path story that
 drives the binary. The fix is small (3 lines + a test).
+
+## Implementation notes
+
+**Fix** (`tests/e2e/fixtures/ccdriver/driver.go`): replaced the single-line
+scratch-build of `cmd.Env` with two lines that prepend `os.Environ()`:
+
+```go
+cmd.Env = append(os.Environ(), d.ExtraEnv...)
+cmd.Env = append(cmd.Env, "CLAUDE_PLUGIN_DATA="+d.DataDir)
+```
+
+Added `"os"` to imports. Ordering ensures `ExtraEnv` and
+`CLAUDE_PLUGIN_DATA` are appended last and thus override any same-named
+variables from the host environment.
+
+**Test** (`tests/e2e/fixtures/ccdriver/driver_test.go`): `TestRunHookInheritsHostPath`
+uses three lightweight POSIX shell scripts as fake binaries (skipped on
+Windows). Each script discards stdin, checks one env condition, and writes
+`{}` to stdout on success so the Driver's JSON unmarshal path succeeds cleanly:
+
+1. PATH is non-empty (host env inherited)
+2. A variable injected via `ExtraEnv` is visible in the subprocess
+3. `CLAUDE_PLUGIN_DATA` is present (appended by `runHook`)
+
+All three sub-cases pass with `go test ./fixtures/ccdriver/... -v`.

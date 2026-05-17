@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"os/exec"
 )
 
@@ -68,7 +69,8 @@ func runHook[I, O any](ctx context.Context, d *Driver, subcmd string, in I) (O, 
 		return out, err
 	}
 	cmd := exec.CommandContext(ctx, d.BinaryPath, "hook", subcmd)
-	cmd.Env = append(append([]string{}, d.ExtraEnv...), "CLAUDE_PLUGIN_DATA="+d.DataDir)
+	cmd.Env = append(os.Environ(), d.ExtraEnv...)
+	cmd.Env = append(cmd.Env, "CLAUDE_PLUGIN_DATA="+d.DataDir)
 	cmd.Stdin = bytes.NewReader(payload)
 	stdout, err := cmd.Output()
 	if err != nil {
