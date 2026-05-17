@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal]
 parent: epic-cloud-native-deploy
 depends_on: [epic-cloud-native-deploy-operational-polish]
@@ -126,14 +126,345 @@ advisory locks over a dedicated coordinator). Feature-local:
 - `docs/ARCHITECTURE.md` — lease lifecycle becomes part of the request
   flow description in clustered mode.
 
-## Notes for design
+## Architectural choice
 
-Postgres `pg_try_advisory_lock` is session-scoped (the PG session,
-not jamsesh session). The portal pod must hold a dedicated PG
-connection for the duration of any lease it holds. Pool sizing
-implications: a pod that leases N sessions concurrently needs N+1
-connections (one per lease + one for normal query traffic). Document
-this in the SELF_HOST guidance.
+**Selected: a `lease.Manager` interface with two impls (Noop + Postgres)
+selected at startup by `JAMSESH_DEPLOY_MODE`. Every lease holds a
+dedicated `*sql.Conn` for the duration to satisfy PG session-scoped
+advisory-lock semantics.**
 
-The fencing-token table is append-only and could grow indefinitely; add
-a retention story (drop rows older than 30 days, say) in this feature.
+Considered:
+- *Per-request lease acquire/release* — would re-acquire the lock on
+  every request, hammering PG. Rejected.
+- *Process-level mega-lock* — one lock per pod covering all owned
+  sessions. Coarser, simpler, but kills the per-session sharding model.
+- **Per-session lease with dedicated PG conn** — matches the
+  pull-with-soft-coordinator epic design; one conn per active session
+  is acceptable load (pgxpool sized for it via the pool-config story).
+
+## Implementation Units
+
+### Unit 1: Interface + NoopManager (single-instance shim)
+
+**Files**:
+- new: `internal/portal/lease/lease.go` — interface + sentinel errors
+- new: `internal/portal/lease/noop.go` — `NoopManager` impl
+- new: `internal/portal/lease/lease_test.go`
+
+**Story**: `epic-cloud-native-deploy-lease-fencing-interface-and-noop`
+
+```go
+// internal/portal/lease/lease.go
+package lease
+
+import (
+    "context"
+    "errors"
+)
+
+// ErrAlreadyHeld is returned by Manager.Acquire when another pod (PG
+// session) currently holds the lease for the requested session_id.
+var ErrAlreadyHeld = errors.New("lease: session lease already held by another pod")
+
+// Manager creates leases for portal sessions. The Postgres impl uses
+// advisory locks to enforce mutual exclusion across pods; the Noop impl
+// is a single-instance shim that always succeeds.
+type Manager interface {
+    // Acquire attempts a non-blocking lease acquisition for sessionID.
+    // Returns ErrAlreadyHeld immediately if another pod holds the lock.
+    // The returned Handle owns a dedicated PG connection (Postgres impl)
+    // for the duration of the lease; Release MUST be called to free it.
+    Acquire(ctx context.Context, sessionID string) (Handle, error)
+}
+
+// Handle is an active lease. Consumers (object-storage-sync,
+// hydration-handoff) inspect FencingToken on every guarded operation
+// and monitor Lost() to abort serving when the lease is gone.
+type Handle interface {
+    SessionID() string
+    FencingToken() int64
+    // Lost returns a channel that closes when the lease is lost
+    // (PG session dies, heartbeat fails). Consumers should select on
+    // this alongside their request contexts.
+    Lost() <-chan struct{}
+    // Release relinquishes the lease and frees the underlying PG conn.
+    // Idempotent; safe to call after Lost() fires.
+    Release() error
+}
+```
+
+```go
+// internal/portal/lease/noop.go
+package lease
+
+// NoopManager is the single-instance compatibility shim. Acquire never
+// blocks and never returns ErrAlreadyHeld; the returned Handle's
+// FencingToken is always 0 and Lost() never closes (until Release).
+type NoopManager struct{}
+
+func (NoopManager) Acquire(ctx context.Context, sessionID string) (Handle, error)
+```
+
+**Implementation Notes**:
+- The Noop handle holds a `closed chan struct{}` that fires only on
+  Release. Keeps the consumer-side `select` shape identical in both
+  modes.
+- Noop's `FencingToken() int64` returns 0. Consumers that fence on
+  monotonic tokens (object-storage-sync) treat 0 as "no fencing
+  required" and skip the conditional-write step in single-instance
+  mode.
+
+**Acceptance Criteria**:
+- [ ] `Manager` and `Handle` interfaces compile and match the spec
+- [ ] `NoopManager.Acquire` returns a Handle whose `FencingToken()==0`
+- [ ] `Handle.Lost()` returns a channel that doesn't fire until
+  `Release()`
+- [ ] `Release()` is idempotent
+- [ ] Unit tests cover Noop behavior + interface contract
+
+### Unit 2: Schema migration + sqlc queries
+
+**Files**:
+- new: `internal/db/migrations/sqlite/N_leases.sql` and `..._down.sql`
+- new: `internal/db/migrations/postgres/N_leases.sql` and `..._down.sql`
+- new: `db/queries/leases.sql` — sqlc queries
+- regen: `internal/db/sqlitestore/leases.sql.go` (sqlc generate)
+- regen: `internal/db/pgstore/leases.sql.go`
+
+**Story**: `epic-cloud-native-deploy-lease-fencing-schema`
+
+Postgres schema:
+
+```sql
+CREATE SEQUENCE jamsesh_lease_fencing_tokens AS bigint;
+
+CREATE TABLE leases (
+    session_id     text        PRIMARY KEY,  -- one row per session
+    pod_id         text        NOT NULL,
+    fencing_token  bigint      NOT NULL,
+    acquired_at    timestamptz NOT NULL DEFAULT now(),
+    released_at    timestamptz,
+    heartbeat_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX leases_released_at_idx ON leases(released_at)
+    WHERE released_at IS NOT NULL;  -- supports retention cleanup
+```
+
+SQLite mirror (single-instance: the table is created but only ever has
+zero rows because NoopManager doesn't touch it):
+
+```sql
+CREATE TABLE leases (
+    session_id     TEXT PRIMARY KEY,
+    pod_id         TEXT NOT NULL,
+    fencing_token  INTEGER NOT NULL,
+    acquired_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    released_at    TEXT,
+    heartbeat_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX leases_released_at_idx ON leases(released_at)
+    WHERE released_at IS NOT NULL;
+```
+
+Queries (`db/queries/leases.sql`):
+- `IssueLeaseFencingToken` (PG only): `SELECT nextval('jamsesh_lease_fencing_tokens')`
+- `InsertLease`: upsert by session_id; returns row
+- `MarkLeaseReleased`: update released_at = now() WHERE session_id = ?
+- `UpdateLeaseHeartbeat`: update heartbeat_at = now() WHERE session_id = ?
+- `DeleteReleasedLeasesOlderThan`: for retention (PG only)
+
+**Implementation Notes**:
+- SQLite doesn't have sequences. Use `INTEGER PRIMARY KEY AUTOINCREMENT`
+  semantics for fencing tokens IF SQLite-clustered ever happens; for
+  now SQLite leases table is structural-only (NoopManager doesn't
+  populate it).
+- The PG sequence increments on EVERY call, even for failed-acquire
+  attempts. That's fine — tokens being monotonic and globally ordered
+  is the only invariant we need; gaps are acceptable.
+- `leases.session_id` PK means re-acquire updates rather than inserts;
+  but the advisory lock prevents two pods from both upserting the same
+  row simultaneously, so the conflict is theoretical.
+
+**Acceptance Criteria**:
+- [ ] PG migration creates table, sequence, index
+- [ ] SQLite migration creates table + index (structural; not used at
+  runtime)
+- [ ] sqlc generates Go code for the 5 queries (both dialects)
+- [ ] `MigrateUp` is idempotent for both dialects
+- [ ] Migration applies cleanly in fresh + existing-schema cases
+
+### Unit 3: Postgres lease manager
+
+**Files**:
+- new: `internal/portal/lease/postgres.go` — `pgManager` + `pgHandle`
+- new: `internal/portal/lease/postgres_test.go` — gated on
+  `JAMSESH_TEST_PG_DSN`
+
+**Story**: `epic-cloud-native-deploy-lease-fencing-postgres`
+
+```go
+// internal/portal/lease/postgres.go
+package lease
+
+// PostgresManager is the production lease implementation. Each
+// successful Acquire holds a dedicated *sql.Conn for the lease's
+// lifetime so the PG advisory lock (session-scoped) stays attributed
+// to the owning pod.
+type PostgresManager struct {
+    DB         *sql.DB        // pgxpool-backed *sql.DB
+    Store      store.Store    // for InsertLease / IssueLeaseFencingToken
+    PodID      string         // identifies this pod in the leases table
+    HeartbeatInterval time.Duration // default 10s
+}
+
+// Acquire follows this sequence:
+//   1. Check out a dedicated *sql.Conn from DB
+//   2. SELECT pg_try_advisory_lock(hashtext(sessionID))
+//      - false → release conn, return ErrAlreadyHeld
+//      - true  → proceed
+//   3. SELECT nextval('jamsesh_lease_fencing_tokens') for the token
+//   4. INSERT/UPDATE leases row with podID, token, acquired_at
+//   5. Spawn heartbeat goroutine (pings the conn every HeartbeatInterval;
+//      on failure closes Handle.Lost())
+//   6. Return Handle
+func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle, error)
+```
+
+**Implementation Notes**:
+- The dedicated `*sql.Conn` is critical — without it, the lock acquire
+  and release could land on different PG sessions (same problem we
+  identified during db-pool-and-lock story review). Use `db.Conn(ctx)`
+  to dedicate.
+- Heartbeat: `conn.PingContext(ctx)` every 10s. Failure (any error)
+  closes `Lost()`. Background goroutine, lives until Release.
+- Release order: stop heartbeat → `SELECT pg_advisory_unlock(...)` →
+  `UPDATE leases SET released_at = now() WHERE session_id = ?` → close
+  conn (returns it to pool).
+- Conn lifetime: when the lease is held, this pod holds 1 PG conn per
+  active session. With pgxpool MaxConns=25 (default), max ~24
+  concurrent leases per pod (one conn reserved for normal query
+  traffic). Document this in SELF_HOST when this lands.
+- Collision detection: after acquiring the advisory lock, SELECT the
+  leases row by session_id; if its pod_id matches a different pod and
+  released_at is NULL, that's a hashtext collision — log a warning,
+  release the lock, return ErrAlreadyHeld. (Extremely rare; documented
+  defensive check.)
+
+**Acceptance Criteria**:
+- [ ] Acquire succeeds with valid sessionID; returns Handle with non-zero
+  fencing token
+- [ ] Second Acquire from same `*sql.DB` (different PG session via
+  parallel call) returns ErrAlreadyHeld
+- [ ] Handle.Lost() closes when the underlying PG conn drops (test by
+  killing the conn from another connection: `pg_terminate_backend`)
+- [ ] Release frees the conn and marks released_at
+- [ ] Release after Lost() fires is idempotent
+- [ ] Fencing tokens are monotonically increasing across multiple
+  Acquire calls (no gaps required; just monotonic)
+- [ ] Heartbeat keeps the lease alive across natural idle periods
+- [ ] Integration test gated on `JAMSESH_TEST_PG_DSN`
+
+### Unit 4: Factory selection + retention + metrics
+
+**Files**:
+- new: `internal/portal/lease/factory.go` — `New(cfg, store) Manager`
+- new: `internal/portal/lease/retention.go` — periodic cleanup goroutine
+- edit: `internal/portal/metrics/metrics.go` — add lease metric handles
+- edit: `internal/portal/config/config.go` — add lease-related config
+- edit: `cmd/portal/main.go` — wire up Manager + retention goroutine
+
+**Story**: `epic-cloud-native-deploy-lease-fencing-factory-and-retention`
+
+```go
+// internal/portal/lease/factory.go
+package lease
+
+// New returns the Manager appropriate for the configured deploy mode.
+// "single" → NoopManager; "clustered" → PostgresManager backed by db.
+func New(deployMode string, db *sql.DB, store store.Store, podID string) Manager {
+    if deployMode != "clustered" {
+        return NoopManager{}
+    }
+    return &PostgresManager{DB: db, Store: store, PodID: podID, HeartbeatInterval: 10 * time.Second}
+}
+```
+
+Retention:
+
+```go
+// internal/portal/lease/retention.go
+package lease
+
+// RunRetention periodically deletes released leases older than
+// retentionAfter. No-op for NoopManager (no rows to delete). Blocks
+// until ctx is cancelled.
+func RunRetention(ctx context.Context, store store.Store, interval, retentionAfter time.Duration)
+```
+
+Metrics (added to `internal/portal/metrics/metrics.go`):
+- `jamsesh_lease_acquires_total{result}` — result in {ok, conflict, error}
+- `jamsesh_lease_holds_currently` — gauge
+- `jamsesh_lease_hold_duration_seconds` — histogram, observed at Release
+- `jamsesh_lease_lost_total` — counter
+- `jamsesh_lease_fencing_tokens_issued_total` — counter (same as
+  successful acquires; useful as a sanity-check)
+
+Config additions:
+- `JAMSESH_DEPLOY_MODE` (already pinned by epic; the lease factory reads it)
+- `JAMSESH_LEASE_HEARTBEAT_INTERVAL_S` (default 10)
+- `JAMSESH_LEASE_RETENTION_DAYS` (default 30)
+- `JAMSESH_LEASE_RETENTION_INTERVAL_HOURS` (default 1)
+
+**Acceptance Criteria**:
+- [ ] `lease.New("single", ...)` returns `NoopManager`
+- [ ] `lease.New("clustered", ...)` returns `*PostgresManager`
+- [ ] `RunRetention` deletes rows where `released_at < NOW() - interval`
+- [ ] Metrics emit on Acquire (ok/conflict/error) and Release
+- [ ] `cmd/portal/main.go` wires up Manager + starts retention goroutine
+  in clustered mode only
+- [ ] Single-instance mode: no PG queries against `leases` table
+
+## Implementation Order
+
+Wave 1 (parallel): Unit 1 (interface+noop), Unit 2 (schema+queries)
+Wave 2: Unit 3 (postgres manager) — depends on 1+2
+Wave 3: Unit 4 (factory+retention+metrics) — depends on 3
+
+## Testing
+
+| Unit | Type | Surfaces |
+|---|---|---|
+| 1 interface+noop | unit | interface compliance, Noop's never-blocks/never-loses contract |
+| 2 schema | unit (sqlite); integration (pg) | migration idempotency, sequence increments |
+| 3 postgres | integration (gated on JAMSESH_TEST_PG_DSN) | acquire/conflict/lost/release; heartbeat; backend-terminate-triggers-Lost |
+| 4 factory+retention | unit (factory); integration (retention pg) | deploy-mode selection, retention cleanup |
+
+## Risks
+
+- **Connection-per-lease scaling**: a pod with N active session leases
+  uses N+1 PG conns. With pgxpool MaxConns=25, that caps at ~24
+  concurrent leases per pod. For a cluster serving thousands of
+  sessions, requires either larger pool or more pods. Document the
+  math in SELF_HOST.
+- **Hashtext collisions**: `hashtext(session_id)` is a 32-bit hash;
+  birthday-bound collision probability is ~2^16 sessions. The defensive
+  check in Acquire (compare session_id in leases row) catches it but
+  emits a false ErrAlreadyHeld. At session-cardinality scales this is
+  vanishingly rare; documented.
+- **Heartbeat false negatives**: a transient network blip on the
+  dedicated conn fires Lost() spuriously. The pod aborts serving and
+  the router re-routes. Cost is one 503 + a re-acquire on the next
+  request — acceptable. The 10s heartbeat interval is a tunable.
+- **Released lease rows accumulate**: bounded by `RunRetention` running
+  on the configured interval. If retention goroutine dies, the table
+  grows unbounded. Metric `jamsesh_lease_acquires_total` is a proxy for
+  unbounded growth — alert on it if needed.
+
+## Foundation-doc impact
+
+- `docs/SPEC.md` — clustered-mode hard constraint about Postgres
+  required (already documented in operational-polish; reaffirm).
+- `docs/ARCHITECTURE.md` — request-lifecycle gains the lease check
+  in clustered mode.
+- `docs/SELF_HOST.md` — connection-per-lease math + retention env vars.
