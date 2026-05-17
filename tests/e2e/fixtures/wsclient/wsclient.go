@@ -40,12 +40,58 @@ type Client struct {
 	events chan Event
 	cancel context.CancelFunc
 	done   chan struct{}
+	// readCtx is the context bound to the read loop. It is derived from the
+	// caller's ctx via WithCancel; cancel() is the matching CancelFunc.
+	readCtx context.Context
 }
 
 // Connect dials /ws/sessions/{sessionID} on the portal, authenticating with
 // bearer via the Sec-WebSocket-Protocol subprotocol header. It registers
 // t.Cleanup(c.Close) so callers do not need to close manually.
 func Connect(ctx context.Context, t *testing.T, portalURL, sessionID, bearer string) *Client {
+	t.Helper()
+	c := dial(ctx, t, portalURL, sessionID, bearer)
+	go c.readLoop(c.readCtx)
+	return c
+}
+
+// ConnectFromSeq behaves like Connect but additionally writes a
+// {"replay_from": replaySeq} text frame as the first message after the
+// WebSocket handshake, so the gateway replays missed events with
+// seq > replaySeq before transitioning to live mode.
+//
+// If replaySeq <= 0, ConnectFromSeq is equivalent to Connect (no frame is
+// sent). The replay frame is written BEFORE the internal read loop starts so
+// the read half of the WebSocket is free; the portal's reply goroutine reads
+// the frame and switches to replay mode (see
+// internal/portal/wsgateway/gateway.go around the replay_from handler).
+func ConnectFromSeq(ctx context.Context, t *testing.T, portalURL, sessionID, bearer string, replaySeq int64) *Client {
+	t.Helper()
+	c := dial(ctx, t, portalURL, sessionID, bearer)
+	if replaySeq > 0 {
+		type replayHdr struct {
+			ReplayFrom int64 `json:"replay_from"`
+		}
+		if err := wsjson.Write(ctx, c.conn, replayHdr{ReplayFrom: replaySeq}); err != nil {
+			// Start the read loop before failing so the t.Cleanup-registered
+			// Close — which blocks on the read loop's done channel — can
+			// complete during teardown.
+			go c.readLoop(c.readCtx)
+			t.Fatalf("wsclient.ConnectFromSeq: write replay_from: %v", err)
+		}
+	}
+	go c.readLoop(c.readCtx)
+	return c
+}
+
+// dial builds the WebSocket URL, opens the connection with the bearer
+// subprotocol, and constructs a Client. It is the single source of truth for
+// auth + URL construction shared by Connect and ConnectFromSeq.
+//
+// The returned Client has its read loop NOT yet started — the caller is
+// responsible for starting it (typically with `go c.readLoop(c.readCtx)`),
+// after any pre-readloop writes (like a replay_from frame) have been issued.
+func dial(ctx context.Context, t *testing.T, portalURL, sessionID, bearer string) *Client {
 	t.Helper()
 
 	wsURL := strings.Replace(portalURL, "http://", "ws://", 1) + "/ws/sessions/" + sessionID
@@ -55,18 +101,18 @@ func Connect(ctx context.Context, t *testing.T, portalURL, sessionID, bearer str
 		Subprotocols: []string{proto},
 	})
 	if err != nil {
-		t.Fatalf("wsclient.Connect: dial %s: %v", wsURL, err)
+		t.Fatalf("wsclient: dial %s: %v", wsURL, err)
 	}
 
 	cctx, cancel := context.WithCancel(ctx)
 	c := &Client{
-		conn:   conn,
-		events: make(chan Event, 64),
-		cancel: cancel,
-		done:   make(chan struct{}),
+		conn:    conn,
+		events:  make(chan Event, 64),
+		cancel:  cancel,
+		done:    make(chan struct{}),
+		readCtx: cctx,
 	}
 	t.Cleanup(c.Close)
-	go c.readLoop(cctx)
 	return c
 }
 
