@@ -1,14 +1,14 @@
 ---
 id: epic-portal-api-comments-rest
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-api-events-log, epic-portal-foundation-http-skeleton]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Portal API — Comments REST
@@ -118,5 +118,82 @@ Handlers implement the `oapi-codegen`-generated `ServerInterface`
 methods. The internal library functions (`CreateComment`,
 `ResolveComment`) accept the generated `Comment` struct directly.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+## Design decisions
+
+- **Schema**: ships `comments` table (00009 migration). `conflict_events` table already exists (shipped by `auto-merger-outcomes`); this feature just queries it for read endpoints.
+- **Package**: `internal/portal/comments/`. Exposes both REST handlers (Handler) AND library functions (`CreateComment`, `ResolveComment`) called from `mcp-endpoint`.
+- **Pagination**: reuse `internal/portal/pagination.Cursor`.
+- **Single story**: cohesive feature.
+
+## Implementation Units
+
+### Unit 1: Schema
+
+```sql
+CREATE TABLE comments (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    author_account_id TEXT NOT NULL REFERENCES accounts(id),
+    author_kind TEXT NOT NULL CHECK (author_kind IN ('human','agent')),
+    anchor_commit_sha TEXT NOT NULL,
+    anchor_file_path TEXT,
+    anchor_line_start INTEGER,
+    anchor_line_end INTEGER,
+    body TEXT NOT NULL,
+    addressed_to TEXT,
+    kind TEXT NOT NULL CHECK (kind IN ('question','suggestion','action-request','fyi')),
+    created_at DATETIME NOT NULL,
+    resolved_at DATETIME,
+    resolved_by_account_id TEXT REFERENCES accounts(id),
+    resolution_note TEXT
+);
+CREATE INDEX comments_session_idx ON comments(session_id, created_at);
+CREATE INDEX comments_addressed_idx ON comments(addressed_to);
+```
+
+### Unit 2: Queries
+
+- `InsertComment :exec`
+- `GetCommentByID :one`
+- `ListCommentsForSession :many` — with optional filters (addressed_to LIKE, kind, resolved IS NULL, anchor_commit_sha)
+- `ResolveComment :exec` — sets resolved_at, resolved_by_account_id, resolution_note
+- `ListConflictEventsForSession :many` — open events, joined with addressed_to summary
+
+### Unit 3: Library API
+
+```go
+package comments
+
+func (s *Service) Create(ctx, params CreateParams) (Comment, error)
+func (s *Service) Resolve(ctx, params ResolveParams) (Comment, error)
+func (s *Service) List(ctx, params ListParams) ([]Comment, string /*next_cursor*/, error)
+```
+
+`Create` inserts comment row + emits `comment.added` event in one Tx.
+`Resolve` updates row + emits `comment.resolved` event.
+
+### Unit 4: REST handlers
+
+`GET /api/sessions/<id>/comments` and `POST /api/sessions/<id>/comments/<commentId>/resolve`. RequireOrgRole + session-membership gating.
+
+### Unit 5: openapi additions
+
+Schemas: `Comment`, `CommentAnchor`, `CommentKind`, `CommentListResponse`, `ResolveCommentRequest`, `ConflictEvent` (read-only).
+
+Note: the `CommentAnchor` schema already exists in openapi.yaml (added in events-log's payload shapes). Reuse it. The `Comment` struct in handlers uses fields aligned with `CommentAddedPayload` for consistency.
+
+## Implementation Order
+
+Single story.
+
+## Testing
+
+- Create + list + resolve round-trip
+- Filter by addressed_to / kind / resolved / anchor
+- Cursor pagination round-trip
+- Resolve idempotency (already-resolved comment → 409)
+
+## Risks
+
+- **addressed_to as string**: filtering by recipient does substring match. Performance acceptable for v1 scale.
