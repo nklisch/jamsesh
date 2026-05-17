@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-hydration-handoff-hydrator
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy-hydration-handoff
 depends_on: []
@@ -64,3 +64,23 @@ New:
 - **Parallel counts**: `downloadPacks` returns `len(packs)` as the pair count (not individual file count) to match `HydrationOutput.PacksDownloaded` semantics.
 - **`TestHydrator_ParallelTiming`** completes in ≈210ms on a local machine (10 downloads at 100ms each, Workers=8 → two waves), well within the 250ms ceiling.
 - **fsck warnings in tests**: tests that use bogus pack data (fake bytes, not real git objects) produce fsck warnings — this is expected. `TestHydrator_FsckOK` specifically validates an empty bare repo (which always passes fsck).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Clean implementation. 410 lines code + 573 lines tests — solid ratio. Fresh-session early-return path is correct (zero counts + FsckOK=true vacuously + CreateRepo idempotent via "already exists" substring match — handles concurrent CreateRepo calls safely).
+
+`writeAtomic` helper centralizes the tmp+rename pattern. Parallel timing test (10 downloads × 100ms / 8 workers → 2 waves → ~210ms) validates the errgroup.WithContext + SetLimit pattern is wired correctly.
+
+Loose-object key format verified against the Syncer's actual write pattern (`sessions/<id>/objects/<xx>/<rest>`, packs at `sessions/<id>/packs/...`). The defensive pack-prefix guard in `downloadLooseObjects` is unnecessary given the actual key separation but a small safety net.
+
+Test approach is elegant: separate Backends for Manifests (memBackend, unfailing) and packs (slowBackend / failAfterNBackend wrapper) lets the manifest load happen instantly while testing pack behavior in isolation. `TestHydrator_AtomicWriteOnFailure` verifies no `.tmp` files left after simulated mid-download failure.
+
+3 new metric handles (HydrationsTotal, HydrationDurationSeconds, HydrationBytesTotal) appended cleanly to Registry following the established lease/upload pattern. Nil-safe call sites preserved.
+
+`git fsck --no-dangling` runs against the hydrated repo; FsckOK reflects the exit code, non-fatal as designed (dangling objects normal in freshly-hydrated repos).
