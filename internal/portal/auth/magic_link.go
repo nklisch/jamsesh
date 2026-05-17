@@ -23,6 +23,19 @@ const (
 	magicLinkSubject    = "Sign in to jamsesh"
 )
 
+// Clock is an injectable time source. The default realClock calls
+// time.Now().UTC(); tests inject a fakeClock to simulate expiry. The
+// shape mirrors internal/portal/tokens.Clock by design — the same
+// concrete type can satisfy both interfaces (handy for the e2etest-
+// tagged AdvanceableClock).
+type Clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now().UTC() }
+
 // MagicLinkHandler handles the magic-link request and exchange endpoints.
 // It satisfies the oapi-codegen StrictServerInterface methods for those two
 // operations; main.go mixes it into the shared strict handler.
@@ -31,20 +44,36 @@ type MagicLinkHandler struct {
 	tokensSvc tokens.Service
 	sender    senders.Sender
 	portalURL string // e.g. "https://example.com"
+	clock     Clock
 }
 
-// NewMagicLinkHandler constructs a MagicLinkHandler.
+// NewMagicLinkHandler constructs a MagicLinkHandler with the real system
+// clock. Production callers use this.
 func NewMagicLinkHandler(
 	s store.Store,
 	tokensSvc tokens.Service,
 	sender senders.Sender,
 	portalURL string,
 ) *MagicLinkHandler {
+	return NewMagicLinkHandlerWithClock(s, tokensSvc, sender, portalURL, realClock{})
+}
+
+// NewMagicLinkHandlerWithClock constructs a MagicLinkHandler with the supplied
+// clock. Used by unit tests (fakeClock) and the e2etest-tagged binary
+// (testclock.AdvanceableClock).
+func NewMagicLinkHandlerWithClock(
+	s store.Store,
+	tokensSvc tokens.Service,
+	sender senders.Sender,
+	portalURL string,
+	clock Clock,
+) *MagicLinkHandler {
 	return &MagicLinkHandler{
 		store:     s,
 		tokensSvc: tokensSvc,
 		sender:    sender,
 		portalURL: portalURL,
+		clock:     clock,
 	}
 }
 
@@ -61,7 +90,7 @@ func (h *MagicLinkHandler) RequestMagicLink(
 		return nil, fmt.Errorf("magic-link: generate token: %w", err)
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	email := string(req.Body.Email)
 	if _, err := h.store.CreateMagicLinkToken(ctx, store.CreateMagicLinkTokenParams{
 		ID:        uuid.New().String(),
@@ -102,7 +131,7 @@ func (h *MagicLinkHandler) ExchangeMagicLink(
 		return nil, fmt.Errorf("magic-link: lookup token: %w", err)
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 
 	if now.After(row.ExpiresAt) {
 		return magicLinkUnauthorized("auth.expired_token", "magic link has expired"), nil

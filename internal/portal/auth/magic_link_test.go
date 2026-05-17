@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -22,6 +23,17 @@ import (
 // ---------------------------------------------------------------------------
 // Test doubles
 // ---------------------------------------------------------------------------
+
+// fakeClock is a controllable time source used to exercise the
+// MagicLinkHandler's TTL-expiry path. Mirrors the shape of
+// internal/portal/tokens's test-only fakeClock; we keep a local copy here
+// instead of importing it (test packages can't share unexported types).
+type fakeClock struct {
+	t time.Time
+}
+
+func (f *fakeClock) Now() time.Time          { return f.t }
+func (f *fakeClock) advance(d time.Duration) { f.t = f.t.Add(d) }
 
 // captureSender captures the last email Send call for assertion.
 type captureSender struct {
@@ -425,4 +437,67 @@ func TestExchangeMagicLink_ProvisionedAccount_IsIdempotent(t *testing.T) {
 	if body1["access_token"] == body2["access_token"] {
 		t.Error("expected different access tokens for two separate logins")
 	}
+}
+
+// TestExchangeMagicLink_ExpiredToken_Returns401WithExpiredCode exercises the
+// new clock-injection path: a fakeClock issues a token at t=0, the clock
+// advances past the 15-minute TTL, and the subsequent exchange must return
+// 401 with the auth.expired_token code.
+func TestExchangeMagicLink_ExpiredToken_Returns401WithExpiredCode(t *testing.T) {
+	// Build the env manually so we can inject a fakeClock.
+	s := openStore(t)
+	sender := &captureSender{}
+	tokenSvc := tokens.New(s)
+	clk := &fakeClock{t: time.Date(2026, 5, 17, 0, 0, 0, 0, time.UTC)}
+	handler := auth.NewMagicLinkHandlerWithClock(
+		s, tokenSvc, sender, "https://portal.example.com", clk)
+
+	fullHandler := &magicLinkOnlyStrict{MagicLinkHandler: handler}
+	strictAPI := openapi.NewStrictHandler(fullHandler, nil)
+
+	r := chi.NewRouter()
+	r.Post("/api/auth/magic-link/request", strictAPI.RequestMagicLink)
+	r.Post("/api/auth/magic-link/exchange", strictAPI.ExchangeMagicLink)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	// Issue a token at t=0.
+	resp := postJSONBody(t, srv, "/api/auth/magic-link/request",
+		map[string]string{"email": "expired@example.com"})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("request: want 204, got %d", resp.StatusCode)
+	}
+	body := sender.lastBody()
+	token := extractTokenFromBody(t, body)
+
+	// Advance the clock past the 15-minute TTL.
+	clk.advance(16 * time.Minute)
+
+	// Exchange must fail with auth.expired_token.
+	resp2 := postJSONBody(t, srv, "/api/auth/magic-link/exchange",
+		map[string]string{"token": token})
+	if resp2.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("exchange: want 401, got %d", resp2.StatusCode)
+	}
+	bodyMap := decodeJSONResponse(t, resp2)
+	if code, _ := bodyMap["error"].(string); code != "auth.expired_token" {
+		t.Errorf("error code: want auth.expired_token, got %q", code)
+	}
+}
+
+// extractTokenFromBody pulls the magic-link token out of a captured email
+// body. Mirrors the index-based logic in requestAndExtractToken so the
+// expiry test doesn't have to construct a magicLinkTestEnv.
+func extractTokenFromBody(t *testing.T, body string) string {
+	t.Helper()
+	const prefix = "?token="
+	idx := strings.Index(body, prefix)
+	if idx == -1 {
+		t.Fatalf("body missing token URL: %q", body)
+	}
+	rest := body[idx+len(prefix):]
+	if end := strings.IndexAny(rest, " \t\n\r"); end != -1 {
+		rest = rest[:end]
+	}
+	return rest
 }

@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-advance-endpoint-clock-abstraction
 kind: story
-stage: implementing
+stage: review
 tags: [testing, testability]
 parent: portal-test-clock-advance-endpoint
 depends_on: []
@@ -208,3 +208,47 @@ inliner.
 - Don't introduce a `clockFunc func() time.Time` type alias as a
   shortcut; downstream test stories need the interface name (`Clock`)
   to satisfy with `AdvanceableClock`.
+
+## Implementation notes
+
+Landed exactly as spec'd — pure refactor, no behavior change, no build
+tags.
+
+**Files touched**:
+- `internal/portal/auth/magic_link.go` — added `Clock` interface,
+  `realClock` type, `clock Clock` field on `MagicLinkHandler`,
+  new `NewMagicLinkHandlerWithClock` constructor. The existing
+  `NewMagicLinkHandler` signature is unchanged; it now delegates to
+  the With-clock variant with `realClock{}`. Both `time.Now().UTC()`
+  reads (in `RequestMagicLink` and `ExchangeMagicLink`) are replaced
+  with `h.clock.Now()`.
+- `internal/portal/auth/magic_link_test.go` — added local `fakeClock`
+  (mirrors the tokens-package test-only fakeClock; not imported because
+  test packages can't share unexported types), added `time` import,
+  added `TestExchangeMagicLink_ExpiredToken_Returns401WithExpiredCode`
+  which injects a fakeClock at a fixed t=0, requests a token,
+  advances the clock 16 minutes, and asserts exchange returns 401
+  with `auth.expired_token`. Also added `extractTokenFromBody`
+  helper so the new test can build its own env without depending on
+  `magicLinkTestEnv` (which uses the real clock).
+
+**Design fidelity**:
+- The `Clock` interface, `realClock` definition, and `NewMagicLinkHandler` /
+  `NewMagicLinkHandlerWithClock` constructor pair match the spec
+  byte-for-byte.
+- `realClock.Now()` returns UTC, so dropping the `.UTC()` postfix at the
+  call sites preserves the original semantic (timestamps stored in DB
+  are still UTC).
+- Per the parent feature's "Scope of `time.Now()` audit (v1)" section,
+  only `magic_link.go` is wired through the clock. `oauth.go`,
+  `provision.go`, and `slug.go` retain `time.Now()` calls — tracked
+  under the `portal-test-clock-broaden-coverage` backlog item.
+
+**Verification**:
+- `go test ./internal/portal/auth/...` — PASS (all existing tests still
+  green, new TTL-expiry test green).
+- `go build ./...` — green (production caller in `cmd/portal/main.go`
+  compiles unchanged via the preserved `NewMagicLinkHandler` signature).
+- `go vet ./internal/portal/auth/...` — clean.
+
+**Discrepancies**: none.
