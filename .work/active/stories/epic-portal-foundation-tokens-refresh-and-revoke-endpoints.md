@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-tokens-refresh-and-revoke-endpoints
 kind: story
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: epic-portal-foundation-tokens
 depends_on: [epic-portal-foundation-tokens-token-core-and-middleware]
@@ -68,3 +68,45 @@ work end-to-end.
   resolved — the generated `EventEnvelope` discriminated union
   for the WebSocket primitive will still be empty (no events
   yet), but the REST surface gains real types.
+
+## Implementation notes
+
+### Wiring choice: per-route group mounting
+
+`HandlerFromMux` registers routes at their full absolute paths
+(`/api/auth/refresh`, `/api/auth/revoke`). Since `MountAPI` receives a
+chi sub-router already scoped at `/api`, using `HandlerFromMux` would
+produce double-prefixed paths (`/api/api/auth/*`). Instead, the strict
+handler's individual methods (`strictAPI.RefreshToken`,
+`strictAPI.RevokeToken`) are registered directly on two `r.Group` blocks:
+
+```go
+// Public (no middleware)
+r.Group(func(r chi.Router) {
+    r.Post("/auth/refresh", strictAPI.RefreshToken)
+})
+// Bearer-authenticated
+r.Group(func(r chi.Router) {
+    r.Use(tokens.BearerMiddleware(tokenSvc))
+    r.Post("/auth/revoke", strictAPI.RevokeToken)
+})
+```
+
+This gives clean per-route middleware isolation without any adapter shims.
+
+### OpenAPI spec note
+
+The spec uses `openapi: 3.0.3` (oapi-codegen mainline 3.1 blocker).
+`TokenPair` schema added to `components.schemas`. Both paths reference
+`#/components/responses/Unauthorized` for 401.
+
+### Test coverage
+
+`internal/portal/tokens/handlers_test.go` exercises the full
+request → handler → store round-trip via an in-memory SQLite store:
+- Refresh: valid token → 200 + TokenPair fields present
+- Refresh: invalid/access/expired/reused token → 401 with error field
+- Revoke: with Bearer → 204
+- Revoke: without Bearer → 401
+- Revoke: revoke_all → 204 + both tokens invalid afterward
+- Revoke: revoked bearer rejected on next request

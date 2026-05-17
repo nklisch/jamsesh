@@ -21,11 +21,16 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/go-chi/chi/v5"
+
+	"jamsesh/internal/api/openapi"
+	"jamsesh/internal/db"
 	"jamsesh/internal/portal/assets"
 	"jamsesh/internal/portal/config"
 	"jamsesh/internal/portal/logging"
 	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/server"
+	"jamsesh/internal/portal/tokens"
 )
 
 func main() {
@@ -56,6 +61,19 @@ func main() {
 		os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Open the database and run migrations.
+	dbStore, err := db.Open(ctx, cfg.DBDriver, cfg.DBDSN)
+	if err != nil {
+		slog.Error("database open failed", "err", err)
+		os.Exit(1)
+	}
+	defer dbStore.Close()
+
+	// Build the token service and its HTTP handler.
+	tokenSvc := tokens.New(dbStore)
+	tokenHandler := tokens.NewHandler(tokenSvc)
+	strictAPI := openapi.NewStrictHandler(tokenHandler, nil)
+
 	// Wire the embedded SPA handler. assets.Handler() returns a handler that
 	// serves the compiled Svelte bundle from frontend/dist/ with a History-API
 	// fallback to index.html. If the build hasn't run yet (dist/ only has
@@ -67,15 +85,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build the chi router. Mount hooks are nil until sibling features land:
-	//   MountAPI  — tokens + auth-flows + accounts (epic-portal-auth)
-	//   MountGit  — smart-HTTP git (epic-portal-git)
-	//   MountMCP  — MCP SDK handler (epic-portal-api)
-	//   MountWS   — WebSocket sessions (epic-portal-api)
-	//   MountUI   — embedded Svelte SPA (epic-portal-ui-foundation)
+	// Build the chi router. MountAPI registers two route groups:
+	//   - Public:  POST /auth/refresh   (no Bearer middleware; refresh token IS the cred)
+	//   - Bearer:  POST /auth/revoke    (Bearer middleware validates the access token)
+	// Future authenticated endpoints join the Bearer group.
 	handler := router.New(router.Deps{
 		TrustProxyHeaders: cfg.TLS.Mode == "behind_proxy",
 		MountUI:           uiHandler,
+		MountAPI: func(r chi.Router) {
+			// Public auth endpoints — no Bearer middleware.
+			r.Group(func(r chi.Router) {
+				r.Post("/auth/refresh", strictAPI.RefreshToken)
+			})
+
+			// Authenticated endpoints — Bearer middleware required.
+			r.Group(func(r chi.Router) {
+				r.Use(tokens.BearerMiddleware(tokenSvc))
+				r.Post("/auth/revoke", strictAPI.RevokeToken)
+			})
+		},
 	})
 
 	if err := server.Run(ctx, cfg, handler); err != nil {

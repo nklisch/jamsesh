@@ -8,14 +8,20 @@ import (
 	"compress/flate"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
+)
+
+const (
+	BearerAuthScopes bearerAuthContextKey = "bearerAuth.Scopes"
 )
 
 // ErrorEnvelope defines model for ErrorEnvelope.
@@ -31,6 +37,14 @@ type ErrorEnvelope struct {
 	Message string `json:"message"`
 }
 
+// TokenPair defines model for TokenPair.
+type TokenPair struct {
+	AccessExpiresAt  time.Time `json:"access_expires_at"`
+	AccessToken      string    `json:"access_token"`
+	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
+	RefreshToken     string    `json:"refresh_token"`
+}
+
 // Forbidden defines model for Forbidden.
 type Forbidden = ErrorEnvelope
 
@@ -43,13 +57,48 @@ type Unauthorized = ErrorEnvelope
 // bearerAuthContextKey is the context key for bearerAuth security scheme
 type bearerAuthContextKey string
 
+// RefreshTokenJSONBody defines parameters for RefreshToken.
+type RefreshTokenJSONBody struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// RevokeTokenJSONBody defines parameters for RevokeToken.
+type RevokeTokenJSONBody struct {
+	RevokeAll bool   `json:"revoke_all,omitempty"`
+	Token     string `json:"token"`
+}
+
+// RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
+type RefreshTokenJSONRequestBody RefreshTokenJSONBody
+
+// RevokeTokenJSONRequestBody defines body for RevokeToken for application/json ContentType.
+type RevokeTokenJSONRequestBody RevokeTokenJSONBody
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Exchange a refresh token for a new access+refresh pair
+	// (POST /api/auth/refresh)
+	RefreshToken(w http.ResponseWriter, r *http.Request)
+	// Revoke a token (or all tokens for the account)
+	// (POST /api/auth/revoke)
+	RevokeToken(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Exchange a refresh token for a new access+refresh pair
+// (POST /api/auth/refresh)
+func (_ Unimplemented) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Revoke a token (or all tokens for the account)
+// (POST /api/auth/revoke)
+func (_ Unimplemented) RevokeToken(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // ServerInterfaceWrapper converts contexts to parameters.
 type ServerInterfaceWrapper struct {
@@ -59,6 +108,40 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// RefreshToken operation middleware
+func (siw *ServerInterfaceWrapper) RefreshToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RefreshToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeToken operation middleware
+func (siw *ServerInterfaceWrapper) RevokeToken(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 type UnescapedCookieParamError struct {
 	ParamName string
@@ -167,6 +250,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 	}
+	wrapper := ServerInterfaceWrapper{
+		Handler:            si,
+		HandlerMiddlewares: options.Middlewares,
+		ErrorHandlerFunc:   options.ErrorHandlerFunc,
+	}
+
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/auth/refresh", wrapper.RefreshToken)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/auth/revoke", wrapper.RevokeToken)
+	})
 
 	return r
 }
@@ -177,8 +272,80 @@ type NotFoundJSONResponse ErrorEnvelope
 
 type UnauthorizedJSONResponse ErrorEnvelope
 
+type RefreshTokenRequestObject struct {
+	Body *RefreshTokenJSONRequestBody
+}
+
+type RefreshTokenResponseObject interface {
+	VisitRefreshTokenResponse(w http.ResponseWriter) error
+}
+
+type RefreshToken200JSONResponse TokenPair
+
+func (response RefreshToken200JSONResponse) VisitRefreshTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshToken401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RefreshToken401JSONResponse) VisitRefreshTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeTokenRequestObject struct {
+	Body *RevokeTokenJSONRequestBody
+}
+
+type RevokeTokenResponseObject interface {
+	VisitRevokeTokenResponse(w http.ResponseWriter) error
+}
+
+type RevokeToken204Response struct {
+}
+
+func (response RevokeToken204Response) VisitRevokeTokenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeToken401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RevokeToken401JSONResponse) VisitRevokeTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Exchange a refresh token for a new access+refresh pair
+	// (POST /api/auth/refresh)
+	RefreshToken(ctx context.Context, request RefreshTokenRequestObject) (RefreshTokenResponseObject, error)
+	// Revoke a token (or all tokens for the account)
+	// (POST /api/auth/revoke)
+	RevokeToken(ctx context.Context, request RevokeTokenRequestObject) (RevokeTokenResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -210,28 +377,94 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// RefreshToken operation middleware
+func (sh *strictHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	var request RefreshTokenRequestObject
+
+	var body RefreshTokenJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RefreshToken(ctx, request.(RefreshTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RefreshToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RefreshTokenResponseObject); ok {
+		if err := validResponse.VisitRefreshTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeToken operation middleware
+func (sh *strictHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
+	var request RevokeTokenRequestObject
+
+	var body RevokeTokenJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeToken(ctx, request.(RevokeTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeTokenResponseObject); ok {
+		if err := validResponse.VisitRevokeTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"vFTNbhs3EH6VAZuDBEgrB8qh2JzcwGl7qC1UzslrVNTuSEubO2SGpBzVENCH6BP2SYrhri3LRoGecuPP",
-	"kPPNN983j6p2nXeEFIMqHxVj8I4C5s1nx2vTNEiyqR1FpChL7b01tY7G0ewuuHwd6hY7Lat3jBtVqh9m",
-	"x59n/W2YXTA7vqAdWudRHQ6HiWow1Gy8fKZKpVNskaL8jg2sUwRyETxyZ6KcbBxDbBEYvyYMcuI8coai",
-	"DhN16eJnl6j5foCPQNiliOAYGINLXGOGvslwDhP1haQ2x+ZP/I7wOhOCoa3AMrTT1jSwRs3IEN09kpIX",
-	"w2eS6/S/8lF5Fn6j6QXRYNTG5qVuGiM5tF28CImc8DWEK9/HQYic6pgYG8jFf4vP7UTJW8Cy1R7BhIpq",
-	"1+A0eKzNxtQfwQ3tf2iR5AFLlPDbSnHRgW6aoiI1UXEvwJVb32Edhff8dQ/+hBhdt4ZwyqgbvbYDBJC8",
-	"MMJiW0CVxVgMtP2R+arUWE0UftOdtzjI9TTiCCFENrQVCB2GoLf4FkSbOk2vITxFv8zz1Lv/SHGYZB0a",
-	"FmndDCUf896+oUW6jnViE/dL6X7f3l4Z5ym2x91nx52O8tTrr0lQve6uHJ+ICkwISdy7z731jqO2cCX/",
-	"wsa6h6KiBWNAiuAItLXw+8XyGmptbZjAb58WT0tNDWxNnLod8vSX6+vFsqKRDiBL+EkHU4PXITw4bsYF",
-	"XBEO+T0ypIAMuq5dotgrI8tcSOixHllsY/S9dwxt3NsuZXQh8UbX+KzYO90FDO1QXQFLQ1uLMDjfbSBy",
-	"rtdxRQF5h2LAiPmTACOnvZmK2LZI41xobY0wIphCRSPnkSQm7zOYcQHn/QShLXCyGMBQRY2rw2y5uPhU",
-	"dA1U6exsjvAzkgzFwWis6xiKiiq68kjni19hhxyMoxLmxVkxh5F19T028M9ff8NLYNBpQ9YQQuMw2w32",
-	"GCsKyUvZMC/ef4TObPv5C5HNdpvrhP8JapxRva5q1KMKaR0wSnCIrA3FMC4rmsKXgLCiZK14phSecQWX",
-	"V9ewEq5KuOldMYFKSVSlblfPzwZHlcODYRvKFYw0s95LvzoZLfPi/VheXTpYPeC6de5eotbC1NP5u35w",
-	"rkATuZg5kKtza2EYqZCoQRkqT4O7GC4+ij5BJjvgDnn/ICOtn18mZsef6ktN1NAzVaqz4qx4L3Nl0Igq",
-	"VWZMTZTXsRUrv/C3Km9OnX1ze7iVa9FkyLeJ7WCDUM5mj60L8SAZNRvhOM8GOeytsdHJykCwrtZWjssf",
-	"P3yYvxkMi972EpD1LYWIy24P/wYAAP//",
+	"vFbNctu2E3+VHfxzkOZPU3LtQ4c5ORmnzaG2pnZOpseGyJWIGASYXVC26tFMH6JP2CfpLEhJlq20SZvJ",
+	"DR+L3d9+/RaPqvB14x26wCp7VITceMcYN+88TU1ZopNN4V1AF2Spm8aaQgfj3egj+3jNRYW1ltUrwpnK",
+	"1P9GW82j7pZHp0SeTt0CrW9QrVarRJXIBZlGlKlM6TZU6IJoxxKmbQDnAzRItQlyMvMEoUIg/NQiy4lv",
+	"kCIUtUrUmQ/vfOvK7wd4C4R8GxA8ASH7lgqM0GcRzipRH5z45sn8ht8RXm2YjZsLLOMW2poSpqgJCYK/",
+	"Q6fkRa9MbO3qyx5VQxLfYLqCKDFoY+NSl6URG9pOnogEavE5hPOmkwMO1BahJSwhOv8QNulEsZvCRaUb",
+	"BMO5K3yJB9xgYWameA2+T/99hU4ekEhJfCtxLnjQZZnmTiUqLAW48tOPWASJe1Tdgd8JjC4q4/CAUJd6",
+	"ansIIHZhgOk8hTwWY9qH7SbGK1dDlSh80HVjsS/XXYktBA5k3Fwg1Mis5/gSRNXW2j2HsJZ+amedu8+Y",
+	"WCWxDg1JaV31Lm/tXu8Jy6VommhDL7OsiwKZb/ChMYR8o2ONzjzVslKlDngQTI37PO2fdjCzx5cChDNC",
+	"rv6V8vXbz2l/FoUdLM9fJ3u83IvuZeykY7BoyYTlhXROF7Suq07aUG1379Zu+UZ/asWn550hxzsNCYa5",
+	"FeZbxr5oPAVt4Vz0wsz6+zR3E0JGF8A70NbCr6cXl1BoazmBX95O1kvtSpibcOAXSAc/X15OLnI30Ayy",
+	"hDeaTQGNZr73VA5TOHfY22+QoGUk0EXhWxe6rooUIUHosG6zU4XQdLxj3My/rPCIjlua6QI33f5R14xc",
+	"9d6lcGHc3CL0rOlnECj66yl3jLRAIa+AUQnDwOvGHEijztENo6OFNRIRwcS5G/gGncjEfQQzTOGkY183",
+	"B2otMhiXu9IXPLqYnL5N6xLydjw+QvgJnQyUnqRIF4HT3OXuvEF3MnkPCyQ23mVwlI7TIxhYX9xhCX/+",
+	"/gc8BQa1Ns4ah1B6jFQFSwy547YRt+EoPXwNtZl3swsCmfk8+glfCGoYUT33atCh4nbKGESYA2njAg+z",
+	"3B3AB0a4da21wjeZxBlv4ez8Em4lVhlcdb2UQK5EKlfXt5tnPRtl/YN+y9ktDDSRXkq+aqHlo/RwKK/O",
+	"PNze47Ty/k6kphKp9fmrbujcgnbOhxgDuTqxFvpxBK0rUQh5PfTS/uK11CfIVARcIC3vZRx03G9CZMvd",
+	"+lKJ6nOmMjVOx+mhkElfIypTMWIqUY0OVWzlkW7MSJh91PNBpEjPkao23433pZR3J3C54Zj4GXjjy+VX",
+	"jfhd/v1KntsV38NXO/KS8njw5J/3w3j8zX4k27my5zdyhvdrmokSiToeH35O4wbiaOfr9JR/VXZ1nShu",
+	"61rTUmXq9KGotJsjaOij0psT5tHg8B462v//+rrDsUp2kr7wd/h3OZf7b51y0Xmjre0odKZbG1Q205Zx",
+	"k9Cp9xZ1/Od+YWn8l5I43kPmuPCdQ7EtLQb8JjncnZ5X16udpHbxBt2nciCptLbb8Wam9ONq2Dn3T8rj",
+	"UOF425Lt5xhno9Fj5TmshDI0GSHJGI2qL4RNYpT1hbZynP14fHz0YrJPurktAnFACRMJsuvVXwEAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

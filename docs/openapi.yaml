@@ -59,6 +59,21 @@ components:
             Optional structured context for the error. Shape is
             code-specific; omitted when there is nothing to add.
 
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, access_expires_at, refresh_expires_at]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        access_expires_at:
+          type: string
+          format: date-time
+        refresh_expires_at:
+          type: string
+          format: date-time
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -81,4 +96,53 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
 
-paths: {}
+paths:
+  /api/auth/refresh:
+    post:
+      summary: Exchange a refresh token for a new access+refresh pair
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/revoke:
+    post:
+      summary: Revoke a token (or all tokens for the account)
+      operationId: revokeToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                revoke_all:
+                  type: boolean
+                  default: false
+      responses:
+        '204':
+          description: Revocation complete
+        '401':
+          $ref: '#/components/responses/Unauthorized'
