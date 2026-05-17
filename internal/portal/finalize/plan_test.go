@@ -67,7 +67,7 @@ func newPlanEnv(t *testing.T) *planEnv {
 	t.Helper()
 
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

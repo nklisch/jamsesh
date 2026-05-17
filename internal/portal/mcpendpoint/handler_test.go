@@ -193,7 +193,7 @@ type testEnv struct {
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 
-	s, err := db.Open(context.Background(), "sqlite", ":memory:")
+	s, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

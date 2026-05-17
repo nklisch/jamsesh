@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-db-pool-and-lock
 kind: story
-stage: implementing
+stage: review
 tags: [infra, portal]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: []
@@ -89,3 +89,35 @@ New env vars:
 - [ ] Lock auto-releases on PG session loss (if process dies
   mid-migration, the next pod can acquire). Cover with a test that
   drops the holding connection mid-fn.
+
+## Implementation notes
+
+- Added `DBConfig` struct to `internal/portal/config/config.go` with
+  defaults (MaxOpenConns=25, MaxIdleConns=5, ConnMaxLifetime=30m) and
+  env overlay via `applyDBEnv` helper (mirrors `applyGitEnv` pattern).
+  New env vars: `JAMSESH_DB_MAX_OPEN_CONNS`, `JAMSESH_DB_MAX_IDLE_CONNS`,
+  `JAMSESH_DB_CONN_MAX_LIFETIME` (Go duration string).
+
+- Added `PoolConfig` struct to `internal/db/connect.go` (avoids import
+  cycle — callers translate `config.DBConfig` → `db.PoolConfig` at call
+  site). Updated `Open` signature to accept `PoolConfig`; updated all
+  call sites (cmd/portal/main.go + all test files across the repo).
+
+- Postgres pool: applies `MaxConns`/`MinConns`/`MaxConnLifetime` to
+  `pgxpool.Config` behind "if > 0" guards to avoid clobbering DSN
+  embedded params with zero values.
+
+- SQLite pool: applies `SetMaxOpenConns`/`SetMaxIdleConns`/
+  `SetConnMaxLifetime` to `*sql.DB`; single-writer note in doc comment.
+
+- Added `jamseshMigrationLockKey` constant and `withMigrationLock`
+  helper to `internal/db/migrate.go`. Postgres `MigrateUp` call in
+  `connect.go` wrapped in `withMigrationLock`. Unlock defers on
+  `context.Background()` so it fires even after ctx cancellation.
+
+- Tests: `internal/db/connect_test.go` (new) covers SQLite pool config
+  (default + non-default PoolConfig), Postgres pool config
+  (integration, skip without PG), concurrent migrations (3 goroutines,
+  all succeed), and advisory lock auto-release on connection close.
+  Config tests extended with `TestDBConfigDefaults`,
+  `TestDBConfigEnvOverride`, `TestDBConfigYAML`.

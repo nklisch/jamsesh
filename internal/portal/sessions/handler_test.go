@@ -191,7 +191,7 @@ type testEnv struct {
 func openStore(t *testing.T) store.Store {
 	t.Helper()
 	// Use a unique file path per test to avoid shared-cache interference.
-	s, err := db.Open(context.Background(), "sqlite", "file::memory:?cache=shared&mode=memory")
+	s, err := db.Open(context.Background(), "sqlite", "file::memory:?cache=shared&mode=memory", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

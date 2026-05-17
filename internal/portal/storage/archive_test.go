@@ -16,7 +16,7 @@ import (
 func newServiceWithStore(t *testing.T) (storage.Service, store.Store) {
 	t.Helper()
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}

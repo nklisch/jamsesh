@@ -8,7 +8,8 @@
 //	email.postmark.*, email.resend.*,
 //	oauth.github.client_id, oauth.github.client_secret,
 //	oauth.github.base_url,
-//	git.max_pack_bytes
+//	git.max_pack_bytes,
+//	db.max_open_conns, db.max_idle_conns, db.conn_max_lifetime
 //
 // Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
@@ -26,7 +27,10 @@
 //	JAMSESH_OAUTH_GITHUB_CLIENT_ID,
 //	JAMSESH_OAUTH_GITHUB_CLIENT_SECRET,
 //	JAMSESH_OAUTH_GITHUB_BASE_URL,
-//	JAMSESH_GIT_MAX_PACK_BYTES
+//	JAMSESH_GIT_MAX_PACK_BYTES,
+//	JAMSESH_DB_MAX_OPEN_CONNS,
+//	JAMSESH_DB_MAX_IDLE_CONNS,
+//	JAMSESH_DB_CONN_MAX_LIFETIME
 //
 // Secret env vars with _FILE variants (file contents take precedence):
 //
@@ -49,6 +53,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -65,6 +70,23 @@ type Config struct {
 	Email     EmailConfig `yaml:"email"`
 	OAuth     OAuthConfig `yaml:"oauth"`
 	Git       GitConfig   `yaml:"git"`
+	DB        DBConfig    `yaml:"db"`
+}
+
+// DBConfig holds database connection pool settings.
+// These apply to Postgres; for SQLite the values are accepted but have no
+// concurrency benefit since SQLite is effectively single-writer.
+type DBConfig struct {
+	// MaxOpenConns is the maximum number of open connections in the pool.
+	// Default: 25. For Postgres this maps to pgxpool.Config.MaxConns.
+	MaxOpenConns int `yaml:"max_open_conns"`
+	// MaxIdleConns is the minimum number of idle connections the pool
+	// maintains. Default: 5. For Postgres this maps to pgxpool.Config.MinConns.
+	MaxIdleConns int `yaml:"max_idle_conns"`
+	// ConnMaxLifetime is the maximum lifetime of a pooled connection before
+	// it is closed and replaced. Default: 30m.
+	// Accepts Go duration strings: "30m", "1h", etc.
+	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
 }
 
 // GitConfig holds git-push policy settings.
@@ -226,6 +248,11 @@ func defaults() Config {
 		Git: GitConfig{
 			MaxPackBytes: 52428800, // 50 MiB
 		},
+		DB: DBConfig{
+			MaxOpenConns:    25,
+			MaxIdleConns:    5,
+			ConnMaxLifetime: 30 * time.Minute,
+		},
 	}
 }
 
@@ -297,6 +324,7 @@ func applyEnv(c *Config) error {
 		return err
 	}
 	applyGitEnv(&c.Git)
+	applyDBEnv(&c.DB)
 	return nil
 }
 
@@ -305,6 +333,25 @@ func applyGitEnv(g *GitConfig) {
 	if v := os.Getenv("JAMSESH_GIT_MAX_PACK_BYTES"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			g.MaxPackBytes = n
+		}
+	}
+}
+
+// applyDBEnv overlays database connection pool environment variables.
+func applyDBEnv(d *DBConfig) {
+	if v := os.Getenv("JAMSESH_DB_MAX_OPEN_CONNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			d.MaxOpenConns = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_DB_MAX_IDLE_CONNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			d.MaxIdleConns = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_DB_CONN_MAX_LIFETIME"); v != "" {
+		if dur, err := time.ParseDuration(v); err == nil {
+			d.ConnMaxLifetime = dur
 		}
 	}
 }

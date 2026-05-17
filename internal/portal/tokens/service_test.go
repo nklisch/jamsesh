@@ -23,7 +23,7 @@ func (f *fakeClock) advance(d time.Duration) { f.t = f.t.Add(d) }
 // openStore opens a fresh in-memory SQLite store with migrations applied.
 func openStore(t *testing.T) store.Store {
 	t.Helper()
-	s, err := db.Open(context.Background(), "sqlite", ":memory:")
+	s, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite :memory:: %v", err)
 	}

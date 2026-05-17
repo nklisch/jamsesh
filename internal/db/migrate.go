@@ -14,6 +14,12 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
+// jamseshMigrationLockKey is a stable pg_advisory_lock key used to serialise
+// concurrent migration runs (e.g. multiple pods starting in a rolling deploy).
+// The value 8675309 is arbitrary but fixed — changing it would break
+// interoperability between different binary versions during a deploy.
+const jamseshMigrationLockKey int64 = 8675309
+
 // sqliteMigrations embeds all SQLite migration SQL files.
 // Resolved relative to this file: internal/db/migrations/sqlite/
 //
@@ -87,4 +93,29 @@ func MigrateUp(ctx context.Context, db *sql.DB, dialect string) error {
 		}
 	}
 	return nil
+}
+
+// withMigrationLock acquires a Postgres session-level advisory lock keyed on
+// jamseshMigrationLockKey, calls fn, then releases the lock. It is used
+// during db.Open to serialise concurrent migration runs — e.g. when multiple
+// pods start simultaneously in a rolling deploy.
+//
+// The lock is session-level: if the process dies or the connection is dropped
+// mid-migration, Postgres releases the lock automatically so the next caller
+// can proceed. There is no risk of permanent lock starvation.
+//
+// db must be a *sql.DB whose underlying connections belong to the same Postgres
+// session. Using stdlib.OpenDBFromPool satisfies this constraint when the pool
+// has a single connection available for the migration path.
+func withMigrationLock(ctx context.Context, db *sql.DB, fn func() error) error {
+	if _, err := db.ExecContext(ctx,
+		"SELECT pg_advisory_lock($1)", jamseshMigrationLockKey,
+	); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	// Release on a fresh Background context so the unlock always fires even
+	// if ctx is already cancelled by the time fn returns.
+	defer db.ExecContext(context.Background(), //nolint:errcheck
+		"SELECT pg_advisory_unlock($1)", jamseshMigrationLockKey)
+	return fn()
 }

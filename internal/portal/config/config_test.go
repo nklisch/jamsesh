@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"jamsesh/internal/portal/config"
 )
@@ -47,6 +48,15 @@ func TestDefaults(t *testing.T) {
 	const wantMaxPack = int64(52428800)
 	if cfg.Git.MaxPackBytes != wantMaxPack {
 		t.Errorf("Git.MaxPackBytes: got %d, want %d", cfg.Git.MaxPackBytes, wantMaxPack)
+	}
+	if cfg.DB.MaxOpenConns != 25 {
+		t.Errorf("DB.MaxOpenConns: got %d, want 25", cfg.DB.MaxOpenConns)
+	}
+	if cfg.DB.MaxIdleConns != 5 {
+		t.Errorf("DB.MaxIdleConns: got %d, want 5", cfg.DB.MaxIdleConns)
+	}
+	if cfg.DB.ConnMaxLifetime != 30*time.Minute {
+		t.Errorf("DB.ConnMaxLifetime: got %v, want 30m", cfg.DB.ConnMaxLifetime)
 	}
 }
 
@@ -281,6 +291,73 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	}
 }
 
+// TestDBConfigDefaults verifies that DB pool defaults are applied when
+// neither a YAML key nor an env var is set.
+func TestDBConfigDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DB.MaxOpenConns != 25 {
+		t.Errorf("DB.MaxOpenConns default: got %d, want 25", cfg.DB.MaxOpenConns)
+	}
+	if cfg.DB.MaxIdleConns != 5 {
+		t.Errorf("DB.MaxIdleConns default: got %d, want 5", cfg.DB.MaxIdleConns)
+	}
+	if cfg.DB.ConnMaxLifetime != 30*time.Minute {
+		t.Errorf("DB.ConnMaxLifetime default: got %v, want 30m", cfg.DB.ConnMaxLifetime)
+	}
+}
+
+// TestDBConfigEnvOverride verifies that the three JAMSESH_DB_* pool env vars
+// override the defaults.
+func TestDBConfigEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DB_MAX_OPEN_CONNS", "50")
+	t.Setenv("JAMSESH_DB_MAX_IDLE_CONNS", "10")
+	t.Setenv("JAMSESH_DB_CONN_MAX_LIFETIME", "1h")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DB.MaxOpenConns != 50 {
+		t.Errorf("DB.MaxOpenConns: got %d, want 50", cfg.DB.MaxOpenConns)
+	}
+	if cfg.DB.MaxIdleConns != 10 {
+		t.Errorf("DB.MaxIdleConns: got %d, want 10", cfg.DB.MaxIdleConns)
+	}
+	if cfg.DB.ConnMaxLifetime != time.Hour {
+		t.Errorf("DB.ConnMaxLifetime: got %v, want 1h", cfg.DB.ConnMaxLifetime)
+	}
+}
+
+// TestDBConfigYAML verifies that the db.* YAML keys are parsed correctly.
+func TestDBConfigYAML(t *testing.T) {
+	clearEnv(t)
+	yaml := `
+db:
+  max_open_conns: 100
+  max_idle_conns: 20
+  conn_max_lifetime: 45m
+`
+	path := writeTempConfig(t, yaml)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DB.MaxOpenConns != 100 {
+		t.Errorf("DB.MaxOpenConns: got %d, want 100", cfg.DB.MaxOpenConns)
+	}
+	if cfg.DB.MaxIdleConns != 20 {
+		t.Errorf("DB.MaxIdleConns: got %d, want 20", cfg.DB.MaxIdleConns)
+	}
+	if cfg.DB.ConnMaxLifetime != 45*time.Minute {
+		t.Errorf("DB.ConnMaxLifetime: got %v, want 45m", cfg.DB.ConnMaxLifetime)
+	}
+}
+
 // clearEnv unsets all JAMSESH_ environment variables for test isolation.
 func clearEnv(t *testing.T) {
 	t.Helper()
@@ -291,6 +368,8 @@ func clearEnv(t *testing.T) {
 		"JAMSESH_GIT_MAX_PACK_BYTES",
 		"JAMSESH_OAUTH_GITHUB_CLIENT_ID", "JAMSESH_OAUTH_GITHUB_CLIENT_SECRET",
 		"JAMSESH_OAUTH_GITHUB_BASE_URL",
+		"JAMSESH_DB_MAX_OPEN_CONNS", "JAMSESH_DB_MAX_IDLE_CONNS",
+		"JAMSESH_DB_CONN_MAX_LIFETIME",
 	}
 	for _, v := range vars {
 		t.Setenv(v, "") // t.Setenv restores on cleanup; set to "" to clear
