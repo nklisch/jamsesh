@@ -1,7 +1,7 @@
 ---
 id: posttooluse-hook-over-stages-untracked-files
 kind: story
-stage: drafting
+stage: implementing
 tags: [infra, bug]
 parent: null
 depends_on: []
@@ -54,3 +54,11 @@ commit.
       it's documented and accepted as intentional behavior
 - [ ] A test (manual or scripted) confirms an Edit to file X followed by a
       commit only stages X, not any other untracked file
+
+## Autopilot note (2026-05-17)
+
+Advanced from `drafting → implementing` without a design pass. The body
+already lays out a bounded investigation path (read `.claude/settings.json`,
+look for broad `git add`) and concrete acceptance criteria; the design pass
+would just repeat what's here. Investigation + fix happen in one
+implementation pass.
