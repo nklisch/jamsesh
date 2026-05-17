@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-oauth
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -156,3 +156,31 @@ the distinction in v1.
 - `go test ./internal/portal/auth/... ./internal/portal/oauth/...`:
   PASS (45 tests, 0 failures across both packages).
 - `go build ./...`: PASS.
+
+## Review
+
+**Verdict: Approve.**
+
+Implementation matches design exactly. Single-site wrap in
+`OauthCallback` catches all transport/HTTP failure paths through
+`Provider.Exchange` (token exchange, `/user`, `/user/emails`, decode).
+Business 400 paths (`oauth.invalid_state`, `oauth.expired_state`,
+`oauth.provider_mismatch`, `oauth.unknown_provider`) untouched.
+`oauth.provider_not_configured` startup 503 untouched. Test pipeline
+now wires `httperr.WriteFromError` via `NewStrictHandlerWithOptions`,
+mirroring production in `cmd/portal/main.go`. Integration test asserts
+on status, content-type, `Retry-After`, and typed envelope code. Unit
+test guards `errors.Is(err, deperr.ErrOAuthProvider)` and message
+preservation. `go test ./internal/portal/auth/... ./internal/portal/oauth/...`
+passes.
+
+**Findings:** 0 blockers, 0 important, 0 nits.
+
+**Parked taxonomy gap:** the agent correctly parked
+`portal-oauth-provider-error-taxonomy` for the `bad_verification_code`
+misclassification — a real but mild gap (SPA shows "retry in 10s"
+instead of "start over"). Parking is the right call: scope of this
+story was explicitly transport/HTTP wrapping; the business-error branch
+needs its own design surface (provider-package sentinel, classify-then-
+wrap pattern, PROTOCOL.md addition). Backlog item is well-formed —
+clear idea, approach sketch, deferral rationale, promotion triggers.
