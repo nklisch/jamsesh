@@ -112,6 +112,21 @@ path as the first argument: `jamsesh-portal /etc/jamsesh/config.yaml`.
 | `JAMSESH_OAUTH_GITHUB_CLIENT_ID` | `oauth.github.client_id` | _(none)_ | GitHub OAuth application client ID |
 | `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET` | `oauth.github.client_secret` | _(none)_ | GitHub OAuth application client secret |
 | `JAMSESH_OAUTH_GITHUB_BASE_URL` | `oauth.github.base_url` | _(none)_ | Override GitHub OAuth base URL for testing; leave unset in production |
+| `JAMSESH_WS_ALLOW_ORIGINS` | _(env-only)_ | _(none)_ | Comma-separated list of allowed `Origin` headers for cross-origin WebSocket upgrades to `/ws/sessions/{sessionID}`. Empty (default) denies all cross-origin upgrades. |
+
+**On `JAMSESH_WS_ALLOW_ORIGINS`.** Same-origin connections (SPA and portal
+served from one host) need no entry — leave the var unset. Operators serving
+the SPA from a different origin than the portal (a CDN host, a separate
+subdomain, a Docker compose dev setup with the SPA on `localhost:5173` and
+the portal on `localhost:8443`) must list each accepted public origin
+exactly as the browser will send it. Examples:
+
+- `JAMSESH_WS_ALLOW_ORIGINS=https://app.example.com`
+- `JAMSESH_WS_ALLOW_ORIGINS=http://localhost:5173,https://app.example.com`
+
+Origins are compared verbatim (scheme + host + port). Wildcards are not
+supported. Trailing slashes are not part of an origin and must not be
+included.
 
 ### Example YAML config file
 

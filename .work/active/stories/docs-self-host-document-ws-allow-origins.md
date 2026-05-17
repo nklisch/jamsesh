@@ -1,7 +1,7 @@
 ---
 id: docs-self-host-document-ws-allow-origins
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, portal]
 parent: null
 depends_on: []
@@ -38,3 +38,20 @@ CDN or alternate hostname.
 Surfaced during review of `dev-docker-compose-setup` (commit `8d0e04e`).
 The dev story made the env var newly functional (wiring landed in
 `cmd/portal/main.go`); the operator-facing doc gap is now load-bearing.
+
+## Implementation notes
+
+Added one row to the config table in `docs/SELF_HOST.md` (between the
+`JAMSESH_OAUTH_GITHUB_BASE_URL` row and the YAML example) plus a
+short paragraph immediately below the table explaining the value
+pattern. The paragraph covers:
+
+- Same-origin deployments leave the var unset.
+- The exact format (scheme + host + port, verbatim, comma-separated).
+- Two concrete examples (single CDN host; localhost dev compose with
+  Vite + portal on separate ports).
+- The "no wildcards, no trailing slash" gotcha — operators commonly
+  trip on this when copy-pasting browser URLs into env files.
+
+YAML-key column is `_(env-only)_` to match the existing convention for
+env-only knobs.
