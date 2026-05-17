@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-ccdriver
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-module-skeleton]
@@ -95,3 +95,17 @@ Deviations from story body:
 Verification:
 - `cd tests/e2e && go test ./fixtures/ccdriver/... -v` → all six subtests PASS
 - `git diff go.mod` → empty (root module untouched)
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**:
+- `runHook` env construction omits `os.Environ()` — `cmd.Env` starts empty, so subprocess has no `PATH`, `HOME`, etc. Latent bug because the contract test doesn't invoke the binary; will block any golden-path test that drives `jamsesh hook user-prompt-submit` (which needs `git` on PATH). Filed as `ccdriver-subprocess-env-inheritance` in `.work/backlog/` — golden-path design will pick it up.
+
+**Nits**:
+- Frozen JSON files lack trailing newlines (`\ No newline at end of file` per git diff). Cosmetic; tools usually add them, but the contract test compares exact bytes either way.
+- `runHook` doesn't capture stderr separately — on subprocess failure, the caller gets `*exec.ExitError` but no stderr text for debugging. `cmd.Output()` only returns stdout. Consider `cmd.CombinedOutput()` or a dedicated `cmd.Stderr = &buf` for diagnosability.
+
+**Notes**: The driver surface is minimal and symmetric — six methods, six payload types, six frozen JSON files. The `-update` flag pattern on the contract test is idiomatic Go for golden-file tests. Generic `runHook[I, O any]` deduplicates the boilerplate cleanly.

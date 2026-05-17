@@ -1,0 +1,69 @@
+---
+id: ccdriver-subprocess-env-inheritance
+kind: story
+stage: drafting
+tags: [e2e-test, testing, bug]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-17
+updated: 2026-05-17
+---
+
+# ccdriver `runHook` doesn't inherit host environment
+
+## Finding
+
+`tests/e2e/fixtures/ccdriver/driver.go > runHook` constructs the
+subprocess environment from scratch:
+
+```go
+cmd.Env = append(append([]string{}, d.ExtraEnv...), "CLAUDE_PLUGIN_DATA="+d.DataDir)
+```
+
+This does NOT pass `os.Environ()` through, so the subprocess starts
+with only `ExtraEnv + CLAUDE_PLUGIN_DATA` — no `PATH`, `HOME`,
+`TMPDIR`, etc.
+
+## Why it matters
+
+The contract test (`tests/e2e/fixtures/ccdriver/contract_test.go`)
+doesn't invoke the subprocess, so the bug is latent. But the
+`jamsesh hook user-prompt-submit` subcommand runs `git fetch`,
+which requires `git` to be on `PATH`. The `hook stop` subcommand
+runs `git commit` and `git push`. Without `PATH`, every hook that
+shells out to git will fail.
+
+Discovered during review of
+`epic-e2e-tests-infrastructure-ccdriver` — the story explicitly
+scoped out real subprocess invocation, deferring integration to the
+golden-path feature. This bug will land in any golden-path test
+that drives the binary through ccdriver.
+
+## Suggested fix
+
+```go
+cmd.Env = append(os.Environ(), d.ExtraEnv...)
+cmd.Env = append(cmd.Env, "CLAUDE_PLUGIN_DATA="+d.DataDir)
+```
+
+Or, more conservatively, allow callers to opt in via an
+`InheritHostEnv bool` field on `Driver` (defaulting true).
+
+## Acceptance criteria
+
+- [ ] Subprocess started via `runHook` has access to `PATH`, `HOME`,
+      and other normal host environment variables
+- [ ] `ExtraEnv` and `CLAUDE_PLUGIN_DATA` continue to take precedence
+      over inherited values (so tests can still override)
+- [ ] A test invokes a real `jamsesh hook` subcommand (e.g.,
+      `session-end`, which has minimal external deps) and verifies
+      the subprocess can find `git` if it tries to call it
+
+## Notes
+
+This will likely be picked up by the `golden-path` feature's design
+pass (the first feature that integrates ccdriver with the real
+binary) — depend on it explicitly from any golden-path story that
+drives the binary. The fix is small (3 lines + a test).
