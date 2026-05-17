@@ -88,8 +88,55 @@ describe('auth store', () => {
     expect(auth.currentUser).toBeNull();
   });
 
-  test('loadCurrentUser is a no-op and resolves without error', async () => {
+  test('loadCurrentUser populates currentUser on success', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'user-123',
+          email: 'ada@example.com',
+          display_name: 'Ada Lovelace',
+          orgs: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    await auth.loadCurrentUser();
+
+    expect(auth.currentUser).toEqual({
+      id: 'user-123',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+    });
+  });
+
+  test('loadCurrentUser resolves without throwing on network failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('Network error'));
+
     const { auth } = await import('$lib/auth.svelte');
     await expect(auth.loadCurrentUser()).resolves.toBeUndefined();
+    expect(auth.currentUser).toBeNull();
+  });
+
+  test('loadCurrentUser calls GET /api/me', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'user-456',
+          email: 'charles@example.com',
+          display_name: 'Charles Babbage',
+          orgs: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    await auth.loadCurrentUser();
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const calledUrl = (fetchSpy.mock.calls[0][0] as Request).url;
+    expect(calledUrl).toContain('/api/me');
   });
 });

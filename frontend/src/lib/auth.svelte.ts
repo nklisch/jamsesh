@@ -5,6 +5,7 @@
 // accessors that close over the private rune variables instead.
 
 import { navigate } from '$lib/router.svelte';
+import { client } from '$lib/api/client';
 
 const TOKEN_KEY = 'jamsesh.token';
 const REFRESH_KEY = 'jamsesh.refresh';
@@ -48,9 +49,18 @@ export const auth = {
   },
 
   async loadCurrentUser(): Promise<void> {
-    // TODO: call GET /api/me once epic-portal-foundation-accounts ships.
-    // Once paths has an entry for /api/me, this becomes:
-    //   const { data } = await client.GET('/api/me');
-    //   if (data) _currentUser = data;
+    try {
+      const { data } = await client.GET('/api/me');
+      if (data) {
+        _currentUser = {
+          id: data.id,
+          email: data.email,
+          displayName: data.display_name,
+        };
+      }
+    } catch {
+      // Network/parse failure — leave _currentUser as-is.
+      // The UI handles the null state.
+    }
   },
 };
