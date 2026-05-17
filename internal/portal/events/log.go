@@ -16,6 +16,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/metrics"
 )
 
 // Event is a domain-level event row returned by ListSince.
@@ -47,6 +48,7 @@ type subscriberRec struct {
 // components.
 type Log struct {
 	s      store.Store
+	metrics *metrics.Registry // optional; nil disables metric recording
 	muSubs sync.RWMutex
 	subs   []*subscriberRec
 }
@@ -55,6 +57,13 @@ type Log struct {
 // EventLogStore and PresenceStore (satisfied by both dialect adapters).
 func New(s store.Store) *Log {
 	return &Log{s: s}
+}
+
+// WithMetrics attaches a metrics Registry to the Log so that every emitted
+// event increments EventLogEmitTotal. Returns the same *Log for chaining.
+func (l *Log) WithMetrics(reg *metrics.Registry) *Log {
+	l.metrics = reg
+	return l
 }
 
 // Subscribe returns a receive-only channel that will receive events emitted
@@ -158,6 +167,9 @@ func (l *Log) Emit(ctx context.Context, orgID, sessionID, eventType string, payl
 		Payload:   payload,
 		CreatedAt: emittedAt,
 	})
+	if l.metrics != nil {
+		l.metrics.EventLogEmitTotal.Inc()
+	}
 	return seq, nil
 }
 
@@ -218,6 +230,9 @@ func (l *Log) EmitBatch(ctx context.Context, orgID, sessionID string, drafts []D
 			Payload:   draft.Payload,
 			CreatedAt: now,
 		})
+	}
+	if l.metrics != nil {
+		l.metrics.EventLogEmitTotal.Add(float64(len(drafts)))
 	}
 	return firstSeq, nil
 }

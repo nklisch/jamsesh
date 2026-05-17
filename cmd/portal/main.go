@@ -38,6 +38,7 @@ import (
 	"jamsesh/internal/portal/githttp"
 	"jamsesh/internal/portal/logging"
 	"jamsesh/internal/portal/mcpendpoint"
+	"jamsesh/internal/portal/metrics"
 	portaloauth "jamsesh/internal/portal/oauth"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
@@ -217,6 +218,10 @@ func main() {
 	// Wire the default slog logger now that we have log config.
 	logging.Setup(cfg.Log.Format, cfg.Log.Level)
 
+	// Build the Prometheus metrics registry. Constructed early so it can be
+	// threaded into all subsystems before they start.
+	metricsReg := metrics.New()
+
 	slog.Info("portal starting",
 		"bind", cfg.Bind,
 		"tls_mode", cfg.TLS.Mode,
@@ -230,8 +235,14 @@ func main() {
 		os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Open the database and run migrations.
-	dbStore, err := db.Open(ctx, cfg.DBDriver, cfg.DBDSN)
+	// Open the database and run migrations. Translate config.DBConfig into
+	// db.PoolConfig at the call site to avoid an import cycle (internal/db
+	// must not import internal/portal/config).
+	dbStore, err := db.Open(ctx, cfg.DBDriver, cfg.DBDSN, db.PoolConfig{
+		MaxOpenConns:    cfg.DB.MaxOpenConns,
+		MaxIdleConns:    cfg.DB.MaxIdleConns,
+		ConnMaxLifetime: cfg.DB.ConnMaxLifetime,
+	})
 	if err != nil {
 		slog.Error("database open failed", "err", err)
 		os.Exit(1)
@@ -275,7 +286,7 @@ func main() {
 
 	// Build the storage service and git HTTP handler (needed before sessions).
 	storageSvc := storage.New(cfg.Storage, dbStore)
-	eventLog := events.New(dbStore)
+	eventLog := events.New(dbStore).WithMetrics(metricsReg)
 
 	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
 	sessionsHandler := sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
@@ -302,12 +313,14 @@ func main() {
 	// events and runs merge + apply in per-session goroutines.
 	portalHost := cfg.PortalURL
 	mergerApplier := automerger.NewApplier(dbStore, eventLog)
+	mergerApplier.Metrics = metricsReg
 	mergerWorker := &automerger.Worker{
 		Store:      dbStore,
 		Storage:    storageSvc,
 		Log:        eventLog,
 		Applier:    mergerApplier,
 		PortalHost: portalHost,
+		Metrics:    metricsReg,
 	}
 	if err := mergerWorker.Start(ctx); err != nil {
 		slog.Error("auto-merger worker start failed", "err", err)
@@ -360,6 +373,7 @@ func main() {
 			MaxPackBytes: cfg.Git.MaxPackBytes,
 		},
 		Emitter: &postreceive.Emitter{Log: eventLog},
+		Metrics: metricsReg,
 	}
 
 	// Wire the embedded SPA handler. assets.Handler() returns a handler that
@@ -383,6 +397,8 @@ func main() {
 		MountGit:          gitHandler.Mount,
 		MountMCP:          mcpEndpoint.Handler(),
 		MountWS:           wsGateway.Handler(),
+		MetricsHandler:    metricsReg.Handler(),
+		MetricsRegistry:   metricsReg,
 		ReadyzChecks: []probes.Check{
 			{
 				Name: "db",

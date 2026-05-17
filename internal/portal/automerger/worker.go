@@ -15,6 +15,7 @@ import (
 	openapi "jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/portal/storage"
 )
 
@@ -32,6 +33,9 @@ type Worker struct {
 	PortalHost  string
 	IdleTimeout time.Duration // default 30s when zero
 	QueueSize   int           // default 256 when zero
+	// Metrics is optional; when non-nil, backpressure events increment
+	// AutoMergerOutcomes{outcome="backpressure"}.
+	Metrics *metrics.Registry
 
 	// internal state — populated by Start
 	queues  sync.Map  // sessionID -> chan events.Event
@@ -350,5 +354,8 @@ func (w *Worker) emitBackpressure(ctx context.Context, e events.Event) {
 			"session_id", e.SessionID,
 			"err", err,
 		)
+	}
+	if w.Metrics != nil {
+		w.Metrics.AutoMergerOutcomes.WithLabelValues("backpressure").Inc()
 	}
 }

@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-metrics
 kind: story
-stage: implementing
+stage: review
 tags: [infra, portal]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: []
@@ -84,3 +84,61 @@ Initial portal-specific metrics:
 - [ ] `/metrics` endpoint requires no authentication.
 - [ ] Unit tests cover: handler returns valid exposition format,
   counter increment after fake request, route-pattern label assertion.
+
+## Implementation notes
+
+### What landed
+
+**New package** `internal/portal/metrics/` (`metrics.go` + `metrics_test.go`):
+- `Registry` struct with typed handles: `HTTPRequestsTotal`, `HTTPRequestDuration`,
+  `GitPushesTotal`, `AutoMergerOutcomes`, `EventLogEmitTotal`.
+- Isolated `*prometheus.Registry` (not the global default) with `GoCollector` and
+  `ProcessCollector` for standard runtime/process metrics.
+- `Handler()` returns a `promhttp.HandlerFor(r.reg, ...)` — unauthenticated by design.
+- Histogram buckets: `ExponentialBuckets(0.005, 2, 12)` → 5ms to ~10s.
+
+**Router** (`internal/portal/router/router.go`):
+- Added `MetricsHandler http.Handler` and `MetricsRegistry *metrics.Registry` to `Deps`.
+- Mounts `/metrics` after `/readyz` (unauthenticated, nil-guarded).
+- Changed `r.Use(logging.Access)` → `r.Use(logging.Access(d.MetricsRegistry))`.
+
+**Logging middleware** (`internal/portal/logging/logging.go`):
+- `Access` is now a constructor `func Access(reg *metrics.Registry) func(next http.Handler) http.Handler`.
+- Extracts chi route pattern via `chi.RouteContext(r.Context()).RoutePattern()` AFTER
+  `next.ServeHTTP` returns (pattern fully resolved post-routing). Falls back to
+  sentinel `"unknown"` when RouteContext is nil or pattern is empty.
+- Increments `HTTPRequestsTotal` and observes `HTTPRequestDuration` when `reg != nil`.
+- Existing tests updated: `logging.Access(inner)` → `logging.Access(nil)(inner)`.
+
+**Event log** (`internal/portal/events/log.go`):
+- Added optional `metrics *metrics.Registry` field + `WithMetrics(reg) *Log` chaining method.
+- `Emit` increments `EventLogEmitTotal` by 1 after successful DB commit.
+- `EmitBatch` increments `EventLogEmitTotal` by `len(drafts)` after successful DB commit.
+
+**Git HTTP handler** (`internal/portal/githttp/handler.go`, `receive_pack.go`):
+- Added `Metrics *metrics.Registry` field to `Handler`.
+- Increments `GitPushesTotal{result="rejected"}` on pre-receive rejection.
+- Increments `GitPushesTotal{result="ok"}` after subprocess exits 0 and post-receive events emit.
+
+**Auto-merger** (`internal/portal/automerger/outcomes.go`, `worker.go`):
+- Added `Metrics *metrics.Registry` to both `Applier` and `Worker`.
+- `applySuccess` increments `AutoMergerOutcomes{outcome="succeeded"}`.
+- `applyConflict` increments `AutoMergerOutcomes{outcome="conflict"}`.
+- `emitBackpressure` (Worker) increments `AutoMergerOutcomes{outcome="backpressure"}`.
+
+**Main wiring** (`cmd/portal/main.go`):
+- Constructs `metricsReg := metrics.New()` after logging setup.
+- Threads to: `eventLog.WithMetrics(metricsReg)`, `gitHandler.Metrics`, `mergerApplier.Metrics`,
+  `mergerWorker.Metrics`, `router.Deps.MetricsHandler`, `router.Deps.MetricsRegistry`.
+
+### Test results
+
+9/9 metrics tests pass (`TestHandlerReturnsPrometheusFormat`, `TestStandardGoRuntimeMetricsPresent`,
+`TestHTTPRequestsCounterIncrements`, `TestHTTPRequestDurationHistogramEmits`,
+`TestRoutePatternLabelUsesChiPattern`, `TestGitPushesTotalIncrements`,
+`TestAutoMergerOutcomesIncrements`, `TestEventLogEmitTotalIncrements`,
+`TestMetricsHandlerRequiresNoAuthentication`).
+
+Router and logging tests unaffected. Pre-existing `db.Open` signature failures
+in many test packages are a wave-level issue from a parallel story; they existed
+before this story and are not caused by these changes.

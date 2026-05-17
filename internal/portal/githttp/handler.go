@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/storage"
@@ -22,6 +23,9 @@ type Handler struct {
 	Storage   storage.Service
 	Validator *prereceive.Validator
 	Emitter   *postreceive.Emitter
+	// Metrics is optional; when non-nil, git push outcomes increment
+	// GitPushesTotal with result labels "ok" or "rejected".
+	Metrics *metrics.Registry
 }
 
 // Mount registers the smart-HTTP routes relative to the base path the caller

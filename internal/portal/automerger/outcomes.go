@@ -16,6 +16,7 @@ import (
 	openapi "jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/portal/prereceive"
 )
 
@@ -25,8 +26,11 @@ import (
 //
 // Construct once per worker lifetime via [NewApplier] and share it.
 type Applier struct {
-	Store store.Store
-	Log   *events.Log
+	Store   store.Store
+	Log     *events.Log
+	// Metrics is optional; when non-nil, auto-merger outcomes increment
+	// AutoMergerOutcomes with outcome labels "succeeded", "conflict", or "backpressure".
+	Metrics *metrics.Registry
 }
 
 // NewApplier returns an Applier backed by the given store and event log.
@@ -147,6 +151,9 @@ func (a *Applier) applySuccess(ctx context.Context, in ApplyInput) (ApplyOutput,
 		}
 	}
 
+	if a.Metrics != nil {
+		a.Metrics.AutoMergerOutcomes.WithLabelValues("succeeded").Inc()
+	}
 	return ApplyOutput{MergeCommitSHA: mergeSHA.String()}, nil
 }
 
@@ -319,5 +326,8 @@ func (a *Applier) applyConflict(ctx context.Context, in ApplyInput) (ApplyOutput
 		return ApplyOutput{}, fmt.Errorf("automerger apply: re-fetch conflict event: %w", err)
 	}
 
+	if a.Metrics != nil {
+		a.Metrics.AutoMergerOutcomes.WithLabelValues("conflict").Inc()
+	}
 	return ApplyOutput{ConflictEvent: &ev}, nil
 }

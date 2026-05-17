@@ -113,6 +113,9 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		// Pre-receive rejected: synthesise the report-status response so the
 		// git client displays the rejection messages inline.
 		writeReportStatusRejection(w, updates, result.Rejections)
+		if h.Metrics != nil {
+			h.Metrics.GitPushesTotal.WithLabelValues("rejected").Inc()
+		}
 		return
 	}
 
@@ -209,6 +212,12 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 			slog.ErrorContext(r.Context(), "receive-pack: post-receive emit",
 				"err", emitErr, "org", orgID, "session", sessionID)
 		}
+	}
+
+	// Record successful push outcome. This runs after the subprocess exits 0 and
+	// post-receive events are dispatched, so it reflects end-to-end success.
+	if h.Metrics != nil {
+		h.Metrics.GitPushesTotal.WithLabelValues("ok").Inc()
 	}
 }
 

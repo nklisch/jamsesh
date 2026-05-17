@@ -41,7 +41,7 @@ func TestAccessMiddlewareCapturesStatus(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test/path", nil)
 
-	logging.Access(inner).ServeHTTP(w, r)
+	logging.Access(nil)(inner).ServeHTTP(w, r)
 
 	// The inner handler wrote 201.
 	if w.Code != http.StatusCreated {
@@ -96,7 +96,7 @@ func TestAccessMiddlewareDefaultStatus(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 
-	logging.Access(inner).ServeHTTP(w, r)
+	logging.Access(nil)(inner).ServeHTTP(w, r)
 
 	line := strings.TrimSpace(buf.String())
 	var entry map[string]any
@@ -124,7 +124,7 @@ func TestAccessMiddlewareDurationAndBytes(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	logging.Access(inner).ServeHTTP(w, r)
+	logging.Access(nil)(inner).ServeHTTP(w, r)
 
 	line := strings.TrimSpace(buf.String())
 	var entry map[string]any
