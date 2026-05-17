@@ -62,3 +62,11 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	s.bytes += n
 	return n, err
 }
+
+// Unwrap returns the underlying http.ResponseWriter. This is required by
+// coder/websocket (and the standard net/http ResponseController) to find
+// http.Hijacker through the middleware chain. Without Unwrap, WebSocket
+// upgrade attempts fail with "does not implement http.Hijacker".
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}

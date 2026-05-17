@@ -153,6 +153,9 @@ func buildEnv(opts Options) map[string]string {
 		"JAMSESH_DB_DRIVER": driver,
 		"JAMSESH_DB_DSN":    dsn,
 		"JAMSESH_EMAIL_FROM": opts.EmailFrom,
+		// Use /tmp for git bare-repo storage so the portal can write repos
+		// regardless of the container user (nobody:nogroup on debian-based images).
+		"JAMSESH_STORAGE": "/tmp/jamsesh-repos",
 	}
 
 	if opts.SMTPHost != "" {

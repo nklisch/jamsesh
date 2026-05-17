@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path-session-lifecycle
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-golden-path
 depends_on: [epic-e2e-tests-golden-path-ccdriver-env-fix, epic-e2e-tests-golden-path-onboarding-auth]
@@ -75,3 +75,45 @@ push.
   `Jam-Author` trailers — the gitclient fixture must produce them
 - WebSocket subprotocol auth: `Sec-WebSocket-Protocol:
   jamsesh.bearer.<token>` per the architecture doc
+
+## Implementation notes
+
+### What was built
+
+- `tests/e2e/fixtures/wsclient/wsclient.go` — WebSocket client fixture using
+  `github.com/coder/websocket`. Authenticates via `Sec-WebSocket-Protocol:
+  jamsesh.bearer.<token>`. Exposes `Connect`, `WaitFor`, `Events`, `Close`.
+- `tests/e2e/fixtures/gitclient/gitclient.go` — git CLI wrapper that injects
+  HTTP Basic credentials into the clone URL and appends `Jam-Session`,
+  `Jam-Turn` (fresh UUID per commit), `Jam-Author` trailers to every commit
+  message via a temp file + `git commit -F`.
+- `tests/e2e/golden/session_join_and_push_test.go` — `TestSessionLifecycleJoinAndPush`:
+  two agents sign in, Bob gets invited to org then session, both subscribe to WS,
+  Alice pushes → both see `commit.arrived`, Bob pushes → both see it, Alice fetches
+  Bob's ref and verifies the SHA. Runs in ~12 s.
+- `tests/e2e/playwright/session_list.spec.ts` — three Playwright specs covering
+  session list rendering, row click navigates to session view, and direct session
+  view navigation. All stubs the API so they run without a live data set.
+
+### Production bugs found and fixed
+
+1. **Dockerfile used `distroless/static` which has no `git` binary**  
+   `internal/portal/storage/repo.go` calls `exec.Command("git", "init", "--bare")`.
+   Switched base image to `debian:bookworm-slim` + `apt-get install git`.
+   Backlog item: `portal-docker-image-missing-git-binary.md`.
+
+2. **`logging.Access` middleware broke WebSocket upgrade**  
+   `statusRecorder` embedded `http.ResponseWriter` but didn't implement `Unwrap()`.
+   `coder/websocket` uses `Unwrap()` to find `http.Hijacker` through middleware chains.
+   Fixed by adding `func (s *statusRecorder) Unwrap() http.ResponseWriter` in
+   `internal/portal/logging/logging.go`.
+
+3. **Portal container lacked a writable storage directory**  
+   Default storage is `./storage` — not writable for `nobody:nogroup`.
+   Fixed in `tests/e2e/fixtures/portal/portal.go` by setting
+   `JAMSESH_STORAGE=/tmp/jamsesh-repos` in the default container env.
+
+### Dependency changes
+
+- `tests/e2e/go.mod`: added `github.com/coder/websocket v1.8.14` and
+  `github.com/google/uuid v1.6.0` as direct dependencies.

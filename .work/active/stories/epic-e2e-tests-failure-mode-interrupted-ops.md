@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-failure-mode-interrupted-ops
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-failure-mode
 depends_on: [epic-e2e-tests-failure-mode-rest-validation]
@@ -76,10 +76,58 @@ magic-link TTLs, and WebSocket connections.
 
 ## Subtest checklist
 
-- [ ] Push timeout → retry succeeds or fails cleanly with documented
+- [x] Push timeout → retry succeeds or fails cleanly with documented
       error
-- [ ] Finalize lock TTL → reclaimable by another caller after expiry
+- [x] Finalize lock TTL → reclaimable by another caller after expiry
+      (via explicit release, not TTL — see Implementation notes)
 - [ ] Magic-link 16min skip → exchange returns 401 `auth.expired_token`
-      (skip under `-short`)
-- [ ] WS drop → reconnect replays missed events (defer if
-      session-lifecycle not landed)
+      (skipped — see Implementation notes)
+- [ ] WS drop → reconnect replays missed events (skipped — see
+      Implementation notes)
+
+## Implementation notes
+
+### Production bug found and fixed
+
+`sessions.status` CHECK constraint in the Postgres (and SQLite)
+migrations was missing `'finalizing'`. The initial migration
+(`00001_initial.sql`) only allowed `('active','ended','archived')`, but
+`AcquireFinalizeLock` sets status to `'finalizing'`. Migration 10 added
+the `finalize_locks` table but did not widen the constraint. Fixed by
+adding migration `00012_sessions_finalizing_status` to both Postgres and
+SQLite.
+
+### Docker image change
+
+The portal e2e Docker image was built from `gcr.io/distroless/static:nonroot`
+which has no `git` binary. `CreateSession` calls `git init --bare`
+internally and failed with `exec: "git": executable file not found in $PATH`.
+Added `Dockerfile.e2e` (Alpine + git) and updated the `test-portal-image`
+Makefile target to use it. Production `Dockerfile` is unchanged.
+
+### Push interruption (push_interrupted_mid_pack)
+
+Implemented with a 100ms context deadline on a POST to
+`/git/{orgID}/{sessionID}.git/git-receive-pack`. The server responded
+with 400 (bad/empty pack body) before the deadline fired in both runs.
+The invariant asserted is: no 5xx after interruption AND `GET /healthz`
+succeeds, confirming the server is still responsive.
+
+### Finalize lock lifecycle (finalize_lock_release_and_reacquire)
+
+Implemented as acquire → 409 from second caller → explicit release →
+reacquire by second caller. The 30-minute idle-TTL path is not tested
+because it requires clock injection. Backlog item
+`portal-test-clock-advance-endpoint` covers that.
+
+### Magic-link TTL expiry (magic_link_ttl_expiry)
+
+Skipped. Requires clock advancement by 15+ minutes. Backlog item
+`portal-test-clock-advance-endpoint` filed.
+
+### WS drop + reconnect (ws_reconnect_after_drop)
+
+Skipped. `tests/e2e/fixtures/wsclient/wsclient.go` exists but does not
+expose cursor-based reconnect. The portal's WS gateway supports
+`replay_from` in the first frame; un-skipping requires adding a
+`ConnectFromSeq` (or similar) helper to the wsclient fixture.

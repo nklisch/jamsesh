@@ -57,13 +57,14 @@ test-e2e-playwright:
 test-e2e: test-e2e-go test-e2e-playwright
 
 # test-portal-image: build the portal Docker image used by e2e Testcontainers
-# fixtures. Reuses the project's existing Dockerfile (distroless-static) which
-# expects ${BINARY}-${TARGETOS}-${TARGETARCH}. Builds a static linux/amd64
-# binary (CGO_ENABLED=0) to satisfy distroless-static's no-libc constraint,
-# then removes the intermediate file after docker build.
+# fixtures. Uses Dockerfile.e2e (alpine + git) instead of the production
+# distroless image so that e2e tests that exercise git smart-HTTP (session
+# creation, push, fetch) can run inside the container. The binary is still
+# built with CGO_ENABLED=0 for a fully static executable compatible with
+# Alpine's musl libc.
 test-portal-image: frontend-build
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o portal-linux-amd64 ./cmd/portal
-	docker build --build-arg BINARY=portal --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 -t jamsesh/portal:e2e .
+	docker build -f Dockerfile.e2e --build-arg BINARY=portal --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 -t jamsesh/portal:e2e .
 	@rm -f portal-linux-amd64
 
 # test-portal-image-clean: remove the e2e portal image tag.
