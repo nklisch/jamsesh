@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync-backend
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy-object-storage-sync
 depends_on: []
@@ -107,3 +107,25 @@ Implemented in wave 1 as specified. Key decisions:
   - [x] `List` yields all keys under prefix; callback error stops iteration
   - [x] Integration tests gated on `JAMSESH_TEST_S3_*` env vars; skip cleanly
   - [x] Tests structured for MinIO via env-var gate
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- testcontainers `JAMSESH_TEST_S3_USE_CONTAINER=true` path stubs to skip rather than actually running MinIO. The story body documents this as a follow-on; either implement properly or remove the env var to avoid misleading operators. Low priority.
+- 15 tests gated behind `JAMSESH_TEST_S3_*` env vars; CI won't exercise them automatically. Worth wiring into the e2e workflow as a future addition.
+
+**Notes**: Clean implementation. Backend interface has thorough doc comments explaining fencing-token semantics, conditional-write contract, and the distinction between `Put` (mutable, conditional) and `PutIdempotent` (content-addressed, idempotent). Error mapping is defensive: typed S3 errors (`*s3types.NoSuchKey`, `*s3types.NotFound`) checked first via `errors.As`; falls through to smithy `APIError.ErrorCode()` for cross-provider compat (R2/B2 return PreconditionFailed differently). The `ConditionNotMet` fallback handles another provider quirk.
+
+ETag normalization via `stripEtag` helper (AWS wraps in double-quotes; some providers don't) is correctly symmetric between Put and Get — round-trip is transparent to callers. KeyPrefix handling via `fullKey`/`logicalKey` lets the URL path component become a key prefix transparent to higher layers.
+
+`PutIdempotent` uses GET-for-content-compare (not HEAD, since HEAD doesn't return body) — small extra cost on the conflict path but correct semantics. `bytes.Equal` is the right primitive.
+
+Dependencies (~12MB binary growth from aws-sdk-go-v2 subpackages) match the parent feature design's estimate. Subpackages pinned individually rather than the whole SDK.
+
+Credential strategy follows AWS SDK default chain (env, ~/.aws/credentials, IRSA, IMDS) — operators control via standard AWS conventions.
+
+Test coverage at 509 lines vs 448 code lines — solid ratio. All 11 acceptance-criteria scenarios covered.
