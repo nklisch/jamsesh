@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage-provisioning-and-state
 kind: story
-stage: review
+stage: done
 tags: [testing, testability, portal]
 parent: portal-test-clock-broaden-coverage
 depends_on: []
@@ -408,3 +408,67 @@ if c := testClk.accountsClock(); c != nil {
       Coordination notes.)
 - [x] Unit tests for `accounts/handlers.go`, `accounts/orgs.go`,
       `auth/provision.go`, and `oauth/state.go` pass.
+
+## Review
+
+**Verdict:** Approve.
+
+**Reviewed commit:** `fc05cff`.
+
+### Spec compliance
+
+All 5 clock-injection sites land exactly as designed:
+
+1. `accounts.CreateOrg` — `h.clock.Now()` at handlers.go:106.
+2. `accounts.CreateOrgInvite` — `h.clock.Now()` at orgs.go:63.
+3. `accounts.AcceptOrgInvite` — `h.clock.Now()` at orgs.go:138 (TTL gate).
+4. `auth.FindOrProvisionAt(ctx, s, id, now)` added; `FindOrProvision`
+   preserved as back-compat delegate calling
+   `FindOrProvisionAt(..., time.Now().UTC())`. `createAccountAndOrg`
+   now takes `now time.Time`; internal `time.Now()` dropped.
+5. `oauth.StoreStateAt(..., now)` added; `StoreState` preserved as
+   back-compat delegate. Chose Option A (additive) per spec
+   recommendation.
+
+`magic_link.go` `ExchangeMagicLink` now calls `FindOrProvisionAt(...,
+now)`, reusing the same instant as token-consume.
+
+### Constructor + wiring
+
+- `accounts.NewWithClock(s, sender, portalURL, clock)` exposed; old
+  `accounts.New(...)` preserved as a `NewWithClock(..., realClock{})`
+  delegate.
+- `cmd/portal/main.go` branches on `testClk.accountsClock()` —
+  e2etest returns `p.clock`, prod returns typed nil. Pattern mirrors
+  the v1 magic-link/tokens wiring exactly.
+- `accountsClock()` accessor added to both
+  `test_clock_advance.go` and `test_clock_advance_prod.go`. Both
+  files now import `jamsesh/internal/portal/accounts`.
+
+### Deferred caller (auth/oauth.go)
+
+Confirmed `auth/oauth.go` is unmodified by fc05cff. Its two call sites
+(`StoreState` at line 76, `FindOrProvision` at line 159) hit the new
+back-compat wrappers and the file compiles unchanged. The follow-on
+to wire `OAuthHandler.NewWithClock` is mechanical once
+`portal-oauth-provider-error-taxonomy` unlocks the file.
+
+### Validation
+
+- `go build ./...` — clean.
+- `go build -tags e2etest ./...` — clean.
+- `go vet ./internal/portal/...` — clean.
+- `go test -count=1 ./internal/portal/accounts/... ./internal/portal/auth/...
+  ./internal/portal/oauth/...` — all pass.
+- `go test -run TestProductionBuild_HasNoTestEndpoint ./cmd/portal/...`
+  — pass (production binary still has no test endpoint).
+
+### Findings
+
+- Blockers: 0.
+- Important: 0.
+- Nits: 0.
+
+Coordination notes in implementation section (sibling story rebase
+turbulence) no longer apply — the repo builds clean end-to-end at this
+commit.
