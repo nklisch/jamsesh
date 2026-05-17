@@ -1,7 +1,7 @@
 ---
 id: portal-test-ws-allow-origins-env-parsing
 kind: story
-stage: review
+stage: done
 tags: [testing, portal]
 parent: null
 depends_on: []
@@ -55,3 +55,17 @@ spotted during writing:
 - leading comma before a single entry
 
 10 test cases total. `go test ./cmd/portal/...` is green.
+
+## Review findings — nits
+
+- `parseAllowOrigins` doc comment is unusually thorough for a 12-line helper
+  (mentions the nil-vs-empty distinction is "purely for clarity at call
+  sites"). Fine as-is; if anything, it's a model for other helpers.
+- Test case names are descriptive and the table-driven layout is clean.
+  No changes requested.
+
+Approve. Acceptance criteria satisfied: all six story-listed cases plus
+four edge cases covered; `parseAllowOrigins` cleanly extracted with
+sensible signature and doc; original inline behavior preserved
+(empty → nil, trim, drop empty/blank); `strings` import removal from
+`main.go` correct; `go test ./cmd/portal/...` green.
