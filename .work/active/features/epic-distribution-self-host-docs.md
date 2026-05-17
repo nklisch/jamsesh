@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-self-host-docs
 kind: feature
-stage: implementing
+stage: review
 tags: [infra]
 parent: epic-distribution
 depends_on: []
@@ -387,3 +387,23 @@ jobs:
   future release" markers in each section that's currently
   speculative. The gate-docs skill removes the markers when the
   features ship.
+
+## Implementation summary
+
+Both child stories advanced to `stage: review`:
+
+| Story | Status | Notes |
+|---|---|---|
+| `self-host-docs-readme-and-self-host` | review | README.md + docs/SELF_HOST.md (all 11 sections) + LICENSE (Apache 2.0). Configuration table values match `internal/portal/config/config.go` defaults exactly |
+| `self-host-docs-quickstart-ci` | review | `.github/workflows/quickstart.yml` PR-triggered, builds portal locally, hits /healthz, exercises graceful shutdown |
+
+### Cross-cutting deviations
+- README quickstart references `ghcr.io/<owner>/jamsesh:latest` — `<owner>` left as literal placeholder pending final repo URL (triage item)
+- Quickstart workflow uses `go-version-file: go.mod` rather than a hardcoded version pin (mirrors release.yml approach)
+- "Common setup issues" subsection added to Troubleshooting beyond the original outline (additive improvement; clearly within doc scope)
+
+### Verification
+- README.md / SELF_HOST.md / LICENSE present and well-formed
+- `actionlint .github/workflows/quickstart.yml` clean
+- Local simulation of quickstart-ci: portal starts, /healthz returns `{"status":"ok"}`, SIGTERM exits cleanly
+- Configuration table cross-checked against `internal/portal/config/config.go:defaults()` — all 9 entries match
