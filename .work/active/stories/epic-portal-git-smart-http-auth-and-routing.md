@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-smart-http-auth-and-routing
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-git-smart-http
 depends_on: []
@@ -54,3 +54,9 @@ Build the `Handler` struct + route mount + three middlewares (Basic auth, sessio
 - `checkArchived` checks `storage.LookupArchived`; ErrNotFound → pass through; found → 410 + JSON-encoded `ArchivedStub`. Runs after auth+membership so non-members can't probe archived status either.
 - Route registration: `Mount` uses `/{orgID}/{sessionID}.git` relative paths; the router already mounts at `/git` so the final paths are `/git/{orgID}/{sessionID}.git/...`.
 - `cmd/portal/main.go` constructs `gitHandler` between accountsHandler and the router build. Uses `cfg.Git.MaxPackBytes` for the validator limit.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Notes**: Three middlewares clean. Same-401 for no-auth/invalid-token/non-member prevents session-existence disclosure. Separate accountCtxKey type avoids collision with tokens middleware.

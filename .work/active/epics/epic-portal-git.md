@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git
 kind: epic
-stage: implementing
+stage: done
 tags: [portal]
 parent: null
 depends_on: [epic-portal-foundation]
@@ -84,10 +84,16 @@ Locked at epic-design time (this pass):
 - **Pre-receive execution model**: validation runs in the portal's Go
   HTTP handler before invoking `git-receive-pack`. NOT via a shell
   `hooks/pre-receive` script that calls back into the portal. The
-  handler uses `go-git` (already SPEC.md-locked) for object walking
-  and pack inspection. Rationale: matches Gitea/Forgejo; avoids
-  fork-back-into-portal complexity; keeps policy enforcement on the
-  request path.
+  handler parses the pushed packfile directly from the request body using
+  go-git's `packfile.NewParserWithStorage` into an in-memory storage
+  (`memory.NewStorage()`), then walks the resulting commit objects for
+  trailer / scope-glob / namespace / force-push validation. **Critical:**
+  opening the bare repo at this point would NOT see the incoming objects —
+  `git-receive-pack` quarantines them in a path go-git's `dotgit` storage
+  cannot read (`src-d/go-git#886`). Parsing the pack from the request body
+  sidesteps the quarantine-invisibility issue entirely. Rationale: matches
+  Gitea/Forgejo; avoids fork-back-into-portal complexity; keeps policy
+  enforcement on the request path.
 - **Concurrent push handling**: rely on git's native ref locking. No
   portal-level lock layer. Concurrent pushes to different refs proceed
   in parallel; same-ref pushes serialize naturally. Rationale: git
@@ -163,3 +169,9 @@ that maps HTTP Basic password to an account.
   succeeds but repo creation already happened, the invariant holds.
   Reverse order (insert first, then create repo) is rejected: would
   produce orphan session rows under failure.
+
+## Final review (2026-05-16)
+
+**Verdict**: Approve
+
+**Notes**: All 4 child features at done: storage (bare-repo lifecycle + archive), pre-receive (validators), post-receive (event emission), smart-http (the HTTP handler trio). End-to-end: real `git clone` + `git push` work against the portal with full policy enforcement and event log integration. The git serving layer is complete.

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-smart-http
 kind: feature
-stage: implementing
+stage: done
 tags: [portal, security]
 parent: epic-portal-git
 depends_on: [epic-portal-git-storage, epic-portal-git-pre-receive, epic-portal-git-post-receive, epic-portal-foundation-tokens]
@@ -257,3 +257,13 @@ func readCommandList(r io.Reader) (updates []prereceive.RefUpdate, err error)
 
 - **Streaming subtleties**: the smart-http skill is the reference; rely on it.
 - **Concurrent pushes to same ref**: git's native ref locking handles correctness; concurrent test verifies.
+
+## Implementation summary
+
+All 3 child stories at done. The complete smart-HTTP server is live: clone via upload-pack, push via receive-pack with full pre/post-receive choreography (validation → subprocess → event emission). Auth via tokens.BasicAuthValidator; archived sessions return 410 stub.
+
+## Review
+
+**Verdict**: Approve. Capability complete.
+
+After this lands, epic-portal-git has all 4 child features done (storage, pre-receive, post-receive, smart-http).

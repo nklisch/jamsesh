@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-smart-http-upload-pack-fetch
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-git-smart-http
 depends_on: [epic-portal-git-smart-http-auth-and-routing]
@@ -44,3 +44,9 @@ Implement the fetch side: info/refs advertisement and upload-pack streaming subp
 - `streamWithFlush` lives in `stream.go` (created by sibling receive-pack story); upload-pack and receive-pack both use it.
 - Tests: `upload_pack_test.go` adds `TestInfoRefs_UploadPack`, `TestInfoRefs_InvalidService`, and `TestGitClone_EndToEnd`. The clone test builds a synthetic bare repo via shell git, spins up an httptest server with a real sqlite-backed Handler, and runs `git clone` with embedded credentials — verifies the cloned HEAD SHA matches what was seeded.
 - `handler_test.go` updated: stub test replaced with `TestValidMember_PassesAuthMiddleware` (checks 401 does not occur); `TestAccountFromContext` assertion loosened to "not 401" since info/refs is real now.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Notes**: Real git clone end-to-end test verifies the streaming chain. Git-Protocol header regex allowlist is a nice security touch. streamWithFlush shared helper in stream.go avoids duplication with receive-pack.

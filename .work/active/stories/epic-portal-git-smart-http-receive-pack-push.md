@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-smart-http-receive-pack-push
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-git-smart-http
 depends_on: [epic-portal-git-smart-http-auth-and-routing]
@@ -69,3 +69,9 @@ Implement the push side: parse the receive-pack command list, call prereceive.Va
 - `TestReceivePack_RejectedMissingTrailers` — missing trailers → rejected; no ref created; no events
 - `TestReceivePack_MultipleCommits` — 3 commits in one push → 3 events emitted in order
 - `TestReceivePack_PackSizeLimitExceeded` — oversized body → 413
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Notes**: layeredStorer pattern is the right answer to the quarantine problem — clean abstraction. OldSHA zero normalization for new-ref creation handled correctly. Full git push end-to-end test covers happy path + rejection + multi-commit ordering + size limit.
