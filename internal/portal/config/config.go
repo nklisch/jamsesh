@@ -6,7 +6,8 @@
 //	tls.key_path, log.format, log.level, storage,
 //	email.provider, email.from, email.smtp.*, email.sendgrid.*,
 //	email.postmark.*, email.resend.*,
-//	oauth.github.client_id, oauth.github.client_secret
+//	oauth.github.client_id, oauth.github.client_secret,
+//	git.max_pack_bytes
 //
 // Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
@@ -22,7 +23,8 @@
 //	JAMSESH_EMAIL_POSTMARK_MESSAGE_STREAM,
 //	JAMSESH_EMAIL_RESEND_API_KEY,
 //	JAMSESH_OAUTH_GITHUB_CLIENT_ID,
-//	JAMSESH_OAUTH_GITHUB_CLIENT_SECRET
+//	JAMSESH_OAUTH_GITHUB_CLIENT_SECRET,
+//	JAMSESH_GIT_MAX_PACK_BYTES
 //
 // log.level is an integer matching slog.Level values:
 //
@@ -51,6 +53,15 @@ type Config struct {
 	Storage   string      `yaml:"storage"` // path for bare git repos
 	Email     EmailConfig `yaml:"email"`
 	OAuth     OAuthConfig `yaml:"oauth"`
+	Git       GitConfig   `yaml:"git"`
+}
+
+// GitConfig holds git-push policy settings.
+type GitConfig struct {
+	// MaxPackBytes is the maximum size (in bytes) of a pushed pack.
+	// Pushes exceeding this limit are rejected with push.size_limit.
+	// Default: 52428800 (50 MiB). Set to 0 to disable the check.
+	MaxPackBytes int64 `yaml:"max_pack_bytes"`
 }
 
 // OAuthConfig holds OAuth provider credentials. Only providers with non-empty
@@ -196,6 +207,9 @@ func defaults() Config {
 				TLSMode: "mandatory",
 			},
 		},
+		Git: GitConfig{
+			MaxPackBytes: 52428800, // 50 MiB
+		},
 	}
 }
 
@@ -257,6 +271,16 @@ func applyEnv(c *Config) {
 	}
 	applyEmailEnv(&c.Email)
 	applyOAuthEnv(&c.OAuth)
+	applyGitEnv(&c.Git)
+}
+
+// applyGitEnv overlays git-policy environment variables.
+func applyGitEnv(g *GitConfig) {
+	if v := os.Getenv("JAMSESH_GIT_MAX_PACK_BYTES"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			g.MaxPackBytes = n
+		}
+	}
 }
 
 // applyOAuthEnv overlays OAuth-related environment variables.

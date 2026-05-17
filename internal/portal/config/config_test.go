@@ -44,6 +44,39 @@ func TestDefaults(t *testing.T) {
 	if cfg.Storage != "./storage" {
 		t.Errorf("Storage: got %q, want %q", cfg.Storage, "./storage")
 	}
+	const wantMaxPack = int64(52428800)
+	if cfg.Git.MaxPackBytes != wantMaxPack {
+		t.Errorf("Git.MaxPackBytes: got %d, want %d", cfg.Git.MaxPackBytes, wantMaxPack)
+	}
+}
+
+func TestGitMaxPackBytesEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_GIT_MAX_PACK_BYTES", "104857600") // 100 MiB
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if cfg.Git.MaxPackBytes != 104857600 {
+		t.Errorf("Git.MaxPackBytes: got %d, want 104857600", cfg.Git.MaxPackBytes)
+	}
+}
+
+func TestGitMaxPackBytesYAML(t *testing.T) {
+	clearEnv(t)
+	yaml := `
+git:
+  max_pack_bytes: 10485760
+`
+	path := writeTempConfig(t, yaml)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if cfg.Git.MaxPackBytes != 10485760 {
+		t.Errorf("Git.MaxPackBytes: got %d, want 10485760", cfg.Git.MaxPackBytes)
+	}
 }
 
 func TestYAMLLoad(t *testing.T) {
@@ -255,6 +288,7 @@ func clearEnv(t *testing.T) {
 		"JAMSESH_BIND", "JAMSESH_DB_DRIVER", "JAMSESH_DB_DSN",
 		"JAMSESH_TLS_MODE", "JAMSESH_TLS_CERT", "JAMSESH_TLS_KEY",
 		"JAMSESH_LOG_FORMAT", "JAMSESH_LOG_LEVEL", "JAMSESH_STORAGE",
+		"JAMSESH_GIT_MAX_PACK_BYTES",
 	}
 	for _, v := range vars {
 		t.Setenv(v, "") // t.Setenv restores on cleanup; set to "" to clear

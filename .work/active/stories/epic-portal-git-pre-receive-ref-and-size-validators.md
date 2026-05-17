@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-pre-receive-ref-and-size-validators
 kind: story
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: epic-portal-git-pre-receive
 depends_on: [epic-portal-git-pre-receive-commit-validators]
@@ -47,3 +47,23 @@ entry that the smart-http handler will call.
 ## Wiring
 
 After this story, the smart-http feature (next in the chain) imports `Validator` and calls it with the parsed update list + the streamed pack size. No `cmd/portal/main.go` wiring yet — that lands with smart-http.
+
+## Implementation notes
+
+### Files added
+- `internal/portal/prereceive/refs.go` — `ValidateRef` + `checkRefNamespace` + `repoIsEmpty` + `checkForcePush`
+- `internal/portal/prereceive/size.go` — `CheckPackSize`
+- `internal/portal/prereceive/validate.go` — `Validator` type + `Validate` + `parseWritableScope`
+- `internal/portal/prereceive/refs_test.go` — 8 ref namespace / force-push tests
+- `internal/portal/prereceive/size_test.go` — 6 pack size tests
+- `internal/portal/prereceive/validate_test.go` — 7 top-level integrate tests
+
+### Files edited
+- `internal/portal/config/config.go` — added `GitConfig` struct with `MaxPackBytes int64`, wired into `Config`, `defaults()` (52428800 = 50 MiB), and `applyEnv` via `JAMSESH_GIT_MAX_PACK_BYTES`
+- `internal/portal/config/config_test.go` — added `TestGitMaxPackBytesEnvOverride`, `TestGitMaxPackBytesYAML`; extended `TestDefaults` and `clearEnv`
+
+### Key implementation choices
+- **repoIsEmpty**: skips `plumbing.SymbolicReference` entries (HEAD is always present in a fresh repo) and counts only hash references under `refs/`. Stops at the first real ref via `storer.ErrStop`.
+- **force-push detection**: uses `object.Commit.IsAncestor` (go-git v5.19 exposes this directly), walking newCommit's history to check if oldCommit is reachable.
+- **empty writable scope**: follows the existing behaviour in `commits.go` — when the compiled scope has no patterns, the path check is skipped (allow-all). The `ScopeMatcher.Match` deny-by-default applies only when the matcher is explicitly queried.
+- **test for orphan commits**: go-git's `wt.Commit` always attaches to HEAD when `Parents` is nil (via `CommitOptions.Validate`). The force-push test creates an orphan branch via `git checkout --orphan` + CLI to obtain a genuine divergent root.
