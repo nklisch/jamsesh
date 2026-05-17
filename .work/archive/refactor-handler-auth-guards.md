@@ -1,7 +1,7 @@
 ---
 id: refactor-handler-auth-guards
 kind: feature
-stage: review
+stage: done
 tags: [refactor, portal]
 parent: null
 depends_on: []
@@ -152,3 +152,35 @@ posture. No existing tests pinned the prior ordering.
   in any migrated handler file (verified via grep)
 - One acknowledged non-migration in `tokens/handlers.go:RevokeToken`
   (import-cycle constraint), annotated
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- One cross-cutting finding surfaced during the comments-story review: the
+  refactor consolidates org-AND-session checks into session-only checks in
+  `comments/handlers.go`, exposing a latent ambiguity in the membership model
+  (session-invitees can become session_members without becoming org_members
+  via the invite-accept flow). Tracked in
+  `.work/backlog/audit-session-membership-org-implication.md`.
+
+**Nits**: none
+
+**Notes**: Capability delivered as briefed — auth boilerplate consolidated
+into one well-tested package; 5 handler files (sessions, comments,
+accounts/handlers + accounts/orgs) now use the helpers with per-operation
+typed wrappers. Two acknowledged non-migrations in `tokens/handlers.go`
+(import cycle + body-based auth), both annotated in code. The
+`handlerauth` package design (dual-field `AuthFail` + `Err` field for
+500-path) holds up well across all consumer sites. No foundation-doc drift
+detected: `docs/ARCHITECTURE.md` describes the org-id discipline but does
+not pin the implementation-level membership-check ordering; the
+session-vs-org ambiguity is a real design gap that the backlog audit will
+resolve, not a doc-vs-code drift. All build + test verifications pass.
+
+### Children
+- `refactor-handler-auth-guards-helpers-and-sessions` (done, archived)
+- `refactor-handler-auth-guards-comments` (done, archived — 1 backlog finding)
+- `refactor-handler-auth-guards-accounts-tokens` (done, archived)

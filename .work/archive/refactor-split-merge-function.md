@@ -1,7 +1,7 @@
 ---
 id: refactor-split-merge-function
 kind: story
-stage: review
+stage: done
 tags: [refactor, portal]
 parent: null
 depends_on: []
@@ -175,3 +175,21 @@ Lines 37-81: **45 lines** (well under the 50-line target).
   to be shared between `applyChangesPerPath` and `mergeState`.
 - Phase tests live in `package automerger` (internal test package) so they
   can access unexported phase functions without exporting them.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Faithful 4-phase extraction. `Merge()` shrank 275 → 45 LoC
+(orchestration only). All `fmt.Errorf` strings preserved byte-for-byte
+(spot-checked). The `conflictedFile` type was lifted from function-local to
+package-scope as a necessary precondition for sharing between
+`applyChangesPerPath` and `resolveConflicts` — sensible and minimal. 8 new
+phase tests in `merge_phases_test.go` (story required 4); existing 47 tests
+pass unchanged. No foundation-doc drift (`docs/ARCHITECTURE.md` describes
+auto-merger phases conceptually; doesn't reference internal function
+names). Auto-merger behavior preserved end-to-end.

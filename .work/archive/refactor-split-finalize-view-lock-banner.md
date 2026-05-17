@@ -1,7 +1,7 @@
 ---
 id: refactor-split-finalize-view-lock-banner
 kind: story
-stage: review
+stage: done
 tags: [refactor, ui]
 parent: refactor-split-finalize-view
 depends_on: []
@@ -95,3 +95,25 @@ type Props = {
 **LoC delta on FinalizeView.svelte:** 1110 → 1065 lines (net −45 lines). The new `LockBanner.svelte` is 101 lines.
 
 **Test count:** 11 tests in `LockBanner.test.ts`. All 13 existing `FinalizeView.test.ts` tests pass unchanged. Full suite: 286/286 passing.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+
+**Nits**:
+- The `.btn` / `.btn.primary` / `.btn.ghost` CSS got duplicated into
+  LockBanner because FinalizeView still uses `.btn.ghost` for the "Back to
+  sessions" button. A future small cleanup could replace these inline
+  buttons with the project's `<Button>` component, eliminating the
+  duplicate CSS. Not worth a follow-up item — natural to handle when
+  someone next touches that area.
+
+**Notes**: Option-1 (raw flag props) is the right call for the first
+extraction — preserves the existing logic shape without forcing a status
+enum that would have required broader changes. Lock-pill placement moved
+slightly (now above page-head, was inline inside `.sub`); tests only
+assert presence, so no regression. 11 new tests; FinalizeView's 13
+existing tests pass unchanged.

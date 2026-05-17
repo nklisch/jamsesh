@@ -1,7 +1,7 @@
 ---
 id: wire-load-current-user-to-me-endpoint
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: null
 depends_on: []
@@ -94,3 +94,26 @@ only risk is mis-shaping the response — caught by the unit test.
 - Test approach: 3 tests added using `vi.spyOn(globalThis, 'fetch')` at the fetch layer rather than `vi.doMock('$lib/api/client')`. This mirrors the pattern already used in `client.test.ts` and sidesteps any circular-dependency complications with module mocking. The `client.ts` module already uses a `lateFetch` wrapper that routes through `globalThis.fetch`, making `vi.spyOn` reliable.
 - Field mapping: `MeResponse.display_name` (snake_case from openapi-typescript generator) maps to `_currentUser.displayName` (camelCase in internal rune state).
 - Test count: 3 new tests (success path, failure/no-throw path, call-shape assertion). Full suite: 32 files, 286 tests, all passing.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+
+**Nits**:
+- The new `auth.svelte.ts ↔ client.ts` circular import is functionally safe
+  (lazy reference: `client` is only read inside `loadCurrentUser`'s async
+  body, not at module init). A future cleanup could extract a small
+  `token-getter` module that both files import to break the cycle, but
+  it's not worth a follow-up item right now — the cycle is documented in
+  the implementation notes and the pattern matches how `client.test.ts`
+  already mocks the layer.
+
+**Notes**: TODO removed, snake_case → camelCase mapping (`display_name` →
+`displayName`) is correct against the generated `MeResponse` type. Three
+tests added at the fetch layer via `vi.spyOn(globalThis, 'fetch')` —
+consistent with the established pattern in `client.test.ts`. Silent
+failure on network/parse error is the right call (UI handles null
+`currentUser`). Full frontend suite (300 tests) passes.

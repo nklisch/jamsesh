@@ -1,7 +1,7 @@
 ---
 id: refactor-svelte-modal-component
 kind: feature
-stage: review
+stage: done
 tags: [refactor, ui]
 parent: null
 depends_on: []
@@ -144,3 +144,25 @@ Both child stories implemented and advanced to `stage: review`:
   in the migrated dialogs (verified via grep)
 - Both dialogs render visually identical to pre-refactor (Modal owns the
   same CSS tokens)
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability delivered cleanly. `<Modal>` is a well-tested,
+accessible component now consumed by `ForkDialog.svelte` and
+`ModeSwitchDialog.svelte` with a net −90 LoC reduction across the
+dialogs. No `<Modal>` API extension was needed during migration — the
+spec'd prop shape (`open`, `title`, `ariaLabel?`, `size?`, `onclose?`,
+`children`) was sufficient. No foundation-doc drift; no breaking
+changes (the component is internal-only and not exported by any
+public API). Frontend test suite grew from ~286 to 300 tests across
+the feature.
+
+### Children
+- `refactor-svelte-modal-component-define` (done, archived)
+- `refactor-svelte-modal-component-migrate-dialogs` (done, archived)

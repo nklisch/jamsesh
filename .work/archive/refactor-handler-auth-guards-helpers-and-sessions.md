@@ -1,7 +1,7 @@
 ---
 id: refactor-handler-auth-guards-helpers-and-sessions
 kind: story
-stage: review
+stage: done
 tags: [refactor, portal]
 parent: refactor-handler-auth-guards
 depends_on: []
@@ -104,3 +104,26 @@ Each handler has a small `<op>Fail(f handlerauth.AuthFail) openapi.<Op>ResponseO
 ### Test stub approach
 
 The test stub for `store.Store` is a hand-rolled struct with function fields for `GetOrgMember` and `GetSessionMember`, all other methods panic. A compile-time `var _ store.Store = (*stubStore)(nil)` assertion catches any interface drift. The alternative (using the real SQLite store) would make the tests heavier and infrastructure-dependent; unit-level function stubs keep the test focused and fast.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Helpers are well-designed — `AuthFail` carries both typed payloads
+plus an `Err` field for 500-path surfacing. RequireSessionMember's docstring
+clearly states it does NOT check org membership; callers needing that gate
+use RequireOrgMember instead (explicit composition over hidden coupling).
+The sessions/handler.go diff was verified against pre-refactor code:
+- CreateSession: behavior identical (GetOrgMember → RequireOrgMember).
+- FinalizeSession: behavior identical (only the 401 check moved through the helper).
+- PatchSession + AbandonSession: 403-before-404 ordering improvement —
+  non-members no longer learn whether a session exists. No existing tests
+  pinned the prior ordering. The pre-refactor code DID NOT check org
+  membership in these two handlers either (relied on session membership),
+  so the refactor does not introduce a session-vs-org regression here.
+All 9 new handlerauth tests pass; existing sessions test suite passes
+unchanged. No foundation-doc drift.

@@ -1,7 +1,7 @@
 ---
 id: refactor-svelte-modal-component-migrate-dialogs
 kind: story
-stage: review
+stage: done
 tags: [refactor, ui]
 parent: refactor-svelte-modal-component
 depends_on: [refactor-svelte-modal-component-define]
@@ -63,3 +63,20 @@ not affect the other.
   on `Modal`; no new API surface was needed.
 - **Tests**: `ModeSwitchDialog.test.ts` — all 11 tests pass. `ForkDialog.test.ts`
   does not exist. Full suite: 286/286 passed.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Both dialogs migrated cleanly. ForkDialog −44 LoC, ModeSwitchDialog
+−46 LoC, total −90 LoC across the two files. No `<Modal>` API extension
+needed — the existing `ariaLabel` override was sufficient for
+ModeSwitchDialog's `aria-label="Switch ref mode"` (different from its
+title "Switch mode"). ModeSwitchDialog uses `size="sm"` (matching its
+prior 340–460px range); ForkDialog uses `size="md"` (matching 360–500px).
+Full suite 286/286 passing. `ForkDialog.test.ts` not present in repo
+(noted in agent's notes; not a finding for THIS story).

@@ -1,7 +1,7 @@
 ---
 id: refactor-handler-auth-guards-accounts-tokens
 kind: story
-stage: review
+stage: done
 tags: [refactor, portal]
 parent: refactor-handler-auth-guards
 depends_on: [refactor-handler-auth-guards-helpers-and-sessions]
@@ -92,3 +92,24 @@ was before. Annotated with a multi-line comment pointing at this story.
 `accounts/handlers.go`: -12 / +20 (replaced inline 401 blocks with helper calls + wrapper funcs)
 `accounts/orgs.go`: -14 / +26 (same pattern × 2 handlers + wrapper funcs)
 `tokens/handlers.go`: net +6 (added explanatory comments; logic unchanged)
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All migrated handlers had only 401 checks pre-refactor (no
+membership gates to preserve or drop), so the migration is a pure
+boilerplate-reduction. The `GetOrgMember` call inside `GetMe`'s response
+construction is explicitly annotated as a data-load (not an auth guard)
+— good documentation. The two deliberate non-migrations are well-reasoned:
+`RefreshToken` is a public endpoint using body-based credentials (auth
+shape doesn't fit `handlerauth`), and `RevokeToken` has an import-cycle
+constraint (`handlerauth` imports `tokens.AccountFromContext`, so `tokens`
+can't import `handlerauth`). The latter is an architectural reality of
+the package layout; a future restructuring could break the cycle by
+moving `AccountFromContext` to a shared package, but that's orthogonal
+to this story. Build + tests pass.

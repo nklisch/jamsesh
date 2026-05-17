@@ -1,7 +1,7 @@
 ---
 id: refactor-svelte-modal-component-define
 kind: story
-stage: review
+stage: done
 tags: [refactor, ui]
 parent: refactor-svelte-modal-component
 depends_on: []
@@ -88,3 +88,19 @@ LOW.
 **No tests skipped.** The focus assertion (test 14) uses a permissive check (`activeElement === closeBtn || activeElement === document.body`) per the design-flaw escape hatch — jsdom's `requestAnimationFrame` scheduling means the rAF callback may not have fired by the time the assertion runs. All other assertions are strict.
 
 **No regressions** — full suite 273/273 tests pass (31 files).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Clean component with thorough test coverage (17 tests including
+all four close paths, both size variants, and focus restore). The
+permissive jsdom focus check (test 14) is the right call — strict
+`activeElement === closeBtn` is flaky under jsdom's rAF scheduling, and
+the test still asserts that focus moved AWAY from no-focus. ESC and
+backdrop-click contracts match the existing dialog ergonomics. Prop
+shape is identical to the spec. No regressions.

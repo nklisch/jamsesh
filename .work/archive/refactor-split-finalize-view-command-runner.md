@@ -1,7 +1,7 @@
 ---
 id: refactor-split-finalize-view-command-runner
 kind: story
-stage: review
+stage: done
 tags: [refactor, ui]
 parent: refactor-split-finalize-view
 depends_on: [refactor-split-finalize-view-ref-group-list]
@@ -92,3 +92,22 @@ spied via the returned mock fn. Toast timer advanced with
 **Timer cleanup:** `CommandRunner` registers an `onDestroy` hook to clear the
 toast `setTimeout` on unmount, replacing the equivalent cleanup that lived in
 `FinalizeView.onDestroy`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: 119-LoC component owns the run-command display, copy button,
+clipboard write, and toast. The prop-shape adaptation (`command + ready`
+instead of the spec's `planID: string | null`) is actually cleaner — it
+makes CommandRunner generic over command strings, not tied to plan-ID
+semantics. The `oncopy` callback bridge lets FinalizeView still track
+ship-hint state without owning the clipboard logic. Timer cleanup moved
+from FinalizeView's onDestroy into CommandRunner's. Clipboard test
+approach (`Object.defineProperty(navigator, 'clipboard', ...)`) is
+standard for jsdom. FinalizeView 959 → 882 (−77 LoC). 7 new tests; full
+suite 300/300 passing.

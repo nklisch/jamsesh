@@ -1,7 +1,7 @@
 ---
 id: refactor-split-finalize-view
 kind: feature
-stage: review
+stage: done
 tags: [refactor, ui]
 parent: null
 depends_on: []
@@ -129,3 +129,31 @@ orchestrator shrank from 1110 → 882 LoC (net −228 LoC, a 21% reduction).
 - `npm run check` (svelte-check) clean
 - New `frontend/src/lib/components/finalize/` directory holds the three
   subcomponents and their tests
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The cart panel was deliberately kept inline (per ref-group-list story's
+  reduced scope). That's fine — extracting it would have been a leaky
+  abstraction. If a future iteration of the finalize UX restructures the
+  cart concerns, that's the time to revisit.
+
+**Notes**: Capability delivered — FinalizeView shrunk 1110 → 882 LoC
+(−228, a 21% reduction). Three focused subcomponents under
+`frontend/src/lib/components/finalize/` (LockBanner, RefGroupList,
+CommandRunner) with co-located tests. The lift-up of `selectedShas` to
+the orchestrator and pass-down-as-Set pattern is a clean Svelte 5
+reactivity choice. No foundation-doc drift. No public API or schema
+changes. Frontend test suite grew from ~280 to 300 tests across the
+feature; `FinalizeView.test.ts` passes unchanged across all three
+child stories.
+
+### Children
+- `refactor-split-finalize-view-lock-banner` (done, archived)
+- `refactor-split-finalize-view-ref-group-list` (done, archived — cart panel
+  deliberately scoped out)
+- `refactor-split-finalize-view-command-runner` (done, archived)

@@ -1,7 +1,7 @@
 ---
 id: cleanup-stale-scratch-files
 kind: story
-stage: review
+stage: done
 tags: [refactor, cleanup]
 parent: null
 depends_on: []
@@ -58,3 +58,18 @@ references them.
 - Both `ideas.md` and `MIGRATION_REPORT.md` removed from the working tree.
 - `go build ./...` passes with no errors.
 - `git log -- ideas.md MIGRATION_REPORT.md` still surfaces both files in history (audit trail intact).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Trivial file-deletion cleanup. Both targets verified stale during
+discovery: `ideas.md` described a goal/manifest concept that is already
+implemented in `docs/SPEC.md` and the `Session` schema. `MIGRATION_REPORT.md`
+was a one-time bootstrap audit doc with no ongoing role; git history
+preserves it. No tests required for file deletions; build is clean; no
+foundation-doc references to either file.

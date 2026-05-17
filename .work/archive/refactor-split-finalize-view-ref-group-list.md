@@ -1,7 +1,7 @@
 ---
 id: refactor-split-finalize-view-ref-group-list
 kind: story
-stage: review
+stage: done
 tags: [refactor, ui]
 parent: refactor-split-finalize-view
 depends_on: [refactor-split-finalize-view-lock-banner]
@@ -80,3 +80,22 @@ is restored.
 - **onAddAll callback**: `RefGroupList` also accepts an optional `onAddAll?: (group: RefGroup) => void`
   prop, wired to `addAllInGroup` in the orchestrator.
 - **Test count**: 7 new tests in `RefGroupList.test.ts`; total suite 293 (was 286).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: 165-LoC component cleanly extracts the source-pool panel.
+The deliberate scope reduction (cart panel stays inline due to orthogonal
+couplings — `targetBranch`, `commitMessage`, `mode`, `plan`,
+`distinctAuthors`, `canRun`, `runCommand`, `markShipped`) is the right
+call — forcing extraction would have produced a leaky abstraction. The
+`Set<string>` reactivity pattern (orchestrator owns canonical `string[]`,
+passes `new Set(selectedShas)` for O(1) lookup, callbacks fire `onToggle`
+upward) is correct for Svelte 5 — avoids `bind:` cross-component coupling.
+FinalizeView 1065 → 959 (−106 LoC). 7 new tests cover the 7 spec'd
+scenarios. FinalizeView's 13 existing tests pass unchanged.
