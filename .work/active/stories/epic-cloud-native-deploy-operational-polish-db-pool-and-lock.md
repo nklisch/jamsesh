@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-db-pool-and-lock
 kind: story
-stage: review
+stage: done
 tags: [infra, portal]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: []
@@ -121,3 +121,24 @@ New env vars:
   all succeed), and advisory lock auto-release on connection close.
   Config tests extended with `TestDBConfigDefaults`,
   `TestDBConfigEnvOverride`, `TestDBConfigYAML`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The advisory-lock acquire/release contract depends on `database/sql`'s connection-reuse heuristic (the stdlib pool prefers the most-recently-idle conn). In the single-goroutine acquire→fn→release path used by `Open`, this works correctly — all three operations reuse the same stdlib conn → same pgx conn → same PG session. A more defensive `db.Conn(ctx)` pattern would dedicate a connection explicitly, eliminating any reliance on heuristics; worth considering if a future refactor makes the call site multi-goroutine.
+- `withMigrationLock` is unexported (lowercase) but consumed from `connect.go` in the same package, so visibility is correct. The doc comment explicitly notes the single-connection-path precondition for readers.
+- `PoolConfig` lives in `internal/db` to avoid an import cycle; the callsite in `cmd/portal/main.go` translates `config.DBConfig → db.PoolConfig`. Slight friction but the right boundary.
+
+**Notes**: Two related concerns shipped cleanly together. Postgres pool config (`MaxConns`/`MinConns`/`MaxConnLifetime`) applied behind `> 0` guards so DSN-embedded params aren't clobbered. SQLite path accepts and applies pool config to `*sql.DB` even though SQLite is effectively single-writer — preserves uniform `PoolConfig` API across drivers, no special-casing at the call site.
+
+Migration lock implementation: `pg_advisory_lock(8675309)` acquired before MigrateUp, released via `defer` on `context.Background()` (so it fires even if the request ctx is already cancelled). The session-level lock auto-releases on PG session loss, so crash recovery is automatic.
+
+Tests: SQLite default-pool and non-default-pool covered (unit). Postgres pool config, concurrent-migrations (3 goroutines), and lock-auto-release-on-conn-close all gated on `JAMSESH_TEST_PG_DSN` env var — skip cleanly without it. Concurrent-migration test demonstrates goose idempotency as the safety net under the advisory-lock contract.
+
+Breaking change: `db.Open` gained a `PoolConfig` parameter. Agent updated 22+ test files at call sites; build clean, full suite green.
+
+No foundation-doc drift — new env vars and `DBConfig` belong to docs story.
