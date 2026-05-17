@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-protocol-doc
 kind: story
-stage: implementing
+stage: review
 tags: [portal, documentation]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -56,3 +56,26 @@ NONE — doc-only.
 ## Rollback
 
 `git revert` the design commit's `docs/PROTOCOL.md` portion.
+
+## Implementation notes
+
+Verified that `docs/PROTOCOL.md > HTTP error contract > Dependency-failure
+codes` (added in the design commit `ecc9f78 design:
+portal-dep-failure-error-codes`) matches the feature design's promised
+taxonomy exactly:
+
+- `dep.smtp_unavailable` — 503, `Retry-After: 5`
+- `dep.db_unavailable` — 503, `Retry-After: 2` (with the
+  `store.ErrNotFound` / `store.ErrUniqueViolation` carve-out noted)
+- `dep.oauth_provider_unavailable` — 503, `Retry-After: 10`
+- `dep.git_subprocess_failed` — 500, no `Retry-After`
+
+The doc also captures the rationale (503 communicates retryability;
+`error` code disambiguates which dep is down) and the operator-logging
+contract (underlying cause logged at error level; never leaked into the
+response body). No "previously this was…" prose is present anywhere in
+the section.
+
+No further edits to `docs/PROTOCOL.md` are required from this story. All
+verification checklist items above are satisfied by the design-commit
+state.
