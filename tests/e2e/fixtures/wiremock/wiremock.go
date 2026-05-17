@@ -22,6 +22,8 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"jamsesh/tests/e2e/fixtures/containerlog"
 )
 
 const (
@@ -86,9 +88,7 @@ func Start(ctx context.Context, t *testing.T, mappings Mappings) *WireMock {
 	}
 
 	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(c); err != nil {
-			t.Logf("wiremock: cleanup: terminate: %v", err)
-		}
+		containerlog.DumpAndTerminate(ctx, t, c, "wiremock")
 	})
 
 	host, err := c.Host(ctx)

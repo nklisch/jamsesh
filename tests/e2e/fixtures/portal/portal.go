@@ -31,6 +31,8 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"jamsesh/tests/e2e/fixtures/containerlog"
 )
 
 const (
@@ -131,9 +133,7 @@ func Start(ctx context.Context, t *testing.T, opts Options) *Portal {
 	}
 
 	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(c); err != nil {
-			t.Logf("portal: cleanup: terminate: %v", err)
-		}
+		containerlog.DumpAndTerminate(ctx, t, c, "portal")
 	})
 
 	host, err := c.Host(ctx)

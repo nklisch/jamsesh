@@ -20,6 +20,8 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"jamsesh/tests/e2e/fixtures/containerlog"
 )
 
 const (
@@ -74,9 +76,7 @@ func Start(ctx context.Context, t *testing.T) *MailHog {
 	}
 
 	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(c); err != nil {
-			t.Logf("mailhog: cleanup: terminate: %v", err)
-		}
+		containerlog.DumpAndTerminate(ctx, t, c, "mailhog")
 	})
 
 	host, err := c.Host(ctx)
