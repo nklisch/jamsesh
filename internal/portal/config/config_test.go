@@ -430,6 +430,10 @@ func clearEnv(t *testing.T) {
 		"JAMSESH_DB_MAX_OPEN_CONNS", "JAMSESH_DB_MAX_IDLE_CONNS",
 		"JAMSESH_DB_CONN_MAX_LIFETIME",
 		"JAMSESH_SHUTDOWN_GRACE_S",
+		"JAMSESH_DEPLOY_MODE",
+		"JAMSESH_LEASE_HEARTBEAT_INTERVAL_S",
+		"JAMSESH_LEASE_RETENTION_DAYS",
+		"JAMSESH_LEASE_RETENTION_INTERVAL_HOURS",
 	}
 	for _, v := range vars {
 		t.Setenv(v, "") // t.Setenv restores on cleanup; set to "" to clear
@@ -450,6 +454,135 @@ func TestOAuthGitHubBaseURLEnvOverride(t *testing.T) {
 	if got, want := cfg.OAuth.GitHub.BaseURL, "https://fake.example.com"; got != want {
 		t.Errorf("BaseURL: got %q, want %q", got, want)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Lease config tests
+// ---------------------------------------------------------------------------
+
+// TestLeaseConfigDefaults verifies the default values for all JAMSESH_LEASE_*
+// and JAMSESH_DEPLOY_MODE fields.
+func TestLeaseConfigDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DeployMode != "single" {
+		t.Errorf("DeployMode default: got %q, want %q", cfg.DeployMode, "single")
+	}
+	if cfg.LeaseHeartbeatIntervalS != 10 {
+		t.Errorf("LeaseHeartbeatIntervalS default: got %d, want 10", cfg.LeaseHeartbeatIntervalS)
+	}
+	if cfg.LeaseRetentionDays != 30 {
+		t.Errorf("LeaseRetentionDays default: got %d, want 30", cfg.LeaseRetentionDays)
+	}
+	if cfg.LeaseRetentionIntervalHours != 1 {
+		t.Errorf("LeaseRetentionIntervalHours default: got %d, want 1", cfg.LeaseRetentionIntervalHours)
+	}
+}
+
+// TestLeaseConfigEnvOverride verifies that the JAMSESH_LEASE_* and
+// JAMSESH_DEPLOY_MODE env vars are applied correctly.
+func TestLeaseConfigEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
+	t.Setenv("JAMSESH_DB_DRIVER", "postgres") // clustered requires postgres
+	t.Setenv("JAMSESH_LEASE_HEARTBEAT_INTERVAL_S", "30")
+	t.Setenv("JAMSESH_LEASE_RETENTION_DAYS", "90")
+	t.Setenv("JAMSESH_LEASE_RETENTION_INTERVAL_HOURS", "6")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DeployMode != "clustered" {
+		t.Errorf("DeployMode: got %q, want %q", cfg.DeployMode, "clustered")
+	}
+	if cfg.LeaseHeartbeatIntervalS != 30 {
+		t.Errorf("LeaseHeartbeatIntervalS: got %d, want 30", cfg.LeaseHeartbeatIntervalS)
+	}
+	if cfg.LeaseRetentionDays != 90 {
+		t.Errorf("LeaseRetentionDays: got %d, want 90", cfg.LeaseRetentionDays)
+	}
+	if cfg.LeaseRetentionIntervalHours != 6 {
+		t.Errorf("LeaseRetentionIntervalHours: got %d, want 6", cfg.LeaseRetentionIntervalHours)
+	}
+}
+
+// TestValidation_DeployModeSingle verifies that deploy_mode=single is valid.
+func TestValidation_DeployModeSingle(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "single")
+	if _, err := config.Load(""); err != nil {
+		t.Errorf("deploy_mode=single should be valid: %v", err)
+	}
+}
+
+// TestValidation_DeployModeClustered verifies that deploy_mode=clustered with
+// db_driver=postgres is valid.
+func TestValidation_DeployModeClustered(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
+	t.Setenv("JAMSESH_DB_DRIVER", "postgres")
+	if _, err := config.Load(""); err != nil {
+		t.Errorf("deploy_mode=clustered with db_driver=postgres should be valid: %v", err)
+	}
+}
+
+// TestValidation_DeployModeInvalid verifies that an unknown deploy_mode is rejected.
+func TestValidation_DeployModeInvalid(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "distributed")
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for unknown deploy_mode, got nil")
+	}
+}
+
+// TestValidation_ClusteredWithSQLite verifies that deploy_mode=clustered AND
+// db_driver=sqlite is rejected at validation time.
+func TestValidation_ClusteredWithSQLite(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
+	t.Setenv("JAMSESH_DB_DRIVER", "sqlite")
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for deploy_mode=clustered + db_driver=sqlite, got nil")
+	}
+}
+
+// TestValidation_LeaseIntervalNonPositive verifies that zero/negative lease
+// interval values are rejected.
+func TestValidation_LeaseIntervalNonPositive(t *testing.T) {
+	clearEnv(t)
+
+	t.Run("heartbeat_interval_s=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_LEASE_HEARTBEAT_INTERVAL_S", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_LEASE_HEARTBEAT_INTERVAL_S=0, got nil")
+		}
+	})
+
+	t.Run("retention_days=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_LEASE_RETENTION_DAYS", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_LEASE_RETENTION_DAYS=0, got nil")
+		}
+	})
+
+	t.Run("retention_interval_hours=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_LEASE_RETENTION_INTERVAL_HOURS", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_LEASE_RETENTION_INTERVAL_HOURS=0, got nil")
+		}
+	})
 }
 
 // writeTempConfig writes content to a temp YAML file and returns its path.

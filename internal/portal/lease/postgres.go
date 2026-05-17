@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/metrics"
 )
 
 const defaultHeartbeatInterval = 10 * time.Second
@@ -24,10 +25,11 @@ const defaultHeartbeatInterval = 10 * time.Second
 // must be a PG-backed store.Store (the SQLite adapter returns errors for
 // IssueLeaseFencingToken and the sequence-based advisory-lock path).
 type PostgresManager struct {
-	DB                *sql.DB        // pgxpool-backed *sql.DB
-	Store             store.Store    // for InsertLease / IssueLeaseFencingToken
-	PodID             string         // identifies this pod in the leases table
-	HeartbeatInterval time.Duration  // default 10s when zero
+	DB                *sql.DB           // pgxpool-backed *sql.DB
+	Store             store.Store       // for InsertLease / IssueLeaseFencingToken
+	PodID             string            // identifies this pod in the leases table
+	HeartbeatInterval time.Duration     // default 10s when zero
+	Metrics           *metrics.Registry // optional; nil disables metrics emission
 }
 
 // heartbeatInterval returns the configured interval or the default.
@@ -36,6 +38,46 @@ func (m *PostgresManager) heartbeatInterval() time.Duration {
 		return m.HeartbeatInterval
 	}
 	return defaultHeartbeatInterval
+}
+
+// incAcquires increments the lease acquire counter with the given result label.
+// Nil-safe: no-op when m.Metrics is nil.
+func (m *PostgresManager) incAcquires(result string) {
+	if m.Metrics != nil {
+		m.Metrics.LeaseAcquiresTotal.WithLabelValues(result).Inc()
+	}
+}
+
+// incHolds adjusts the current-holds gauge by delta (typically +1 or -1).
+// Nil-safe: no-op when m.Metrics is nil.
+func (m *PostgresManager) incHolds(delta float64) {
+	if m.Metrics != nil {
+		m.Metrics.LeaseHoldsCurrently.Add(delta)
+	}
+}
+
+// incFencingTokens increments the fencing-tokens-issued counter.
+// Nil-safe: no-op when m.Metrics is nil.
+func (m *PostgresManager) incFencingTokens() {
+	if m.Metrics != nil {
+		m.Metrics.LeaseFencingTokensIssuedTotal.Inc()
+	}
+}
+
+// incLost increments the lease-lost counter.
+// Nil-safe: no-op when m.Metrics is nil.
+func (m *PostgresManager) incLost() {
+	if m.Metrics != nil {
+		m.Metrics.LeaseLostTotal.Inc()
+	}
+}
+
+// observeHoldDuration records a hold-duration observation in seconds.
+// Nil-safe: no-op when m.Metrics is nil.
+func (m *PostgresManager) observeHoldDuration(d time.Duration) {
+	if m.Metrics != nil {
+		m.Metrics.LeaseHoldDurationSeconds.Observe(d.Seconds())
+	}
 }
 
 // Acquire attempts a non-blocking lease acquisition for sessionID.
@@ -61,10 +103,12 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 		"SELECT pg_try_advisory_lock(hashtext($1))", sessionID,
 	).Scan(&acquired); err != nil {
 		conn.Close() //nolint:errcheck
+		m.incAcquires("error")
 		return nil, fmt.Errorf("lease: pg_try_advisory_lock: %w", err)
 	}
 	if !acquired {
 		conn.Close() //nolint:errcheck
+		m.incAcquires("conflict")
 		return nil, ErrAlreadyHeld
 	}
 
@@ -74,6 +118,7 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 		// Best-effort advisory unlock before returning.
 		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
 		conn.Close() //nolint:errcheck
+		m.incAcquires("error")
 		return nil, fmt.Errorf("lease: issue fencing token: %w", err)
 	}
 
@@ -85,6 +130,7 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 	}); err != nil {
 		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
 		conn.Close() //nolint:errcheck
+		m.incAcquires("error")
 		return nil, fmt.Errorf("lease: upsert lease row: %w", err)
 	}
 
@@ -112,15 +158,22 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 		)
 		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
 		conn.Close() //nolint:errcheck
+		m.incAcquires("conflict")
 		return nil, ErrAlreadyHeld
 	}
 
-	// Step 6: build the handle and start heartbeat.
+	// Step 6: emit success metrics and build the handle.
+	m.incAcquires("ok")
+	m.incFencingTokens()
+	m.incHolds(+1)
+
 	h := &pgHandle{
 		sessionID:    sessionID,
 		fencingToken: fencingToken,
+		acquiredAt:   time.Now(),
 		conn:         conn,
 		store:        m.Store,
+		mgr:          m,
 		lost:         make(chan struct{}),
 		done:         make(chan struct{}),
 	}
@@ -138,8 +191,10 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 type pgHandle struct {
 	sessionID    string
 	fencingToken int64
+	acquiredAt   time.Time       // used to compute hold duration on Release
 	conn         *sql.Conn
 	store        store.Store
+	mgr          *PostgresManager // back-reference for metric emission
 
 	lost chan struct{} // closed when the lease is lost (heartbeat failure)
 	done chan struct{} // closed by Release to stop the heartbeat goroutine
@@ -161,6 +216,12 @@ func (h *pgHandle) Release() error {
 	h.once.Do(func() {
 		// Signal the heartbeat goroutine to stop.
 		close(h.done)
+
+		// Emit metrics: decrement active holds and observe hold duration.
+		if h.mgr != nil {
+			h.mgr.incHolds(-1)
+			h.mgr.observeHoldDuration(time.Since(h.acquiredAt))
+		}
 
 		// Advisory unlock — best effort; if the conn is dead this will fail
 		// silently, which is fine: the PG session drop already released the lock.
@@ -194,13 +255,16 @@ func (h *pgHandle) runHeartbeat(interval time.Duration) {
 			err := h.conn.PingContext(ctx)
 			cancel()
 			if err != nil {
-				// Connection lost — close Lost() exactly once.
+				// Connection lost — close Lost() exactly once and emit metric.
 				select {
 				case <-h.lost:
 					// Already closed by a previous failure (shouldn't happen with
 					// a single goroutine, but be defensive).
 				default:
 					close(h.lost)
+					if h.mgr != nil {
+						h.mgr.incLost()
+					}
 				}
 				return
 			}

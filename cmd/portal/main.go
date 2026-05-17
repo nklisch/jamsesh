@@ -16,6 +16,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -37,6 +38,7 @@ import (
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/finalize"
 	"jamsesh/internal/portal/githttp"
+	"jamsesh/internal/portal/lease"
 	"jamsesh/internal/portal/logging"
 	"jamsesh/internal/portal/mcpendpoint"
 	"jamsesh/internal/portal/metrics"
@@ -251,7 +253,7 @@ func main() {
 	// Open the database and run migrations. Translate config.DBConfig into
 	// db.PoolConfig at the call site to avoid an import cycle (internal/db
 	// must not import internal/portal/config).
-	dbStore, err := db.Open(ctx, cfg.DBDriver, cfg.DBDSN, db.PoolConfig{
+	dbStore, sqlDB, err := db.Open(ctx, cfg.DBDriver, cfg.DBDSN, db.PoolConfig{
 		MaxOpenConns:    cfg.DB.MaxOpenConns,
 		MaxIdleConns:    cfg.DB.MaxIdleConns,
 		ConnMaxLifetime: cfg.DB.ConnMaxLifetime,
@@ -261,6 +263,49 @@ func main() {
 		os.Exit(1)
 	}
 	defer dbStore.Close()
+	if sqlDB != nil {
+		defer sqlDB.Close()
+	}
+
+	// Determine the pod ID used to identify this instance in the distributed
+	// lease table. Use the HOSTNAME env var (set by Kubernetes as the pod name)
+	// with a fallback to the OS hostname. In single-instance mode this value is
+	// not used (NoopManager is selected), but computing it unconditionally keeps
+	// the startup sequence clean.
+	podID := os.Getenv("HOSTNAME")
+	if podID == "" {
+		if h, err := os.Hostname(); err == nil {
+			podID = h
+		} else {
+			podID = "unknown-pod"
+		}
+	}
+
+	// Build and wire the session lease manager. In single-instance mode
+	// (DeployMode="single", the default) this returns a NoopManager that never
+	// touches the leases table. In clustered mode it returns a PostgresManager
+	// that uses advisory locks and fencing tokens.
+	heartbeatInterval := time.Duration(cfg.LeaseHeartbeatIntervalS) * time.Second
+	leaseMgr := lease.New(cfg.DeployMode, sqlDB, dbStore, podID, heartbeatInterval, metricsReg)
+
+	// In clustered mode, start the retention goroutine that purges old released
+	// lease rows. The goroutine respects ctx cancellation so it exits on SIGTERM.
+	if cfg.DeployMode == "clustered" {
+		retentionInterval := time.Duration(cfg.LeaseRetentionIntervalHours) * time.Hour
+		retentionDuration := time.Duration(cfg.LeaseRetentionDays) * 24 * time.Hour
+		go func() {
+			if err := lease.RunRetention(ctx, dbStore, retentionInterval, retentionDuration); err != nil {
+				slog.Info("lease retention goroutine stopped", "reason", err)
+			}
+		}()
+	}
+
+	// Log the deploy mode and the lease manager type for observability.
+	slog.Info("lease manager configured",
+		"deploy_mode", cfg.DeployMode,
+		"manager_type", fmt.Sprintf("%T", leaseMgr),
+		"pod_id", podID,
+	)
 
 	// Build the email sender from config. A missing / misconfigured provider
 	// is a startup error, not a runtime one.

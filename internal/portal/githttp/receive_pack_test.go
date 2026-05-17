@@ -43,7 +43,7 @@ func newPushEnv(t *testing.T) *pushEnv {
 
 	storageRoot := t.TempDir()
 
-	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -411,7 +411,7 @@ func TestReceivePack_PackSizeLimitExceeded(t *testing.T) {
 	ctx := context.Background()
 	storageRoot := t.TempDir()
 
-	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}

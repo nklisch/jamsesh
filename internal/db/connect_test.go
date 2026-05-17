@@ -16,7 +16,7 @@ import (
 func TestOpenSQLite_DefaultPoolConfig(t *testing.T) {
 	ctx := context.Background()
 
-	store, err := Open(ctx, "sqlite", ":memory:", PoolConfig{})
+	store, _, err := Open(ctx, "sqlite", ":memory:", PoolConfig{})
 	if err != nil {
 		t.Fatalf("Open sqlite with zero PoolConfig: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestOpenSQLite_PoolConfig(t *testing.T) {
 		ConnMaxLifetime: 10 * time.Minute,
 	}
 
-	store, err := Open(ctx, "sqlite", dsn, pc)
+	store, _, err := Open(ctx, "sqlite", dsn, pc)
 	if err != nil {
 		t.Fatalf("Open sqlite with PoolConfig: %v", err)
 	}
@@ -87,11 +87,12 @@ func TestOpenPostgres_PoolConfig(t *testing.T) {
 		ConnMaxLifetime: 5 * time.Minute,
 	}
 
-	store, err := Open(ctx, "postgres", dsn, pc)
+	store, sqlDB, err := Open(ctx, "postgres", dsn, pc)
 	if err != nil {
 		t.Fatalf("Open postgres with PoolConfig: %v", err)
 	}
 	defer store.Close()
+	defer sqlDB.Close()
 }
 
 // TestOpenPostgres_ConcurrentMigrations verifies that multiple concurrent
@@ -125,7 +126,10 @@ func TestOpenPostgres_ConcurrentMigrations(t *testing.T) {
 		i := i
 		go func() {
 			defer wg.Done()
-			s, err := Open(ctx, "postgres", dsn, pc)
+			s, sqlDB, err := Open(ctx, "postgres", dsn, pc)
+			if sqlDB != nil {
+				defer sqlDB.Close()
+			}
 			results[i] = result{store: s, err: err}
 		}()
 	}

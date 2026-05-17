@@ -33,7 +33,7 @@ func pgDSN(t *testing.T) string {
 // openPGStore opens a PG-backed Store via db.Open (which also runs migrations).
 func openPGStore(t *testing.T, dsn string) store.Store {
 	t.Helper()
-	s, err := db.Open(context.Background(), "postgres", dsn, db.PoolConfig{})
+	s, _, err := db.Open(context.Background(), "postgres", dsn, db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open postgres: %v", err)
 	}

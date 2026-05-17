@@ -16,7 +16,7 @@ import (
 // working Store and that migrations have run.
 func TestOpenSQLiteInMemory(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open sqlite :memory: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestOpenSQLiteInMemory(t *testing.T) {
 // unknown drivers.
 func TestUnknownDriverError(t *testing.T) {
 	ctx := context.Background()
-	_, err := db.Open(ctx, "mysql", "dsn", db.PoolConfig{})
+	_, _, err := db.Open(ctx, "mysql", "dsn", db.PoolConfig{})
 	if err == nil {
 		t.Fatal("expected error for unknown driver, got nil")
 	}
@@ -66,7 +66,7 @@ func TestUnknownDriverError(t *testing.T) {
 // TestErrNotFound verifies that a missing row returns store.ErrNotFound.
 func TestErrNotFound(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestErrNotFound(t *testing.T) {
 // store.ErrUniqueViolation.
 func TestErrUniqueViolation(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestCloseAndReopen(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.db")
 
-	s1, err := db.Open(ctx, "sqlite", path, db.PoolConfig{})
+	s1, _, err := db.Open(ctx, "sqlite", path, db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("first open: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestCloseAndReopen(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	s2, err := db.Open(ctx, "sqlite", path, db.PoolConfig{})
+	s2, _, err := db.Open(ctx, "sqlite", path, db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("second open: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestCloseAndReopen(t *testing.T) {
 // TestNullableGitHubUserID verifies round-trip of nil and non-nil github_user_id.
 func TestNullableGitHubUserID(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestNullableGitHubUserID(t *testing.T) {
 // TestSessionCRUD verifies CreateSession / GetSession / ListSessionsForOrg.
 func TestSessionCRUD(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestSessionCRUD(t *testing.T) {
 // the second call (used_at IS NULL guard).
 func TestMagicLinkSingleUse(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestMagicLinkSingleUse(t *testing.T) {
 // "sqlite" from Dialect().
 func TestDialectReportsSQLite(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestOpenPostgres(t *testing.T) {
 	dsn := skipIfNoPGDSN(t)
 	ctx := context.Background()
 
-	s, err := db.Open(ctx, "postgres", dsn, db.PoolConfig{})
+	s, _, err := db.Open(ctx, "postgres", dsn, db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open postgres: %v", err)
 	}

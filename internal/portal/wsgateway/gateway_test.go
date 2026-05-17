@@ -34,7 +34,7 @@ func openStore(t *testing.T) store.Store {
 	t.Helper()
 	n := dbCounter.Add(1)
 	dsn := fmt.Sprintf("file:wsgateway_test_%d?mode=memory&cache=shared", n)
-	s, err := db.Open(context.Background(), "sqlite", dsn, db.PoolConfig{})
+	s, _, err := db.Open(context.Background(), "sqlite", dsn, db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

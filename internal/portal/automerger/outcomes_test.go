@@ -24,7 +24,7 @@ import (
 
 func openTestStore(t *testing.T) store.Store {
 	t.Helper()
-	s, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

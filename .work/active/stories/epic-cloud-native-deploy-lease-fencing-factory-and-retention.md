@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing-factory-and-retention
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy-lease-fencing
 depends_on: [epic-cloud-native-deploy-lease-fencing-postgres]
@@ -77,3 +77,58 @@ Edit:
 - When `DEPLOY_MODE=clustered` AND `DB_DRIVER=sqlite`, fail at startup —
   clustered mode requires Postgres. Validate in `config.validate()`.
 - Tests for retention can use the existing PG container pattern.
+
+## Implementation notes
+
+### Design choices
+
+- `db.Open` signature changed from `(store.Store, error)` to
+  `(store.Store, *sql.DB, error)`. The `*sql.DB` is needed by
+  `PostgresManager` to call `db.Conn(ctx)` for dedicated connections.
+  All call sites updated — the pattern is `s, _, err := db.Open(...)` in
+  tests that don't need the `*sql.DB`.
+
+- For Postgres, the returned `*sql.DB` is a `stdlib.OpenDBFromPool` bridge
+  over the same `pgxpool.Pool` used by the adapter. Connections still come
+  from the pool; the bridge gives `database/sql` semantics (`db.Conn`)
+  on top of the pgx pool.
+
+- `PostgresManager` gains an optional `Metrics *metrics.Registry` field.
+  All metric helpers are nil-safe inline helpers on `*PostgresManager` —
+  no interface changes, no allocation on the nil path.
+
+- `pgHandle` gains `acquiredAt time.Time` and `mgr *PostgresManager` to
+  support hold-duration observation at Release and LeaseLost emission in
+  the heartbeat goroutine.
+
+- `lease.New` takes `heartbeatInterval time.Duration` and `metricsReg
+  *metrics.Registry` as explicit parameters (rather than reading from a
+  config struct) to keep the factory free of a config dependency and stay
+  consistent with the PostgresManager constructor pattern.
+
+- `RunRetention` returns `error` (context.Canceled on normal exit) so the
+  caller can log the stop reason. It logs at `slog.Debug` on each successful
+  tick and `slog.Warn` on error.
+
+- `cmd/portal/main.go` derives `podID` from `$HOSTNAME` (set by Kubernetes)
+  with `os.Hostname()` as fallback — no new config field needed.
+
+### Files changed
+
+New:
+- `internal/portal/lease/factory.go`
+- `internal/portal/lease/factory_test.go`
+- `internal/portal/lease/retention.go`
+- `internal/portal/lease/retention_test.go`
+
+Modified:
+- `internal/portal/lease/postgres.go` — added `Metrics` field, nil-safe
+  helpers, metrics emission in Acquire/Release/runHeartbeat
+- `internal/portal/metrics/metrics.go` — 5 lease metric handles appended
+- `internal/portal/config/config.go` — 4 new fields + validation rules
+- `internal/portal/config/config_test.go` — 7 new test functions, updated
+  clearEnv
+- `internal/db/connect.go` — db.Open returns (store.Store, *sql.DB, error)
+- `internal/db/connect_test.go` — updated for new signature
+- All test files that called db.Open — updated to ignore the *sql.DB with _
+- `cmd/portal/main.go` — lease manager wiring, retention goroutine

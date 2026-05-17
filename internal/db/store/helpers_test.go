@@ -48,7 +48,7 @@ func stores(t *testing.T) []dialectHarness {
 		name: "sqlite",
 		open: func(t *testing.T) store.Store {
 			t.Helper()
-			s, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
+			s, _, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
 			if err != nil {
 				t.Fatalf("open sqlite :memory:: %v", err)
 			}
@@ -63,7 +63,7 @@ func stores(t *testing.T) []dialectHarness {
 			name: "postgres",
 			open: func(t *testing.T) store.Store {
 				t.Helper()
-				s, err := db.Open(context.Background(), "postgres", dsn, db.PoolConfig{})
+				s, _, err := db.Open(context.Background(), "postgres", dsn, db.PoolConfig{})
 				if err != nil {
 					t.Fatalf("open postgres: %v", err)
 				}

@@ -65,6 +65,34 @@ type Registry struct {
 	// pod address that failed. Cardinality is bounded by the pod count (≤ 20).
 	RouterProbeFailuresTotal *prometheus.CounterVec
 
+	// ── Lease metrics ─────────────────────────────────────────────────────────
+	// These fields track distributed session lease acquisition, hold duration,
+	// and loss events. They are populated only in clustered mode; portal
+	// instances running in single mode (NoopManager) do not increment them.
+
+	// LeaseAcquiresTotal counts lease acquisition attempts. Label "result" is
+	// one of: ok (acquired), conflict (ErrAlreadyHeld), error (unexpected error).
+	LeaseAcquiresTotal *prometheus.CounterVec
+
+	// LeaseHoldsCurrently tracks the current number of active leases held by
+	// this pod. Incremented on acquire; decremented on release.
+	LeaseHoldsCurrently prometheus.Gauge
+
+	// LeaseHoldDurationSeconds measures the duration a lease was held (observed
+	// at Release). Uses default buckets to cover short (sub-second) through
+	// long (minutes) hold times.
+	LeaseHoldDurationSeconds prometheus.Histogram
+
+	// LeaseLostTotal counts leases lost due to a heartbeat failure or PG
+	// session drop. A non-zero value indicates a transient connectivity issue
+	// or an overloaded PG server.
+	LeaseLostTotal prometheus.Counter
+
+	// LeaseFencingTokensIssuedTotal counts successfully issued fencing tokens
+	// (one per successful Acquire). Equals LeaseAcquiresTotal{result="ok"};
+	// provided as a standalone counter for simpler alerting rules.
+	LeaseFencingTokensIssuedTotal prometheus.Counter
+
 	reg *prometheus.Registry
 }
 
@@ -144,17 +172,56 @@ func New() *Registry {
 	}, []string{"addr"})
 	reg.MustRegister(routerProbeFailuresTotal)
 
+	// ── Lease metrics ─────────────────────────────────────────────────────────
+
+	leaseAcquiresTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "jamsesh_lease_acquires_total",
+		Help: "Total number of session lease acquisition attempts, labeled by result " +
+			"(ok, conflict, error).",
+	}, []string{"result"})
+	reg.MustRegister(leaseAcquiresTotal)
+
+	leaseHoldsCurrently := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "jamsesh_lease_holds_currently",
+		Help: "Current number of active session leases held by this pod.",
+	})
+	reg.MustRegister(leaseHoldsCurrently)
+
+	leaseHoldDurationSeconds := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "jamsesh_lease_hold_duration_seconds",
+		Help:    "Duration (in seconds) a session lease was held, observed at Release.",
+		Buckets: prometheus.DefBuckets,
+	})
+	reg.MustRegister(leaseHoldDurationSeconds)
+
+	leaseLostTotal := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "jamsesh_lease_lost_total",
+		Help: "Total number of session leases lost due to a heartbeat failure or PG session drop.",
+	})
+	reg.MustRegister(leaseLostTotal)
+
+	leaseFencingTokensIssuedTotal := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "jamsesh_lease_fencing_tokens_issued_total",
+		Help: "Total number of fencing tokens successfully issued (one per successful Acquire).",
+	})
+	reg.MustRegister(leaseFencingTokensIssuedTotal)
+
 	return &Registry{
-		HTTPRequestsTotal:         httpRequestsTotal,
-		HTTPRequestDuration:       httpRequestDuration,
-		GitPushesTotal:            gitPushesTotal,
-		AutoMergerOutcomes:        autoMergerOutcomes,
-		EventLogEmitTotal:         eventLogEmitTotal,
-		RouterDecisionsTotal:      routerDecisionsTotal,
-		RouterRingSize:            routerRingSize,
-		RouterRingRebalancesTotal: routerRingRebalancesTotal,
-		RouterProbeFailuresTotal:  routerProbeFailuresTotal,
-		reg:                       reg,
+		HTTPRequestsTotal:             httpRequestsTotal,
+		HTTPRequestDuration:           httpRequestDuration,
+		GitPushesTotal:                gitPushesTotal,
+		AutoMergerOutcomes:            autoMergerOutcomes,
+		EventLogEmitTotal:             eventLogEmitTotal,
+		RouterDecisionsTotal:          routerDecisionsTotal,
+		RouterRingSize:                routerRingSize,
+		RouterRingRebalancesTotal:     routerRingRebalancesTotal,
+		RouterProbeFailuresTotal:      routerProbeFailuresTotal,
+		LeaseAcquiresTotal:            leaseAcquiresTotal,
+		LeaseHoldsCurrently:           leaseHoldsCurrently,
+		LeaseHoldDurationSeconds:      leaseHoldDurationSeconds,
+		LeaseLostTotal:                leaseLostTotal,
+		LeaseFencingTokensIssuedTotal: leaseFencingTokensIssuedTotal,
+		reg:                           reg,
 	}
 }
 

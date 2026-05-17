@@ -30,7 +30,13 @@ type PoolConfig struct {
 }
 
 // Open opens a database connection for the given driver and DSN, runs pending
-// migrations, and returns a ready-to-use Store.
+// migrations, and returns a ready-to-use Store and the underlying *sql.DB.
+//
+// The *sql.DB is required by components that need a dedicated connection (e.g.
+// the lease.PostgresManager which holds a dedicated *sql.Conn per active lease
+// for Postgres session-scoped advisory locks). For SQLite the returned *sql.DB
+// is the same one backing the adapter. Callers that do not need the *sql.DB
+// can discard the second return value.
 //
 // driver must be one of "sqlite" or "postgres".
 //
@@ -53,13 +59,16 @@ type PoolConfig struct {
 //     pg_advisory_lock(8675309). The lock is automatically released when the
 //     migration connection closes, so a pod crash cannot leave the lock
 //     permanently held.
-func Open(ctx context.Context, driver, dsn string, pc PoolConfig) (store.Store, error) {
+//   - The returned *sql.DB is a stdlib-bridge view of the pgxpool, suitable
+//     for database/sql-style operations such as db.Conn(ctx) for dedicated
+//     connections.
+func Open(ctx context.Context, driver, dsn string, pc PoolConfig) (store.Store, *sql.DB, error) {
 	switch driver {
 	case "sqlite":
 		fullDSN := sqliteDSN(dsn)
 		db, err := sql.Open("sqlite", fullDSN)
 		if err != nil {
-			return nil, fmt.Errorf("db: open sqlite (%s): %w", dsn, err)
+			return nil, nil, fmt.Errorf("db: open sqlite (%s): %w", dsn, err)
 		}
 		// Apply pool settings. SQLite is effectively single-writer so
 		// MaxOpenConns > 1 provides no concurrency benefit, but accepting
@@ -76,14 +85,14 @@ func Open(ctx context.Context, driver, dsn string, pc PoolConfig) (store.Store, 
 		}
 		if err := MigrateUp(ctx, db, "sqlite"); err != nil {
 			db.Close()
-			return nil, fmt.Errorf("migrate: %w", err)
+			return nil, nil, fmt.Errorf("migrate: %w", err)
 		}
-		return store.NewSQLiteAdapter(db), nil
+		return store.NewSQLiteAdapter(db), db, nil
 
 	case "postgres":
 		pgcfg, err := pgxpool.ParseConfig(dsn)
 		if err != nil {
-			return nil, fmt.Errorf("db: parse postgres dsn: %w", err)
+			return nil, nil, fmt.Errorf("db: parse postgres dsn: %w", err)
 		}
 		// Apply pool sizing; only override when a non-zero value is provided
 		// so that DSN-embedded parameters aren't silently clobbered.
@@ -98,7 +107,7 @@ func Open(ctx context.Context, driver, dsn string, pc PoolConfig) (store.Store, 
 		}
 		pool, err := pgxpool.NewWithConfig(ctx, pgcfg)
 		if err != nil {
-			return nil, fmt.Errorf("db: connect postgres: %w", err)
+			return nil, nil, fmt.Errorf("db: connect postgres: %w", err)
 		}
 		// Migrations use database/sql, not pgx native. Open a temporary
 		// *sql.DB from the pool via the pgx stdlib bridge, run migrations
@@ -110,13 +119,16 @@ func Open(ctx context.Context, driver, dsn string, pc PoolConfig) (store.Store, 
 		}); err != nil {
 			mdb.Close()
 			pool.Close()
-			return nil, fmt.Errorf("migrate: %w", err)
+			return nil, nil, fmt.Errorf("migrate: %w", err)
 		}
 		mdb.Close()
-		return store.NewPostgresAdapter(pool), nil
+		// Open a runtime *sql.DB from the same pool. This is a thin stdlib
+		// bridge — all connections still come from the pgxpool.
+		runtimeDB := stdlib.OpenDBFromPool(pool)
+		return store.NewPostgresAdapter(pool), runtimeDB, nil
 
 	default:
-		return nil, fmt.Errorf("db: unknown driver %q", driver)
+		return nil, nil, fmt.Errorf("db: unknown driver %q", driver)
 	}
 }
 

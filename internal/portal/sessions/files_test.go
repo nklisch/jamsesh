@@ -30,7 +30,7 @@ type filesTestEnv struct {
 // buildFilesEnv is the same as newTestEnv but also registers GetSessionFile.
 func buildFilesEnv(t *testing.T) *filesTestEnv {
 	t.Helper()
-	s, err := db.Open(context.Background(), "sqlite", "file::memory:?cache=shared&mode=memory", db.PoolConfig{})
+	s, _, err := db.Open(context.Background(), "sqlite", "file::memory:?cache=shared&mode=memory", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

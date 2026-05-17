@@ -10,7 +10,9 @@
 //	oauth.github.base_url,
 //	git.max_pack_bytes,
 //	db.max_open_conns, db.max_idle_conns, db.conn_max_lifetime,
-//	shutdown_grace_s
+//	shutdown_grace_s,
+//	deploy_mode, lease_heartbeat_interval_s,
+//	lease_retention_days, lease_retention_interval_hours
 //
 // Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
@@ -32,7 +34,11 @@
 //	JAMSESH_DB_MAX_OPEN_CONNS,
 //	JAMSESH_DB_MAX_IDLE_CONNS,
 //	JAMSESH_DB_CONN_MAX_LIFETIME,
-//	JAMSESH_SHUTDOWN_GRACE_S
+//	JAMSESH_SHUTDOWN_GRACE_S,
+//	JAMSESH_DEPLOY_MODE,
+//	JAMSESH_LEASE_HEARTBEAT_INTERVAL_S,
+//	JAMSESH_LEASE_RETENTION_DAYS,
+//	JAMSESH_LEASE_RETENTION_INTERVAL_HOURS
 //
 // Secret env vars with _FILE variants (file contents take precedence):
 //
@@ -78,6 +84,28 @@ type Config struct {
 	// Default: 30 (matches k8s terminationGracePeriodSeconds). Must be positive.
 	// Env: JAMSESH_SHUTDOWN_GRACE_S
 	ShutdownGraceSeconds int `yaml:"shutdown_grace_s"`
+
+	// DeployMode selects single-instance vs. clustered operation.
+	// "single" (default) uses NoopManager — no PG lease queries are issued.
+	// "clustered" uses PostgresManager with advisory locks and fencing tokens;
+	// requires db_driver=postgres.
+	// Env: JAMSESH_DEPLOY_MODE
+	DeployMode string `yaml:"deploy_mode"`
+
+	// LeaseHeartbeatIntervalS is how often (in seconds) the heartbeat goroutine
+	// pings the dedicated PG connection. Default: 10.
+	// Env: JAMSESH_LEASE_HEARTBEAT_INTERVAL_S
+	LeaseHeartbeatIntervalS int `yaml:"lease_heartbeat_interval_s"`
+
+	// LeaseRetentionDays controls how long released lease rows are kept before
+	// the retention goroutine deletes them. Default: 30.
+	// Env: JAMSESH_LEASE_RETENTION_DAYS
+	LeaseRetentionDays int `yaml:"lease_retention_days"`
+
+	// LeaseRetentionIntervalHours is how often the retention goroutine runs.
+	// Default: 1.
+	// Env: JAMSESH_LEASE_RETENTION_INTERVAL_HOURS
+	LeaseRetentionIntervalHours int `yaml:"lease_retention_interval_hours"`
 }
 
 // DBConfig holds database connection pool settings.
@@ -260,7 +288,11 @@ func defaults() Config {
 			MaxIdleConns:    5,
 			ConnMaxLifetime: 30 * time.Minute,
 		},
-		ShutdownGraceSeconds: 30,
+		ShutdownGraceSeconds:        30,
+		DeployMode:                  "single",
+		LeaseHeartbeatIntervalS:     10,
+		LeaseRetentionDays:          30,
+		LeaseRetentionIntervalHours: 1,
 	}
 }
 
@@ -284,6 +316,24 @@ func (c Config) validate() error {
 	}
 	if c.ShutdownGraceSeconds <= 0 {
 		return fmt.Errorf("config: shutdown_grace_s must be a positive integer, got %d", c.ShutdownGraceSeconds)
+	}
+	switch c.DeployMode {
+	case "single", "clustered":
+		// valid
+	default:
+		return fmt.Errorf("config: deploy_mode must be \"single\" or \"clustered\", got %q", c.DeployMode)
+	}
+	if c.DeployMode == "clustered" && c.DBDriver == "sqlite" {
+		return fmt.Errorf("config: deploy_mode=clustered requires db_driver=postgres; SQLite does not support distributed leases")
+	}
+	if c.LeaseHeartbeatIntervalS <= 0 {
+		return fmt.Errorf("config: lease_heartbeat_interval_s must be a positive integer, got %d", c.LeaseHeartbeatIntervalS)
+	}
+	if c.LeaseRetentionDays <= 0 {
+		return fmt.Errorf("config: lease_retention_days must be a positive integer, got %d", c.LeaseRetentionDays)
+	}
+	if c.LeaseRetentionIntervalHours <= 0 {
+		return fmt.Errorf("config: lease_retention_interval_hours must be a positive integer, got %d", c.LeaseRetentionIntervalHours)
 	}
 	return nil
 }
@@ -341,7 +391,30 @@ func applyEnv(c *Config) error {
 			c.ShutdownGraceSeconds = n
 		}
 	}
+	applyLeaseEnv(c)
 	return nil
+}
+
+// applyLeaseEnv overlays lease-related environment variables.
+func applyLeaseEnv(c *Config) {
+	if v := os.Getenv("JAMSESH_DEPLOY_MODE"); v != "" {
+		c.DeployMode = v
+	}
+	if v := os.Getenv("JAMSESH_LEASE_HEARTBEAT_INTERVAL_S"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.LeaseHeartbeatIntervalS = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_LEASE_RETENTION_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.LeaseRetentionDays = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_LEASE_RETENTION_INTERVAL_HOURS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.LeaseRetentionIntervalHours = n
+		}
+	}
 }
 
 // applyGitEnv overlays git-policy environment variables.
