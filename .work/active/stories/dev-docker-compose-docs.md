@@ -1,7 +1,7 @@
 ---
 id: dev-docker-compose-docs
 kind: story
-stage: review
+stage: done
 tags: [infra, documentation]
 parent: dev-docker-compose
 depends_on: [dev-docker-compose-setup]
@@ -143,3 +143,23 @@ The story flagged this as "possibly modify … judgment call by implementer".
 contributor detour there would dilute its audience. The README's new "Local
 development" section cross-links `docs/SELF_HOST.md` for operators who land
 on the README — that's sufficient coverage. Skipping the reverse cross-link.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+
+**Nits**:
+- `dev-down-v` runs `rm -rf .data` as a separate recipe line, so it still
+  executes even if `docker compose down -v` errors. Pragmatic for dev (force
+  reset is the desired UX); chaining with `&&` would tighten failure semantics.
+  Not worth changing.
+- Anchor rename `#quickstart-docker → #operator-quickstart` is safe — repo-wide
+  grep finds no external references to the old anchor.
+
+**Notes**: Pure docs + Makefile glue. All acceptance criteria satisfied. The
+deliberate `docs/SELF_HOST.md` cross-link skip is well-reasoned (operator doc
+shouldn't carry a contributor detour). README's new section cleanly disambiguates
+contributor onboarding from operator deployment.
