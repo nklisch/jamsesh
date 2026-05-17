@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin
 kind: epic
-stage: drafting
+stage: implementing
 tags: [plugin]
 parent: null
 depends_on: [epic-portal-api]
@@ -91,28 +91,85 @@ plugin's finalize subcommand).
     refuses to fire and surfaces a "session is wedged, run `jamsesh status`
     to investigate" error.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+Locked at epic-design time (this pass):
 
+- **Multi-arch binary distribution**: 5 binaries per release (darwin-
+  amd64/arm64, linux-amd64/arm64, windows-amd64). `plugin.json` carries
+  per-arch entries; the marketplace fetches the right one. The CI
+  pipeline that builds these lives in `epic-distribution`; this epic's
+  `packaging` feature delivers the manifest shape.
+- **Local state file format**: plain text per-file for single-value
+  files (`token`, `refresh_token`, `portal_url`); JSON for per-session
+  structured state. Token files mode 0600. Atomic writes (temp + rename).
+  Matches the layout already pinned in ARCHITECTURE.md.
+- **`jamsesh status` output**: human-readable text by default;
+  `--json` flag for scripted consumption.
+- **OAuth client security**: PKCE (S256) + state parameter on both
+  the local-listener and `--device-code` flows. Cheap, universal best
+  practice, forward-compatible.
+- **Auto-commit on turn end**: message format `"<turn summary>
+  [jamsesh auto-commit at turn end]"` where `<turn summary>` is the
+  truncated first line of the last user prompt (or "WIP"); commits
+  carry the `Jam-Auto-Commit: true` trailer for git-log
+  distinguishability.
+- **`headersHelper` shape**: synchronous read of token file, outputs
+  `{"Authorization": "Bearer <token>"}` as JSON. Refresh happens
+  asynchronously on any 401 elsewhere — never in `mcp-headers` itself.
+- **Auto-loaded teaching skill scope**: operational, ≤2500 words.
+  Covers dual-mode summary, trailer conventions, addressed-comment
+  syntax + use patterns, conflict-resolution flow, digest reading, MCP
+  tool usage. Points at foundation docs for deeper context; doesn't
+  duplicate them.
 
-## Anticipated child features
+## Decomposition
 
-Provisional — actual decomposition lands when this epic is designed.
+Four child features, cleanly separable by what they produce:
 
-- Plugin package layout (manifest, skills/, hooks/, .mcp.json structure)
-- Binary skeleton: subcommand router, JSON in/out for hooks
-- OAuth client flow (`jamsesh auth`)
-- Local state management at `${CLAUDE_PLUGIN_DATA}/`
-- `jamsesh join` (session join, ref bind, working-tree setup)
-- Hook: `session-start` (initial context injection)
-- Hook: `user-prompt-submit` (git fetch + portal digest + format)
-- Hook: `pre-tool-use` (push-gate; deny `git push`, `git config remote.*`)
-- Hook: `post-tool-use` (push-per-commit on successful `git commit`)
-- Hook: `stop` (auto-commit remainder + turn-end push + `turn.ended` POST)
-- Hook: `session-end` (presence cleanup)
-- Slash commands: status, fork, mode
-- Auto-loaded teaching skill (`skills/jamsesh/SKILL.md`) — the agent's
-  primer on jamsesh mechanics
-- MCP config with `headersHelper` integration
+- **packaging** is static artifact authoring — manifest, slash-command
+  skills, hooks.json, .mcp.json, the auto-loaded teaching skill. No Go
+  code; the artifacts reference subcommand names only, so packaging is
+  independent of the binary's implementation.
+- **binary-foundation** is the Go binary's scaffold — subcommand
+  router, JSON hook IO, local state package, OAuth flows, token
+  refresh, `mcp-headers` subcommand. Foundation for the other binary
+  subcommands.
+- **session-commands** wraps user-facing slash commands (`join`,
+  `status`, `fork`, `mode`).
+- **hooks** implements the six CC lifecycle hooks plus the shared
+  retry queue.
 
-<!-- Design pass on each child feature will fill in specifics. -->
+Critical path: `binary-foundation → {session-commands || hooks}`.
+`packaging` parallelizes from day one (no deps).
+
+### Child features
+
+- `epic-cc-plugin-packaging` — plugin.json, hooks.json, .mcp.json,
+  slash-command SKILL.md files, auto-loaded teaching skill — depends
+  on: `[]`
+- `epic-cc-plugin-binary-foundation` — Go binary subcommand router,
+  JSON hook IO scaffold, local state package, OAuth client (local-
+  listener + device-code), token refresh, `mcp-headers` subcommand —
+  depends on: `[]`
+- `epic-cc-plugin-session-commands` — `jamsesh join`, `status`,
+  `fork`, `mode` — depends on: `[epic-cc-plugin-binary-foundation]`
+- `epic-cc-plugin-hooks` — 6 lifecycle hooks + per-session retry
+  queue + transient/permanent classifier — depends on:
+  `[epic-cc-plugin-binary-foundation]`
+
+### Decomposition risks
+
+- **`hooks` is at the size ceiling.** 12-15 units. If retry-queue
+  interactions compound (parent-before-child ordering, persistence
+  under crashes, queue-too-large handling in `stop`), the design pass
+  may split out a `retry-queue` sub-feature.
+- **Device-code OAuth flow has subtle timing concerns.** Polling
+  cadence, code expiry, UX during wait. Design pass references RFC 8628
+  and locks the polling cadence.
+- **Auto-loaded teaching skill is loaded into every agent turn.**
+  Verbose teaching is expensive context. ≤2500-word budget is the
+  safety valve; design pass enforces it as a hard limit.
+- **`headersHelper` timing assumption.** If CC caches headers per
+  connection and a token refreshes mid-session, MCP calls keep going
+  with stale Authorization until reconnect. CC's MCP client spec is
+  the source of truth on 401-retry behavior; design pass documents the
+  assumption.
