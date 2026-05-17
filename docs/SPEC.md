@@ -174,6 +174,5 @@ changes:
 - Multiple git identities per portal account
 - Non-Claude-Code agent runtimes — the lifecycle contract is documented in
   PROTOCOL so other runtimes can implement against a spec
-- Multi-instance horizontal scaling with shared Postgres
 - Live cursors and richer presence features in the portal UI
 - Session recordings as scrubbable timelines
