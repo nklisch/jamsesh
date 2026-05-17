@@ -1,7 +1,7 @@
 ---
 id: spa-websocket-reconnect-logic
 kind: feature
-stage: implementing
+stage: review
 tags: [ui]
 parent: null
 depends_on: []

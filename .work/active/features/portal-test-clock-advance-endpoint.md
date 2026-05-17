@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-advance-endpoint
 kind: feature
-stage: implementing
+stage: review
 tags: [testing, e2e-test, testability]
 parent: null
 depends_on: []
