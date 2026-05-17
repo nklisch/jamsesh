@@ -1,7 +1,7 @@
 ---
 id: portal-bearer-middleware-dep-translate
 kind: story
-stage: review
+stage: done
 tags: [portal, auth, error-taxonomy]
 parent: null
 depends_on: []
@@ -190,4 +190,55 @@ sessions/oauth: in-flight stories own them).
   (requires Docker + the `jamsesh/portal:e2e` image). The unit tests
   cover the contract verbatim; the e2e assertion is now wired so the
   next full e2e run will exercise the live middleware path.
+
+## Review
+
+**Verdict: Approve.**
+
+The middleware fix is the minimal, correct change — option 1 from the
+proposal (route through `WriteFromError` + `WrapDBIfTransient`). The
+inline comment is appropriately scoped and the import addition is
+clean. The earlier switch arms (`ErrExpiredToken`,
+`ErrInvalidToken`, `ErrRevokedToken`) correctly short-circuit before
+the dep wrap, so token-sentinel semantics are unchanged.
+
+**Test coverage is strong.** Two unit tests pin the contract from
+both directions: the transient-shape test asserts the full envelope
+(503 + `dep.db_unavailable` + `Retry-After: 2` + JSON content-type)
+on a non-sentinel error, and the business-sentinel test guards
+against future over-broadening of `WrapDBIfTransient` by pinning
+that `store.ErrNotFound` still falls through to `internal` 500. The
+re-enabled e2e assertion correctly mints the bearer *before* adding
+the toxic — required ordering, easy to get wrong.
+
+**Sweep-audit rigor: high.** Spot-checked three "left unchanged"
+sites:
+- `auth/middleware.go` — the deny-on-any-error rationale is correct;
+  emitting `dep.db_unavailable` here would leak DB liveness to
+  unauthenticated callers and conflict with the org-existence
+  privacy contract.
+- `wsgateway/gateway.go` lines 145/151/158/171 — pre-upgrade
+  `http.Error` calls are correct; browser WS clients surface status
+  but not body, so the typed envelope offers no value here.
+- `githttp/*.go` `ErrGitSubprocessFailed` sites — the envelope is
+  already correct and `Write` short-circuits on `*httperr.Error`, so
+  rerouting through `WriteFromError` would be a no-op.
+
+**Deferred sites: rationales sound.**
+- `githttp/auth.go` — git smart-HTTP clients don't parse JSON
+  envelopes; converting requires a separate decision about the
+  basic-auth path body format. Reasonable deferral.
+- `auth/oauth.go` and `sessions/handler.go` — both touched by
+  in-flight stories (`portal-oauth-provider-error-taxonomy` /
+  `portal-validate-writable-scope-at-create-time` per recent commits
+  `aaf396e` / `87835cc`). Avoiding races is the right call.
+
+**Findings: 0 blockers, 0 important, 0 nits.**
+
+**Test runs (review):**
+- `go test ./internal/portal/tokens/... ./internal/portal/...` → all
+  pass.
+- `go build ./...` → clean.
+
+No parked items.
 
