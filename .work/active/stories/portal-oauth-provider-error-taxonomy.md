@@ -1,7 +1,7 @@
 ---
 id: portal-oauth-provider-error-taxonomy
 kind: story
-stage: review
+stage: done
 tags: [portal, auth, error-taxonomy]
 parent: null
 depends_on: []
@@ -141,3 +141,38 @@ new ones. The existing `TestOAuthCallback_ExchangeError_ReturnsDepEnvelope`
 still asserts 503 `dep.oauth_provider_unavailable` for plain transport
 errors, confirming the new classification path doesn't catch the
 fallthrough.
+
+## Review (2026-05-17)
+
+**Verdict:** Approve.
+
+Cross-checks all pass:
+- `internal/portal/oauth/provider.go` exports `ErrBadGrant` sentinel
+  with doc comment naming the callback contract.
+- `internal/portal/oauth/github.go:180` wraps the 200-with-error
+  branch with `fmt.Errorf("%w: github error %s: %s", ErrBadGrant, ...)`.
+  Transport, decode, empty-token, and non-2xx branches are untouched —
+  the taxonomy boundary is preserved.
+- `internal/portal/auth/oauth.go:142-146` classifies with
+  `errors.Is(err, portaloauth.ErrBadGrant)` BEFORE the
+  `deperr.WrapOAuthProvider` fallback; matches the design spec.
+- `*ErrExchange.Unwrap` returns Cause, so `errors.Is` traverses both
+  layers as the implementation notes claim.
+- `docs/PROTOCOL.md:391` registers `oauth.invalid_grant` (400) in
+  Common error codes with a one-liner distinguishing it from
+  `dep.oauth_provider_unavailable` (503).
+- 3 new provider tests (`bad_verification_code`, `invalid_grant`,
+  transport-boundary guard) + 2 new callback tests (HTTP envelope,
+  typed-response shape). Existing dep-class 503 assertion intact.
+
+`go test ./internal/portal/oauth/... ./internal/portal/auth/...` and
+`go build ./...` both pass.
+
+**Sentinel-shape soundness.** `var ErrBadGrant = errors.New(...)` plus
+`fmt.Errorf("%w: ...", ErrBadGrant, ...)` matches the `deperr` sentinel
+convention. Operator-facing detail (`bad_verification_code` /
+`invalid_grant`) is preserved in the wrap text; promotion to a typed
+`*BadGrantError` is a future move if a caller needs to programmatically
+distinguish upstream codes. Sound v1.
+
+**Findings:** 0 blockers, 0 important, 0 nits.
