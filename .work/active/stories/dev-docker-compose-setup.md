@@ -1,7 +1,7 @@
 ---
 id: dev-docker-compose-setup
 kind: story
-stage: review
+stage: done
 tags: [infra]
 parent: dev-docker-compose
 depends_on: []
@@ -268,3 +268,36 @@ overlay their own provider env vars.
 
 All acceptance criteria verified automated except the Vite WS criterion (requires
 running browser + frontend dev server; manual-verify only).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+
+**Important**:
+- `docs/SELF_HOST.md` configuration table missing `JAMSESH_WS_ALLOW_ORIGINS`
+  row. The env var is now load-bearing in production code; the doc table is the
+  canonical operator-facing reference and the inline comment in
+  `cmd/portal/main.go:319-321` points there. Pre-existing gap that this story
+  makes more visible rather than introducing — filed as backlog item
+  `docs-self-host-document-ws-allow-origins`, not a blocker.
+  → Item: `.work/backlog/docs-self-host-document-ws-allow-origins.md`
+- The new env-var parsing in `cmd/portal/main.go:320-328` has no unit test.
+  The parsing is small but production-touching (security-relevant: WS origin
+  allowlist); a table test of the comma-split/trim/empty-drop behavior would
+  earn confidence cheaply. Filed as backlog item.
+  → Item: `.work/backlog/portal-test-ws-allow-origins-env-parsing.md`
+
+**Nits**:
+- The `JAMSESH_EMAIL_FROM: dev@localhost` workaround in `compose.yaml` is
+  pragmatic and well-commented. Suggests `senders.New()` validation might
+  be too strict for dev mode (out of scope here; future consideration).
+- `-buildvcs=false` in `.air.toml` is a clean workaround for the container
+  /host-mounted-`.git` permission mismatch and is documented at the call
+  site in the commit message.
+
+**Notes**: All acceptance criteria pass except the Vite WS browser-side check
+(manual-verify only). The deviations (Go 1.25 pin, WS env-var wiring,
+EMAIL_FROM stub, `-buildvcs=false`) are all defensible and individually
+documented in the implementation notes above.
