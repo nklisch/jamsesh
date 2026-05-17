@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -33,17 +35,76 @@ type DraftEvent struct {
 	Payload json.RawMessage
 }
 
+// subscriberRec is an internal subscriber record holding the channel and an
+// optional type filter.
+type subscriberRec struct {
+	ch     chan Event
+	filter string // empty = receive all events
+}
+
 // Log is the write-side and read-side entry point for the event log.
 // Construct it once per server lifetime via New and share it across
 // components.
 type Log struct {
-	s store.Store
+	s      store.Store
+	muSubs sync.RWMutex
+	subs   []*subscriberRec
 }
 
 // New constructs a Log backed by the given store. The store must implement
 // EventLogStore and PresenceStore (satisfied by both dialect adapters).
 func New(s store.Store) *Log {
 	return &Log{s: s}
+}
+
+// Subscribe returns a receive-only channel that will receive events emitted
+// to this Log, and an unsubscribe function that must be called to clean up.
+//
+// typeFilter restricts delivery to events whose Type equals typeFilter. Pass
+// an empty string to receive all events. The channel is buffered at 64; if
+// the consumer falls behind, events are dropped silently (the worker's
+// startup scan catches transient drops).
+func (l *Log) Subscribe(typeFilter string) (<-chan Event, func()) {
+	ch := make(chan Event, 64)
+	sub := &subscriberRec{ch: ch, filter: typeFilter}
+	l.muSubs.Lock()
+	l.subs = append(l.subs, sub)
+	l.muSubs.Unlock()
+
+	unsubscribe := func() {
+		l.muSubs.Lock()
+		defer l.muSubs.Unlock()
+		for i, s := range l.subs {
+			if s == sub {
+				l.subs = append(l.subs[:i], l.subs[i+1:]...)
+				close(ch)
+				return
+			}
+		}
+	}
+	return ch, unsubscribe
+}
+
+// fanOut delivers e to all subscribers whose filter matches. Sends are
+// non-blocking; subscribers that are full receive a Warn log and the event is
+// dropped.
+func (l *Log) fanOut(e Event) {
+	l.muSubs.RLock()
+	defer l.muSubs.RUnlock()
+	for _, s := range l.subs {
+		if s.filter != "" && s.filter != e.Type {
+			continue
+		}
+		select {
+		case s.ch <- e:
+		default:
+			slog.Warn("events: subscriber channel full, dropping event",
+				"event_type", e.Type,
+				"session_id", e.SessionID,
+				"seq", e.Seq,
+			)
+		}
+	}
 }
 
 // Emit allocates the next seq for the session, inserts one event row, and
@@ -53,6 +114,8 @@ func New(s store.Store) *Log {
 // per-session namespace for seq allocation.
 func (l *Log) Emit(ctx context.Context, orgID, sessionID, eventType string, payload json.RawMessage) (int64, error) {
 	var seq int64
+	var emittedAt time.Time
+	var id string
 	err := l.s.WithTx(ctx, func(tx store.TxStore) error {
 		if err := tx.EnsureEventSeqRow(ctx, sessionID); err != nil {
 			return fmt.Errorf("ensure event_seq row: %w", err)
@@ -62,7 +125,8 @@ func (l *Log) Emit(ctx context.Context, orgID, sessionID, eventType string, payl
 			return fmt.Errorf("allocate seq: %w", err)
 		}
 		seq = allocated
-		id := ulid.Make().String()
+		id = ulid.Make().String()
+		emittedAt = time.Now().UTC()
 		return tx.InsertEvent(ctx, store.InsertEventParams{
 			ID:        id,
 			OrgID:     orgID,
@@ -70,12 +134,21 @@ func (l *Log) Emit(ctx context.Context, orgID, sessionID, eventType string, payl
 			Seq:       seq,
 			Type:      eventType,
 			Payload:   string(payload),
-			CreatedAt: time.Now().UTC(),
+			CreatedAt: emittedAt,
 		})
 	})
 	if err != nil {
 		return 0, err
 	}
+	l.fanOut(Event{
+		ID:        id,
+		OrgID:     orgID,
+		SessionID: sessionID,
+		Seq:       seq,
+		Type:      eventType,
+		Payload:   payload,
+		CreatedAt: emittedAt,
+	})
 	return seq, nil
 }
 
@@ -92,6 +165,9 @@ func (l *Log) EmitBatch(ctx context.Context, orgID, sessionID string, drafts []D
 	var firstSeq int64
 	now := time.Now().UTC()
 
+	// ids holds the generated IDs in order so we can fan out after commit.
+	ids := make([]string, len(drafts))
+
 	err := l.s.WithTx(ctx, func(tx store.TxStore) error {
 		if err := tx.EnsureEventSeqRow(ctx, sessionID); err != nil {
 			return fmt.Errorf("ensure event_seq row: %w", err)
@@ -105,9 +181,9 @@ func (l *Log) EmitBatch(ctx context.Context, orgID, sessionID string, drafts []D
 		firstSeq = last - n + 1
 		for i, draft := range drafts {
 			seq := firstSeq + int64(i)
-			id := ulid.Make().String()
+			ids[i] = ulid.Make().String()
 			if err := tx.InsertEvent(ctx, store.InsertEventParams{
-				ID:        id,
+				ID:        ids[i],
 				OrgID:     orgID,
 				SessionID: sessionID,
 				Seq:       seq,
@@ -122,6 +198,17 @@ func (l *Log) EmitBatch(ctx context.Context, orgID, sessionID string, drafts []D
 	})
 	if err != nil {
 		return 0, err
+	}
+	for i, draft := range drafts {
+		l.fanOut(Event{
+			ID:        ids[i],
+			OrgID:     orgID,
+			SessionID: sessionID,
+			Seq:       firstSeq + int64(i),
+			Type:      draft.Type,
+			Payload:   draft.Payload,
+			CreatedAt: now,
+		})
 	}
 	return firstSeq, nil
 }
@@ -145,7 +232,9 @@ func (l *Log) UpdatePresence(ctx context.Context, orgID, sessionID, accountID, r
 	}
 
 	now := time.Now().UTC()
-	return l.s.WithTx(ctx, func(tx store.TxStore) error {
+	var seq int64
+	var id string
+	err = l.s.WithTx(ctx, func(tx store.TxStore) error {
 		if err := tx.UpsertPresence(ctx, store.UpsertPresenceParams{
 			OrgID:        orgID,
 			SessionID:    sessionID,
@@ -159,11 +248,12 @@ func (l *Log) UpdatePresence(ctx context.Context, orgID, sessionID, accountID, r
 		if err := tx.EnsureEventSeqRow(ctx, sessionID); err != nil {
 			return fmt.Errorf("ensure event_seq row: %w", err)
 		}
-		seq, err := tx.AllocateNextSeq(ctx, sessionID)
+		allocated, err := tx.AllocateNextSeq(ctx, sessionID)
 		if err != nil {
 			return fmt.Errorf("allocate seq: %w", err)
 		}
-		id := ulid.Make().String()
+		seq = allocated
+		id = ulid.Make().String()
 		return tx.InsertEvent(ctx, store.InsertEventParams{
 			ID:        id,
 			OrgID:     orgID,
@@ -174,6 +264,19 @@ func (l *Log) UpdatePresence(ctx context.Context, orgID, sessionID, accountID, r
 			CreatedAt: now,
 		})
 	})
+	if err != nil {
+		return err
+	}
+	l.fanOut(Event{
+		ID:        id,
+		OrgID:     orgID,
+		SessionID: sessionID,
+		Seq:       seq,
+		Type:      "presence.updated",
+		Payload:   payloadBytes,
+		CreatedAt: now,
+	})
+	return nil
 }
 
 // ListSince returns events with seq > sinceSeq for the given session, in

@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -29,6 +30,7 @@ import (
 	"jamsesh/internal/portal/accounts"
 	"jamsesh/internal/portal/assets"
 	"jamsesh/internal/portal/auth"
+	"jamsesh/internal/portal/automerger"
 	"jamsesh/internal/portal/config"
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/githttp"
@@ -215,6 +217,22 @@ func main() {
 	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
 	sessionsHandler := sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
 
+	// Build and start the auto-merger worker. It subscribes to commit.arrived
+	// events and runs merge + apply in per-session goroutines.
+	portalHost := cfg.PortalURL
+	mergerApplier := automerger.NewApplier(dbStore, eventLog)
+	mergerWorker := &automerger.Worker{
+		Store:      dbStore,
+		Storage:    storageSvc,
+		Log:        eventLog,
+		Applier:    mergerApplier,
+		PortalHost: portalHost,
+	}
+	if err := mergerWorker.Start(ctx); err != nil {
+		slog.Error("auto-merger worker start failed", "err", err)
+		os.Exit(1)
+	}
+
 	// Compose the combined handler that satisfies the full StrictServerInterface.
 	strictAPI := openapi.NewStrictHandler(&combinedHandler{
 		Handler:          tokenHandler,
@@ -314,6 +332,14 @@ func main() {
 	if err := server.Run(ctx, cfg, handler); err != nil {
 		slog.Error("server exited with error", "err", err)
 		os.Exit(1)
+	}
+
+	// Drain the auto-merger worker after the HTTP server stops accepting requests.
+	// Give it up to 10 seconds to finish in-flight merges.
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelStop()
+	if err := mergerWorker.Stop(stopCtx); err != nil {
+		slog.Warn("auto-merger worker stop timed out", "err", err)
 	}
 
 	slog.Info("portal stopped cleanly")
