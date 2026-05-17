@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-hint-cache
 kind: story
-stage: implementing
+stage: review
 tags: [infra]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: []
@@ -29,12 +29,12 @@ New:
 
 ## Acceptance criteria
 
-- [ ] Set then Get within TTL → hit with same podID
-- [ ] Get after TTL → miss
-- [ ] Set N entries with maxEntries=N then 1 more → oldest evicted
-- [ ] Invalidate then Get → miss
-- [ ] Concurrent Get/Set race-free under `go test -race`
-- [ ] `New(maxEntries int, ttl time.Duration) *Hint` returns ready cache
+- [x] Set then Get within TTL → hit with same podID
+- [x] Get after TTL → miss
+- [x] Set N entries with maxEntries=N then 1 more → oldest evicted
+- [x] Invalidate then Get → miss
+- [x] Concurrent Get/Set race-free under `go test -race`
+- [x] `New(maxEntries int, ttl time.Duration) *Hint` returns ready cache
 
 ## Notes
 
@@ -43,3 +43,23 @@ New:
   contention shows up in metrics.
 - Default sizing chosen by service binary: `maxEntries=10_000`,
   `ttl=60s`.
+
+## Implementation notes
+
+- `internal/router/cache/hint.go`: `Hint` struct wraps `container/list`
+  (doubly-linked) + `map[string]*list.Element` under `sync.Mutex`. Each
+  list element value is a pointer to a private `entry` struct holding
+  `sessionID`, `podID`, and `expiry time.Time`.
+- `Get`: expired entries are deleted from both the list and the map before
+  returning a miss, preventing unbounded map growth.
+- `Set`: updates the value and TTL in-place when the key already exists,
+  then promotes to front; inserts at front otherwise. LRU eviction (back
+  of list) fires before insertion when at capacity.
+- `Invalidate`: removes from both structures; no-op when absent.
+- `removeElement` is the single shared helper that maintains list/map
+  consistency — called from Get (expiry), Set (eviction), and Invalidate.
+- New panics on invalid arguments (≤0 maxEntries or ≤0 TTL) to catch
+  misconfiguration at startup rather than silently misbehaving.
+- 12 unit tests cover all acceptance criteria, TTL refresh, value update
+  on re-Set, absent-key Invalidate, and map-cleanup after expiry. All pass
+  under `go test -race`.
