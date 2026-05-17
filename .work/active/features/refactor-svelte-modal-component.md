@@ -1,7 +1,7 @@
 ---
 id: refactor-svelte-modal-component
 kind: feature
-stage: implementing
+stage: review
 tags: [refactor, ui]
 parent: null
 depends_on: []
@@ -120,3 +120,27 @@ Stage advanced `drafting → implementing` directly without invoking
 `refactor-design` per-feature mode. Feature was emitted by discovery
 mode with full body, target shape, acceptance, and chained child stories.
 Per-feature mode would re-design content already present in the children.
+
+## Implementation summary (orchestrator)
+
+Both child stories implemented and advanced to `stage: review`:
+
+- `refactor-svelte-modal-component-define` (commit `97c9033`) — created
+  `frontend/src/lib/components/Modal.svelte` with the spec'd prop shape
+  (`open`, `title`, `ariaLabel?`, `size?`, `onclose?`, `children`). ESC,
+  backdrop-click, close-button, and focus-management all wired. 17 unit
+  tests covering all states + size variants.
+- `refactor-svelte-modal-component-migrate-dialogs` (commit `099270a`) —
+  `ForkDialog.svelte`: 284 → 240 LoC (−44). `ModeSwitchDialog.svelte`:
+  272 → 226 LoC (−46). Net −90 LoC across the two dialogs. `<Modal>` API
+  was sufficient as-is — no extension required.
+
+### Verification
+
+- 300/300 frontend tests pass (up from 286 pre-feature; new tests added
+  by both child stories)
+- `npm run check` (svelte-check) clean
+- No leftover `.modal-overlay` / `.modal-header` / `.close-btn` CSS rules
+  in the migrated dialogs (verified via grep)
+- Both dialogs render visually identical to pre-refactor (Modal owns the
+  same CSS tokens)

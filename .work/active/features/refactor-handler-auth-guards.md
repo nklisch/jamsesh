@@ -1,7 +1,7 @@
 ---
 id: refactor-handler-auth-guards
 kind: feature
-stage: implementing
+stage: review
 tags: [refactor, portal]
 parent: null
 depends_on: []
@@ -115,3 +115,40 @@ Stage advanced `drafting → implementing` directly without invoking
 shape, acceptance criteria, and child stories with `depends_on` chains are
 all in place. Per-feature mode would mostly re-write content already
 present in the children's bodies. Children are ready to be worked.
+
+## Implementation summary (orchestrator)
+
+All three child stories implemented and advanced to `stage: review`:
+
+- `refactor-handler-auth-guards-helpers-and-sessions` (commit `75cec22`) —
+  defined `internal/portal/handlerauth` package (139 LoC) with
+  `RequireAccount`, `RequireOrgMember`, `RequireSessionMember`, and an
+  `AuthFail` struct carrying both typed payloads + an `Err error` for 500-path
+  surfacing. Migrated all 4 handlers in `internal/portal/sessions/handler.go`
+  with per-operation typed-wrapper helpers. 9 unit tests added.
+- `refactor-handler-auth-guards-comments` (commit `4db3cbc`) — migrated 3
+  comments handlers (`CreateComment`, `ListComments`, `ResolveComment`).
+  `comments/handlers.go` shrank 402 → 328 LoC (−74).
+- `refactor-handler-auth-guards-accounts-tokens` (commit `1afddae`) —
+  migrated `GetMe`, `CreateOrg`, `CreateOrgInvite`, `AcceptOrgInvite`.
+  Deliberately did NOT migrate `tokens/handlers.go:RevokeToken` due to an
+  import cycle (`handlerauth` imports `tokens.AccountFromContext`, so
+  `tokens` cannot import `handlerauth`); annotated in the code.
+  `tokens/handlers.go:RefreshToken` also skipped — public endpoint with
+  body-based refresh token, not bearer auth.
+
+### Cross-cutting deviation
+
+All migrated handlers now check authorization BEFORE any 404-existence
+check, where this matters. A non-member requesting a non-existent session
+now receives 403 instead of 404 — the more secure "don't leak existence"
+posture. No existing tests pinned the prior ordering.
+
+### Verification
+
+- `go build ./...` clean
+- `go test ./...` passes (full Go suite, no failures)
+- No direct `store.GetOrgMember` / `store.GetSessionMember` calls remain
+  in any migrated handler file (verified via grep)
+- One acknowledged non-migration in `tokens/handlers.go:RevokeToken`
+  (import-cycle constraint), annotated

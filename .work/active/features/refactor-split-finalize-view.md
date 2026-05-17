@@ -1,7 +1,7 @@
 ---
 id: refactor-split-finalize-view
 kind: feature
-stage: implementing
+stage: review
 tags: [refactor, ui]
 parent: null
 depends_on: []
@@ -98,3 +98,34 @@ Stage advanced `drafting → implementing` directly without invoking
 `refactor-design` per-feature mode. Feature was emitted by discovery
 mode with full body, target shape, acceptance, and chained child stories.
 Per-feature mode would re-design content already present in the children.
+
+## Implementation summary (orchestrator)
+
+All three child stories implemented and advanced to `stage: review`. The
+orchestrator shrank from 1110 → 882 LoC (net −228 LoC, a 21% reduction).
+
+- `refactor-split-finalize-view-lock-banner` (commit `385f891`) — extracted
+  `frontend/src/lib/components/finalize/LockBanner.svelte` (101 LoC). Took
+  the conflict-banner, error-banner, and lock-pill markup + CSS.
+  FinalizeView: 1110 → 1065 (−45). 11 tests added.
+- `refactor-split-finalize-view-ref-group-list` (commit `f3d223b`) —
+  extracted `RefGroupList.svelte` (165 LoC) for the source-pool panel.
+  Lifted `selectedShas` state remained in the orchestrator as `string[]`;
+  passed to the child as `new Set(selectedShas)` for O(1) lookup.
+  FinalizeView: 1065 → 959 (−106). 7 tests added. Cart panel deliberately
+  kept inline (too many orthogonal couplings — see story body).
+- `refactor-split-finalize-view-command-runner` (commit `d6b0465`) —
+  extracted `CommandRunner.svelte` for the `jamsesh finalize-run <id>`
+  command + Copy button + toast. Component owns the clipboard write and
+  fires `oncopy` upward so the orchestrator still tracks ship-hint state.
+  FinalizeView: 959 → 882 (−77). 7 tests added. The story's suggested
+  `planID: string | null` prop was adapted to `command + ready` for
+  better isolation testability.
+
+### Verification
+
+- 300/300 frontend tests pass (up from ~280 pre-feature)
+- `FinalizeView.test.ts` passes unchanged across all three sub-stories
+- `npm run check` (svelte-check) clean
+- New `frontend/src/lib/components/finalize/` directory holds the three
+  subcomponents and their tests
