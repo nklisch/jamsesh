@@ -6,6 +6,9 @@ import (
 	"os/exec"
 
 	"github.com/go-chi/chi/v5"
+
+	"jamsesh/internal/portal/deperr"
+	"jamsesh/internal/portal/httperr"
 )
 
 // uploadPack handles POST /{orgID}/{sessionID}.git/git-upload-pack
@@ -30,13 +33,15 @@ func (h *Handler) uploadPack(w http.ResponseWriter, r *http.Request) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		slog.ErrorContext(r.Context(), "upload-pack stdout pipe", "err", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httperr.Write(w, r,
+			httperr.ErrGitSubprocessFailed(deperr.WrapGitSubprocess(err)))
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
 		slog.ErrorContext(r.Context(), "upload-pack start", "err", err, "repo", repoPath)
-		http.Error(w, "git subprocess error", http.StatusInternalServerError)
+		httperr.Write(w, r,
+			httperr.ErrGitSubprocessFailed(deperr.WrapGitSubprocess(err)))
 		return
 	}
 

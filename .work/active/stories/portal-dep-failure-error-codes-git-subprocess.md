@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-git-subprocess
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -141,3 +141,68 @@ exercised by the new test.
 ## Rollback
 
 `git revert`. The old `http.Error` plain-text path is restored.
+
+## Implementation notes
+
+Wired every subprocess-failure site in
+`internal/portal/githttp/{info_refs,upload_pack,receive_pack}.go` to emit
+the typed `dep.git_subprocess_failed` envelope.
+
+### Subprocess-failure sites covered
+
+- `info_refs.go`: `cmd.Output()` non-zero exit (the single subprocess
+  call in this handler — covers both spawn failure and non-zero exit).
+- `upload_pack.go`: `cmd.StdoutPipe()` failure and `cmd.Start()` failure.
+  Pipe-copy and `cmd.Wait()` errors stay as log-only because response
+  headers have already been written by then (the streaming-response
+  caveat called out in the constraints).
+- `receive_pack.go`: `cmd.StdinPipe()`, `cmd.StdoutPipe()`, and
+  `cmd.Start()` failures — all wrapped with `deperr.WrapGitSubprocess`
+  and emitted via `httperr.Write(w, r, httperr.ErrGitSubprocessFailed(err))`.
+  Post-`WriteHeader` errors (subprocess exit non-zero, post-receive
+  events) remain log-only.
+
+### Non-subprocess error sites in receive_pack.go (per story scope)
+
+- `buildValidationRepo` error -> `httperr.Write(w, r, httperr.ErrInternal(err))`
+  (in-process pack-parse, not a subprocess; previously emitted
+  `"repository unavailable"`).
+- `Validator.Validate` error -> `httperr.Write(w, r, httperr.ErrInternal(err))`
+  (in-process policy check).
+- `Store.GetSession` error -> `httperr.WriteFromError(w, r, deperr.WrapDBIfTransient(err))`.
+  This handles the DB-dep classification at the call site so the
+  translator picks `dep.db_unavailable` for non-business errors. The
+  parent feature's child-story 3 (`portal-dep-failure-error-codes-db`)
+  will sweep the rest of the codebase; this one site was wrapped here
+  because the file was open and the story body explicitly authorised it.
+
+### Pre-receive rejection + 400-class sites untouched
+
+The `writeReportStatusRejection` path, the "bad content type" 400, the
+"malformed push request" 400, and the 413 "pack exceeds size limit"
+path all remain as `http.Error`. They're either smart-HTTP protocol
+responses git clients consume directly (report-status) or client-input
+errors that aren't dep failures. The `unauthorized` 401 from
+`AccountFromContext` mismatch also stays — that's an auth fallback, not
+a dep failure.
+
+### Test
+
+Added `TestInfoRefs_SubprocessFailure_ReturnsDepGitSubprocessFailed` in
+`upload_pack_test.go`. It exercises the full envelope contract:
+
+- Forces a subprocess non-zero exit by skipping bare-repo creation so
+  `git upload-pack ... <nonexistent-path>` exits 128.
+- Asserts HTTP 500, `Content-Type: application/json; charset=utf-8`,
+  no `Retry-After` header, and JSON body
+  `{"error": "dep.git_subprocess_failed", "message": "..."}`.
+
+`go test ./internal/portal/githttp/...` passes (19 tests, including the
+new one). `go build ./...` passes cleanly.
+
+### Files touched
+
+- `internal/portal/githttp/info_refs.go`
+- `internal/portal/githttp/upload_pack.go`
+- `internal/portal/githttp/receive_pack.go`
+- `internal/portal/githttp/upload_pack_test.go`

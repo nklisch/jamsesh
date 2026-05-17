@@ -16,6 +16,8 @@ import (
 	gogitstorage "github.com/go-git/go-git/v5/storage"
 	"github.com/go-git/go-git/v5/storage/memory"
 
+	"jamsesh/internal/portal/deperr"
+	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
 )
@@ -76,7 +78,7 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.ErrorContext(r.Context(), "receive-pack: build validation repo",
 			"err", err, "repo", repoPath)
-		http.Error(w, "repository unavailable", http.StatusInternalServerError)
+		httperr.Write(w, r, httperr.ErrInternal(err))
 		return
 	}
 
@@ -85,7 +87,7 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.ErrorContext(r.Context(), "receive-pack: get session",
 			"err", err, "org", orgID, "session", sessionID)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httperr.WriteFromError(w, r, deperr.WrapDBIfTransient(err))
 		return
 	}
 
@@ -101,7 +103,7 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.ErrorContext(r.Context(), "receive-pack: validate",
 			"err", err, "org", orgID, "session", sessionID)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httperr.Write(w, r, httperr.ErrInternal(err))
 		return
 	}
 
@@ -127,20 +129,23 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		slog.ErrorContext(r.Context(), "receive-pack: stdin pipe", "err", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httperr.Write(w, r,
+			httperr.ErrGitSubprocessFailed(deperr.WrapGitSubprocess(err)))
 		return
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		slog.ErrorContext(r.Context(), "receive-pack: stdout pipe", "err", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httperr.Write(w, r,
+			httperr.ErrGitSubprocessFailed(deperr.WrapGitSubprocess(err)))
 		return
 	}
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
 		slog.ErrorContext(r.Context(), "receive-pack: start subprocess", "err", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httperr.Write(w, r,
+			httperr.ErrGitSubprocessFailed(deperr.WrapGitSubprocess(err)))
 		return
 	}
 

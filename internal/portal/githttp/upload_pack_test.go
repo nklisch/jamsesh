@@ -2,6 +2,7 @@ package githttp_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -309,5 +310,62 @@ func TestGitClone_EndToEnd(t *testing.T) {
 
 	if got := strings.TrimSpace(string(gotSHA)); got != wantSHA {
 		t.Errorf("clone HEAD = %q; want %q", got, wantSHA)
+	}
+}
+
+// TestInfoRefs_SubprocessFailure_ReturnsDepGitSubprocessFailed verifies that
+// when the `git` subprocess for info/refs exits non-zero (here forced by
+// pointing the handler at a non-existent repo path on disk while auth still
+// passes), the response is a 500 carrying the typed
+// `{"error":"dep.git_subprocess_failed",...}` envelope with NO Retry-After
+// header. This is the dep-failure error-code contract for git smart-HTTP.
+func TestInfoRefs_SubprocessFailure_ReturnsDepGitSubprocessFailed(t *testing.T) {
+	env, _ := newFetchEnv(t)
+	acc, token := env.mustIssueToken(t, "fetch-dep-fail@example.com")
+	orgID, sessionID := env.mustCreateSessionWithMember(t, acc)
+
+	// Deliberately skip creating the bare repo. The auth + archive middleware
+	// chain only consults the DB (membership + archived_sessions), so the
+	// request reaches the infoRefs handler. The handler spawns
+	// `git upload-pack --stateless-rpc --advertise-refs <nonexistent-path>`
+	// which exits non-zero — exactly the subprocess-failure path we want to
+	// assert on.
+
+	url := env.server.URL + "/" + orgID + "/" + sessionID +
+		".git/info/refs?service=git-upload-pack"
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.SetBasicAuth("x-access-token", token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET info/refs: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d; want 500", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "application/json; charset=utf-8" {
+		t.Errorf("Content-Type = %q; want application/json; charset=utf-8", got)
+	}
+	if got := resp.Header.Get("Retry-After"); got != "" {
+		t.Errorf("Retry-After = %q; want unset for git subprocess failure", got)
+	}
+
+	var body struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Error != "dep.git_subprocess_failed" {
+		t.Errorf("error = %q; want dep.git_subprocess_failed", body.Error)
+	}
+	if body.Message == "" {
+		t.Error("message field is empty; expected a human-readable message")
 	}
 }

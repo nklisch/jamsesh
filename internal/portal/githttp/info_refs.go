@@ -9,6 +9,9 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+
+	"jamsesh/internal/portal/deperr"
+	"jamsesh/internal/portal/httperr"
 )
 
 // gitProtocolRE validates the Git-Protocol header value before propagating it
@@ -45,7 +48,8 @@ func (h *Handler) infoRefs(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.ErrorContext(r.Context(), "info/refs subprocess failed",
 			"err", err, "service", service, "repo", repoPath)
-		http.Error(w, "git subprocess error", http.StatusInternalServerError)
+		httperr.Write(w, r,
+			httperr.ErrGitSubprocessFailed(deperr.WrapGitSubprocess(err)))
 		return
 	}
 
