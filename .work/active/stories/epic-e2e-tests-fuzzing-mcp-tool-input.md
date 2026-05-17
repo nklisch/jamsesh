@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-fuzzing-mcp-tool-input
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-tests-fuzzing
 depends_on: []
@@ -96,3 +96,30 @@ classify the response:
 - Property-based testing can produce huge numbers of inputs;
   ensure CI runs a bounded count. The harness should be runnable
   with a longer count for nightly fuzz jobs.
+
+## Implementation notes
+
+- Created `tests/e2e/fuzz/mcp_tool_input_test.go` with
+  `TestMCPToolInputFuzz`. Uses `callRawTool` (hand-rolled) that
+  performs the MCP initialize handshake + `tools/call` POST per
+  iteration, so each call is fully independent.
+- Created `tests/e2e/fuzz/testdata/mcp-seed-corpus.json` with 22
+  hand-curated cases covering: valid shapes for all four tools,
+  missing required fields, wrong types, huge strings, SQL
+  injection, path traversal, unicode/null bytes, empty bodies, and
+  an unknown tool name.
+- The harness runs two phases:
+  1. All seed corpus entries as deterministic subtests
+     (`seed_NN_<description>`).
+  2. N random property iterations using `math/rand/v2` with a
+     logged seed for reproducibility. Default N=200; override via
+     `MCP_FUZZ_COUNT`. Reproduce via `MCP_FUZZ_SEED=<seed>`.
+- `callRawTool` embeds raw `json.RawMessage` verbatim in the
+  arguments field, bypassing typed marshalling — this is
+  intentional so wrong-type and null inputs reach the portal
+  unmodified.
+- No new root-module deps; the harness is contained entirely in
+  `tests/e2e` which has its own `go.mod`.
+- Makefile target added: `make test-fuzz-mcp` runs the harness
+  with `-timeout 300s`.
+- The test is skipped under `go test -short`.
