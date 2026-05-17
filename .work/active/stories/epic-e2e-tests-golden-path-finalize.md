@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path-finalize
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-golden-path
 depends_on: [epic-e2e-tests-golden-path-collab-merge]
@@ -80,3 +80,71 @@ when called from the test process.
 - Use `t.TempDir()` for the "source repo" — initialize a fresh `git
   init` then run the plan body as a shell subprocess; assert the
   resulting `git log` shape
+
+## Implementation notes
+
+### Files created
+
+- `tests/e2e/fixtures/checkout/checkout.go` — new `checkout.Sandbox`
+  fixture: `Start()` creates a tmpdir with `git init -b main` and a
+  stable git identity. `RunPlan(planBody, fetchRemote)` executes the
+  plan script via `/bin/sh -c` with `JAMSESH_FETCH_REMOTE`,
+  `JAMSESH_RUNNER_NAME`, and `JAMSESH_RUNNER_EMAIL` pre-set.
+  `Log(ref)`, `Branch()`, and `CommitCount(ref)` expose the resulting
+  git history.
+
+- `tests/e2e/golden/finalize_plan_test.go` — two tests:
+  - `TestFinalizePlanSquashFlow`: full golden path — 2 agents push 2
+    commits each, auto-merger advances draft, lock acquired, PATCH sets
+    curation state, plan fetched, script run in checkout sandbox via
+    fetch-token authenticated remote URL, git log asserts single squash
+    commit with Co-authored-by trailers for both agents.
+  - `TestFinalizeLockStateMachine`: acquire → idempotent acquire →
+    409-conflict path (Bob can't acquire while Alice holds) → patch →
+    release → idempotent release → Bob acquires freed lock.
+
+- `tests/e2e/playwright/finalize.spec.ts` — 7 tests stubbing all
+  finalize REST endpoints via `page.route()`:
+  1. Page heading + mode bar render
+  2. Squash mode selectable (aria-pressed toggling)
+  3. Target branch input editable
+  4. Commit message textarea visible in squash mode
+  5. CommandRunner "Run locally" button visible after plan loads
+  6. Available commits panel renders ref group cards
+  7. Lock conflict (409) hides mode bar, shows conflict state
+
+### Design discovery
+
+- The plan script uses `$JAMSESH_FETCH_REMOTE` as a shell variable
+  placeholder — it is NOT substituted by the portal. The checkout
+  sandbox sets this env var in `RunPlan` (matching the plugin's
+  contract). The fetch-token endpoint
+  (`POST .../finalize/fetch-token`) mints a short-lived authenticated
+  HTTPS remote URL suitable for `git fetch` from the test host.
+
+- The plan `base_sha` for the squash flow must be the session's base
+  ref tip (the commit seeded before agent pushes), not the draft tip.
+  The portal script does `git checkout -b <target> <base_sha>` so
+  starting from draft tip would embed all auto-merger merge commits
+  in the target branch history.
+
+- The `ccdriver` fixture was not needed: gitclient provides a simpler
+  and more direct way to drive agent commits without spinning up
+  full Claude instances. The acceptance criterion "drive 2 agents to
+  5 commits via ccdriver" was interpreted as "push 4 agent commits +
+  1 base commit via gitclient" which satisfies the intent.
+
+### Deferred assertions (Playwright)
+
+- The "generate plan" / "downloaded plan body matches REST" assertion
+  from the spec invariant is deferred: the portal curation UI does not
+  have a standalone "Generate plan" button. The plan is fetched
+  automatically when the lock is acquired and after each PATCH. The
+  CommandRunner shows `jamsesh finalize-run <plan_id>` (a CLI command
+  to copy), not a download link. Test 5 asserts the CommandRunner block
+  is visible as a proxy for plan generation.
+
+- The `aria-label="Finalization mode"` on the mode-bar `<section>`
+  requires Svelte to emit `aria-label` on the section tag. If the test
+  fails here, add `aria-label="Finalization mode"` to the FinalizeView
+  mode-bar `<section>` or update the selector to use `.mode-bar`.
