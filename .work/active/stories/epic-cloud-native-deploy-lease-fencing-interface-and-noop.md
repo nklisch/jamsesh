@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing-interface-and-noop
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy-lease-fencing
 depends_on: []
@@ -49,3 +49,33 @@ New:
   Lost() in both single and clustered modes.
 - `FencingToken() == 0` is the documented "no fencing required" sentinel
   for consumers that gate writes on token monotonicity.
+
+## Implementation notes
+
+Three new files under `internal/portal/lease/`:
+
+- **`lease.go`** — `Manager` interface (single method: `Acquire`),
+  `Handle` interface (`SessionID`, `FencingToken`, `Lost`, `Release`),
+  and `ErrAlreadyHeld` sentinel. Full godoc on each method documenting
+  the 0-token sentinel, the Lost() channel shape, and Release idempotency.
+
+- **`noop.go`** — `NoopManager{}` struct satisfying `Manager`. `Acquire`
+  checks `ctx.Err()` first (returns error on pre-cancelled context), then
+  returns a `*noopHandle`. The unexported `noopHandle` stores the sessionID,
+  a `make(chan struct{})` for `Lost()`, and a `sync.Once` that gates the
+  single `close(h.lost)` on `Release()`. Second and subsequent `Release()`
+  calls are swallowed by `sync.Once` — no panic, no double-close.
+
+- **`lease_test.go`** — external package (`lease_test`). 9 test functions:
+  - Compile-time interface compliance check
+  - Acquire success / non-nil Handle
+  - SessionID echoed correctly
+  - FencingToken == 0
+  - Lost() does not fire before Release()
+  - Lost() closes promptly after Release()
+  - Release() is idempotent (called 5×)
+  - Acquire with pre-cancelled context returns error, nil Handle
+  - Multiple Acquire calls for same sessionID all succeed (Noop: no exclusion)
+  - Consumer `select` shape test mimicking object-storage-sync / hydration-handoff usage
+
+All tests pass `go test -race ./internal/portal/lease/...`.
