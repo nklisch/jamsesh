@@ -8,6 +8,8 @@ package golden_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"testing"
 
 	"jamsesh/tests/e2e/fixtures/authflow"
@@ -15,6 +17,18 @@ import (
 	"jamsesh/tests/e2e/fixtures/portal"
 	"jamsesh/tests/e2e/fixtures/postgres"
 )
+
+// randEmail returns a unique-per-run email of the form prefix-<hex>@example.com,
+// keeping each test process's mail-inbox state isolated even when multiple
+// suites or processes share a MailHog instance.
+func randEmail(t *testing.T, prefix string) string {
+	t.Helper()
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatalf("randEmail: rand.Read: %v", err)
+	}
+	return prefix + "-" + hex.EncodeToString(b) + "@example.com"
+}
 
 // TestOnboardingMagicLink exercises the full golden-path onboarding journey:
 //
@@ -39,22 +53,25 @@ func TestOnboardingMagicLink(t *testing.T) {
 		SMTPPort:  mh.ContainerSMTPPort,
 	})
 
+	aliceEmail := randEmail(t, "alice")
+	bobEmail := randEmail(t, "bob")
+
 	// Step 1: Alice signs in via magic link.
-	alice := authflow.SignInViaMagicLink(ctx, t, p, mh, "alice@example.com")
+	alice := authflow.SignInViaMagicLink(ctx, t, p, mh, aliceEmail)
 
 	// Step 2: Alice creates an org.
 	orgID := authflow.CreateOrg(ctx, t, p, alice.AccessToken, "Test Org")
 
 	// Step 3: Alice invites Bob.
-	inviteID := authflow.InviteToOrg(ctx, t, p, alice.AccessToken, orgID, "bob@example.com")
+	inviteID := authflow.InviteToOrg(ctx, t, p, alice.AccessToken, orgID, bobEmail)
 
 	// Step 4: Capture the invite token from Bob's email BEFORE Bob's magic-link
 	// email arrives, so LatestMessageTo reliably returns the invite (not the
 	// magic-link email sent in the next step).
-	inviteToken := authflow.ExtractInviteToken(ctx, t, mh, "bob@example.com")
+	inviteToken := authflow.ExtractInviteToken(ctx, t, mh, bobEmail)
 
 	// Step 5: Bob signs in via his own magic link.
-	bob := authflow.SignInViaMagicLink(ctx, t, p, mh, "bob@example.com")
+	bob := authflow.SignInViaMagicLink(ctx, t, p, mh, bobEmail)
 
 	// Step 6: Bob accepts Alice's invite.
 	authflow.AcceptInvite(ctx, t, p, bob.AccessToken, orgID, inviteID, inviteToken)

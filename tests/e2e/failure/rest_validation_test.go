@@ -195,7 +195,11 @@ func TestRestValidation(t *testing.T) {
 				map[string]string{"email": email}, "", http.StatusNoContent)
 
 			msg := mh.LatestMessageTo(ctx, t, email, 0)
-			matches := authflow.MagicLinkTokenRE.FindStringSubmatch(msg.Body)
+			// Decode quoted-printable before regex — the SMTP sender wraps
+			// long lines (including the magic-link URL) with "=\n" soft
+			// breaks that would otherwise split the token mid-string.
+			body := authflow.DecodeEmailBody(msg.Body)
+			matches := authflow.MagicLinkTokenRE.FindStringSubmatch(body)
 			if len(matches) < 2 {
 				t.Fatal("could not extract token from second magic-link email")
 			}

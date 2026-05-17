@@ -72,16 +72,20 @@ var MagicLinkTokenRE = regexp.MustCompile(`token=([A-Za-z0-9]+)`)
 //	{portalURL}/orgs/{orgID}/invites/{inviteID}/accept?token={raw}
 var InviteTokenRE = regexp.MustCompile(`token=([A-Za-z0-9]+)`)
 
-// decodeEmailBody decodes quoted-printable encoding from a MailHog message
+// DecodeEmailBody decodes quoted-printable encoding from a MailHog message
 // body. The portal's SMTP sender (wneessen/go-mail) writes text/plain bodies
 // with Content-Transfer-Encoding: quoted-printable, which wraps lines at 76
 // characters using "=\n" soft breaks. Long URLs (e.g., magic-link tokens)
 // can land soft-broken mid-string in the raw body. Real email clients decode
-// QP before rendering; the test helpers do the same so token extraction
-// works on the unwrapped form. If decoding fails for any reason, the
-// original body is returned so the caller's regex sees something — better
-// than a hard panic in a test helper.
-func decodeEmailBody(body string) string {
+// QP before rendering; callers should do the same before applying regexes
+// to the body. If decoding fails for any reason, the original body is
+// returned so the caller's regex sees something — better than a hard panic
+// in a test helper.
+//
+// Exported so failure-mode and other specs that extract tokens inline
+// (without going through SignInViaMagicLink / ExtractInviteToken) can apply
+// the same decode.
+func DecodeEmailBody(body string) string {
 	r := quotedprintable.NewReader(strings.NewReader(body))
 	decoded, err := io.ReadAll(r)
 	if err != nil {
@@ -105,7 +109,7 @@ func SignInViaMagicLink(ctx context.Context, t *testing.T, p *portal.Portal, mh 
 	// quoted-printable first so soft-line-breaks inside the token are
 	// removed before the regex runs.
 	msg := mh.LatestMessageTo(ctx, t, email, 5*time.Second)
-	body := decodeEmailBody(msg.Body)
+	body := DecodeEmailBody(msg.Body)
 	matches := MagicLinkTokenRE.FindStringSubmatch(body)
 	if len(matches) < 2 {
 		t.Fatalf("SignInViaMagicLink(%s): could not find token in email body:\n%s", email, body)
@@ -152,7 +156,7 @@ func InviteToOrg(ctx context.Context, t *testing.T, p *portal.Portal, accessToke
 func ExtractInviteToken(ctx context.Context, t *testing.T, mh *mailhog.MailHog, email string) string {
 	t.Helper()
 	msg := mh.LatestMessageTo(ctx, t, email, 5*time.Second)
-	body := decodeEmailBody(msg.Body)
+	body := DecodeEmailBody(msg.Body)
 	matches := InviteTokenRE.FindStringSubmatch(body)
 	if len(matches) < 2 {
 		t.Fatalf("ExtractInviteToken(%s): could not find token in invite email body:\n%s", email, body)

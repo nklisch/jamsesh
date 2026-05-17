@@ -27,7 +27,7 @@ func TestRunHookInheritsHostPath(t *testing.T) {
 	// Script 1: assert PATH is non-empty (inherited from host).
 	// Writes valid JSON on success so the Driver doesn't return a parse error.
 	pathCheckBin := filepath.Join(t.TempDir(), "path_check")
-	pathCheckScript := "#!/bin/sh\ncat > /dev/null\nif [ -n \"$PATH\" ]; then\n  printf '{}'\nfi\n"
+	pathCheckScript := "#!/bin/sh\ncat > /dev/null\nif [ -z \"$PATH\" ]; then\n  exit 1\nfi\nprintf '{}'\n"
 	if err := os.WriteFile(pathCheckBin, []byte(pathCheckScript), 0o755); err != nil {
 		t.Fatalf("write path_check script: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestRunHookInheritsHostPath(t *testing.T) {
 	// Script 2: assert ExtraEnv variables take effect (and thus can override
 	// host env values, satisfying the "ExtraEnv takes precedence" criterion).
 	sentinelBin := filepath.Join(t.TempDir(), "sentinel_check")
-	sentinelScript := "#!/bin/sh\ncat > /dev/null\nif [ \"$JAMSESH_TEST_SENTINEL\" = \"expected_value\" ]; then\n  printf '{}'\nfi\n"
+	sentinelScript := "#!/bin/sh\ncat > /dev/null\nif [ \"$JAMSESH_TEST_SENTINEL\" != \"expected_value\" ]; then\n  exit 1\nfi\nprintf '{}'\n"
 	if err := os.WriteFile(sentinelBin, []byte(sentinelScript), 0o755); err != nil {
 		t.Fatalf("write sentinel script: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestRunHookInheritsHostPath(t *testing.T) {
 	// Script 3: confirm that CLAUDE_PLUGIN_DATA is present (appended last,
 	// so it always overrides any conflicting ExtraEnv value).
 	pluginDataBin := filepath.Join(t.TempDir(), "plugin_data_check")
-	pluginDataScript := "#!/bin/sh\ncat > /dev/null\nif [ -n \"$CLAUDE_PLUGIN_DATA\" ]; then\n  printf '{}'\nfi\n"
+	pluginDataScript := "#!/bin/sh\ncat > /dev/null\nif [ -z \"$CLAUDE_PLUGIN_DATA\" ]; then\n  exit 1\nfi\nprintf '{}'\n"
 	if err := os.WriteFile(pluginDataBin, []byte(pluginDataScript), 0o755); err != nil {
 		t.Fatalf("write plugin_data script: %v", err)
 	}
