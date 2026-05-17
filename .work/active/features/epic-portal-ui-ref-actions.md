@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-ref-actions
 kind: feature
-stage: implementing
+stage: done
 tags: [ui]
 parent: epic-portal-ui
 depends_on: [epic-portal-ui-session-view-shell]
@@ -126,3 +126,11 @@ TreeDag fires `onref-action(ref, action)` event. SessionViewShell catches and op
 ## Single story
 
 `epic-portal-ui-ref-actions-menu-and-dialogs`
+
+## Implementation summary
+
+Single child story done.
+
+## Review
+
+**Verdict**: Approve. Capability complete.

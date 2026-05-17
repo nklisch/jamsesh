@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-artifact-and-comments-pane-and-composer
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui-artifact-and-comments
 depends_on: []
@@ -46,3 +46,9 @@ Add 2 new REST endpoints + the ArtifactPane + CommentComposer Svelte components;
 - `frontend/src/lib/components/ArtifactPane.svelte`: fetches via native `fetch` with Bearer auth header; `$effect` watches `selectedSha`/`selectedPath`; shift-click for range selection; binary placeholder, loading, and error states.
 - `frontend/src/lib/components/CommentComposer.svelte`: uses `client.POST` from openapi-fetch; kind dropdown (question/suggestion/action-request/fyi), addressed_to input, body textarea.
 - 23 new tests across `ArtifactPane.test.ts`, `CommentComposer.test.ts`, `files_test.go`, `service_test.go`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Three backend endpoints + 2 components. Binary detection scan + 1MB cap is the right size limit. line-range click+shift-click selection is intuitive. CommentComposer kind dropdown follows PROTOCOL.md taxonomy.

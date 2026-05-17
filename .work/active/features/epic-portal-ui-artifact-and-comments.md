@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-artifact-and-comments
 kind: feature
-stage: implementing
+stage: done
 tags: [ui]
 parent: epic-portal-ui
 depends_on: [epic-portal-ui-session-view-shell]
@@ -152,3 +152,11 @@ SessionViewShell's artifact slot renders ArtifactPane. Selection events from Tre
 ## Single story
 
 `epic-portal-ui-artifact-and-comments-pane-and-composer`
+
+## Implementation summary
+
+Single child story done.
+
+## Review
+
+**Verdict**: Approve. Capability complete.

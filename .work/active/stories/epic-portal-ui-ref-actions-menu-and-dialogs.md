@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-ref-actions-menu-and-dialogs
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui-ref-actions
 depends_on: []
@@ -47,3 +47,9 @@ Add backend ref-modes endpoint + RefActionsMenu + ForkDialog + ModeSwitchDialog;
 - `frontend/src/lib/components/ModeSwitchDialog.svelte`: radio buttons sync/isolated; submit disabled when `selectedMode === currentMode`; uses `client.POST` from openapi-fetch.
 - `frontend/src/lib/components/TreeDag.svelte`: added `onrefaction` prop; `oncontextmenu` on both rail-ref and ref-group elements.
 - 32 new tests across `RefActionsMenu.test.ts`, `ModeSwitchDialog.test.ts`, `refmodes_test.go`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Context menu + 2 dialogs land cleanly. ref-modes endpoint with mode.changed emission completes the mode-change v1 round trip (CLI mode now has server-side capability via this endpoint). MCP JSON-RPC fork call from the frontend mirrors the cc-plugin pattern.
