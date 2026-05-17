@@ -223,6 +223,16 @@ Self-host operators are responsible for:
   for who can reach it).
 - OAuth callback URL configuration.
 - Patching the portal binary as security updates ship.
+- **Object storage IAM** — when clustered mode and object-storage are enabled,
+  the operator must configure a service principal or IAM role with
+  bucket-scoped read/write/list/delete permissions on the bucket named in
+  `JAMSESH_OBJECT_STORAGE_URL`. Workload identity is preferred (GKE Workload
+  Identity, AKS Workload Identity, EKS IRSA) because it avoids static
+  credentials. Static credentials (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
+  or equivalent) are acceptable for non-cloud providers (Cloudflare R2,
+  Backblaze B2, MinIO). Scope credentials to the minimum required permissions:
+  `PutObject`, `GetObject`, `DeleteObject`, `ListBucket` (S3 names; equivalent
+  on GCS and Azure). Do not grant cross-bucket or account-wide permissions.
 
 The portal is designed to be safe in a hostile network with default
 configuration (HTTPS-only, token-authenticated, no anonymous endpoints

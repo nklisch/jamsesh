@@ -434,6 +434,11 @@ func clearEnv(t *testing.T) {
 		"JAMSESH_LEASE_HEARTBEAT_INTERVAL_S",
 		"JAMSESH_LEASE_RETENTION_DAYS",
 		"JAMSESH_LEASE_RETENTION_INTERVAL_HOURS",
+		"JAMSESH_OBJECT_STORAGE_URL",
+		"JAMSESH_OBJECT_STORAGE_REGION",
+		"JAMSESH_OBJECT_STORAGE_ENDPOINT_URL",
+		"JAMSESH_OBJECT_STORAGE_PATH_STYLE",
+		"JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE",
 	}
 	for _, v := range vars {
 		t.Setenv(v, "") // t.Setenv restores on cleanup; set to "" to clear
@@ -487,7 +492,8 @@ func TestLeaseConfigDefaults(t *testing.T) {
 func TestLeaseConfigEnvOverride(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
-	t.Setenv("JAMSESH_DB_DRIVER", "postgres") // clustered requires postgres
+	t.Setenv("JAMSESH_DB_DRIVER", "postgres")                       // clustered requires postgres
+	t.Setenv("JAMSESH_OBJECT_STORAGE_URL", "s3://bucket/prefix")    // clustered requires object storage
 	t.Setenv("JAMSESH_LEASE_HEARTBEAT_INTERVAL_S", "30")
 	t.Setenv("JAMSESH_LEASE_RETENTION_DAYS", "90")
 	t.Setenv("JAMSESH_LEASE_RETENTION_INTERVAL_HOURS", "6")
@@ -520,13 +526,14 @@ func TestValidation_DeployModeSingle(t *testing.T) {
 }
 
 // TestValidation_DeployModeClustered verifies that deploy_mode=clustered with
-// db_driver=postgres is valid.
+// db_driver=postgres and object_storage_url is valid.
 func TestValidation_DeployModeClustered(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
 	t.Setenv("JAMSESH_DB_DRIVER", "postgres")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_URL", "s3://my-bucket/prefix")
 	if _, err := config.Load(""); err != nil {
-		t.Errorf("deploy_mode=clustered with db_driver=postgres should be valid: %v", err)
+		t.Errorf("deploy_mode=clustered with db_driver=postgres and object_storage_url should be valid: %v", err)
 	}
 }
 
@@ -583,6 +590,167 @@ func TestValidation_LeaseIntervalNonPositive(t *testing.T) {
 			t.Error("expected error for JAMSESH_LEASE_RETENTION_INTERVAL_HOURS=0, got nil")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Object-storage config tests
+// ---------------------------------------------------------------------------
+
+// TestObjectStorageDefaults verifies the default values for object-storage fields.
+func TestObjectStorageDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ObjectStorageURL != "" {
+		t.Errorf("ObjectStorageURL default: got %q, want empty", cfg.ObjectStorageURL)
+	}
+	if cfg.ObjectStorageRegion != "" {
+		t.Errorf("ObjectStorageRegion default: got %q, want empty", cfg.ObjectStorageRegion)
+	}
+	if cfg.ObjectStorageEndpointURL != "" {
+		t.Errorf("ObjectStorageEndpointURL default: got %q, want empty", cfg.ObjectStorageEndpointURL)
+	}
+	if cfg.ObjectStoragePathStyle {
+		t.Errorf("ObjectStoragePathStyle default: got true, want false")
+	}
+	if cfg.ObjectStorageSyncQueueSize != 256 {
+		t.Errorf("ObjectStorageSyncQueueSize default: got %d, want 256", cfg.ObjectStorageSyncQueueSize)
+	}
+}
+
+// TestObjectStorageEnvOverride verifies that all five JAMSESH_OBJECT_STORAGE_*
+// env vars are applied correctly.
+func TestObjectStorageEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_OBJECT_STORAGE_URL", "s3://my-bucket/jamsesh")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_REGION", "eu-west-1")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_ENDPOINT_URL", "https://example.r2.cloudflarestorage.com")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_PATH_STYLE", "true")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE", "512")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ObjectStorageURL != "s3://my-bucket/jamsesh" {
+		t.Errorf("ObjectStorageURL: got %q, want %q", cfg.ObjectStorageURL, "s3://my-bucket/jamsesh")
+	}
+	if cfg.ObjectStorageRegion != "eu-west-1" {
+		t.Errorf("ObjectStorageRegion: got %q, want eu-west-1", cfg.ObjectStorageRegion)
+	}
+	if cfg.ObjectStorageEndpointURL != "https://example.r2.cloudflarestorage.com" {
+		t.Errorf("ObjectStorageEndpointURL: got %q", cfg.ObjectStorageEndpointURL)
+	}
+	if !cfg.ObjectStoragePathStyle {
+		t.Errorf("ObjectStoragePathStyle: got false, want true")
+	}
+	if cfg.ObjectStorageSyncQueueSize != 512 {
+		t.Errorf("ObjectStorageSyncQueueSize: got %d, want 512", cfg.ObjectStorageSyncQueueSize)
+	}
+}
+
+// TestObjectStoragePathStyleFalse verifies that JAMSESH_OBJECT_STORAGE_PATH_STYLE=false
+// is correctly parsed.
+func TestObjectStoragePathStyleFalse(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_OBJECT_STORAGE_PATH_STYLE", "false")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ObjectStoragePathStyle {
+		t.Errorf("ObjectStoragePathStyle: got true, want false for JAMSESH_OBJECT_STORAGE_PATH_STYLE=false")
+	}
+}
+
+// TestObjectStorageYAML verifies that the object_storage_* YAML keys are parsed.
+func TestObjectStorageYAML(t *testing.T) {
+	clearEnv(t)
+	yamlContent := `
+object_storage_url: "gs://my-bucket/sessions"
+object_storage_region: "us-central1"
+object_storage_endpoint_url: ""
+object_storage_path_style: false
+object_storage_sync_queue_size: 128
+`
+	path := writeTempConfig(t, yamlContent)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ObjectStorageURL != "gs://my-bucket/sessions" {
+		t.Errorf("ObjectStorageURL: got %q", cfg.ObjectStorageURL)
+	}
+	if cfg.ObjectStorageSyncQueueSize != 128 {
+		t.Errorf("ObjectStorageSyncQueueSize: got %d, want 128", cfg.ObjectStorageSyncQueueSize)
+	}
+}
+
+// TestValidation_ClusteredRequiresObjectStorage verifies that deploy_mode=clustered
+// without object_storage_url is rejected at startup.
+func TestValidation_ClusteredRequiresObjectStorage(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
+	t.Setenv("JAMSESH_DB_DRIVER", "postgres")
+	// No JAMSESH_OBJECT_STORAGE_URL — must fail.
+
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for deploy_mode=clustered without object_storage_url, got nil")
+	}
+}
+
+// TestValidation_SingleModeNoObjectStorage verifies that single-instance mode
+// with no object_storage_url is valid (object storage is clustered-only).
+func TestValidation_SingleModeNoObjectStorage(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "single")
+	// No object storage URL — should be fine in single mode.
+
+	_, err := config.Load("")
+	if err != nil {
+		t.Errorf("single mode without object_storage_url should be valid: %v", err)
+	}
+}
+
+// TestValidation_SingleModeWithObjectStorage verifies that single-instance mode
+// with an object_storage_url set is accepted (the URL is ignored but not rejected).
+func TestValidation_SingleModeWithObjectStorage(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "single")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_URL", "s3://bucket/prefix")
+
+	_, err := config.Load("")
+	if err != nil {
+		t.Errorf("single mode with object_storage_url should be valid: %v", err)
+	}
+}
+
+// TestValidation_ObjectStorageSyncQueueSizeZero verifies that a sync queue
+// size of zero is rejected.
+func TestValidation_ObjectStorageSyncQueueSizeZero(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE", "0")
+
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for object_storage_sync_queue_size=0, got nil")
+	}
+}
+
+// TestValidation_ObjectStorageSyncQueueSizeNegative verifies that a negative
+// sync queue size is rejected.
+func TestValidation_ObjectStorageSyncQueueSizeNegative(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE", "-1")
+
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for object_storage_sync_queue_size=-1, got nil")
+	}
 }
 
 // writeTempConfig writes content to a temp YAML file and returns its path.

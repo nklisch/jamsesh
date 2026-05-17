@@ -1007,12 +1007,15 @@ kubectl -n jamsesh rollout status deployment/jamsesh
 
 ## 14. Clustered mode (preview)
 
-> **Preview status.** The router service and per-session Postgres leases are
-> shipped and tested. The remaining components required for production
-> multi-pod serving — lease fencing with split-brain protection, object-storage
-> durability sync, and hydration handoff — are still in progress under the
-> `epic-cloud-native-deploy` epic. Do not rely on clustered mode for production
-> workloads yet. Use it for evaluation and feedback.
+> **Preview status.** The router service, per-session Postgres leases, fencing
+> tokens, and object-storage durability are shipped and tested. The one remaining
+> gap before clustered mode is production-ready is **hydration handoff** — the
+> ability to migrate a live session cleanly from one pod to another on demand
+> (tracked in `epic-cloud-native-deploy`). Today, pod replacement causes a brief
+> client-side `git fetch` retry loop until the new pod re-seeds the local repo
+> from object storage. Use clustered mode for evaluation and staging workloads;
+> use it in production only if you can tolerate a short client retry on pod
+> restart.
 
 ### When to use clustered mode
 
@@ -1030,11 +1033,11 @@ avoids all distributed-systems concerns. Clustered mode is appropriate when:
 - **Postgres** — SQLite is not supported in clustered mode. Advisory locks
   used by the per-session lease mechanism require Postgres 12+. See §5 for
   Postgres setup.
-- **Object storage** — required for cross-pod bare-repo durability. Object
-  storage sync is a capability in progress and not yet fully landed; the
-  per-session `storage/` directory is currently pod-local. This means pod
-  restarts or replacements lose in-flight session repos until object-storage
-  sync lands. Track progress under the epic.
+- **Object storage** — required for cross-pod bare-repo durability. Every push
+  is mirrored to object storage before the git client receives a success
+  response (RPO=0). Set `JAMSESH_OBJECT_STORAGE_URL` to one of the supported
+  URL schemes (see §14 "Object storage (durability)" below). The portal refuses
+  to start in clustered mode without this URL.
 - **The `jamsesh-router` binary** — a separate Go binary in the same repo
   (`cmd/jamsesh-router`). Build it alongside the portal:
   ```bash
@@ -1304,23 +1307,122 @@ Standard Go runtime and process metrics (`go_goroutines`, `go_memstats_*`,
 
 ### What is not yet in place (preview limitations)
 
-The following capabilities are planned but not yet landed:
+The following capability is planned but not yet landed:
 
-- **Lease fencing** — prevents split-brain when a session migrates between
-  pods mid-request. Without fencing, concurrent writes from two pods to the
-  same session repo are possible if the ring rebalances during a push. A
-  fencing token protocol using Postgres advisory locks is designed and
-  serialized after the router in the epic backlog.
-- **Object-storage sync** — bare repos are currently pod-local. If a pod is
-  replaced, in-flight sessions on that pod lose their repo state until the
-  next `git fetch` from clients re-seeds it. Object storage sync (S3/GCS)
-  will replicate repos across pods to make pod replacement transparent.
-- **Hydration handoff** — on session migration (new pod picks up a session
-  after a ring rebalance), the new pod needs to hydrate from storage before
-  serving. This is coupled to object-storage sync.
+- **Hydration handoff** — when the ring rebalances and a session moves to a
+  new pod, the new pod has no local repo cache yet. It can serve read-only
+  requests (digest, refs, comments) immediately from Postgres, but the first
+  push to the new pod re-seeds the local repo from object storage, which adds
+  a brief one-time latency. Future work will pre-hydrate the cache on lease
+  acquisition so the new pod is push-ready before the router redirects traffic.
 
-Until these land, clustered mode is safe to run **read-only workloads**
-(digest queries, status checks, WebSocket observation) across multiple pods,
-and safe to run **write workloads** only when the ring is stable (no pod churn
-during the session). For rolling upgrades, drain the old pod (SIGTERM causes
-a 30s graceful shutdown) before replacing it.
+Until hydration handoff lands, clustered mode handles pod replacement correctly
+but with a possible one-push latency on first contact with the new pod. Clients
+retry automatically on 503 (the router retries once; git clients retry on the
+next push). For rolling upgrades, drain the old pod (SIGTERM causes a 30s
+graceful shutdown) before the new pod goes live to minimize the transition
+window.
+
+### Object storage (durability)
+
+Object storage is the system of record for bare repos in clustered mode. Every
+push is mirrored to object storage before the git client receives a success
+response — this is the RPO=0 contract. Local disk on each pod is a working
+cache; its contents are bounded by lease tenure.
+
+**Required env vars:**
+
+| Env var | Purpose |
+|---|---|
+| `JAMSESH_OBJECT_STORAGE_URL` | Object-storage URL (required in clustered mode) |
+| `JAMSESH_OBJECT_STORAGE_REGION` | Provider region (required for AWS S3; optional for others) |
+| `JAMSESH_OBJECT_STORAGE_ENDPOINT_URL` | Endpoint override for S3-compatible services (R2, B2, MinIO) |
+| `JAMSESH_OBJECT_STORAGE_PATH_STYLE` | Force path-style addressing — `true` for MinIO/Ceph, `false` otherwise |
+| `JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE` | Max concurrent in-flight uploads per session (default `256`) |
+
+**Supported URL schemes:**
+
+| Scheme | Provider | Example |
+|---|---|---|
+| `s3://bucket/prefix` | AWS S3 | `s3://my-jamsesh-bucket/sessions` |
+| `s3-compatible://bucket/prefix` | Cloudflare R2, Backblaze B2, MinIO, Ceph | `s3-compatible://my-bucket` |
+| `gs://bucket/prefix` | Google Cloud Storage | `gs://my-jamsesh-bucket/sessions` |
+| `azblob://account/container/prefix` | Azure Blob Storage | `azblob://myaccount/jamsesh/sessions` |
+
+**AWS S3 (recommended for AWS deployments):**
+
+Use IRSA (IAM Roles for Service Accounts) on EKS — no static credentials needed.
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=s3://my-jamsesh-bucket/sessions
+JAMSESH_OBJECT_STORAGE_REGION=us-east-1
+# Credentials: IRSA annotation on the ServiceAccount, or IAM instance role
+```
+
+Required S3 permissions: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`,
+`s3:ListBucket` scoped to the configured bucket.
+
+**Cloudflare R2:**
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=s3-compatible://my-r2-bucket
+JAMSESH_OBJECT_STORAGE_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+AWS_ACCESS_KEY_ID=<r2-access-key-id>
+AWS_SECRET_ACCESS_KEY=<r2-secret-access-key>
+```
+
+R2 does not require a region setting. Credentials are R2-specific API tokens
+created in the Cloudflare dashboard under R2 → Manage API Tokens.
+
+**MinIO (self-hosted):**
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=s3-compatible://my-bucket/sessions
+JAMSESH_OBJECT_STORAGE_ENDPOINT_URL=http://minio.internal:9000
+JAMSESH_OBJECT_STORAGE_PATH_STYLE=true
+AWS_ACCESS_KEY_ID=<minio-access-key>
+AWS_SECRET_ACCESS_KEY=<minio-secret-key>
+```
+
+Set `JAMSESH_OBJECT_STORAGE_PATH_STYLE=true` for MinIO and self-hosted Ceph.
+For local development MinIO (plain HTTP), pass an `http://` endpoint URL.
+
+**Google Cloud Storage (GKE Workload Identity — recommended):**
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=gs://my-jamsesh-bucket/sessions
+# Credentials: GKE Workload Identity annotation on the KSA, or ADC via
+# GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+```
+
+Required GCS permissions: `storage.objects.create`, `storage.objects.get`,
+`storage.objects.delete`, `storage.buckets.list` on the configured bucket.
+Grant via IAM with the `Storage Object User` role (or a custom role scoped
+to the bucket).
+
+**Azure Blob Storage (AKS Workload Identity — recommended):**
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=azblob://myaccount/jamsesh/sessions
+# Credentials: AKS Workload Identity federated identity + Service Principal,
+# or static credentials via:
+#   AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
+```
+
+Required Azure permissions: `Storage Blob Data Contributor` role scoped to the
+storage account container.
+
+**Cost model:**
+
+Object storage costs for jamsesh are dominated by API call counts rather than
+storage volume. A session produces roughly 5–20 objects per push (loose git
+objects + a manifest update). At heavy use (~100 pushes/session/day across 10
+active sessions):
+
+- ~$0.05 per active session per day at AWS S3 / GCS pricing.
+- Storage cost is negligible — a busy session accumulates a few MB of git objects.
+- Cloudflare R2 eliminates egress costs, making it cost-efficient when
+  portal pods and clients are outside the same AWS/GCP region.
+
+Monitor `jamsesh_object_storage_uploads_total{result="error"}` to detect
+object-storage errors that would degrade push reliability.

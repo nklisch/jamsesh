@@ -45,6 +45,7 @@ import (
 	portaloauth "jamsesh/internal/portal/oauth"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
+	"jamsesh/internal/portal/storage/objectstore"
 	"jamsesh/internal/portal/probes"
 	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/senders"
@@ -346,6 +347,43 @@ func main() {
 	storageSvc := storage.New(cfg.Storage, dbStore)
 	eventLog := events.New(dbStore).WithMetrics(metricsReg)
 
+	// Build the object-storage sync pipeline when running in clustered mode.
+	// In single-instance mode (the default) this block is skipped entirely and
+	// a nil Syncer is passed to the postreceive Emitter, which treats nil as
+	// "no sync" — local disk remains the system of record.
+	//
+	// In clustered mode, the Syncer mirrors every push to object storage before
+	// the git client receives a success response (RPO=0 contract). config.validate()
+	// already guarantees ObjectStorageURL is non-empty in clustered mode, so the
+	// guard below is belt-and-suspenders.
+	var objSyncer *objectstore.Syncer
+	if cfg.DeployMode == "clustered" && cfg.ObjectStorageURL != "" {
+		backend, backendErr := objectstore.New(cfg.ObjectStorageURL, objectstore.Config{
+			Region:       cfg.ObjectStorageRegion,
+			EndpointURL:  cfg.ObjectStorageEndpointURL,
+			UsePathStyle: cfg.ObjectStoragePathStyle,
+		})
+		if backendErr != nil {
+			slog.Error("object storage backend init failed", "err", backendErr,
+				"url", cfg.ObjectStorageURL)
+			os.Exit(1)
+		}
+		slog.Info("object storage backend initialised",
+			"url", cfg.ObjectStorageURL,
+			"region", cfg.ObjectStorageRegion,
+			"path_style", cfg.ObjectStoragePathStyle,
+		)
+		objSyncer = &objectstore.Syncer{
+			Backend:                backend,
+			Manifests:              &objectstore.ManifestStore{Backend: backend},
+			Storage:                storageSvc,
+			Lease:                  leaseMgr,
+			Metrics:                metricsReg,
+			QueueSize:              cfg.ObjectStorageSyncQueueSize,
+			PerSessionBackpressure: true,
+		}
+	}
+
 	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
 	sessionsHandler := sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
 
@@ -430,7 +468,11 @@ func main() {
 		Validator: &prereceive.Validator{
 			MaxPackBytes: cfg.Git.MaxPackBytes,
 		},
-		Emitter: &postreceive.Emitter{Log: eventLog},
+		Emitter: &postreceive.Emitter{
+				Log:     eventLog,
+				Syncer:  objSyncer,  // nil in single-instance mode; Emitter handles nil as no-op
+				Storage: storageSvc, // used only when Syncer is non-nil
+			},
 		Metrics: metricsReg,
 	}
 

@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync-wiring
 kind: story
-stage: implementing
+stage: review
 tags: [portal, documentation]
 parent: epic-cloud-native-deploy-object-storage-sync
 depends_on: [epic-cloud-native-deploy-object-storage-sync-pipeline]
@@ -72,3 +72,55 @@ Edit:
   feature ships.
 - Foundation-doc principle: describe AS IT IS NOW, no "previously"
   prose.
+
+## Implementation notes
+
+### Factory (`internal/portal/storage/objectstore/factory.go`)
+
+`New(rawURL, Config)` dispatches on URL scheme:
+- `s3://` → `NewS3` directly
+- `s3-compatible://` → normalized to `s3://` then `NewS3` (EndpointURL required in Config)
+- `gs://` → `NewGCS`
+- `azblob://` → `NewAzureBlob`
+
+Unknown schemes return a clear error mentioning "unknown URL scheme". Empty URL
+is rejected at parse time.
+
+### Config additions (`internal/portal/config/config.go`)
+
+Five new fields added to `Config` struct with YAML keys and env overlays:
+- `ObjectStorageURL` / `JAMSESH_OBJECT_STORAGE_URL`
+- `ObjectStorageRegion` / `JAMSESH_OBJECT_STORAGE_REGION`
+- `ObjectStorageEndpointURL` / `JAMSESH_OBJECT_STORAGE_ENDPOINT_URL`
+- `ObjectStoragePathStyle` / `JAMSESH_OBJECT_STORAGE_PATH_STYLE` (bool: "true"/"false")
+- `ObjectStorageSyncQueueSize` / `JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE` (default 256)
+
+Validation:
+- `DeployMode=clustered` → `ObjectStorageURL` required (clear error on missing)
+- `ObjectStorageSyncQueueSize <= 0` → rejected
+
+Existing tests that used `JAMSESH_DEPLOY_MODE=clustered` without setting
+`JAMSESH_OBJECT_STORAGE_URL` were updated to include the object-storage URL.
+
+### main.go wiring (`cmd/portal/main.go`)
+
+Object-storage wiring inserted after `storageSvc` and `eventLog` are constructed
+(prerequisite for `Syncer.Storage`). In clustered mode: constructs Backend via
+`objectstore.New`, wraps it in `ManifestStore` and `Syncer`. In single-instance
+mode: `objSyncer` is nil. The postreceive `Emitter` receives `objSyncer` (nil
+or non-nil); the Emitter already handles nil as a no-op (ships per pipeline story).
+
+### Documentation updates
+
+- `docs/SELF_HOST.md` §14: updated preview status framing (hydration-handoff is
+  the last gap; routing + leases + durability are shipped). Added "Object storage
+  (durability)" subsection with env-var reference table, per-provider deploy
+  examples (AWS S3 / R2 / MinIO / GCS / Azure), IAM permissions, and cost model.
+  Limitations section updated to list only hydration-handoff.
+- `docs/SPEC.md`: added dual-layer description to Deployment shape section.
+- `docs/SECURITY.md`: added object-storage IAM row to self-host operator
+  responsibilities.
+- `docs/ARCHITECTURE.md`: replaced "object-storage sync in progress" prose with
+  "Bare-repo dual-layer storage" section describing the working-cache +
+  system-of-record model, RPO=0 contract, fencing token enforcement, and
+  conditional-write linearizability. Updated horizontal-scaling overview blurb.

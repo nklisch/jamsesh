@@ -385,9 +385,11 @@ client memory.
 
 ## Horizontal scaling (clustered mode)
 
-> The router service and per-session Postgres leases are shipped. Object-storage
-> sync and hydration handoff are in progress; clustered mode is preview-quality
-> and not yet production-ready for write-heavy workloads. See §14 of
+> The router service, per-session Postgres leases, fencing tokens, and
+> object-storage durability are shipped. Hydration handoff (pre-seeding the
+> local cache when a session migrates to a new pod) is still in progress;
+> clustered mode is preview-quality and not yet production-ready for workloads
+> that expect zero push-latency on pod replacement. See §14 of
 > `docs/SELF_HOST.md` for operator details.
 
 Single-instance jamsesh is a single portal pod: one Go process, one data store,
@@ -456,25 +458,40 @@ Fencing token support is designed and awaiting implementation as part of the
 on network reliability and Postgres availability (which is the common case for
 cloud-managed Postgres).
 
-### Object-storage sync and hydration handoff (to come)
+### Bare-repo dual-layer storage
 
-Bare repos live on each portal pod's local filesystem. In a multi-pod cluster,
-when a session migrates to a new pod (because the ring rebalanced after pod
-churn), the new pod has no local copy of the bare repo.
+Bare repos in clustered mode occupy a two-layer structure:
 
-Two capabilities address this:
+- **Local-FS working cache** — the pod that holds the lease for a session
+  runs `git-receive-pack` against its local disk, exactly as in single-instance
+  mode. The local copy provides full git performance (no object-storage latency
+  on the critical path for reads and merge operations).
+- **Object-storage system of record** — after every `post-receive`, the
+  `objectstore.Syncer` uploads all new loose objects, any new or updated pack
+  files, and an updated session manifest to the configured object-storage
+  backend (AWS S3, Cloudflare R2, GCS, Azure Blob, or any S3-compatible
+  service). The manifest is a per-session JSON object written with conditional
+  writes (`If-Match` ETag / `ifGenerationMatch` for GCS) to maintain a single
+  linearizable history.
 
-- **Object-storage sync** — after every `post-receive`, the receiving pod
-  uploads a pack of the new objects to S3/GCS. Other pods fetch the pack on
-  demand before serving a request for the session.
-- **Hydration handoff** — on ring rebalance the new pod for a session fetches
-  the current repo state from object storage before serving its first request.
-  This is triggered by the router noticing a cache miss (the hint cache no
-  longer has an entry, or the entry points to a pod no longer in the ring).
+This sync is **synchronous and fail-stop**: the git client does not receive a
+success response until all objects and the manifest are durable in object
+storage. RPO=0 for any push that is acknowledged.
 
-Both capabilities are in progress. Until they land, clustered mode is safe for
-stable rings and read-heavy traffic, but pod replacement may cause a brief
-`git fetch` retry loop from clients until the new pod's local repo is seeded.
+Every upload carries the current lease fencing token in object metadata. If a
+stale pod (whose lease was superseded by a newer pod) attempts a write, the
+manifest's conditional-write check detects the stale token and the write is
+rejected. The push then fails and the git client retries.
+
+### Hydration handoff (to come)
+
+When the consistent-hash ring rebalances and a session moves to a new pod,
+the new pod has no local repo cache. It can serve Postgres-backed read requests
+immediately (events, sessions, members), but the first push to the new pod
+triggers a full re-seed from object storage before accepting the pack. This
+adds a one-push latency on the transition. Future work (hydration-handoff epic)
+will pre-hydrate the local cache on lease acquisition so the pod is push-ready
+before the router directs traffic to it.
 
 ## Data layer (multi-tenancy)
 

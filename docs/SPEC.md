@@ -219,9 +219,14 @@ user creates.
 - Observability: `/metrics` (Prometheus text format, no auth), `/readyz`
   (JSON readiness probe, 200/503, parallel db + storage checks, 2s per-check
   timeout), `/healthz` (liveness, always 200 while the process runs).
-- Single-instance by design. Clustered mode (multiple replicas sharing state)
-  is a future capability; the current architecture does not coordinate across
-  instances.
+- Clustered mode (`JAMSESH_DEPLOY_MODE=clustered`) supports multiple portal
+  replicas behind the `jamsesh-router` consistent-hash proxy. In clustered mode
+  the local-FS storage becomes a per-pod working cache and the object storage
+  backend (configured via `JAMSESH_OBJECT_STORAGE_URL`) is the system of record.
+  Every push synchronously mirrors objects, refs, and a pack manifest to the
+  object store before acknowledging to the client (RPO=0). The local copy is
+  bounded by lease tenure; when a pod picks up a session it re-seeds from
+  object storage.
 
 ## What's explicitly deferred
 

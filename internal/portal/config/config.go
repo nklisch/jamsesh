@@ -12,7 +12,10 @@
 //	db.max_open_conns, db.max_idle_conns, db.conn_max_lifetime,
 //	shutdown_grace_s,
 //	deploy_mode, lease_heartbeat_interval_s,
-//	lease_retention_days, lease_retention_interval_hours
+//	lease_retention_days, lease_retention_interval_hours,
+//	object_storage_url, object_storage_region,
+//	object_storage_endpoint_url, object_storage_path_style,
+//	object_storage_sync_queue_size
 //
 // Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
@@ -38,7 +41,12 @@
 //	JAMSESH_DEPLOY_MODE,
 //	JAMSESH_LEASE_HEARTBEAT_INTERVAL_S,
 //	JAMSESH_LEASE_RETENTION_DAYS,
-//	JAMSESH_LEASE_RETENTION_INTERVAL_HOURS
+//	JAMSESH_LEASE_RETENTION_INTERVAL_HOURS,
+//	JAMSESH_OBJECT_STORAGE_URL,
+//	JAMSESH_OBJECT_STORAGE_REGION,
+//	JAMSESH_OBJECT_STORAGE_ENDPOINT_URL,
+//	JAMSESH_OBJECT_STORAGE_PATH_STYLE,
+//	JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE
 //
 // Secret env vars with _FILE variants (file contents take precedence):
 //
@@ -106,6 +114,48 @@ type Config struct {
 	// Default: 1.
 	// Env: JAMSESH_LEASE_RETENTION_INTERVAL_HOURS
 	LeaseRetentionIntervalHours int `yaml:"lease_retention_interval_hours"`
+
+	// ObjectStorageURL is the object-storage location used as the system of
+	// record in clustered mode. Format: <scheme>://bucket[/optional-prefix].
+	//
+	// Supported schemes:
+	//   s3://bucket/prefix              — AWS S3 (IRSA or env creds)
+	//   s3-compatible://bucket/prefix   — S3-compatible endpoint (e.g. R2, MinIO)
+	//   gs://bucket/prefix              — Google Cloud Storage
+	//   azblob://account/container/prefix — Azure Blob Storage
+	//
+	// Required when DeployMode == "clustered". The portal refuses to start
+	// in clustered mode without an object-storage URL because bare-repo
+	// durability depends on it.
+	// Env: JAMSESH_OBJECT_STORAGE_URL
+	ObjectStorageURL string `yaml:"object_storage_url"`
+
+	// ObjectStorageRegion is the provider region (e.g. "us-east-1" for AWS,
+	// "us-central1" for GCS). Required for AWS S3; optional for S3-compatible
+	// services and ignored by GCS / Azure.
+	// Env: JAMSESH_OBJECT_STORAGE_REGION
+	ObjectStorageRegion string `yaml:"object_storage_region"`
+
+	// ObjectStorageEndpointURL overrides the default provider endpoint. Set
+	// this for Cloudflare R2, Backblaze B2, MinIO, or any other S3-compatible
+	// service that requires a custom endpoint. Leave empty for native AWS S3,
+	// GCS, and Azure Blob.
+	// Example: "https://<account>.r2.cloudflarestorage.com"
+	// Env: JAMSESH_OBJECT_STORAGE_ENDPOINT_URL
+	ObjectStorageEndpointURL string `yaml:"object_storage_endpoint_url"`
+
+	// ObjectStoragePathStyle forces path-style bucket addressing
+	// (http://host/bucket/key instead of http://bucket.host/key). Required
+	// for MinIO and self-hosted Ceph; set false for AWS S3 and Cloudflare R2.
+	// Env: JAMSESH_OBJECT_STORAGE_PATH_STYLE (accepted values: "true", "false")
+	ObjectStoragePathStyle bool `yaml:"object_storage_path_style"`
+
+	// ObjectStorageSyncQueueSize is the maximum number of concurrent in-flight
+	// SyncPush calls allowed per session. When the limit is reached, additional
+	// pushes receive 503 Retry-After until uploads catch up.
+	// Default: 256. Must be positive.
+	// Env: JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE
+	ObjectStorageSyncQueueSize int `yaml:"object_storage_sync_queue_size"`
 }
 
 // DBConfig holds database connection pool settings.
@@ -293,6 +343,7 @@ func defaults() Config {
 		LeaseHeartbeatIntervalS:     10,
 		LeaseRetentionDays:          30,
 		LeaseRetentionIntervalHours: 1,
+		ObjectStorageSyncQueueSize:  256,
 	}
 }
 
@@ -325,6 +376,14 @@ func (c Config) validate() error {
 	}
 	if c.DeployMode == "clustered" && c.DBDriver == "sqlite" {
 		return fmt.Errorf("config: deploy_mode=clustered requires db_driver=postgres; SQLite does not support distributed leases")
+	}
+	if c.DeployMode == "clustered" && c.ObjectStorageURL == "" {
+		return fmt.Errorf("config: deploy_mode=clustered requires object_storage_url (JAMSESH_OBJECT_STORAGE_URL); " +
+			"bare-repo durability in clustered mode depends on object storage — " +
+			"set JAMSESH_OBJECT_STORAGE_URL to an s3://, s3-compatible://, gs://, or azblob:// URL")
+	}
+	if c.ObjectStorageSyncQueueSize <= 0 {
+		return fmt.Errorf("config: object_storage_sync_queue_size must be a positive integer, got %d", c.ObjectStorageSyncQueueSize)
 	}
 	if c.LeaseHeartbeatIntervalS <= 0 {
 		return fmt.Errorf("config: lease_heartbeat_interval_s must be a positive integer, got %d", c.LeaseHeartbeatIntervalS)
@@ -392,6 +451,7 @@ func applyEnv(c *Config) error {
 		}
 	}
 	applyLeaseEnv(c)
+	applyObjectStorageEnv(c)
 	return nil
 }
 
@@ -413,6 +473,27 @@ func applyLeaseEnv(c *Config) {
 	if v := os.Getenv("JAMSESH_LEASE_RETENTION_INTERVAL_HOURS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			c.LeaseRetentionIntervalHours = n
+		}
+	}
+}
+
+// applyObjectStorageEnv overlays object-storage environment variables.
+func applyObjectStorageEnv(c *Config) {
+	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_URL"); v != "" {
+		c.ObjectStorageURL = v
+	}
+	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_REGION"); v != "" {
+		c.ObjectStorageRegion = v
+	}
+	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_ENDPOINT_URL"); v != "" {
+		c.ObjectStorageEndpointURL = v
+	}
+	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_PATH_STYLE"); v != "" {
+		c.ObjectStoragePathStyle = v == "true"
+	}
+	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.ObjectStorageSyncQueueSize = n
 		}
 	}
 }
