@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-testcontainers-fixtures
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-portal-image-build, epic-e2e-tests-infrastructure-portal-oauth-base-url]
@@ -125,3 +125,21 @@ The portal runs inside a Docker container, so it cannot reach the host-mapped po
 ### No build tags used
 
 Fixture self-tests skip cleanly via `requireDocker(t)` when Docker is unavailable. No `//go:build e2e` tag was added — the clean skip behavior makes the tag unnecessary.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+
+**Important**:
+- Container logs lost on test failure — `t.Cleanup` terminates containers before logs can be inspected; the portal fixture's "check `docker logs <id>`" hint is unreachable. Filed as `e2e-fixtures-capture-container-logs-on-failure` in `.work/backlog/`.
+- OAuth fixture footgun: when `OAuthBaseURL` is empty, the portal would call real github.com if any test exercises the OAuth flow (the fixture defaults `CLIENT_ID`/`CLIENT_SECRET` non-empty). Filed as `e2e-portal-fixture-oauth-base-url-default` in `.work/backlog/`.
+
+**Nits**:
+- `requireDocker` is duplicated in every fixture package (5 copies). Acceptable per the design's "pick the simpler option" rule, but a future tidy could extract to `tests/e2e/internal/dockerutil/`.
+- `randHex` uses `crypto/rand` for a test-id suffix — overkill but harmless.
+- `CREATE DATABASE` / `DROP DATABASE` use `fmt.Sprintf` with a string-interpolated database name. Currently safe (`"test_" + randHex(8)` is closed-domain), but the pattern is a footgun if anyone reuses it. Postgres has no parameterised DDL so the pattern is unavoidable here — just document the constraint near the call sites.
+- `tests/e2e/go.mod` declares `go 1.26` (root is `go 1.25.7`). The CI workflow uses `go-version: 'stable'` so this works, but worth confirming whether to pin or document the skew. Already noted in the parent feature's implementation summary.
+
+**Notes**: The Docker-bridge-vs-host-port split (`ContainerDSN` / `ContainerURL` / `ContainerSMTPHost`) is a real-world discovery and well-documented in the README. The fixtures honour `t.Cleanup` discipline. The smoke spec asserts on the user-visible HTTP status, not on mock invocations — anti-tautology guardrail respected. The `JAMSESH_EMAIL_SMTP_TLS=none` in the portal fixture is critical for MailHog (which doesn't speak TLS) and well-caught.
