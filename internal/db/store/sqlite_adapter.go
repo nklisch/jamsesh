@@ -729,6 +729,96 @@ func (a *sqliteAdapter) ListPresenceForSession(ctx context.Context, sessionID st
 }
 
 // ---------------------------------------------------------------------------
+// OrgInviteStore
+// ---------------------------------------------------------------------------
+
+func sqliteOrgInvite(row sqlitestore.OrgInvite) OrgInvite {
+	return OrgInvite{
+		ID:                  row.ID,
+		OrgID:               row.OrgID,
+		InviterAccountID:    row.InviterAccountID,
+		RecipientEmail:      row.RecipientEmail,
+		TokenHash:           row.TokenHash,
+		CreatedAt:           row.CreatedAt,
+		ExpiresAt:           row.ExpiresAt,
+		AcceptedAt:          row.AcceptedAt,
+		AcceptedByAccountID: nullStringToPtr(row.AcceptedByAccountID),
+	}
+}
+
+func (a *sqliteAdapter) InsertOrgInvite(ctx context.Context, p InsertOrgInviteParams) (OrgInvite, error) {
+	row, err := a.q.InsertOrgInvite(ctx, sqlitestore.InsertOrgInviteParams{
+		ID:                  p.ID,
+		OrgID:               p.OrgID,
+		InviterAccountID:    p.InviterAccountID,
+		RecipientEmail:      p.RecipientEmail,
+		TokenHash:           p.TokenHash,
+		CreatedAt:           p.CreatedAt,
+		ExpiresAt:           p.ExpiresAt,
+		AcceptedAt:          p.AcceptedAt,
+		AcceptedByAccountID: ptrToNullString(p.AcceptedByAccountID),
+	})
+	if err != nil {
+		return OrgInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteOrgInvite(row), nil
+}
+
+func (a *sqliteAdapter) GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error) {
+	row, err := a.q.GetOrgInviteByID(ctx, id)
+	if err != nil {
+		return OrgInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteOrgInvite(row), nil
+}
+
+func (a *sqliteAdapter) GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error) {
+	row, err := a.q.GetOrgInviteByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return OrgInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteOrgInvite(row), nil
+}
+
+func (a *sqliteAdapter) MarkOrgInviteAccepted(ctx context.Context, p MarkOrgInviteAcceptedParams) error {
+	return mapSQLiteErr(a.q.MarkOrgInviteAccepted(ctx, sqlitestore.MarkOrgInviteAcceptedParams{
+		ID:                  p.ID,
+		AcceptedAt:          &p.AcceptedAt,
+		AcceptedByAccountID: ptrToNullString(&p.AcceptedByAccountID),
+	}))
+}
+
+func (a *sqliteAdapter) ListPendingOrgInvitesForOrg(ctx context.Context, p ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error) {
+	rows, err := a.q.ListPendingOrgInvitesForOrg(ctx, sqlitestore.ListPendingOrgInvitesForOrgParams{
+		OrgID:     p.OrgID,
+		ExpiresAt: p.Now,
+	})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	invites := make([]OrgInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = sqliteOrgInvite(r)
+	}
+	return invites, nil
+}
+
+func (a *sqliteAdapter) ListPendingOrgInvitesForEmail(ctx context.Context, p ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error) {
+	rows, err := a.q.ListPendingOrgInvitesForEmail(ctx, sqlitestore.ListPendingOrgInvitesForEmailParams{
+		RecipientEmail: p.Email,
+		ExpiresAt:      p.Now,
+	})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	invites := make([]OrgInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = sqliteOrgInvite(r)
+	}
+	return invites, nil
+}
+
+// ---------------------------------------------------------------------------
 // WithTx
 // ---------------------------------------------------------------------------
 
@@ -1052,4 +1142,52 @@ func (s *sqliteTxStore) ListPresenceForSession(ctx context.Context, sessionID st
 		out[i] = PresenceRow{OrgID: r.OrgID, SessionID: r.SessionID, AccountID: r.AccountID, Ref: r.Ref, CurrentSHA: r.CurrentSha, LastActiveAt: r.LastActiveAt}
 	}
 	return out, nil
+}
+
+// OrgInviteStore
+func (s *sqliteTxStore) InsertOrgInvite(ctx context.Context, p InsertOrgInviteParams) (OrgInvite, error) {
+	row, err := s.q.InsertOrgInvite(ctx, sqlitestore.InsertOrgInviteParams{ID: p.ID, OrgID: p.OrgID, InviterAccountID: p.InviterAccountID, RecipientEmail: p.RecipientEmail, TokenHash: p.TokenHash, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, AcceptedAt: p.AcceptedAt, AcceptedByAccountID: ptrToNullString(p.AcceptedByAccountID)})
+	if err != nil {
+		return OrgInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteOrgInvite(row), nil
+}
+func (s *sqliteTxStore) GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error) {
+	row, err := s.q.GetOrgInviteByID(ctx, id)
+	if err != nil {
+		return OrgInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteOrgInvite(row), nil
+}
+func (s *sqliteTxStore) GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error) {
+	row, err := s.q.GetOrgInviteByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return OrgInvite{}, mapSQLiteErr(err)
+	}
+	return sqliteOrgInvite(row), nil
+}
+func (s *sqliteTxStore) MarkOrgInviteAccepted(ctx context.Context, p MarkOrgInviteAcceptedParams) error {
+	return mapSQLiteErr(s.q.MarkOrgInviteAccepted(ctx, sqlitestore.MarkOrgInviteAcceptedParams{ID: p.ID, AcceptedAt: &p.AcceptedAt, AcceptedByAccountID: ptrToNullString(&p.AcceptedByAccountID)}))
+}
+func (s *sqliteTxStore) ListPendingOrgInvitesForOrg(ctx context.Context, p ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error) {
+	rows, err := s.q.ListPendingOrgInvitesForOrg(ctx, sqlitestore.ListPendingOrgInvitesForOrgParams{OrgID: p.OrgID, ExpiresAt: p.Now})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	invites := make([]OrgInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = sqliteOrgInvite(r)
+	}
+	return invites, nil
+}
+func (s *sqliteTxStore) ListPendingOrgInvitesForEmail(ctx context.Context, p ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error) {
+	rows, err := s.q.ListPendingOrgInvitesForEmail(ctx, sqlitestore.ListPendingOrgInvitesForEmailParams{RecipientEmail: p.Email, ExpiresAt: p.Now})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	invites := make([]OrgInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = sqliteOrgInvite(r)
+	}
+	return invites, nil
 }

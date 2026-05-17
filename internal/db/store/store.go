@@ -33,6 +33,7 @@ type TxStore interface {
 	OAuthStateStore
 	EventLogStore
 	PresenceStore
+	OrgInviteStore
 }
 
 // Store is the unified data-access interface for the portal. All handler and
@@ -50,6 +51,7 @@ type Store interface {
 	OAuthStateStore
 	EventLogStore
 	PresenceStore
+	OrgInviteStore
 
 	// WithTx opens a dialect-appropriate transaction, calls fn with a TxStore
 	// backed by that transaction, and commits on success or rolls back on any
@@ -504,6 +506,61 @@ type PresenceStore interface {
 	UpsertPresence(ctx context.Context, p UpsertPresenceParams) error
 	// ListPresenceForSession returns all presence rows for a session.
 	ListPresenceForSession(ctx context.Context, sessionID string) ([]PresenceRow, error)
+}
+
+// OrgInvite is a pending or accepted org membership invite.
+type OrgInvite struct {
+	ID                  string
+	OrgID               string
+	InviterAccountID    string
+	RecipientEmail      string
+	TokenHash           string
+	CreatedAt           time.Time
+	ExpiresAt           time.Time
+	AcceptedAt          *time.Time
+	AcceptedByAccountID *string
+}
+
+// ---------------------------------------------------------------------------
+// OrgInvite parameter types
+// ---------------------------------------------------------------------------
+
+type InsertOrgInviteParams struct {
+	ID                  string
+	OrgID               string
+	InviterAccountID    string
+	RecipientEmail      string
+	TokenHash           string
+	CreatedAt           time.Time
+	ExpiresAt           time.Time
+	AcceptedAt          *time.Time
+	AcceptedByAccountID *string
+}
+
+type MarkOrgInviteAcceptedParams struct {
+	ID                  string
+	AcceptedAt          time.Time
+	AcceptedByAccountID string
+}
+
+type ListPendingOrgInvitesForOrgParams struct {
+	OrgID string
+	Now   time.Time
+}
+
+type ListPendingOrgInvitesForEmailParams struct {
+	Email string
+	Now   time.Time
+}
+
+// OrgInviteStore covers org invite lifecycle.
+type OrgInviteStore interface {
+	InsertOrgInvite(ctx context.Context, arg InsertOrgInviteParams) (OrgInvite, error)
+	GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error)
+	GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error)
+	MarkOrgInviteAccepted(ctx context.Context, arg MarkOrgInviteAcceptedParams) error
+	ListPendingOrgInvitesForOrg(ctx context.Context, arg ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error)
+	ListPendingOrgInvitesForEmail(ctx context.Context, arg ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error)
 }
 
 // OAuthStateStore covers the transient OAuth state-nonce table.

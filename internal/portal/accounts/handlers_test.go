@@ -74,6 +74,11 @@ func seedMember(t *testing.T, s store.Store, orgID, accountID, role string) {
 	}
 }
 
+// noopSender is a Sender that does nothing, for tests that don't exercise email.
+type noopSender struct{}
+
+func (n *noopSender) Send(_ context.Context, _, _, _ string) error { return nil }
+
 // accountsOnlyStrict wraps accounts.Handler and panics on methods it doesn't own.
 type accountsOnlyStrict struct {
 	*accounts.Handler
@@ -110,7 +115,7 @@ func newAccountsTestEnv(t *testing.T) *accountsTestEnv {
 	t.Helper()
 	s := openStore(t)
 	svc := tokens.New(s)
-	h := accounts.New(s)
+	h := accounts.New(s, &noopSender{}, "https://portal.example.com")
 	strictAPI := openapi.NewStrictHandler(&accountsOnlyStrict{h}, nil)
 
 	r := chi.NewRouter()

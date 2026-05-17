@@ -41,6 +41,10 @@ sql:
             go_type:
               type: string
               pointer: true
+          - column: "*.accepted_at"
+            go_type:
+              type: time.Time
+              pointer: true
   - engine: postgresql
     schema: db/schema/postgres.sql
     queries: db/queries/postgres/
@@ -82,4 +86,8 @@ sql:
           - column: "*.base_sha"
             go_type:
               type: string
+              pointer: true
+          - column: "*.accepted_at"
+            go_type:
+              type: time.Time
               pointer: true

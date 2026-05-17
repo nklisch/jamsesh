@@ -11,18 +11,22 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/auth"
+	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/tokens"
 )
 
 // Handler implements the openapi.StrictServerInterface methods for the
-// accounts endpoints: GET /api/me and POST /api/orgs.
+// accounts endpoints: GET /api/me, POST /api/orgs, GET/POST /api/orgs/{orgID}/...
 type Handler struct {
-	store store.Store
+	store     store.Store
+	sender    senders.Sender
+	portalURL string
 }
 
 // New returns a Handler backed by s.
-func New(s store.Store) *Handler {
-	return &Handler{store: s}
+// sender and portalURL are required for CreateOrgInvite to send invite emails.
+func New(s store.Store, sender senders.Sender, portalURL string) *Handler {
+	return &Handler{store: s, sender: sender, portalURL: portalURL}
 }
 
 // GetMe implements GET /api/me.

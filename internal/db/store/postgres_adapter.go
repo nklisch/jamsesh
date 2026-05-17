@@ -760,6 +760,96 @@ func (a *postgresAdapter) WithTx(ctx context.Context, fn func(TxStore) error) er
 	return nil
 }
 
+// ---------------------------------------------------------------------------
+// OrgInviteStore
+// ---------------------------------------------------------------------------
+
+func pgOrgInvite(row pgstore.OrgInvite) OrgInvite {
+	return OrgInvite{
+		ID:                  row.ID,
+		OrgID:               row.OrgID,
+		InviterAccountID:    row.InviterAccountID,
+		RecipientEmail:      row.RecipientEmail,
+		TokenHash:           row.TokenHash,
+		CreatedAt:           row.CreatedAt,
+		ExpiresAt:           row.ExpiresAt,
+		AcceptedAt:          row.AcceptedAt,
+		AcceptedByAccountID: pgTextToPtr(row.AcceptedByAccountID),
+	}
+}
+
+func (a *postgresAdapter) InsertOrgInvite(ctx context.Context, p InsertOrgInviteParams) (OrgInvite, error) {
+	row, err := a.q.InsertOrgInvite(ctx, pgstore.InsertOrgInviteParams{
+		ID:                  p.ID,
+		OrgID:               p.OrgID,
+		InviterAccountID:    p.InviterAccountID,
+		RecipientEmail:      p.RecipientEmail,
+		TokenHash:           p.TokenHash,
+		CreatedAt:           p.CreatedAt,
+		ExpiresAt:           p.ExpiresAt,
+		AcceptedAt:          p.AcceptedAt,
+		AcceptedByAccountID: ptrToPgText(p.AcceptedByAccountID),
+	})
+	if err != nil {
+		return OrgInvite{}, mapPostgresErr(err)
+	}
+	return pgOrgInvite(row), nil
+}
+
+func (a *postgresAdapter) GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error) {
+	row, err := a.q.GetOrgInviteByID(ctx, id)
+	if err != nil {
+		return OrgInvite{}, mapPostgresErr(err)
+	}
+	return pgOrgInvite(row), nil
+}
+
+func (a *postgresAdapter) GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error) {
+	row, err := a.q.GetOrgInviteByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return OrgInvite{}, mapPostgresErr(err)
+	}
+	return pgOrgInvite(row), nil
+}
+
+func (a *postgresAdapter) MarkOrgInviteAccepted(ctx context.Context, p MarkOrgInviteAcceptedParams) error {
+	return mapPostgresErr(a.q.MarkOrgInviteAccepted(ctx, pgstore.MarkOrgInviteAcceptedParams{
+		ID:                  p.ID,
+		AcceptedAt:          &p.AcceptedAt,
+		AcceptedByAccountID: ptrToPgText(&p.AcceptedByAccountID),
+	}))
+}
+
+func (a *postgresAdapter) ListPendingOrgInvitesForOrg(ctx context.Context, p ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error) {
+	rows, err := a.q.ListPendingOrgInvitesForOrg(ctx, pgstore.ListPendingOrgInvitesForOrgParams{
+		OrgID:     p.OrgID,
+		ExpiresAt: p.Now,
+	})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	invites := make([]OrgInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = pgOrgInvite(r)
+	}
+	return invites, nil
+}
+
+func (a *postgresAdapter) ListPendingOrgInvitesForEmail(ctx context.Context, p ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error) {
+	rows, err := a.q.ListPendingOrgInvitesForEmail(ctx, pgstore.ListPendingOrgInvitesForEmailParams{
+		RecipientEmail: p.Email,
+		ExpiresAt:      p.Now,
+	})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	invites := make([]OrgInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = pgOrgInvite(r)
+	}
+	return invites, nil
+}
+
 // Delegate all TxStore methods to the underlying *pgstore.Queries.
 // OrgStore
 func (s *postgresTxStore) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, error) {
@@ -1055,4 +1145,52 @@ func (s *postgresTxStore) ListPresenceForSession(ctx context.Context, sessionID 
 		out[i] = PresenceRow{OrgID: r.OrgID, SessionID: r.SessionID, AccountID: r.AccountID, Ref: r.Ref, CurrentSHA: r.CurrentSha, LastActiveAt: lastActiveAt}
 	}
 	return out, nil
+}
+
+// OrgInviteStore
+func (s *postgresTxStore) InsertOrgInvite(ctx context.Context, p InsertOrgInviteParams) (OrgInvite, error) {
+	row, err := s.q.InsertOrgInvite(ctx, pgstore.InsertOrgInviteParams{ID: p.ID, OrgID: p.OrgID, InviterAccountID: p.InviterAccountID, RecipientEmail: p.RecipientEmail, TokenHash: p.TokenHash, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, AcceptedAt: p.AcceptedAt, AcceptedByAccountID: ptrToPgText(p.AcceptedByAccountID)})
+	if err != nil {
+		return OrgInvite{}, mapPostgresErr(err)
+	}
+	return pgOrgInvite(row), nil
+}
+func (s *postgresTxStore) GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error) {
+	row, err := s.q.GetOrgInviteByID(ctx, id)
+	if err != nil {
+		return OrgInvite{}, mapPostgresErr(err)
+	}
+	return pgOrgInvite(row), nil
+}
+func (s *postgresTxStore) GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error) {
+	row, err := s.q.GetOrgInviteByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return OrgInvite{}, mapPostgresErr(err)
+	}
+	return pgOrgInvite(row), nil
+}
+func (s *postgresTxStore) MarkOrgInviteAccepted(ctx context.Context, p MarkOrgInviteAcceptedParams) error {
+	return mapPostgresErr(s.q.MarkOrgInviteAccepted(ctx, pgstore.MarkOrgInviteAcceptedParams{ID: p.ID, AcceptedAt: &p.AcceptedAt, AcceptedByAccountID: ptrToPgText(&p.AcceptedByAccountID)}))
+}
+func (s *postgresTxStore) ListPendingOrgInvitesForOrg(ctx context.Context, p ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error) {
+	rows, err := s.q.ListPendingOrgInvitesForOrg(ctx, pgstore.ListPendingOrgInvitesForOrgParams{OrgID: p.OrgID, ExpiresAt: p.Now})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	invites := make([]OrgInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = pgOrgInvite(r)
+	}
+	return invites, nil
+}
+func (s *postgresTxStore) ListPendingOrgInvitesForEmail(ctx context.Context, p ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error) {
+	rows, err := s.q.ListPendingOrgInvitesForEmail(ctx, pgstore.ListPendingOrgInvitesForEmailParams{RecipientEmail: p.Email, ExpiresAt: p.Now})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	invites := make([]OrgInvite, len(rows))
+	for i, r := range rows {
+		invites[i] = pgOrgInvite(r)
+	}
+	return invites, nil
 }

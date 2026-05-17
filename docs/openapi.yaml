@@ -597,6 +597,68 @@ components:
           description: Desired org name; used to derive the slug
           example: "acme"
 
+    MemberRef:
+      type: object
+      required: [account_id, email, display_name, role, joined_at]
+      properties:
+        account_id:
+          type: string
+          description: Account UUID
+          example: "01926e42-0000-7000-a000-000000000000"
+        email:
+          type: string
+          format: email
+          description: Member's email address
+          example: user@example.com
+        display_name:
+          type: string
+          description: Member's display name
+          example: "Ada Lovelace"
+        role:
+          type: string
+          description: Member's role in the org
+          example: "member"
+        joined_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the member joined the org
+
+    InviteBody:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address to invite
+          example: invitee@example.com
+
+    InviteRef:
+      type: object
+      required: [id, recipient_email, expires_at]
+      properties:
+        id:
+          type: string
+          description: Invite ID
+          example: "01926e42-0000-7000-a000-000000000002"
+        recipient_email:
+          type: string
+          format: email
+          description: Email address the invite was sent to
+          example: invitee@example.com
+        expires_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the invite expires
+
+    AcceptInviteBody:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Raw invite token from the email link query parameter
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -807,3 +869,104 @@ paths:
                 $ref: '#/components/schemas/OrgRef'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /api/orgs/{orgID}/members:
+    get:
+      summary: List members of an org (requires creator or member role)
+      operationId: listOrgMembers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+      responses:
+        '200':
+          description: List of org members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemberRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/orgs/{orgID}/invites:
+    post:
+      summary: Create an org invite (requires creator role); sends email to recipient
+      operationId: createOrgInvite
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteBody'
+      responses:
+        '201':
+          description: Invite created; email sent to recipient
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/orgs/{orgID}/invites/{inviteID}/accept:
+    post:
+      summary: Accept a pending org invite (requires Bearer; verifies token + recipient email)
+      operationId: acceptOrgInvite
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: inviteID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Invite ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInviteBody'
+      responses:
+        '200':
+          description: Invite accepted; account bound as org member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Invite already accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'

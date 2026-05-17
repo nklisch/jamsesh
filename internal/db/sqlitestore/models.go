@@ -79,6 +79,18 @@ type Org struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type OrgInvite struct {
+	ID                  string         `json:"id"`
+	OrgID               string         `json:"org_id"`
+	InviterAccountID    string         `json:"inviter_account_id"`
+	RecipientEmail      string         `json:"recipient_email"`
+	TokenHash           string         `json:"token_hash"`
+	CreatedAt           time.Time      `json:"created_at"`
+	ExpiresAt           time.Time      `json:"expires_at"`
+	AcceptedAt          *time.Time     `json:"accepted_at"`
+	AcceptedByAccountID sql.NullString `json:"accepted_by_account_id"`
+}
+
 type OrgMember struct {
 	OrgID     string    `json:"org_id"`
 	AccountID string    `json:"account_id"`

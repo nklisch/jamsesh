@@ -17,6 +17,7 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -55,6 +56,21 @@ func (c *combinedHandler) GetMe(ctx context.Context, req openapi.GetMeRequestObj
 // CreateOrg delegates to the accounts handler.
 func (c *combinedHandler) CreateOrg(ctx context.Context, req openapi.CreateOrgRequestObject) (openapi.CreateOrgResponseObject, error) {
 	return c.AccountsHandler.CreateOrg(ctx, req)
+}
+
+// ListOrgMembers delegates to the accounts handler.
+func (c *combinedHandler) ListOrgMembers(ctx context.Context, req openapi.ListOrgMembersRequestObject) (openapi.ListOrgMembersResponseObject, error) {
+	return c.AccountsHandler.ListOrgMembers(ctx, req)
+}
+
+// CreateOrgInvite delegates to the accounts handler.
+func (c *combinedHandler) CreateOrgInvite(ctx context.Context, req openapi.CreateOrgInviteRequestObject) (openapi.CreateOrgInviteResponseObject, error) {
+	return c.AccountsHandler.CreateOrgInvite(ctx, req)
+}
+
+// AcceptOrgInvite delegates to the accounts handler.
+func (c *combinedHandler) AcceptOrgInvite(ctx context.Context, req openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
+	return c.AccountsHandler.AcceptOrgInvite(ctx, req)
 }
 
 // compile-time assertion that combinedHandler satisfies the full interface.
@@ -127,8 +143,8 @@ func main() {
 	// Build the OAuth handler.
 	oauthHandler := auth.NewOAuthHandler(providers, dbStore, tokenSvc, cfg.PortalURL)
 
-	// Build the accounts handler (GET /api/me, POST /api/orgs).
-	accountsHandler := accounts.New(dbStore)
+	// Build the accounts handler (GET /api/me, POST /api/orgs, org members + invites).
+	accountsHandler := accounts.New(dbStore, emailSender, cfg.PortalURL)
 
 	// Compose the combined handler that satisfies the full StrictServerInterface.
 	strictAPI := openapi.NewStrictHandler(&combinedHandler{
@@ -137,6 +153,15 @@ func main() {
 		OAuthHandler:     oauthHandler,
 		AccountsHandler:  accountsHandler,
 	}, nil)
+
+	// Build a ServerInterfaceWrapper so we have http.HandlerFunc-compatible
+	// method values for all routes, including those with URL path parameters.
+	apiWrapper := &openapi.ServerInterfaceWrapper{
+		Handler: strictAPI,
+		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		},
+	}
 
 	// Wire the embedded SPA handler. assets.Handler() returns a handler that
 	// serves the compiled Svelte bundle from frontend/dist/ with a History-API
@@ -159,19 +184,35 @@ func main() {
 		MountAPI: func(r chi.Router) {
 			// Public auth endpoints — no Bearer middleware.
 			r.Group(func(r chi.Router) {
-				r.Post("/auth/refresh", strictAPI.RefreshToken)
-				r.Post("/auth/magic-link/request", strictAPI.RequestMagicLink)
-				r.Post("/auth/magic-link/exchange", strictAPI.ExchangeMagicLink)
-				r.Post("/auth/oauth/start", strictAPI.StartOAuth)
-				r.Post("/auth/oauth/callback", strictAPI.OauthCallback)
+				r.Post("/auth/refresh", apiWrapper.RefreshToken)
+				r.Post("/auth/magic-link/request", apiWrapper.RequestMagicLink)
+				r.Post("/auth/magic-link/exchange", apiWrapper.ExchangeMagicLink)
+				r.Post("/auth/oauth/start", apiWrapper.StartOAuth)
+				r.Post("/auth/oauth/callback", apiWrapper.OauthCallback)
 			})
 
 			// Authenticated endpoints — Bearer middleware required.
 			r.Group(func(r chi.Router) {
 				r.Use(tokens.BearerMiddleware(tokenSvc))
-				r.Post("/auth/revoke", strictAPI.RevokeToken)
-				r.Get("/me", strictAPI.GetMe)
-				r.Post("/orgs", strictAPI.CreateOrg)
+				r.Post("/auth/revoke", apiWrapper.RevokeToken)
+				r.Get("/me", apiWrapper.GetMe)
+				r.Post("/orgs", apiWrapper.CreateOrg)
+
+				// Org members: requires creator or member role.
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireOrgRole(dbStore, "creator", "member"))
+					r.Get("/orgs/{orgID}/members", apiWrapper.ListOrgMembers)
+				})
+
+				// Org invites create: requires creator role.
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireOrgRole(dbStore, "creator"))
+					r.Post("/orgs/{orgID}/invites", apiWrapper.CreateOrgInvite)
+				})
+
+				// Accept invite: Bearer only — the user is joining the org,
+				// so no org-role gate applies yet.
+				r.Post("/orgs/{orgID}/invites/{inviteID}/accept", apiWrapper.AcceptOrgInvite)
 			})
 		},
 	})

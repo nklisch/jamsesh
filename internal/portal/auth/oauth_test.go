@@ -72,6 +72,18 @@ func (o *oauthOnlyStrict) CreateOrg(_ context.Context, _ openapi.CreateOrgReques
 	panic("CreateOrg: not wired in OAuth tests")
 }
 
+func (o *oauthOnlyStrict) ListOrgMembers(_ context.Context, _ openapi.ListOrgMembersRequestObject) (openapi.ListOrgMembersResponseObject, error) {
+	panic("ListOrgMembers: not wired in OAuth tests")
+}
+
+func (o *oauthOnlyStrict) CreateOrgInvite(_ context.Context, _ openapi.CreateOrgInviteRequestObject) (openapi.CreateOrgInviteResponseObject, error) {
+	panic("CreateOrgInvite: not wired in OAuth tests")
+}
+
+func (o *oauthOnlyStrict) AcceptOrgInvite(_ context.Context, _ openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
+	panic("AcceptOrgInvite: not wired in OAuth tests")
+}
+
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 
 // ---------------------------------------------------------------------------

@@ -122,3 +122,21 @@ CREATE TABLE presence (
     PRIMARY KEY (session_id, account_id, ref)
 );
 CREATE INDEX presence_org_idx ON presence(org_id);
+
+-- ---------------------------------------------------------------------------
+-- Org invites table (00005_org_invites migration)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE org_invites (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+    inviter_account_id TEXT NOT NULL REFERENCES accounts(id),
+    recipient_email TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    accepted_at TIMESTAMPTZ,
+    accepted_by_account_id TEXT REFERENCES accounts(id)
+);
+CREATE INDEX org_invites_org_idx ON org_invites(org_id);
+CREATE INDEX org_invites_email_idx ON org_invites(recipient_email);

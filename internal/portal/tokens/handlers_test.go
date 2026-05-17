@@ -54,6 +54,18 @@ func (t *tokensOnlyHandler) CreateOrg(_ context.Context, _ openapi.CreateOrgRequ
 	panic("CreateOrg: not implemented in token handler tests")
 }
 
+func (t *tokensOnlyHandler) ListOrgMembers(_ context.Context, _ openapi.ListOrgMembersRequestObject) (openapi.ListOrgMembersResponseObject, error) {
+	panic("ListOrgMembers: not implemented in token handler tests")
+}
+
+func (t *tokensOnlyHandler) CreateOrgInvite(_ context.Context, _ openapi.CreateOrgInviteRequestObject) (openapi.CreateOrgInviteResponseObject, error) {
+	panic("CreateOrgInvite: not implemented in token handler tests")
+}
+
+func (t *tokensOnlyHandler) AcceptOrgInvite(_ context.Context, _ openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
+	panic("AcceptOrgInvite: not implemented in token handler tests")
+}
+
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 
 // newTestEnv creates a fresh in-memory SQLite store, builds the tokens.Service

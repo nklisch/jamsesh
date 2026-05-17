@@ -115,6 +115,18 @@ func (m *magicLinkOnlyStrict) CreateOrg(_ context.Context, _ openapi.CreateOrgRe
 	panic("CreateOrg: not wired in this test")
 }
 
+func (m *magicLinkOnlyStrict) ListOrgMembers(_ context.Context, _ openapi.ListOrgMembersRequestObject) (openapi.ListOrgMembersResponseObject, error) {
+	panic("ListOrgMembers: not wired in this test")
+}
+
+func (m *magicLinkOnlyStrict) CreateOrgInvite(_ context.Context, _ openapi.CreateOrgInviteRequestObject) (openapi.CreateOrgInviteResponseObject, error) {
+	panic("CreateOrgInvite: not wired in this test")
+}
+
+func (m *magicLinkOnlyStrict) AcceptOrgInvite(_ context.Context, _ openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
+	panic("AcceptOrgInvite: not wired in this test")
+}
+
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 
 // ---------------------------------------------------------------------------
