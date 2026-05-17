@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-session-commands-fork-and-mode
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: epic-cc-plugin-session-commands
 depends_on: []
@@ -35,3 +35,15 @@ updated: 2026-05-17
 
 - The mcpclient is tiny: build a JSON-RPC 2.0 request body `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fork","arguments":{...}}}` and POST to `<portal_url>/mcp` with Authorization Bearer. Parse the response.
 - v1 limitation on mode: server-side mode change is a follow-up. The CLI updates local cache only.
+
+## Implementation notes
+
+All files were already committed by the hooks sibling story (`epic-cc-plugin-hooks-retry-queue-and-simple-hooks`), which scaffolded the full sessioncmd and mcpclient packages as part of wiring main.go. This story verified, tested, and finalized the implementations:
+
+- `cmd/jamsesh/mcpclient/client.go` — JSON-RPC 2.0 client; `CallTool` POSTs to `<PortalURL>/mcp`, unwraps `StructuredContent` from the SDK envelope. Tests: `TestCallTool_success`, `TestCallTool_httpError`, `TestCallTool_rpcError` all pass.
+- `cmd/jamsesh/sessioncmd/session.go` — `resolveSession()` maps `CC_SESSION_ID` env var to a jamsesh session ID via `${CLAUDE_PLUGIN_DATA}/sessions/<id>/instance_id`; falls back to first session directory for single-session dev.
+- `cmd/jamsesh/sessioncmd/fork.go` — `ForkCommand()` calls MCP `fork` tool with `session_id`, `target_commit_sha`, optional `target_ref`+`mode`; on success runs `git fetch session-remote <ref>` (non-fatal if fetch fails). Tests pass.
+- `cmd/jamsesh/sessioncmd/mode.go` — `ModeCommand()` validates `sync|isolated`, writes to `${CLAUDE_PLUGIN_DATA}/sessions/<id>/mode`, prints v1 limitation note. Tests pass.
+- `cmd/jamsesh/main.go` — `ForkCommand()` and `ModeCommand()` registered (alongside `JoinCommand()`, `StatusCommand()` added by sibling).
+
+Pre-existing test failures in `join_test.go` (TestJoinAction_happy, TestJoinAction_inviteURL) and `status_test.go` are from the join-and-status sibling story and not related to this story's scope.

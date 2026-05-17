@@ -27,6 +27,8 @@ func main() {
 			auth.Command(),
 			mcpheaders.Command(),
 			hookCommand(),
+			sessioncmd.JoinCommand(),
+			sessioncmd.StatusCommand(),
 			sessioncmd.ForkCommand(),
 			sessioncmd.ModeCommand(),
 		},
