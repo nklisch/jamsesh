@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-portal-oauth-base-url
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-tests-infrastructure
 depends_on: []
@@ -74,3 +74,15 @@ E2E tests need black-box config-driven substitution.
   test exercises both substitution paths
 - The existing config struct is YAML-driven; follow the existing
   pattern in `applyEnv` / `applyOAuthEnv` for consistency
+
+## Implementation notes
+
+Files modified:
+
+- `internal/portal/config/config.go`: added `BaseURL string` field to `GitHubOAuthConfig` with `yaml:"base_url"`, added `JAMSESH_OAUTH_GITHUB_BASE_URL` env var to `applyOAuthEnv`, added both YAML key and env var to package doc comment
+- `cmd/portal/main.go`: added `BaseURL: cfg.OAuth.GitHub.BaseURL` to `GitHubOptions` struct literal when constructing the GitHub provider
+- `internal/portal/config/config_test.go`: added `TestOAuthGitHubBaseURLEnvOverride` subtest; also added `JAMSESH_OAUTH_GITHUB_CLIENT_ID`, `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET`, and `JAMSESH_OAUTH_GITHUB_BASE_URL` to `clearEnv` helper for isolation
+- `internal/portal/oauth/github_test.go`: added `TestGitHub_BaseURL_SubstitutesAllEndpoints` with a `recordingTransport` that asserts all three endpoint paths (`/login/oauth/access_token`, `/user`, `/user/emails`) are hit on the fake server and no requests escape to real github.com
+- `docs/SELF_HOST.md`: removed stale placeholder NOTE about OAuth env vars landing in a future release; added rows for `JAMSESH_OAUTH_GITHUB_CLIENT_ID`, `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET`, and `JAMSESH_OAUTH_GITHUB_BASE_URL` to the configuration reference table (rolling-forward principle — these env vars are already implemented)
+
+Deviations from story spec: the SELF_HOST.md change adds three rows instead of one. The stale NOTE claimed OAuth vars were not yet implemented, which is false; removing it and documenting all three active OAuth env vars is the correct rolling-forward update. The acceptance criterion for the BASE_URL row is satisfied.

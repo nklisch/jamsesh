@@ -7,6 +7,7 @@
 //	email.provider, email.from, email.smtp.*, email.sendgrid.*,
 //	email.postmark.*, email.resend.*,
 //	oauth.github.client_id, oauth.github.client_secret,
+//	oauth.github.base_url,
 //	git.max_pack_bytes
 //
 // Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
@@ -24,6 +25,7 @@
 //	JAMSESH_EMAIL_RESEND_API_KEY,
 //	JAMSESH_OAUTH_GITHUB_CLIENT_ID,
 //	JAMSESH_OAUTH_GITHUB_CLIENT_SECRET,
+//	JAMSESH_OAUTH_GITHUB_BASE_URL,
 //	JAMSESH_GIT_MAX_PACK_BYTES
 //
 // log.level is an integer matching slog.Level values:
@@ -75,6 +77,9 @@ type OAuthConfig struct {
 type GitHubOAuthConfig struct {
 	ClientID     string `yaml:"client_id"`
 	ClientSecret string `yaml:"client_secret"`
+	// BaseURL overrides the GitHub OAuth and API base URL for testing.
+	// Leave empty in production.
+	BaseURL string `yaml:"base_url"`
 }
 
 // EmailConfig selects the email delivery provider and holds all provider
@@ -290,6 +295,9 @@ func applyOAuthEnv(o *OAuthConfig) {
 	}
 	if v := os.Getenv("JAMSESH_OAUTH_GITHUB_CLIENT_SECRET"); v != "" {
 		o.GitHub.ClientSecret = v
+	}
+	if v := os.Getenv("JAMSESH_OAUTH_GITHUB_BASE_URL"); v != "" {
+		o.GitHub.BaseURL = v
 	}
 }
 

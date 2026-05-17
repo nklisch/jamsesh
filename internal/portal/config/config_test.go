@@ -289,10 +289,27 @@ func clearEnv(t *testing.T) {
 		"JAMSESH_TLS_MODE", "JAMSESH_TLS_CERT", "JAMSESH_TLS_KEY",
 		"JAMSESH_LOG_FORMAT", "JAMSESH_LOG_LEVEL", "JAMSESH_STORAGE",
 		"JAMSESH_GIT_MAX_PACK_BYTES",
+		"JAMSESH_OAUTH_GITHUB_CLIENT_ID", "JAMSESH_OAUTH_GITHUB_CLIENT_SECRET",
+		"JAMSESH_OAUTH_GITHUB_BASE_URL",
 	}
 	for _, v := range vars {
 		t.Setenv(v, "") // t.Setenv restores on cleanup; set to "" to clear
 		os.Unsetenv(v)  //nolint:errcheck
+	}
+}
+
+// TestOAuthGitHubBaseURLEnvOverride verifies that JAMSESH_OAUTH_GITHUB_BASE_URL
+// flows through config.Load into cfg.OAuth.GitHub.BaseURL.
+func TestOAuthGitHubBaseURLEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_OAUTH_GITHUB_BASE_URL", "https://fake.example.com")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got, want := cfg.OAuth.GitHub.BaseURL, "https://fake.example.com"; got != want {
+		t.Errorf("BaseURL: got %q, want %q", got, want)
 	}
 }
 

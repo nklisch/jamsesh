@@ -262,6 +262,7 @@ func main() {
 		providers["github"] = portaloauth.NewGitHub(portaloauth.GitHubOptions{
 			ClientID:     cfg.OAuth.GitHub.ClientID,
 			ClientSecret: cfg.OAuth.GitHub.ClientSecret,
+			BaseURL:      cfg.OAuth.GitHub.BaseURL,
 		})
 	}
 

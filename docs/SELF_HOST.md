@@ -109,10 +109,9 @@ path as the first argument: `jamsesh-portal /etc/jamsesh/config.yaml`.
 | `JAMSESH_LOG_FORMAT` | `log.format` | `json` | Log output format: `json` or `text` |
 | `JAMSESH_LOG_LEVEL` | `log.level` | `0` (Info) | [slog](https://pkg.go.dev/log/slog) level: `-4`=Debug, `0`=Info, `4`=Warn, `8`=Error |
 | `JAMSESH_STORAGE` | `storage` | `./storage` | Filesystem path for per-session bare repos |
-
-> **NOTE:** OAuth provider and email provider configuration lands with
-> `epic-portal-foundation-auth-flows` in a future release. Those env vars will
-> be added to this table when that feature ships.
+| `JAMSESH_OAUTH_GITHUB_CLIENT_ID` | `oauth.github.client_id` | _(none)_ | GitHub OAuth application client ID |
+| `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET` | `oauth.github.client_secret` | _(none)_ | GitHub OAuth application client secret |
+| `JAMSESH_OAUTH_GITHUB_BASE_URL` | `oauth.github.base_url` | _(none)_ | Override GitHub OAuth base URL for testing; leave unset in production |
 
 ### Example YAML config file
 

@@ -240,6 +240,84 @@ func TestGitHub_Exchange_EmailsError(t *testing.T) {
 	}
 }
 
+// TestGitHub_BaseURL_SubstitutesAllEndpoints verifies that when BaseURL is set,
+// the provider routes all three GitHub endpoints (token exchange, /user,
+// /user/emails) through the substituted base URL and no requests escape to
+// real github.com or api.github.com.
+func TestGitHub_BaseURL_SubstitutesAllEndpoints(t *testing.T) {
+	// Track which paths were hit on the fake server.
+	hitPaths := map[string]int{}
+
+	// Wrap the fake with a recording transport so we can assert request hosts.
+	fake := newFakeGitHub(t, fakeGitHubOpts{
+		user: map[string]interface{}{
+			"id":    int64(7),
+			"login": "testuser",
+			"name":  "Test User",
+		},
+		emails: []map[string]interface{}{
+			{"email": "test@example.com", "primary": true, "verified": true},
+		},
+	})
+
+	// Install a custom transport that records the host of every outgoing
+	// request. Any host other than the fake server's host is a test failure.
+	fakeHost := fake.srv.URL // e.g. "http://127.0.0.1:PORT"
+	recorder := &recordingTransport{
+		wrapped:  fake.srv.Client().Transport,
+		fakeHost: fakeHost,
+		hitPaths: hitPaths,
+		t:        t,
+	}
+
+	g := oauth.NewGitHub(oauth.GitHubOptions{
+		ClientID:     "test-id",
+		ClientSecret: "test-secret",
+		BaseURL:      fakeHost,
+		HTTPClient:   &http.Client{Transport: recorder},
+	})
+
+	id, err := g.Exchange(context.Background(), "code", "https://redirect.example.com/cb")
+	if err != nil {
+		t.Fatalf("Exchange() error: %v", err)
+	}
+	if id.Email != "test@example.com" {
+		t.Errorf("Email = %q, want test@example.com", id.Email)
+	}
+
+	// Verify all three endpoint paths were hit on the fake server.
+	for _, path := range []string{"/login/oauth/access_token", "/user", "/user/emails"} {
+		if hitPaths[path] == 0 {
+			t.Errorf("expected path %q to be hit on fake server, but it was not", path)
+		}
+	}
+
+	if recorder.escapedToReal {
+		t.Error("at least one request escaped to a non-fake host (real github.com or api.github.com)")
+	}
+}
+
+// recordingTransport is an http.RoundTripper that records request paths and
+// flags any request that doesn't target the expected fake host.
+type recordingTransport struct {
+	wrapped       http.RoundTripper
+	fakeHost      string // expected base, e.g. "http://127.0.0.1:PORT"
+	hitPaths      map[string]int
+	escapedToReal bool
+	t             *testing.T
+}
+
+func (r *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.t.Helper()
+	actual := req.URL.Scheme + "://" + req.URL.Host
+	if actual != r.fakeHost {
+		r.t.Errorf("request escaped to non-fake host: %s%s (expected host %s)", actual, req.URL.Path, r.fakeHost)
+		r.escapedToReal = true
+	}
+	r.hitPaths[req.URL.Path]++
+	return r.wrapped.RoundTrip(req)
+}
+
 // isExchangeErr is a helper that checks for *oauth.ErrExchange in the error
 // chain and sets *target if found.
 func isExchangeErr(err error, target **oauth.ErrExchange) bool {
