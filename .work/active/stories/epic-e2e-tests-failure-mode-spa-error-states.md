@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-failure-mode-spa-error-states
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, ui]
 parent: epic-e2e-tests-failure-mode
 depends_on: []
@@ -96,3 +96,16 @@ Document the chosen selector and rationale at the top of each test.
 - `Login.svelte` error mode renders `<h1>Something went wrong</h1>` and a "Try again" ghost button — no `role="alert"`, so heading text is the stable selector.
 - `SessionList.svelte` surfaces load errors as a `<p class="error-msg">` paragraph; text content `"Failed to load sessions."` is the stable selector.
 - Tests #3, #4, and #6 use `page.route()` to intercept API calls, so they run without a live portal.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- The two skipped tests surface real production-side SPA gaps. Filed as backlog: `spa-api-client-401-interceptor` (stale-token handling) and `spa-websocket-reconnect-logic` (WS reconnect + UI indicator). Both tests are ready to un-skip once the corresponding SPA features land.
+
+**Nits**:
+- Token localStorage key discovered to be `jamsesh.token` not `access_token` — agent correctly inspected the SPA. Good catch.
+
+**Notes**: 6 active tests pin to stable selectors (heading text, button role+name, placeholder); all use semantic Playwright matchers (`getByRole`, `getByText`, `getByPlaceholder`). The `page.route()`-based API stubbing in tests 3/4/6 lets them run without a live portal, which is the right boundary for SPA-error-state coverage.
