@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-failure-mode-interrupted-ops
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-failure-mode
 depends_on: [epic-e2e-tests-failure-mode-rest-validation]
@@ -131,3 +131,15 @@ Skipped. `tests/e2e/fixtures/wsclient/wsclient.go` exists but does not
 expose cursor-based reconnect. The portal's WS gateway supports
 `replay_from` in the first frame; un-skipping requires adding a
 `ConnectFromSeq` (or similar) helper to the wsclient fixture.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The wsclient `ConnectFromSeq` helper gap is captured in `spa-websocket-reconnect-logic`'s acceptance criteria — fine where it is.
+- Both active subtests pin to observable state (HTTP responses, lock state transitions); both skipped subtests have actionable backlog references.
+
+**Notes**: The production-side bugs found here (sessions.status missing 'finalizing', Dockerfile.e2e for git availability) were correctly fixed inline as prerequisites for the test work. The Toxiproxy- / docker-pause-free disruption pattern (just using context timeouts for push-interruption) is appropriate — minimal infrastructure, maximal user-visible signal.
