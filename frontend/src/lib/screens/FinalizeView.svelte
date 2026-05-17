@@ -9,6 +9,7 @@
   import SquashMessageEditor from '$lib/components/SquashMessageEditor.svelte';
   import LockBanner from '$lib/components/finalize/LockBanner.svelte';
   import RefGroupList from '$lib/components/finalize/RefGroupList.svelte';
+  import CommandRunner from '$lib/components/finalize/CommandRunner.svelte';
   import type { components } from '$lib/api/types.gen';
 
   type LockStatus = components['schemas']['LockStatus'];
@@ -62,8 +63,6 @@
   let planLoading = $state(false);
 
   // ── Execution UX ────────────────────────────────────────────────────
-  let copyToastVisible = $state<boolean>(false);
-  let copyToastTimer: ReturnType<typeof setTimeout> | null = null;
   let copiedRunCommand = $state<boolean>(false);
   let markShippedInFlight = $state<boolean>(false);
   let sessionEnded = $state<boolean>(false);
@@ -262,25 +261,6 @@
     sessionEnded = true;
   }
 
-  // ── Run-locally copy ────────────────────────────────────────────────
-  async function copyRunCommand(): Promise<void> {
-    if (!runCommand) return;
-    try {
-      await navigator.clipboard.writeText(runCommand);
-    } catch {
-      // best-effort; surface as a soft error if the user clicked.
-      lockError = 'Failed to copy to clipboard.';
-      return;
-    }
-    copiedRunCommand = true;
-    copyToastVisible = true;
-    if (copyToastTimer !== null) clearTimeout(copyToastTimer);
-    copyToastTimer = setTimeout(() => {
-      copyToastVisible = false;
-      copyToastTimer = null;
-    }, 1500);
-  }
-
   // ── Curation mutations ──────────────────────────────────────────────
   function addCommit(sha: string) {
     if (selectedShas.includes(sha)) return;
@@ -390,8 +370,6 @@
     // Cancel pending PATCH; ditch WS subscriptions.
     if (patchTimer !== null) clearTimeout(patchTimer);
     patchTimer = null;
-    if (copyToastTimer !== null) clearTimeout(copyToastTimer);
-    copyToastTimer = null;
     stopSubscriptions();
     // Best-effort release of the lock if we still hold it and the
     // session hasn't ended (we don't await — the page is going away).
@@ -613,23 +591,12 @@
             </div>
           </div>
 
-          {#if runCommand}
-            <div class="copy-box">
-              <code>{runCommand}</code>
-              <button type="button" onclick={() => void copyRunCommand()} disabled={interactionsDisabled || !canRun}>
-                Copy
-              </button>
-            </div>
-          {/if}
-
-          <button
-            class="primary"
-            type="button"
-            onclick={() => void copyRunCommand()}
+          <CommandRunner
+            command={runCommand}
+            ready={!!runCommand}
             disabled={interactionsDisabled || !canRun}
-          >
-            Run locally
-          </button>
+            oncopy={() => { copiedRunCommand = true; }}
+          />
 
           {#if sessionEnded}
             <div class="shipped-state">
@@ -656,9 +623,6 @@
     </main>
   {/if}
 
-  {#if copyToastVisible}
-    <div class="toast" role="status" aria-live="polite">Copied!</div>
-  {/if}
 </div>
 
 <style>
@@ -880,38 +844,6 @@
     color: var(--color-text-primary);
   }
 
-  .copy-box {
-    display: flex; align-items: stretch;
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    overflow: hidden; background: var(--color-bg-secondary);
-    margin-bottom: 10px;
-  }
-  .copy-box code {
-    flex: 1; padding: 10px 12px;
-    font: var(--font-weight-medium) var(--font-size-sm) var(--font-mono);
-    color: var(--color-text-primary);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .copy-box button {
-    border: 0; border-left: 1px solid var(--color-border);
-    background: var(--color-bg-tertiary); color: var(--color-text-primary);
-    padding: 0 14px; cursor: pointer;
-    font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
-  }
-  .copy-box button:hover:not(:disabled) { background: var(--color-bg-inverse); color: var(--color-text-inverse); }
-  .copy-box button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  .primary {
-    width: 100%; padding: 12px;
-    background: var(--color-bg-inverse); color: var(--color-text-inverse);
-    border: 0; border-radius: var(--radius-md);
-    font: var(--font-weight-semibold) var(--font-size-sm) var(--font-sans);
-    cursor: pointer;
-  }
-  .primary:hover:not(:disabled) { opacity: 0.92; }
-  .primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
   .ship-btn {
     width: 100%; padding: 10px; margin-top: 10px;
     background: var(--color-bg-secondary); color: var(--color-text-primary);
@@ -947,13 +879,4 @@
     border: 1px solid var(--color-border-strong);
   }
 
-  .toast {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    padding: 10px 18px;
-    background: var(--color-bg-inverse); color: var(--color-text-inverse);
-    border-radius: var(--radius-md);
-    font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
-    box-shadow: var(--shadow-lg, 0 4px 12px rgba(0, 0, 0, 0.2));
-    z-index: 100;
-  }
 </style>
