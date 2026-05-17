@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-discovery
 kind: story
-stage: review
+stage: done
 tags: [infra]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: [epic-cloud-native-deploy-routing-layer-core]
@@ -76,3 +76,18 @@ New:
   `fake.NewSimpleClientset()` without exposing internal fields.
 - `go test -race ./internal/router/discovery/... ./internal/router/readyz/...`
   passes clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- k8s informer + ticker dual-trigger design is more complex than strictly necessary (the informer alone would suffice for membership changes; the ticker primarily catches transient probe failures that don't generate informer events). Reasonable defensiveness for v1; could simplify later.
+
+**Notes**: Discoverer interface clean (`Run(ctx, publish func([]ring.Pod)) error`). Static uses ticker + change-detection with `neverPublished` sentinel (`"\x00"`) so first probe pass always publishes — this fixes the bug the parallel service agent caught. K8s uses `informers.NewSharedInformerFactoryWithOptions(WithNamespace(...))` with buffered-channel event debounce + parallel probe of pod IPs. `KubernetesWithClient` constructor allows test injection of `fake.NewSimpleClientset()` without exposing internal fields — good pattern.
+
+Probe is straightforward: parallel goroutines + WaitGroup, default 2s timeout per pod, only 200 responses count as healthy. Pod URL always `http://<addr>` (TLS terminated at ingress).
+
+New deps: `k8s.io/client-go@v0.36.1` and `k8s.io/api@v0.36.1`. ~5MB binary growth on the router; acceptable for a deployment binary. Transitive deps reasonable for the client-go stack.

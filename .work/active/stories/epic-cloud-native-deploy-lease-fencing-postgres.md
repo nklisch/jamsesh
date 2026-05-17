@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing-postgres
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy-lease-fencing
 depends_on: [epic-cloud-native-deploy-lease-fencing-interface-and-noop, epic-cloud-native-deploy-lease-fencing-schema]
@@ -96,3 +96,19 @@ New:
   idempotency, and the collision defensive check.
 - `go test -race ./internal/portal/lease/...` passes (unit tests only without
   PG DSN). Full `go build ./...` clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: This is the implementation where the dedicated `*sql.Conn` pattern is critical for correctness — and it's done right. `m.DB.Conn(ctx)` checks out a connection at step 1; all subsequent operations (advisory lock, fencing token issue, insert, collision check, heartbeat ping, release unlock) execute on that conn so they all land on the same PG session. The collision defensive check (`pod_id` mismatch + `released_at IS NULL` → ErrAlreadyHeld) is sensibly placed AFTER the advisory lock succeeds but BEFORE the heartbeat goroutine spawns — minimal cleanup needed if collision detected.
+
+`pgHandle.Release` correctly stops the heartbeat (close `done` channel) BEFORE running the unlock + MarkLeaseReleased + conn.Close. The `sync.Once` makes Release idempotent. Heartbeat goroutine selects on `done` AND ticker, exits on ctx error OR ping failure (closing Lost()).
+
+Tests cover the 8 critical scenarios per design including the `pg_terminate_backend` simulation for Lost() and the synthetic-row insertion for the collision-detection path. All gated on `JAMSESH_TEST_PG_DSN` and skip cleanly without.
+
+This implementation specifically addresses the connection-reuse concern flagged during the db-pool-and-lock review nits — `db.Conn(ctx)` is the defensive pattern that the migration lock could optionally adopt.

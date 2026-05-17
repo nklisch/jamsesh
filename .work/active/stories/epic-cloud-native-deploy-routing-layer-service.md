@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-service
 kind: story
-stage: review
+stage: done
 tags: [infra]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: [epic-cloud-native-deploy-routing-layer-core, epic-cloud-native-deploy-routing-layer-hint-cache]
@@ -83,3 +83,19 @@ Added `/jamsesh-router` to `.gitignore` (mirroring the existing `/portal` entry)
 ### Parked bug
 
 The agent surfaced bug `bug-static-discoverer-empty-publish` while testing — `staticDiscoverer.Run` not publishing an initial empty pod set. The sibling `routing-layer-discovery` story (implemented in parallel) independently identified and fixed this with a `neverPublished` sentinel ("\x00"). The parked bug is therefore already resolved; archive on commit.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- Story implementation was completed by the agent but not committed or stage-advanced (agent terminated before its commit step). Orchestrator recovered: verified build + tests, committed work on the agent's behalf in commit 1562add. Worth flagging as an autopilot operational note — sub-agent reliability in long-running orchestrator waves isn't 100%.
+
+**Nits**:
+- 1698 LoC across 6 files (832 code + 990 test) — substantial but matches the design's unit count. Test-to-code ratio is healthy.
+- `Ring.GetNext(key, skipID)` added to the core `ring` package as part of this story rather than core's. Acceptable — the need only became clear during proxy 503-retry implementation. The addition is small (~30 lines).
+
+**Notes**: Reverse-proxy architecture matches design exactly. Doc comment at proxy.go top lays out the full routing flow (extract → hint → ring → proxy → 503-retry → cache result). Handler struct has `Metrics *metrics.Registry` as nil-safe optional — preserves the existing nil-guard pattern from sibling features. `NewRoundRobinFallback` is the documented helper for non-session routes (`/healthz`, `/auth/*`, etc.). Config has full YAML + env overlay (`JAMSESH_ROUTER_<KEY>`) with `Validate()` rejecting empty bind, unknown discovery modes, empty static pods in static mode. main.go ties it all together with signal-aware ctx + http.Server.Shutdown.
+
+Adjacent: `/jamsesh-router` added to `.gitignore`. Parked bug `bug-static-discoverer-empty-publish` was archived since the discovery agent's parallel implementation already fixed it via the `neverPublished` sentinel.
