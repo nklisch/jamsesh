@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync-provider-extensions
 kind: story
-stage: implementing
+stage: review
 tags: [portal, research]
 parent: epic-cloud-native-deploy-object-storage-sync
 depends_on: [epic-cloud-native-deploy-object-storage-sync-backend]
@@ -69,3 +69,42 @@ For each provider, document:
   identity) is also possible as a stopgap.
 - Document any provider-specific quirks in the research doc — e.g. GCS
   uses `ifGenerationMatch` (int64) instead of ETag string.
+
+## Implementation notes
+
+### Research decisions
+
+**GCS — native SDK (`cloud.google.com/go/storage` v1.62.1):**
+- ADC / GKE Workload Identity auth works automatically. No key rotation needed
+  in production on GKE.
+- Conditional-write API uses `storage.Conditions{GenerationMatch: int64}` and
+  `DoesNotExist: true` for create-only. GCS uses int64 generation numbers, not
+  ETag strings; bridged by encoding the generation as a decimal string in the
+  ETag field. Callers round-trip this value opaquely — no semantic burden.
+- Binary size: +~20 MB linked binary growth from gRPC stack. Accepted as a
+  trade for workload-identity auth. The `disable_grpc_modules` build tag
+  can reduce this in a follow-on if binary size becomes a deployment constraint.
+- GCS alternative (S3-compat with HMAC keys) remains valid as a stopgap for
+  operators who cannot use Workload Identity.
+
+**Azure Blob — native SDK (`sdk/storage/azblob` v1.7.0 + `azidentity` v1.13.1):**
+- DefaultAzureCredential resolves AKS Workload Identity / Managed Identity
+  automatically. No key rotation in production.
+- ETag-based conditional writes (`IfMatch`/`IfNoneMatch`) match the Backend
+  interface exactly — no type bridging needed. Uses `bloberror.HasCode` for
+  clean error mapping.
+- Binary size: +~5–8 MB (no gRPC).
+- Error codes: `ConditionNotMet` → `ErrPrecondition`; `BlobNotFound` →
+  `ErrNotFound`; `BlobAlreadyExists` → checked in `PutIdempotent` flow.
+
+### Implementation details
+
+- URL schemes: `gs://bucket/optional-prefix` (GCS), `azblob://account/container/optional-prefix` (Azure)
+- `metaKeyFencingToken = "jamsesh-fencing-token"` consistent with S3 impl
+- Both `Delete` implementations are idempotent (404 → nil)
+- Tests gated on `JAMSESH_TEST_GCS_BUCKET` / `JAMSESH_TEST_AZURE_URL`; skip
+  cleanly with descriptive messages when absent
+- Factory registration (`gs://`, `azblob://` schemes) deferred to Unit 5
+  (`epic-cloud-native-deploy-object-storage-sync-wiring`) — factory.go does
+  not exist yet; story body correctly anticipates this
+- Full project test suite passes: `go test ./...` all green
