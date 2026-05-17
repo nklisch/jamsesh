@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-docs
 kind: story
-stage: implementing
+stage: review
 tags: [infra, portal, documentation]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: [epic-cloud-native-deploy-operational-polish-readyz, epic-cloud-native-deploy-operational-polish-metrics, epic-cloud-native-deploy-operational-polish-secrets-from-file, epic-cloud-native-deploy-operational-polish-db-pool-and-lock, epic-cloud-native-deploy-operational-polish-graceful-shutdown]
@@ -70,3 +70,64 @@ Edit:
 - [ ] No "previously" / "originally" prose anywhere; foundation
   docs describe the new present truth (rolling-foundation
   principle).
+
+## Implementation notes
+
+### What landed
+
+**`docs/SELF_HOST.md`** — edited in five places:
+
+- **§2 Configuration table** — added 11 new rows:
+  `JAMSESH_PORTAL_URL` (portal base URL, `portal_url` YAML key),
+  `JAMSESH_DB_DSN_FILE`, `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE`,
+  `JAMSESH_DB_MAX_OPEN_CONNS` (default 25, `db.max_open_conns`),
+  `JAMSESH_DB_MAX_IDLE_CONNS` (default 5, `db.max_idle_conns`),
+  `JAMSESH_DB_CONN_MAX_LIFETIME` (default `30m`, `db.conn_max_lifetime`),
+  `JAMSESH_SHUTDOWN_GRACE_S` (default `30`, `shutdown_grace_s`),
+  `JAMSESH_EMAIL_SMTP_PASS_FILE`, `JAMSESH_EMAIL_SENDGRID_API_KEY_FILE`,
+  `JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN_FILE`, `JAMSESH_EMAIL_RESEND_API_KEY_FILE`.
+
+- **`_FILE` convention paragraph** (new `### _FILE convention for secret env vars`
+  subsection under §2): explains precedence (`_FILE` wins over plain var),
+  fail-fast on unreadable path, trimming behavior, full list of the 6 `_FILE`
+  variants, and integration notes for Kubernetes Secrets, Docker Swarm, and
+  Secret Manager sidecars.
+
+- **§8 Monitoring** — replaced the "planned for a future release" /metrics note
+  with the full landed surface: Prometheus endpoint description, scrape config
+  example, table of all 5 portal-specific metrics plus Go runtime collectors,
+  alert signal recommendations. Added a new `### Readiness probe` subsection
+  documenting `/readyz`: 200/503 contract, JSON envelope examples (passing and
+  failing), 2s per-check timeout, parallel execution, probe table (db + storage).
+  Renamed the log-based alerting content to `### Log-based alerting` to preserve
+  the existing signal list.
+
+- **§9 Upgrade procedure** — added `### Graceful shutdown` subsection before
+  "When migrations are required": documents `JAMSESH_SHUTDOWN_GRACE_S` (default
+  30), shared budget semantics, per-step log output, k8s
+  `terminationGracePeriodSeconds` sizing advice. Also added a note about
+  Postgres advisory-lock migration serialization under "When migrations are
+  required".
+
+- **New §13 Cloud deploy recipes** — concrete runnable snippets for all four
+  platforms:
+  - **Cloud Run**: `gcloud run deploy` command with `--port 8443`,
+    `--min-instances 1`, `--timeout 3600`, `--set-secrets` for `_FILE` variant,
+    `--add-cloudsql-instances`, notes on ephemeral filesystem and WebSocket 60-min
+    cap.
+  - **Fly.io**: `fly.toml` with `[[mounts]]` for `/data` PVC, `strategy =
+    "immediate"`, `kill_signal = "SIGTERM"`, `kill_timeout = "35s"`, healthcheck
+    and readiness check paths, `fly secrets set` instructions.
+  - **Railway**: `railway.json` with startCommand and healthcheck, `railway
+    variables set` command mapping `DATABASE_URL` plugin ref to `JAMSESH_DB_DSN`.
+  - **k8s with PVC**: full YAML (Namespace, PVC, ConfigMap, Secret, Deployment,
+    Service) with `terminationGracePeriodSeconds: 35`, `readinessProbe` on
+    `/readyz`, `livenessProbe` on `/healthz`, Secret volume mount for `_FILE`
+    vars, `replicas: 1` with single-instance design note referencing
+    `epic-cloud-native-deploy`.
+
+**`docs/SPEC.md`** — expanded the "Deployment shape" bullet list with new bullets
+covering: env var surface (key vars + defaults), pool config + Postgres migration
+advisory lock, shutdown grace, `_FILE` secret convention, and observability
+endpoints (`/metrics`, `/readyz`, `/healthz`). Added a single-instance-by-design
+note. No "previously/originally" prose anywhere; all bullets are present truth.
