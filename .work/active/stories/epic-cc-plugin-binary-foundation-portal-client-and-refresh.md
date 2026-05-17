@@ -2,7 +2,7 @@
 id: epic-cc-plugin-binary-foundation-portal-client-and-refresh
 kind: story
 tags: [plugin]
-stage: implementing
+stage: review
 parent: epic-cc-plugin-binary-foundation
 depends_on: [epic-cc-plugin-binary-foundation-router-state-mcp]
 release_binding: null
@@ -41,6 +41,13 @@ runs silently in the background on 401s.
       atomically (no partial-write race)
 - [ ] On refresh failure (network error, refresh-token revoked), the
       error propagates back to `Do` and the second retry is skipped
+
+## Implementation notes
+
+- `cmd/jamsesh/portalclient/client.go` — `Client` struct with `Do`, `GetJSON[T]`, `PostJSON[T]`. `Do` reads `state.ReadToken()` fresh on every call (no in-memory cache), so the token written by `Refresher.Refresh` is used immediately on the retry. On 401 with a non-nil `Refresh` field: drain response, call `Refresh(ctx)`, clone request (nil body), re-attach bearer, retry once. Second 401 or refresh error returns `fmt.Errorf`-wrapped error without further retry.
+- `cmd/jamsesh/portalclient/refresh.go` — `Refresher` wraps `singleflight.Group` with a static `"refresh"` key. `doRefresh` reads `state.ReadRefreshToken()`, POSTs `{"refresh_token": "..."}` to `<BaseURL>/api/auth/refresh`, decodes `tokenPair` (matching portal's TokenPair schema), writes refresh token first then access token via `state.Write*` helpers (both atomic rename). Concurrent callers share one in-flight round-trip.
+- Tests: `client_test.go` covers happy path, 401→refresh→retry, refresh-fails propagation, persistent-401 guard, nil-Refresh pass-through, GetJSON, PostJSON. `refresh_test.go` covers token write round-trip, N=10 goroutines singleflight (asserts hitCount==1), server-error propagation, missing-refresh-token-file guard.
+- `golang.org/x/sync` was already in go.mod as an indirect dep; no go.mod edit needed.
 
 ## Notes
 
