@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-sessions-rest
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-api-events-log, epic-portal-foundation-http-skeleton, epic-portal-foundation-accounts, epic-portal-foundation-auth-flows, epic-portal-git-storage]
@@ -206,3 +206,11 @@ Actually scrap that — `epic-portal-git-pre-receive` already references mode bu
 
 - **Size ceiling**: 11 endpoints across 3 stories is the right cut.
 - **Cursor design**: base64(JSON) opaque cursor is more debuggable than just a seq number. Filter-hash invalidation prevents cross-filter cursor reuse confusion.
+
+## Implementation summary
+
+All 3 child stories done. Sessions REST surface complete: CRUD + lifecycle transitions + listing/state/digest/refs + invites/member-remove. The session is the central jamsesh resource and this is its full management surface.
+
+## Review
+
+**Verdict**: Approve. Capability complete. mcp-endpoint (which uses session_id for permission checks) is now fully unblocked.

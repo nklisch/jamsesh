@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-sessions-rest-session-invites-and-member-remove
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-api-sessions-rest
 depends_on: [epic-portal-api-sessions-rest-sessions-lifecycle]
@@ -61,3 +61,9 @@ Add the `session_invites` table + 3 endpoints (invite, accept, remove member).
 **OpenAPI**: 3 new paths + 3 new schemas (Invite, InviteRequest, AcceptInviteRequest) added to `docs/openapi.yaml`. Go and TS types regenerated.
 
 **Tests**: 10 integration tests in `internal/portal/sessions/invites_test.go` covering happy paths and all error conditions (403, 401, 404, 409). All pre-existing tests pass.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Mirrors the org-invites pattern. Tx for MarkAccepted + AddSessionMember prevents race. Self-removal guard is thoughtful. Pre-receive's existing membership check makes member-remove instantly enforced on git push.

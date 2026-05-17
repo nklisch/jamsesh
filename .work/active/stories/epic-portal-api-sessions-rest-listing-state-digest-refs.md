@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-sessions-rest-listing-state-digest-refs
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-api-sessions-rest
 depends_on: [epic-portal-api-sessions-rest-sessions-lifecycle]
@@ -54,3 +54,9 @@ Add the 4 read endpoints: list sessions, get session, list refs, get digest. Plu
 - `cmd/portal/main.go`: 4 new route registrations + 4 new combinedHandler delegations.
 - Test shims in auth, accounts, tokens packages updated for 4 new interface methods.
 - All existing tests pass; 9 new tests added in `listing_state_test.go` covering cursor round-trip, filter mismatch, empty repo refs, member auth, digest assembly.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Cursor with filter-hash invalidation prevents the cross-filter cursor reuse bug class. Digest assembly per PROTOCOL.md sections. ListSessionRefs gracefully handles empty repo case (no bare repo yet means empty refs list).

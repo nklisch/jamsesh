@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-sessions-rest-sessions-lifecycle
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-api-sessions-rest
 depends_on: []
@@ -62,3 +62,9 @@ All units implemented and tested:
 - **cmd/portal/main.go**: SessionsHandler constructed and wired; 4 routes registered.
 - **Tests**: 12 tests covering all acceptance criteria including Tx rollback on repo failure, scope narrowing rejection, idempotent finalize, double-abandon prevention, creator-only enforcement.
 - **Build**: `go build ./...` and `go test ./...` clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Atomic Tx + repo creation with compensation pattern is the right shape. Idempotent finalize. Append-only scope rule is strict but defensible — operators can widen later. Creator-only enforcement clean.
