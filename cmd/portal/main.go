@@ -17,7 +17,6 @@ import (
 	"context"
 	"flag"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,6 +35,7 @@ import (
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/finalize"
 	"jamsesh/internal/portal/githttp"
+	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/logging"
 	"jamsesh/internal/portal/mcpendpoint"
 	portaloauth "jamsesh/internal/portal/oauth"
@@ -332,7 +332,14 @@ func main() {
 	}
 
 	// Compose the combined handler that satisfies the full StrictServerInterface.
-	strictAPI := openapi.NewStrictHandler(&combinedHandler{
+	// The strict-handler options funnel every handler error and request-decode
+	// error through the PROTOCOL.md envelope helpers in internal/portal/httperr:
+	//   - ResponseErrorHandlerFunc: translates *httperr.Error (pass-through),
+	//     deperr sentinels (typed dep envelopes), or anything else (fallthrough
+	//     to "internal" 500) via httperr.WriteFromError.
+	//   - RequestErrorHandlerFunc: emits a "request.malformed" 400 envelope
+	//     instead of the default plain-text response.
+	strictAPI := openapi.NewStrictHandlerWithOptions(&combinedHandler{
 		Handler:          tokenHandler,
 		MagicLinkHandler: magicLinkHandler,
 		OAuthHandler:     oauthHandler,
@@ -340,15 +347,18 @@ func main() {
 		SessionsHandler:  sessionsHandler,
 		CommentsHandler:  commentsHandler,
 		FinalizeHandler:  finalizeHandler,
-	}, nil)
+	}, nil, openapi.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+		ResponseErrorHandlerFunc: httperr.WriteFromError,
+	})
 
 	// Build a ServerInterfaceWrapper so we have http.HandlerFunc-compatible
 	// method values for all routes, including those with URL path parameters.
+	// The wrapper's ErrorHandlerFunc fires when path/query parameter binding
+	// fails — also route through the standard 400 envelope.
 	apiWrapper := &openapi.ServerInterfaceWrapper{
-		Handler: strictAPI,
-		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		},
+		Handler:          strictAPI,
+		ErrorHandlerFunc: httperr.WriteBadRequest,
 	}
 
 	gitHandler := &githttp.Handler{

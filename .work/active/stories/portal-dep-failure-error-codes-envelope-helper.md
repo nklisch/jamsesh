@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-envelope-helper
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: []
@@ -254,3 +254,62 @@ the new wrappers in subsequent stories.
 ## Rollback
 
 `git revert` the commit. No data migrations involved.
+
+## Implementation notes
+
+- **New package `internal/portal/deperr/`** (`deperr.go`, `deperr_test.go`).
+  Declares the four sentinels (`ErrSMTP`, `ErrDB`, `ErrOAuthProvider`,
+  `ErrGitSubprocess`) and shallow wrap helpers
+  (`WrapSMTP`, `WrapDB`, `WrapDBIfTransient`, `WrapOAuthProvider`,
+  `WrapGitSubprocess`). All helpers return `nil` for a `nil` input so
+  call sites can wrap unconditionally. `WrapDBIfTransient` filters
+  `store.ErrNotFound` and `store.ErrUniqueViolation` through unchanged
+  (verified via `errors.Is`, so transitively-wrapped business sentinels
+  are also preserved).
+
+- **`internal/portal/httperr/httperr.go`** — added the optional
+  `Headers map[string]string` field on `*Error` and made `Write` apply
+  any non-empty entries to `w.Header()` before `WriteHeader`. The new
+  constructors `ErrSMTPUnavailable`, `ErrDBUnavailable`,
+  `ErrOAuthProviderUnavailable` (each 503 + `Retry-After`) and
+  `ErrGitSubprocessFailed` (500, no Retry-After) follow the existing
+  constructor style. Also added `ErrBadRequest(cause)` and
+  `WriteBadRequest(w, r, err)` which emit the `request.malformed` 400
+  envelope, replacing the previous plain-text 400 path on both the
+  strict handler and the `ServerInterfaceWrapper`.
+
+- **`internal/portal/httperr/translate.go`** — `WriteFromError` does
+  `errors.As(*httperr.Error)` first (preserves the today's typed-error
+  path used by `tokens.BearerMiddleware`), then a switch over
+  `errors.Is` against each `deperr.Err*` sentinel, then defaults to
+  `ErrInternal`. The default path means anything not explicitly wrapped
+  still surfaces as a 500 `internal` envelope — same shape as today.
+
+- **`cmd/portal/main.go`** — replaced
+  `openapi.NewStrictHandler(combined, nil)` with
+  `openapi.NewStrictHandlerWithOptions(combined, nil,
+  openapi.StrictHTTPServerOptions{...})` carrying the new
+  `RequestErrorHandlerFunc: httperr.WriteBadRequest` and
+  `ResponseErrorHandlerFunc: httperr.WriteFromError`. The inline
+  `ErrorHandlerFunc` on the `ServerInterfaceWrapper` (which fires on
+  path/query parameter binding failures, not response errors) now also
+  delegates to `httperr.WriteBadRequest` for consistency. The `net/http`
+  import on `cmd/portal/main.go` is no longer needed (only used by the
+  inline plain-text `http.Error` before this change) and was removed;
+  no other behavior in `main.go` changed.
+
+- **Tests** — `deperr_test.go` covers the nil pass-through, sentinel
+  match, and `WrapDBIfTransient`'s preservation of `store.ErrNotFound`,
+  `store.ErrUniqueViolation`, and `errors.Join`-wrapped sentinels.
+  `translate_test.go` is table-driven over every sentinel + a typed
+  `*httperr.Error` pass-through + the default fallthrough, asserting on
+  status, error code, `Content-Type`, and `Retry-After`. An additional
+  test verifies an `errors.Join`-wrapped `*httperr.Error` is still
+  resolved by `errors.As` (not misclassified as fallthrough). A test
+  for `WriteBadRequest` confirms the 400 envelope shape.
+
+- **Verification**: `go test ./internal/portal/deperr/...
+  ./internal/portal/httperr/...` and `go build ./...` both clean. No
+  call sites outside `httperr/` are migrated by this story; the typed
+  envelope only fires for new code emitting `deperr.Wrap*` (which the
+  per-surface follow-on stories will introduce).

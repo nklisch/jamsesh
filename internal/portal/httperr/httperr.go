@@ -24,6 +24,11 @@ type Error struct {
 
 	// Wrapped is an inner error for log context (never serialized).
 	Wrapped error `json:"-"`
+
+	// Headers, if non-empty, are written to w.Header() before the status.
+	// Used by dep-failure constructors to attach Retry-After hints
+	// (never serialized into the JSON body).
+	Headers map[string]string `json:"-"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -38,6 +43,11 @@ func Write(w http.ResponseWriter, r *http.Request, err error) {
 		e = ErrInternal(err)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	for k, v := range e.Headers {
+		if v != "" {
+			w.Header().Set(k, v)
+		}
+	}
 	w.WriteHeader(e.HTTPStatus)
 	_ = json.NewEncoder(w).Encode(e)
 	// Log at the level appropriate to the status.
@@ -88,4 +98,73 @@ func ErrSessionNotFound() *Error {
 		Message:    "session not found",
 		HTTPStatus: http.StatusNotFound,
 	}
+}
+
+// Dep-failure constructors. These are emitted by the WriteFromError
+// translator (see translate.go) when a handler returns an error wrapped
+// with one of the deperr sentinels. The 503 family carries a
+// conservative Retry-After hint; git_subprocess_failed is a local
+// process failure and intentionally has no Retry-After.
+
+func ErrSMTPUnavailable(cause error) *Error {
+	return &Error{
+		Code:       "dep.smtp_unavailable",
+		Message:    "email delivery is currently unavailable",
+		HTTPStatus: http.StatusServiceUnavailable,
+		Wrapped:    cause,
+		Headers:    map[string]string{"Retry-After": "5"},
+	}
+}
+
+func ErrDBUnavailable(cause error) *Error {
+	return &Error{
+		Code:       "dep.db_unavailable",
+		Message:    "database is currently unavailable",
+		HTTPStatus: http.StatusServiceUnavailable,
+		Wrapped:    cause,
+		Headers:    map[string]string{"Retry-After": "2"},
+	}
+}
+
+func ErrOAuthProviderUnavailable(cause error) *Error {
+	return &Error{
+		Code:       "dep.oauth_provider_unavailable",
+		Message:    "OAuth provider is currently unavailable",
+		HTTPStatus: http.StatusServiceUnavailable,
+		Wrapped:    cause,
+		Headers:    map[string]string{"Retry-After": "10"},
+	}
+}
+
+func ErrGitSubprocessFailed(cause error) *Error {
+	return &Error{
+		Code:       "dep.git_subprocess_failed",
+		Message:    "git subprocess failed",
+		HTTPStatus: http.StatusInternalServerError,
+		Wrapped:    cause,
+	}
+}
+
+// ErrBadRequest is emitted when oapi-codegen's strict handler fails to
+// decode a request body or path/query parameters. Replaces the default
+// plain-text 400 with the standard envelope so every error response
+// shares the same shape.
+func ErrBadRequest(cause error) *Error {
+	msg := "malformed request"
+	if cause != nil {
+		msg = cause.Error()
+	}
+	return &Error{
+		Code:       "request.malformed",
+		Message:    msg,
+		HTTPStatus: http.StatusBadRequest,
+		Wrapped:    cause,
+	}
+}
+
+// WriteBadRequest is a convenience wrapper around Write that constructs
+// an ErrBadRequest envelope. Intended as a RequestErrorHandlerFunc on
+// the oapi-codegen strict handler.
+func WriteBadRequest(w http.ResponseWriter, r *http.Request, err error) {
+	Write(w, r, ErrBadRequest(err))
 }
