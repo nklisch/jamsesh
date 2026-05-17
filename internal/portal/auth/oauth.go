@@ -123,14 +123,26 @@ func (h *OAuthHandler) OauthCallback(
 
 	// Exchange the authorization code for an Identity via the provider.
 	//
-	// Every error path inside Provider.Exchange (token-exchange non-2xx,
-	// transport failures, /user lookup, /user/emails lookup, decode
-	// errors) is a dep-class failure — the GitHub provider has no
-	// business-error returns at this layer. Wrap so the strict-handler
-	// translator (httperr.WriteFromError) emits a typed
-	// `dep.oauth_provider_unavailable` envelope (503, Retry-After: 10).
+	// Two error classes possible:
+	//
+	//  1. Business: the provider explicitly rejected the authorization
+	//     code (RFC 6749 `invalid_grant` / GitHub
+	//     `bad_verification_code` — code expired, reused, malformed).
+	//     The error chain carries `oauth.ErrBadGrant`. Surface as 400
+	//     `oauth.invalid_grant` — retrying is futile, the user must
+	//     re-initiate sign-in.
+	//
+	//  2. Dep: token-exchange non-2xx, transport failure, /user or
+	//     /user/emails lookup failure, decode failure, empty access
+	//     token. Wrap with deperr.WrapOAuthProvider so the strict-handler
+	//     translator emits 503 `dep.oauth_provider_unavailable`
+	//     (Retry-After: 10).
 	ghIdentity, err := provider.Exchange(ctx, code, stateRow.RedirectURI)
 	if err != nil {
+		if errors.Is(err, portaloauth.ErrBadGrant) {
+			return oauthBadRequest("oauth.invalid_grant",
+				"authorization code was rejected by the provider"), nil
+		}
 		return nil, deperr.WrapOAuthProvider(
 			fmt.Errorf("oauth callback: exchange: %w", err))
 	}

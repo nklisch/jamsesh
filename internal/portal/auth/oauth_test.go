@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -500,6 +501,95 @@ func TestOauthCallback_WrapsExchangeError_WithDepSentinel(t *testing.T) {
 	// the original text.
 	if msg := err.Error(); !strings.Contains(msg, exchangeFailure.Error()) {
 		t.Errorf("error message missing original cause %q: %q", exchangeFailure.Error(), msg)
+	}
+}
+
+// TestOAuthCallback_BadGrant_Returns400InvalidGrant verifies that when
+// Provider.Exchange returns an error wrapping oauth.ErrBadGrant (RFC
+// 6749 `invalid_grant` / GitHub `bad_verification_code`), the handler
+// returns 400 with envelope `oauth.invalid_grant` — NOT the dep-class
+// 503. The user must re-initiate sign-in; retrying the same code is
+// futile.
+func TestOAuthCallback_BadGrant_Returns400InvalidGrant(t *testing.T) {
+	provider := &stubProvider{
+		name: "github",
+		err: fmt.Errorf("%w: github error bad_verification_code: code expired",
+			portaloauth.ErrBadGrant),
+	}
+	env := newOAuthTestEnv(t, "github", provider)
+
+	startResp := postJSONBody(t, env.srv, "/api/auth/oauth/start", map[string]string{"provider": "github"})
+	defer startResp.Body.Close()
+	var startBody struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}
+	_ = json.NewDecoder(startResp.Body).Decode(&startBody)
+	nonce := extractStateFromURL(t, startBody.AuthorizeURL)
+
+	resp := postJSONBody(t, env.srv, "/api/auth/oauth/callback", map[string]string{
+		"provider": "github",
+		"code":     "expired-code",
+		"state":    nonce,
+	})
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (bad-grant must be user-side, not 503 dep-class)",
+			resp.StatusCode)
+	}
+	// 400 responses must NOT carry a Retry-After header — retrying is
+	// futile because the issue is the user's authorization code.
+	if ra := resp.Header.Get("Retry-After"); ra != "" {
+		t.Errorf("Retry-After = %q on 400 bad-grant response; want empty (retry is futile)", ra)
+	}
+
+	body := decodeJSONResponse(t, resp)
+	if code, _ := body["error"].(string); code != "oauth.invalid_grant" {
+		t.Errorf("error code: want %q, got %q", "oauth.invalid_grant", code)
+	}
+	if msg, _ := body["message"].(string); msg == "" {
+		t.Error("response envelope must include a non-empty message")
+	}
+}
+
+// TestOauthCallback_BadGrant_DoesNotWrapDepSentinel is a unit-level
+// guard ensuring the classification happens BEFORE the dep-class wrap.
+// Without classification the error would carry deperr.ErrOAuthProvider
+// and the strict-handler translator would emit 503.
+func TestOauthCallback_BadGrant_DoesNotWrapDepSentinel(t *testing.T) {
+	s := openStore(t)
+	tokenSvc := tokens.New(s)
+	badGrant := fmt.Errorf("%w: github error bad_verification_code: code expired",
+		portaloauth.ErrBadGrant)
+	provider := &stubProvider{name: "github", err: badGrant}
+	providers := map[string]portaloauth.Provider{"github": provider}
+	handler := auth.NewOAuthHandler(providers, s, tokenSvc, "https://portal.example.com")
+
+	nonce, err := portaloauth.GenerateNonce()
+	if err != nil {
+		t.Fatalf("GenerateNonce: %v", err)
+	}
+	if err := portaloauth.StoreState(context.Background(), s, nonce, "github",
+		"https://portal.example.com/auth/oauth/callback"); err != nil {
+		t.Fatalf("StoreState: %v", err)
+	}
+
+	resp, err := handler.OauthCallback(context.Background(), openapi.OauthCallbackRequestObject{
+		Body: &openapi.OauthCallbackJSONRequestBody{
+			Provider: "github",
+			Code:     "expired-code",
+			State:    nonce,
+		},
+	})
+	if err != nil {
+		t.Fatalf("OauthCallback returned err=%v; bad-grant must surface as a typed 400 response, not a returned error", err)
+	}
+	bad, ok := resp.(openapi.OauthCallback400JSONResponse)
+	if !ok {
+		t.Fatalf("response = %T, want openapi.OauthCallback400JSONResponse", resp)
+	}
+	if bad.Error != "oauth.invalid_grant" {
+		t.Errorf("Error = %q, want %q", bad.Error, "oauth.invalid_grant")
 	}
 }
 

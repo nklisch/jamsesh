@@ -170,7 +170,14 @@ func (g *GitHub) exchangeCode(ctx context.Context, code, redirectURI string) (st
 		return "", fmt.Errorf("decode token response: %w", err)
 	}
 	if tok.Error != "" {
-		return "", fmt.Errorf("github error %s: %s", tok.Error, tok.ErrorDesc)
+		// Per RFC 6749, GitHub's token endpoint returns HTTP 200 with a
+		// JSON body carrying `error` / `error_description` when the
+		// authorization code is rejected at the business layer
+		// (`bad_verification_code` — code expired, reused, malformed —
+		// or `invalid_grant`). Wrap with ErrBadGrant so the callback
+		// handler classifies this as a user-side 400 rather than a
+		// dep-class 503 retry.
+		return "", fmt.Errorf("%w: github error %s: %s", ErrBadGrant, tok.Error, tok.ErrorDesc)
 	}
 	if tok.AccessToken == "" {
 		return "", fmt.Errorf("github returned empty access_token")

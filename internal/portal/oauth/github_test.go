@@ -3,6 +3,7 @@ package oauth_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -222,6 +223,56 @@ func TestGitHub_Exchange_TokenError(t *testing.T) {
 	var exchErr *oauth.ErrExchange
 	if !isExchangeErr(err, &exchErr) {
 		t.Errorf("error should be *ErrExchange, got %T: %v", err, err)
+	}
+}
+
+// TestGitHub_Exchange_BadVerificationCode_WrapsErrBadGrant verifies that
+// when the upstream token endpoint returns HTTP 200 with a JSON body
+// carrying `{"error": "bad_verification_code"}` (RFC 6749's business
+// rejection), the returned error chain carries oauth.ErrBadGrant. This
+// is the signal the OauthCallback handler uses to emit 400
+// `oauth.invalid_grant` instead of the dep-class 503.
+func TestGitHub_Exchange_BadVerificationCode_WrapsErrBadGrant(t *testing.T) {
+	fake := newFakeGitHub(t, fakeGitHubOpts{tokenError: "bad_verification_code"})
+	_, err := fake.provider(t).Exchange(context.Background(), "expired-code", "https://x.example.com/cb")
+	if err == nil {
+		t.Fatal("expected error from Exchange when token endpoint returns bad_verification_code")
+	}
+	if !errors.Is(err, oauth.ErrBadGrant) {
+		t.Errorf("errors.Is(err, oauth.ErrBadGrant) = false, want true; err = %v", err)
+	}
+	// The wrapped error should still mention the upstream error code
+	// for operator debugging.
+	if !strings.Contains(err.Error(), "bad_verification_code") {
+		t.Errorf("error message should preserve upstream error code; got %q", err.Error())
+	}
+}
+
+// TestGitHub_Exchange_InvalidGrant_WrapsErrBadGrant exercises the same
+// branch with RFC 6749's canonical `invalid_grant` code (any non-empty
+// `error` field in the 200-response body is a business rejection).
+func TestGitHub_Exchange_InvalidGrant_WrapsErrBadGrant(t *testing.T) {
+	fake := newFakeGitHub(t, fakeGitHubOpts{tokenError: "invalid_grant"})
+	_, err := fake.provider(t).Exchange(context.Background(), "code", "https://x.example.com/cb")
+	if err == nil {
+		t.Fatal("expected error from Exchange when token endpoint returns invalid_grant")
+	}
+	if !errors.Is(err, oauth.ErrBadGrant) {
+		t.Errorf("errors.Is(err, oauth.ErrBadGrant) = false, want true; err = %v", err)
+	}
+}
+
+// TestGitHub_Exchange_TransportError_DoesNotWrapErrBadGrant guards the
+// taxonomy boundary: a real transport failure (e.g. /user 5xx) must not
+// be misclassified as a business rejection.
+func TestGitHub_Exchange_TransportError_DoesNotWrapErrBadGrant(t *testing.T) {
+	fake := newFakeGitHub(t, fakeGitHubOpts{userError: true})
+	_, err := fake.provider(t).Exchange(context.Background(), "code", "https://x.example.com/cb")
+	if err == nil {
+		t.Fatal("expected error from Exchange when /user fails")
+	}
+	if errors.Is(err, oauth.ErrBadGrant) {
+		t.Errorf("transport failure incorrectly matched oauth.ErrBadGrant: %v", err)
 	}
 }
 

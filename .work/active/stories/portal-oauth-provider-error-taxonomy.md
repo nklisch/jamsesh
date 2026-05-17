@@ -1,7 +1,7 @@
 ---
 id: portal-oauth-provider-error-taxonomy
 kind: story
-stage: implementing
+stage: review
 tags: [portal, auth, error-taxonomy]
 parent: null
 depends_on: []
@@ -94,3 +94,50 @@ transport / 5xx / decode failures.
   provider has its own business-vs-transport boundary and an
   uncoordinated approach across providers will compound the
   classification debt.
+
+## Implementation notes
+
+**Sentinel shape.** Picked the simpler `var ErrBadGrant = errors.New(...)`
+plus `fmt.Errorf("%w: ...", ErrBadGrant, ...)` style — matches the existing
+`deperr.Err*` convention (sentinel + thin wrap helper). No typed
+`*BadGrantError` carrying structured fields; the upstream `error` /
+`error_description` are preserved in the wrap text for operator logs,
+which is enough for v1. If a future caller needs to programmatically
+inspect the upstream code (e.g. distinguish `invalid_grant` from
+`redirect_uri_mismatch`) we can promote to a typed error then.
+
+**Wrap-chain interaction.** `ErrBadGrant` lives at the leaf of the
+`*ErrExchange` chain — `Exchange` wraps the provider error in
+`*ErrExchange{Cause: <ErrBadGrant-wrapped>}`. Since `*ErrExchange.Unwrap`
+returns `Cause`, `errors.Is(err, oauth.ErrBadGrant)` traverses both
+layers and returns true. The existing transport-failure cases (no
+`ErrBadGrant`) continue to fall through to the dep-class wrap.
+
+**Files touched.**
+- `internal/portal/oauth/provider.go` — added `ErrBadGrant` sentinel
+  next to `ErrExchange`.
+- `internal/portal/oauth/github.go` — replaced the bare
+  `fmt.Errorf("github error %s: %s", ...)` at the 200-OK-with-error
+  branch with `fmt.Errorf("%w: ...", ErrBadGrant, ...)`.
+- `internal/portal/auth/oauth.go` — added `errors.Is(err,
+  portaloauth.ErrBadGrant)` classification before
+  `deperr.WrapOAuthProvider`; returns
+  `oauthBadRequest("oauth.invalid_grant", ...)` (400) on match.
+- `internal/portal/oauth/github_test.go` — added three tests:
+  `bad_verification_code` → `ErrBadGrant`, `invalid_grant` →
+  `ErrBadGrant`, and transport failure does NOT match `ErrBadGrant`
+  (taxonomy boundary guard).
+- `internal/portal/auth/oauth_test.go` — added HTTP-surface test
+  (400 + `oauth.invalid_grant` envelope, no `Retry-After` header)
+  and unit-level test asserting the response type is
+  `OauthCallback400JSONResponse` rather than a returned error that
+  would route through the dep translator.
+- `docs/PROTOCOL.md` — registered `oauth.invalid_grant` in the
+  Common error codes section with a one-liner distinguishing it
+  from `dep.oauth_provider_unavailable`.
+
+**Tests.** All existing oauth + auth tests pass alongside the four
+new ones. The existing `TestOAuthCallback_ExchangeError_ReturnsDepEnvelope`
+still asserts 503 `dep.oauth_provider_unavailable` for plain transport
+errors, confirming the new classification path doesn't catch the
+fallthrough.

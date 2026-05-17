@@ -388,6 +388,7 @@ Common error codes:
 - `push.missing_trailer` (with `details.missing` listing absent trailers)
 - `fork.target_not_found`
 - `fork.invalid_target_ref`
+- `oauth.invalid_grant` (400; the OAuth provider rejected the authorization code at the business layer — RFC 6749 `invalid_grant` / GitHub `bad_verification_code`. The code is expired, reused, or malformed; the user must re-initiate sign-in. Distinct from `dep.oauth_provider_unavailable` (503), which signals a transport-level outage where a retry may succeed.)
 
 ### Dependency-failure codes
 

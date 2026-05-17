@@ -4,7 +4,10 @@
 // single new file — no other code is touched.
 package oauth
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // Identity is the normalised user identity returned by every Provider
 // after a successful code exchange. It is dialect-independent: callers
@@ -56,3 +59,16 @@ func (e *ErrExchange) Error() string {
 }
 
 func (e *ErrExchange) Unwrap() error { return e.Cause }
+
+// ErrBadGrant is returned (typically wrapped in *ErrExchange via Cause)
+// when the provider explicitly rejects the authorization code at the
+// business-logic layer — RFC 6749 `invalid_grant` / GitHub
+// `bad_verification_code`. The upstream token endpoint returned a
+// well-formed JSON body with an `error` field, NOT a transport failure.
+//
+// Callers (auth/oauth.go > OauthCallback) classify with
+// errors.Is(err, oauth.ErrBadGrant) before falling back to a dep-class
+// wrap so the SPA receives a 400 `oauth.invalid_grant` instead of
+// 503 `dep.oauth_provider_unavailable` (which would suggest a futile
+// retry).
+var ErrBadGrant = errors.New("oauth: provider rejected the authorization code")
