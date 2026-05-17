@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-post-receive
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-portal-git
 depends_on: [epic-portal-git-storage]
@@ -154,3 +154,11 @@ Single story.
 
 - **First-push runaway**: a new ref with no OldSHA could in theory have thousands of commits in its ancestry. Mitigation: cap at 1000 commits per emit batch; document as a known limitation.
 - **Event ordering**: parallel pushes to the same session could interleave events. The event log's seq allocation is atomic per session, so the seq numbers stay monotonic — but the order of commits across pushes isn't guaranteed. Acceptable; consumers can resequence by timestamp if needed.
+
+## Implementation summary
+
+Single child story at done. Emitter feeds commit.arrived events into the log via EmitBatch. After this lands, smart-http (next in the chain) can call both prereceive.Validator and postreceive.Emitter end-to-end.
+
+## Review
+
+**Verdict**: Approve. Capability complete.

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-post-receive-emitter
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-git-post-receive
 depends_on: []
@@ -61,3 +61,9 @@ Build the `Emitter` that walks new commits per accepted ref update and emits bat
 - [x] Empty range (OldSHA == NewSHA) emits zero events — `TestEmitForUpdates_EmptyRange`
 - [x] New ref creation (OldSHA=="") emits all commits capped at 1000 — `TestEmitForUpdates_NewRef`
 - [x] `EmitBatch` failures propagate — `TestEmitForUpdates_EmitBatchErrorPropagates`
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Notes**: Reuses prereceive.Trailers cleanly. Reverse-after-Log for chronological order is the right call. 1000-commit cap prevents new-ref runaway. Tests cover happy path + edge cases.
