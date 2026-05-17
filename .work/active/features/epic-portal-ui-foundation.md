@@ -57,5 +57,24 @@ session-view surfaces (`epic-portal-ui-session-view-shell` and downstream).
   pattern; every other feature uses it. Feature-design must lock the
   subscription API shape to avoid drift.
 
+## Mockups
+
+The login screen is the only UI surface in this feature; it's locked by
+the onboarding flow rather than a per-feature `/screens` pass.
+
+- Login screen: `.mockups/flows/onboarding/02-sign-in.html`
+  - Centered card layout, OAuth button + magic-link inline form equally
+    prominent (per the epic-design Phase 4.7 auth-UX lock)
+  - "Resume strip" callout reminding the user which session they'll land
+    in post-auth (when arriving via an invite link)
+- Design tokens: `.mockups/design-system/tokens.css`
+- Theme toggle behavior: `prefers-color-scheme` default, `[data-theme]`
+  on `<html>` for explicit override (tokens.css already implements this)
+- App chrome consistency: see the chrome treatment in the session-view
+  options at `.mockups/screens/epic-portal-ui-session-view-shell/option-5.html`
+  (wordmark, breadcrumb-like org chip, theme chip, avatar) — foundation
+  must implement these as base components for downstream features to reuse.
+
 <!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+units when /agile-workflow:feature-design runs on this. Feature stays at
+stage: drafting per --mocks-only pass. -->

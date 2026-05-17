@@ -56,6 +56,45 @@ the actual server-side ref manipulation (in `epic-portal-api`).
 - `.mockups/flows/onboarding/04-session-view.html` — locked tree-pane
   treatment showing mode badges in place
 
+## Mockups
+
+This feature's UI surfaces are interactive affordances embedded in the
+tree pane — they don't warrant their own `/screens` pass. The treatments
+they extend are visible in the locked session-view-shell option-5 mock:
+
+- Mode badges in the tree pane:
+  `.mockups/screens/epic-portal-ui-session-view-shell/option-5.html`
+  - Collapsed (rail) mode: vertical-text mode label per ref
+    (`a/main` / `b/main` / `c/expl` / `draft`) colored by mode
+  - Expanded mode: horizontal `.mode-mini` chip in each ref's header
+    (`sync` = accent-muted, `isolated` = warning-muted, `draft` = neutral)
+- Author dot online indicator in the tree (used as presence signal —
+  see `.online::after` rule in option-5)
+
+**Action patterns this feature commits to:**
+
+- **Mode switch** — clicking a mode badge in the tree (collapsed or
+  expanded) opens a confirmation popover: "Switch alice/main to isolated?
+  Future commits won't be auto-merged into draft. Already-merged commits
+  stay in draft." Confirm → portal API call → optimistic UI update
+  (badge color flips, ref drifts visually in tree to indicate detachment)
+  + WebSocket `mode.changed` event confirms persistence.
+- **Fork action** — clicking a commit dot in the tree opens a small
+  contextual menu: "Fork from here". Selecting opens a dialog:
+  - Choice: "Replace my current ref" or "Create a new sibling ref"
+  - If sibling: branch name input (slug-validated), mode picker
+    (defaults to session default mode)
+  - Confirm → portal MCP `fork` tool call → optimistic tree update
+    showing new/moved ref
+- Both actions emit WS events that other clients receive — the originator
+  sees optimistic confirmation immediately; peers see the change in
+  near-real-time.
+
+No standalone screens to mock — the affordances live entirely inside
+already-locked surfaces (the tree pane, the action menu popover patterns
+will reuse `Card` + `Button` from `epic-portal-ui-design-system`).
+
 <!-- Feature-design will fill in the dialog flow for fork target naming,
 the mode-switch confirmation pattern, and the MCP call wiring when
-/agile-workflow:feature-design runs on this. -->
+/agile-workflow:feature-design runs on this. Feature stays at
+stage: drafting per --mocks-only pass. -->

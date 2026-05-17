@@ -54,21 +54,43 @@ it does NOT cover the finalize curation view (`epic-finalize-flow`).
 
 ## Mockups
 
-- Design system: `.mockups/design-system/`
-  - Palette: Quiet Slate (cool monochromatic + muted teal accent, Linear-adjacent)
-  - Typography: Geist + Geist Mono (modern, neutral, geometric)
-  - Tokens locked: 2026-05-16
-  - Toggle: `prefers-color-scheme` by default, `[data-theme="dark"|"light"]`
-    on `<html>` for explicit override
+**Design system** (the source of truth all UI features inherit):
+
+- `.mockups/design-system/tokens.css` — locked 2026-05-16
+- Palette: Quiet Slate (cool monochromatic + muted teal accent, Linear-adjacent)
+- Typography: Geist + Geist Mono (modern, neutral, geometric)
+- Toggle: `prefers-color-scheme` by default, `[data-theme="dark"|"light"]`
+  on `<html>` for explicit override
 - Preview pages (trimmed to chosen direction):
   - `.mockups/design-system/palette.html`
   - `.mockups/design-system/typography.html`
 - Author colors: 8 distinct earth-tone hues defined as `--author-1`..`--author-8`,
-  each with light and dark variants for the git DAG renderer.
-- Onboarding flow: `.mockups/flows/onboarding/index.html` (4 steps)
-  - 01-invite-landing → 02-sign-in → 03-session-list → 04-session-view
-  - Polished, desktop-first, uses locked tokens.css
-  - Signed off: 2026-05-16
+  each with light and dark variants for the git DAG renderer
+
+**Onboarding flow** (the multi-step journey new users take):
+
+- `.mockups/flows/onboarding/index.html` (4 steps: invite-landing → sign-in
+  → session-list → session-view) — polished, desktop-first, signed off
+  2026-05-16
+
+**Per-feature screen mocks** (one chosen direction per UI feature with
+a screen exploration):
+
+- Session view shell — option-5 hybrid (cyclable tree, tabbed bottom,
+  presence-in-tree):
+  `.mockups/screens/epic-portal-ui-session-view-shell/option-5.html`
+- Session list — option-1 row cards (large):
+  `.mockups/screens/epic-portal-ui-session-list/option-1.html`
+- Artifact & comments — option-4 GitHub-PR style (collapsed strip,
+  click-to-expand):
+  `.mockups/screens/epic-portal-ui-artifact-and-comments/option-4.html`
+
+**Features without their own screen pass** (UI lives inside other
+surfaces or has no novel screen): `epic-portal-ui-foundation` (login is
+in the onboarding flow), `epic-portal-ui-design-system` (the design
+system IS its source), `epic-portal-ui-ref-actions` (affordances live in
+the session-view tree pane). Each feature body's `## Mockups` section
+points at where its visual reference lives.
 
 ## Design decisions
 
