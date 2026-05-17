@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-storage
 kind: feature
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-git
 depends_on: []
@@ -371,3 +371,12 @@ Two stories chained:
   constraint on `archived_sessions.session_id` ensures only one
   succeeds in the INSERT; the second is a no-op via the unique
   violation handling.
+
+## Implementation summary
+
+2 child stories at review (bare-repo-helpers, archive-and-stub). Schema additions clean, sqlc regen successful.
+
+### Verification
+- `go build ./...` clean
+- `go test ./...` green (Go side)
+- `go vet ./...` clean

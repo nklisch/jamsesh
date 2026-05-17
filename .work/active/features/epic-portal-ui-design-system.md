@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-design-system
 kind: feature
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-portal-ui
 depends_on: []
@@ -518,3 +518,12 @@ the Vitest config. Document this in the story body.
   the test files are still valuable as executable spec — manual
   inspection during code review can catch obvious bugs even before
   the runner is wired up.
+
+## Implementation summary
+
+1 child story (tokens-and-components) at review. 21 component-test failures flagged for follow-up.
+
+### Verification
+- `go build ./...` clean
+- `go test ./...` green (Go side)
+- `go vet ./...` clean

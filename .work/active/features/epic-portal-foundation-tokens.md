@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-tokens
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: epic-portal-foundation
 depends_on: [epic-portal-foundation-data-layer, epic-portal-foundation-http-skeleton]
@@ -568,3 +568,12 @@ route is PUBLIC — the refresh token itself is the credential.
   revocation propagation SLO. If SQLite read latency is fine and
   Postgres has connection pool headroom, we're good. Re-evaluate
   if metrics show otherwise.
+
+## Implementation summary
+
+2 child stories at review (token-core-and-middleware, refresh-and-revoke-endpoints). First REST endpoints landed; openapi.yaml populated.
+
+### Verification
+- `go build ./...` clean
+- `go test ./...` green (Go side)
+- `go vet ./...` clean

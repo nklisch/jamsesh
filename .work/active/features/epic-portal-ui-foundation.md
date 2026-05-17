@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-foundation
 kind: feature
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-portal-ui
 depends_on: []
@@ -625,3 +625,12 @@ The empty post-login state. Real session listing lands in
   `go build ./cmd/portal`. The story bodies make this explicit;
   the release workflow already runs `go build` after checkout —
   add a pre-step.
+
+## Implementation summary
+
+3 child stories at review (vite-svelte-routing, api-ws-token, login-and-chrome). Toolchain + clients + first screens landed.
+
+### Verification
+- `go build ./...` clean
+- `go test ./...` green (Go side)
+- `go vet ./...` clean
