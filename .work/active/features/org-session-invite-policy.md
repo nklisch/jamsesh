@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal, ui, security]
 parent: null
 depends_on: []
@@ -57,6 +57,16 @@ These were locked in via interactive Q&A before scoping. Captured here so
   session-invite-policy section as its first (currently only) section. Future
   sections — members management, billing, etc. — extend the same screen.
 
+## Mockups
+
+- OrgSettings screen: `.mockups/screens/org-session-invite-policy-settings/index.html`
+  - Selected: **option-2 — Sidebar nav + content pane** (2026-05-17)
+  - Rationale: anticipates future sections (Members, Billing, API keys) explicitly via the left rail. Single Save per page matches expected admin flow. Scales without restructure when sections are added.
+- InviteAccept screen: `.mockups/screens/org-session-invite-policy-accept/index.html`
+  - Selected: **option-3 — Onboarding hero** (2026-05-17)
+  - Rationale: most invitees will be first-time users to the destination org/session. The hero layout's lead text + "What happens when you accept" explainer card teaches the product on the way in, which lowers the bar to first push. The "Invited by Marcus Chen" pill + named session in the headline preserves dignity even when context is rich.
+  - Implementation note: this layout requires inviter name + org/session name on render. That implies a new lightweight `GET /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}` (token-protected) to fetch those fields before the POST-accept. Folded into Story 6 (InviteAccept screen) as part of its acceptance.
+
 ## UI surface flag
 
 `ux-ui-design` plugin is installed; this feature has net-new UI surface
@@ -68,32 +78,251 @@ for session-only members in existing session views is intentionally a polish
 nit, not part of this feature — it can ride along when a UI story
 naturally touches member-chip rendering.
 
-## Implementation direction (for feature-design)
+## Architectural choice
 
-When `feature-design` picks this up, the natural decomposition is roughly six
-child stories along two parallel tracks:
+**Option A — Perimeter enforcement at invite-accept.** The policy is read
+when an invite is accepted. If `members_only`, `AcceptSessionInvite`
+short-circuits with 403 unless the actor is already in `org_members`. Once
+a `session_members` row exists, downstream session-scoped handlers
+(`handlerauth.RequireSessionMember`) trust the membership without re-checking
+the policy.
 
-- **Backend**: schema + sqlc regeneration; invite-accept policy enforcement;
-  `PATCH /api/orgs/{orgID}` endpoint with admin-role gate
-- **UI**: mockups (blocks both UI implementation stories); `OrgSettings.svelte`
-  screen; `InviteAccept.svelte` screen with happy + rejection states
+**Why over the alternatives:**
 
-The mockup story is the blocker for both frontend stories; backend can stream
-in parallel. The feature can land all on one release tag — no inherent
-phasing constraint.
+- Option B (re-check at every session-scoped operation) — wasteful per-request
+  cost; doesn't change the answer once the row exists.
+- Option C (auto-promote open-org invitees to `org_members` with a `guest`
+  role) — bigger schema change, requires a new role enum value, and
+  every existing org-member query needs to be audited for guest semantics.
+  Per-org policy at the perimeter sidesteps the role-explosion.
 
-## Affected code (for feature-design grounding)
+The perimeter is the right place because the question ("can this person
+become a session member?") is uniquely a policy question; the downstream
+question ("can this session member do this thing?") is a membership
+question — they should be separated.
 
-Pre-existing handlers and flows the implementation will touch:
+## Implementation Units
 
-- `internal/portal/sessions/invites.go:AcceptSessionInvite` (~lines 130-230) —
-  add policy check before the tx that inserts `session_members`
-- `internal/portal/accounts/orgs.go` — add `PatchOrg` handler with `session_invite_policy` field
-- `internal/portal/handlerauth/handlerauth.go` — stays as-is; the perimeter gate
-  pattern means `RequireSessionMember` doesn't need policy awareness
-- Frontend: no existing org-settings or invite-accept screens; both are greenfield
-- Schema: `orgs.session_invite_policy TEXT NOT NULL DEFAULT 'members_only'` with
-  CHECK constraint on the two enum values; sqlc regeneration needed
+### Unit 1: Schema + sqlc + foundation doc
+**File**: migration + `db/schema/*.sql` + `db/queries/orgs.sql` + adapters + `docs/ARCHITECTURE.md`
+**Story**: `org-session-invite-policy-schema`
+
+```sql
+ALTER TABLE orgs
+  ADD COLUMN session_invite_policy TEXT NOT NULL DEFAULT 'members_only'
+  CHECK (session_invite_policy IN ('members_only', 'open'));
+```
+
+New domain field `Org.SessionInvitePolicy string`; new sqlc queries
+`GetOrgSessionInvitePolicy :one` and `UpdateOrgSessionInvitePolicy :exec`;
+adapters map the column through `pgOrg(...)` / `sqliteOrg(...)`.
+
+The story also folds in the foundation-doc roll-forward — the membership-
+model subsection in `docs/ARCHITECTURE.md` (or `docs/SECURITY.md`).
+
+**Acceptance**: existing orgs default to `members_only` via migration;
+round-trips through the store work on both dialects; doc updated.
+
+---
+
+### Unit 2: Invite-accept policy enforcement
+**File**: `internal/portal/sessions/invites.go`
+**Story**: `org-session-invite-policy-invite-accept-enforce`
+
+```go
+// After email-match (line ~200), before WithTx:
+org, err := h.store.GetOrg(ctx, orgID)
+if err != nil { return nil, fmt.Errorf("sessions: get org: %w", err) }
+if org.SessionInvitePolicy == "members_only" {
+    if _, mErr := h.store.GetOrgMember(ctx, store.GetOrgMemberParams{
+        OrgID: orgID, AccountID: acc.ID,
+    }); mErr != nil {
+        if errors.Is(mErr, store.ErrNotFound) {
+            return openapi.AcceptSessionInvite403JSONResponse{
+                ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
+                    Error:   "auth.org_membership_required",
+                    Message: "this org requires you to be a member before joining sessions",
+                },
+            }, nil
+        }
+        return nil, fmt.Errorf("sessions: get org member: %w", mErr)
+    }
+}
+```
+
+**Acceptance**: rejects under `members_only` + non-member; accepts under
+`open` regardless; accepts under `members_only` + existing org-member
+(happy path preserved).
+
+---
+
+### Unit 3: GET invite details
+**File**: `internal/portal/sessions/invites.go` (new `GetSessionInvite` method)
+**Story**: `org-session-invite-policy-get-invite-details`
+
+```go
+type SessionInviteDetails struct {
+    InviteID         string
+    OrgName          string
+    SessionID        string
+    SessionName      string
+    SessionGoal      *string
+    InvitedByName    string
+    ExpiresAt        time.Time
+    YourRoleOnAccept string  // "member"
+}
+
+func (h *Handler) GetSessionInvite(ctx, req) (...) // mirrors AcceptSessionInvite's
+                                                    // auth/validation flow without
+                                                    // the mutating tx
+```
+
+**Acceptance**: returns 200 + details for a valid request; returns the
+same 401/409 paths as `AcceptSessionInvite`; no state mutation; safe
+against invite-ID enumeration (401 instead of 404 on unknown ID).
+
+Reason this exists: the InviteAccept onboarding-hero mockup needs
+inviter name, org name, session name on render BEFORE the user clicks
+Accept. Could be folded into the POST-accept response, but that loses
+the "review before action" affordance.
+
+---
+
+### Unit 4: PATCH org policy
+**File**: `internal/portal/accounts/orgs.go` (new `PatchOrg` method) + OpenAPI
+**Story**: `org-session-invite-policy-patch-endpoint`
+
+```go
+func (h *Handler) PatchOrg(ctx, req) (...) {
+    _, member, fail, ok := handlerauth.RequireOrgMember(ctx, h.store, req.OrgID)
+    if !ok { /* 401 or 403 */ }
+    if member.Role != "creator" { /* 403 */ }
+    if req.Body.SessionInvitePolicy != nil {
+        h.store.UpdateOrgSessionInvitePolicy(ctx, ...)
+    }
+    org, _ := h.store.GetOrg(ctx, req.OrgID)
+    return openapi.PatchOrg200JSONResponse(orgToOpenAPI(org)), nil
+}
+```
+
+**Acceptance**: admin (creator) flip persists; non-creator gets 403;
+invalid policy value gets 400; no retroactive eject of existing
+session-only members (grandfather behavior).
+
+---
+
+### Unit 5: OrgSettings.svelte (Sidebar nav + content pane)
+**File**: `frontend/src/lib/screens/OrgSettings.svelte`
+**Mockup**: `.mockups/screens/org-session-invite-policy-settings/option-2.html`
+**Story**: `org-session-invite-policy-org-settings-ui`
+
+New route `/orgs/:orgID/settings`. Left rail lists settings sections
+(Session invites active; Members/Billing/API keys dimmed as "soon").
+Right pane shows the policy radio and Save. Admin sees editable; non-admin
+sees disabled controls with a warning-tinted banner.
+
+```ts
+type Props = { orgId: string };
+```
+
+**Acceptance**: route renders for admin (editable Save) and non-admin
+(read-only with banner); Save calls `PATCH /api/orgs/{orgID}` and
+reflects on 200; admin-vs-member discrimination uses the existing
+`auth.currentUser.orgs[X].role` from `MeResponse`.
+
+---
+
+### Unit 6: InviteAccept.svelte (Onboarding hero)
+**File**: `frontend/src/lib/screens/InviteAccept.svelte`
+**Mockup**: `.mockups/screens/org-session-invite-policy-accept/option-3.html`
+**Story**: `org-session-invite-policy-invite-accept-ui`
+
+New route
+`/orgs/:orgID/sessions/:sessionID/invites/:inviteID/accept?token=<token>`.
+Hero layout with invited-by pill, session-name headline, lead paragraph,
+Accept/Decline, "What happens when you accept" explainer.
+
+```ts
+type Props = { orgId: string; sessionId: string; inviteId: string };
+```
+
+State flow:
+- Mount → read token from query → GET invite details → render Happy
+- Click Accept → POST accept
+  - 200 → navigate to session
+  - 403 + `auth.org_membership_required` → Rejection state
+  - other → Error state
+
+**Acceptance**: all three states (Happy, Rejection, Error) render per the
+mockup; Accept POSTs with the body token and navigates on success;
+Decline returns to user's session list; login-return-to is preserved
+across unauth → /login → invite-URL round-trip.
+
+## Implementation Order
+
+Three waves with cap-3 parallelism:
+
+```
+Wave 1 (parallel, 2 agents):
+  Unit 1 (schema)
+  Unit 3 (GET invite details)
+
+Wave 2 (parallel, 3 agents):
+  Unit 2 (enforce)          depends on Unit 1
+  Unit 4 (PATCH)            depends on Unit 1
+  (Unit 3 may finish here if it didn't in wave 1)
+
+Wave 3 (parallel, 2 agents):
+  Unit 5 (OrgSettings UI)   depends on Unit 4
+  Unit 6 (InviteAccept UI)  depends on Units 2 + 3
+```
+
+Mockups are already produced (Unit 5/6's mockup references); no story for
+mockup generation.
+
+## Testing
+
+### Unit tests per unit
+- **Unit 1**: migration on both dialects; `Store.GetOrg` returns the new
+  field; `Store.UpdateOrgSessionInvitePolicy` round-trips.
+- **Unit 2**: `AcceptSessionInvite` cross-product `{members_only, open} × {is org member, is not}`.
+- **Unit 3**: happy GET; invalid-token 401; wrong-email 401; already-accepted 409;
+  no state mutation between calls.
+- **Unit 4**: 401 (no auth), 403 (non-member), 403 (non-creator), 200 (creator),
+  400 (invalid enum); grandfather verification (existing session_members
+  rows unchanged after flip).
+- **Unit 5**: `OrgSettings.svelte` admin render, non-admin render, save success,
+  save failure with banner.
+- **Unit 6**: `InviteAccept.svelte` loading, happy, rejection, error renders;
+  accept-success navigation; decline navigation.
+
+### Integration check
+After Unit 2 + Unit 4 merge, run a manual cross-check: flip an org to
+`open` via PATCH; from a non-org-member account, accept a session invite;
+verify session_member created without org_member. Then flip back to
+`members_only` and verify the existing session-only member is grandfathered.
+
+## Risks
+
+From the pre-mortem:
+
+- **Login round-trip return-to (Unit 6)**. The InviteAccept flow assumes an
+  authenticated user. If the current login screen doesn't preserve the
+  intended destination URL across `/login` → post-auth, the user lands on
+  the wrong page after authenticating. **Mitigation**: implementing agent
+  for Unit 6 verifies and (if needed) adds a `?return_to=<url>` query
+  param to the login redirect.
+- **Schema migration on SQLite older than 3.37**. The CHECK-with-ADD-COLUMN
+  pattern may not work on ancient SQLite. **Mitigation**: project uses
+  `modernc.org/sqlite` which is sufficient. If the implementer finds an
+  edge case, fall back to the CREATE-TABLE-then-INSERT pattern.
+- **Invite-ID enumeration via GetSessionInvite (Unit 3)**. Returning 404
+  for an unknown invite leaks existence; we deliberately return 401
+  instead (per the implementation note).
+- **Affected code areas during regeneration**. `make generate-api-go` and
+  `make generate-api-ts` will regenerate types files that aren't directly
+  edited. The implementing agent should re-run these per story rather
+  than batching at the end — surfaces conflicts earlier.
 
 ## Foundation-doc note
 
