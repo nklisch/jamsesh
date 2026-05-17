@@ -1,7 +1,7 @@
 ---
 id: spa-websocket-reconnect-logic-status-ui
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: spa-websocket-reconnect-logic
 depends_on: [spa-websocket-reconnect-logic-backoff]
@@ -248,3 +248,34 @@ dot element even though the dot has no visible glyph; this satisfies
 "mono for the dot" without changing the visual). The label uses
 `font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans)`
 as specified.
+
+## Review
+
+**Verdict:** Approve.
+
+Cross-checked the implementing commit (`66baa6f`) against story spec:
+
+- `WsStatusBanner.svelte` — single `role="status"` element with
+  `aria-live="polite"` and text "Reconnecting…"; absent (not hidden)
+  when status is `'open'`, `'connecting'`, or `null`. ✓
+- `SessionViewShell.svelte` — single mount between `.session-header`
+  (line 162) and the `.top` grid (line 189). ✓
+- Design tokens — all six referenced tokens (`--color-warning-muted`,
+  `--color-warning`, `--color-border`, `--font-sans`, `--font-mono`,
+  `--font-size-sm`, `--font-weight-medium`) exist in
+  `.mockups/design-system/tokens.css`; no new tokens added. ✓
+- `WsStatusBanner.test.ts` — 7 cases covering null / open /
+  connecting / reconnecting, role + aria-live + text, sessionId
+  isolation, and the reconnecting → open transition (via
+  unmount/re-render against a module-scoped status map). ✓
+- `tests/e2e/playwright/error-states.spec.ts` — `test.skip(...)` →
+  `test(...)`; comment block rewritten to describe the live indicator;
+  session-load route fulfill added per spec; route abort order moved
+  before `page.goto`. ✓
+- `frontend && npm test` — 35 files, 333 tests passed. ✓
+
+**Findings:** blockers 0, important 0, nits 0.
+
+The `font-family: var(--font-mono)` on the visually-empty `.dot` span
+is documented in the deviation note and has no rendered effect. Not
+worth a finding.
