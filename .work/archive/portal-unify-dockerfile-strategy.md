@@ -1,7 +1,7 @@
 ---
 id: portal-unify-dockerfile-strategy
 kind: story
-stage: review
+stage: done
 tags: [infra, cleanup]
 parent: null
 depends_on: [portal-prod-dockerfile-base-image-review]
@@ -86,3 +86,26 @@ binary is built externally and `COPY`d in.
 - [x] Both production deployment and the e2e test pipeline use the
       consistent image — `Makefile`'s `test-portal-image` now uses
       `Dockerfile`, same as the release pipeline
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The in-flight `portal-test-clock-advance-endpoint-test-endpoint`
+  story body (line 314) still references `Dockerfile.e2e -f` in its
+  planned Makefile change. The story's "Impact on in-flight work"
+  section already calls this out — the implementer will adapt when
+  they pick it up. No action needed here; flagged for visibility.
+
+**Notes**: Option 1 lands cleanly. The diff is exactly the three
+expected files (Dockerfile updated, Dockerfile.e2e deleted, Makefile
+target + comment refreshed). Verified that the `jamsesh/portal:e2e`
+image tag and `make test-portal-image` entry point are unchanged, so
+all e2e consumers (`tests/e2e/**` and `.github/workflows/e2e.yml`)
+keep working unmodified. The "impact on in-flight work" claim about
+`-tags e2etest` is accurate — the binary is built with go-build flags
+externally and `COPY`d into the image, so docker-build is agnostic to
+Go build tags. Acceptance criteria all verifiable from the diff.
