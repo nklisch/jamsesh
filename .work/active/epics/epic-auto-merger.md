@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger
 kind: epic
-stage: drafting
+stage: implementing
 tags: [portal]
 parent: null
 depends_on: [epic-portal-git]
@@ -83,20 +83,83 @@ machine).
   identity surfaces only in the committer field and trailers, never as
   the author of the integration work.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+Locked at epic-design time (this pass):
 
+- **Worker concurrency model**: per-session goroutine, spawned on first
+  commit, draining a bounded per-session in-memory FIFO queue. Idle
+  timeout exit (re-spawn on next commit). No global pool to tune. Cross-
+  session is fully parallel; within-session is serialized (required —
+  concurrent draft mutations would race).
+- **Crash recovery**: on startup, scan `events` for `commit.arrived`
+  newer than the latest auto-merger-touched draft position per session;
+  idempotency-check via go-git ancestor (if source-commit is already in
+  draft, skip); otherwise enqueue. No separate auto-merger state table.
+  Rationale: git's ancestor check is decisive and cheap; aligns with
+  PRINCIPLES.md "Recovery is `git fetch`."
+- **`Resolves-Conflict` mismatch handling**: silent no-op if the
+  event-id doesn't match an open conflict event (safe under replays).
+  Log a warning on conflict with a closed event holding a different
+  `resolving_commit_sha`. Rationale: no security impact, just a missed
+  auto-closure.
+- **`Source-Ref` trailer**: every auto-merger merge commit carries
+  `Source-Ref: jam/<session>/<user>/<branch>` alongside `Auto-Merger:
+  true` and `Source-Commit: <sha>`. Rationale: makes `git log` readable
+  for humans investigating; trivially cheap.
+- **Auto-resolved cases emit only `merge.succeeded`**: never
+  `conflict.detected`. The merge commit's `Auto-Resolved: <heuristic>`
+  trailer is the audit trail in `git log`. Rationale: `conflict.detected`
+  signals "human attention required"; auto-resolved cases don't.
 
-## Anticipated child features
+## Decomposition
 
-Provisional — actual decomposition lands when this epic is designed.
+Three child features along the Ports & Adapters cut. `merge-engine` is
+the pure core (inputs are git tree handles + ancestor + source commit;
+output is a classified result; no IO except go-git object reads).
+`outcomes` is the IO half — given a result, performs the merge commit
+creation, ref advance, event emission, and conflict-event auto-closure.
+`worker` is the assembly point that subscribes to the events-log,
+runs the per-session goroutine loop, and routes results through outcomes.
 
-- Auto-merger worker runtime (post-receive event subscription, per-session
-  serialization to avoid concurrent draft mutations)
-- Three-way merge via go-git (theirs/ours/base resolution)
-- Merge-commit creation with `Auto-Merger` + `Source-Commit` trailers
-- Conflict event emission with structured payload (paths, ranges, SHAs)
-- Mode-aware filtering (skip isolated refs)
-- `Resolves-Conflict` trailer parsing and conflict event auto-closure
+Critical path: `merge-engine → outcomes → worker`. 3 deep. The
+pure-vs-IO cut lets `merge-engine` be designed, implemented, and
+tested in isolation (against fixture trees) before any other feature in
+the epic exists.
 
-<!-- Design pass on each child feature will fill in specifics. -->
+### Child features
+
+- `epic-auto-merger-merge-engine` — pure three-way merge via go-git,
+  result classification (clean / safe-auto-resolve / hard-conflict),
+  safe-auto-resolve heuristic detection (whitespace-only,
+  non-overlapping additions, identical edits) — depends on: `[]`
+- `epic-auto-merger-outcomes` — merge-commit creation with author/
+  committer/trailer composition, draft ref advance, conflict_events
+  row insert, `Resolves-Conflict` auto-closure, event emission — depends
+  on: `[epic-auto-merger-merge-engine, epic-portal-api-events-log,
+  epic-portal-git-storage]`
+- `epic-auto-merger-worker` — per-session goroutine queue, events-log
+  subscription, mode-aware filter, crash-replay on startup — depends on:
+  `[epic-auto-merger-merge-engine, epic-auto-merger-outcomes,
+  epic-portal-api-events-log, epic-portal-git-storage]`
+
+### Decomposition risks
+
+- **Safe-auto-resolve heuristics are the highest-correctness-sensitivity
+  surface in the epic.** A wrong "whitespace-only" or "non-overlapping
+  additions" detection silently corrupts user content. Mitigation:
+  `merge-engine`'s design pass produces a canonical adversarial test
+  corpus (real-world conflict shapes that should NOT auto-resolve but
+  a naive implementation might) and locks it as a regression suite.
+- **Per-session backpressure under burst.** A session pushing many
+  commits at once fills the per-session queue. The bounded-capacity
+  overflow emits an `auto-merger.backpressure` event so peers' UIs
+  surface the lag. Cross-feature integration: the UI consumer must
+  handle that event visually — flag during UI feature designs.
+- **Replay correctness depends on `epic-portal-git-post-receive`'s
+  transactional event emission.** If the event-emit isn't in the same
+  transaction as the ref update, a crash between them could drop a
+  commit from replay's view. Cross-epic invariant — flag during
+  post-receive's design pass.
+- **The auto-merger has privileged write access to `draft`.** This is a
+  trust boundary (per SECURITY.md). The `outcomes` feature is the only
+  place this privilege is exercised; design pass keeps the codepath
+  narrow and auditable.
