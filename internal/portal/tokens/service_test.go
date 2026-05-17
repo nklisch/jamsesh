@@ -360,3 +360,52 @@ func TestService_Validate_RefreshTokenExpired(t *testing.T) {
 		t.Errorf("expired refresh token: want ErrExpiredToken, got %v", err)
 	}
 }
+
+func TestService_IssueShortLived_ReturnsValidToken(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	acc := mustCreateAccount(t, ctx, s, "shortlived@example.com")
+	svc := tokens.New(s)
+
+	raw, expiresAt, err := svc.IssueShortLived(ctx, acc.ID, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("IssueShortLived: %v", err)
+	}
+	if len(raw) != 64 {
+		t.Errorf("short-lived token length: want 64, got %d", len(raw))
+	}
+	if !expiresAt.After(time.Now().Add(4 * time.Minute)) {
+		t.Errorf("ExpiresAt %v should be ~5 min in the future", expiresAt)
+	}
+
+	// Validate accepts the token immediately.
+	got, err := svc.Validate(ctx, raw)
+	if err != nil {
+		t.Fatalf("Validate just after issuance: %v", err)
+	}
+	if got.ID != acc.ID {
+		t.Errorf("Validate returned account %q, want %q", got.ID, acc.ID)
+	}
+}
+
+func TestService_IssueShortLived_RejectedAfterTTL(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	acc := mustCreateAccount(t, ctx, s, "expired-short@example.com")
+
+	clk := &fakeClock{t: time.Date(2026, 5, 17, 0, 0, 0, 0, time.UTC)}
+	svc := tokens.NewWithClock(s, clk)
+
+	raw, _, err := svc.IssueShortLived(ctx, acc.ID, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("IssueShortLived: %v", err)
+	}
+
+	// Advance past the 5-minute TTL.
+	clk.advance(5*time.Minute + time.Second)
+
+	_, err = svc.Validate(ctx, raw)
+	if !errors.Is(err, tokens.ErrExpiredToken) {
+		t.Errorf("Validate after TTL: want ErrExpiredToken, got %v", err)
+	}
+}

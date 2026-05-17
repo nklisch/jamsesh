@@ -150,6 +150,15 @@ func (a *accountsOnlyStrict) GetSessionFile(_ context.Context, _ openapi.GetSess
 func (a *accountsOnlyStrict) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
 	panic("UpsertRefMode: not wired in accounts tests")
 }
+func (a *accountsOnlyStrict) AcquireFinalizeLock(_ context.Context, _ openapi.AcquireFinalizeLockRequestObject) (openapi.AcquireFinalizeLockResponseObject, error) {
+	panic("AcquireFinalizeLock: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) PatchFinalizeLock(_ context.Context, _ openapi.PatchFinalizeLockRequestObject) (openapi.PatchFinalizeLockResponseObject, error) {
+	panic("PatchFinalizeLock: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
+	panic("ReleaseFinalizeLock: not wired in accounts tests")
+}
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 

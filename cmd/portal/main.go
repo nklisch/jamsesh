@@ -34,6 +34,7 @@ import (
 	"jamsesh/internal/portal/comments"
 	"jamsesh/internal/portal/config"
 	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/finalize"
 	"jamsesh/internal/portal/githttp"
 	"jamsesh/internal/portal/logging"
 	"jamsesh/internal/portal/mcpendpoint"
@@ -59,6 +60,7 @@ type combinedHandler struct {
 	AccountsHandler  *accounts.Handler
 	SessionsHandler  *sessions.Handler
 	CommentsHandler  *comments.Handler
+	FinalizeHandler  *finalize.Handler
 }
 
 // GetMe delegates to the accounts handler.
@@ -166,6 +168,21 @@ func (c *combinedHandler) UpsertRefMode(ctx context.Context, req openapi.UpsertR
 	return c.SessionsHandler.UpsertRefMode(ctx, req)
 }
 
+// AcquireFinalizeLock delegates to the finalize handler.
+func (c *combinedHandler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFinalizeLockRequestObject) (openapi.AcquireFinalizeLockResponseObject, error) {
+	return c.FinalizeHandler.AcquireFinalizeLock(ctx, req)
+}
+
+// PatchFinalizeLock delegates to the finalize handler.
+func (c *combinedHandler) PatchFinalizeLock(ctx context.Context, req openapi.PatchFinalizeLockRequestObject) (openapi.PatchFinalizeLockResponseObject, error) {
+	return c.FinalizeHandler.PatchFinalizeLock(ctx, req)
+}
+
+// ReleaseFinalizeLock delegates to the finalize handler.
+func (c *combinedHandler) ReleaseFinalizeLock(ctx context.Context, req openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
+	return c.FinalizeHandler.ReleaseFinalizeLock(ctx, req)
+}
+
 // compile-time assertion that combinedHandler satisfies the full interface.
 var _ openapi.StrictServerInterface = (*combinedHandler)(nil)
 
@@ -250,6 +267,10 @@ func main() {
 	commentsSvc := &comments.Service{Store: dbStore, Log: eventLog}
 	commentsHandler := comments.NewHandler(commentsSvc)
 
+	// Build the finalize handler (lock-CRUD endpoints; plan/fetch-token/
+	// mark-shipped land in subsequent stories of epic-finalize-flow).
+	finalizeHandler := finalize.New(dbStore, storageSvc, eventLog, tokenSvc, cfg.PortalURL)
+
 	// Build the MCP endpoint. Auth is handled by the SDK's
 	// auth.RequireBearerToken middleware wired inside Handler().
 	mcpEndpoint := &mcpendpoint.Endpoint{
@@ -301,6 +322,7 @@ func main() {
 		AccountsHandler:  accountsHandler,
 		SessionsHandler:  sessionsHandler,
 		CommentsHandler:  commentsHandler,
+		FinalizeHandler:  finalizeHandler,
 	}, nil)
 
 	// Build a ServerInterfaceWrapper so we have http.HandlerFunc-compatible
@@ -399,6 +421,12 @@ func main() {
 
 				// Ref modes: any session member can upsert ref mode.
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/ref-modes", apiWrapper.UpsertRefMode)
+
+				// Finalize locks: any session member can acquire/patch/release;
+				// caller-vs-holder enforcement happens in the handler.
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize/lock", apiWrapper.AcquireFinalizeLock)
+				r.Patch("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", apiWrapper.PatchFinalizeLock)
+				r.Delete("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", apiWrapper.ReleaseFinalizeLock)
 			})
 		},
 	})

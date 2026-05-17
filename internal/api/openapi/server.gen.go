@@ -232,6 +232,24 @@ func (e PatchSessionRequestDefaultMode) Valid() bool {
 	}
 }
 
+// Defines values for PlanMode.
+const (
+	Preserve PlanMode = "preserve"
+	Squash   PlanMode = "squash"
+)
+
+// Valid indicates whether the value is a known member of the PlanMode enum.
+func (e PlanMode) Valid() bool {
+	switch e {
+	case Preserve:
+		return true
+	case Squash:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RefMode.
 const (
 	RefModeIsolated RefMode = "isolated"
@@ -341,6 +359,14 @@ type AcceptInviteBody struct {
 type AcceptInviteRequest struct {
 	// Token Raw invite token from the email link query parameter
 	Token string `json:"token"`
+}
+
+// AcquireFinalizeLockRequest Request body for POST .../finalize/lock. override=true takes a
+// fresh lock held by another member, marking the old lock
+// superseded.
+type AcquireFinalizeLockRequest struct {
+	// Override When true, supersede an existing fresh lock held by another member.
+	Override bool `json:"override,omitempty"`
 }
 
 // Comment A comment anchored to a commit in a session.
@@ -652,6 +678,33 @@ type EventEnvelopeType string
 // EventEnvelopeVersion Envelope version; always 1
 type EventEnvelopeVersion int
 
+// FinalizeLock Durable finalize-flow lock row. Captures the in-flight curation
+// state for one finalize coordination.
+type FinalizeLock struct {
+	AcquiredAt          time.Time `json:"acquired_at"`
+	AcquiredByAccountId string    `json:"acquired_by_account_id"`
+	BaseSha             string    `json:"base_sha"`
+
+	// CommitMessage Composed squash commit message (squash mode only).
+	CommitMessage string `json:"commit_message,omitempty"`
+
+	// ExpiresAt last_activity_at + 30-minute idle TTL. Recomputed on every
+	// read; not stored.
+	ExpiresAt      time.Time `json:"expires_at"`
+	Id             string    `json:"id"`
+	LastActivityAt time.Time `json:"last_activity_at"`
+
+	// Mode Finalization mode. squash composes one commit from N curated
+	// commits with a Co-authored-by trailer list; preserve cherry-picks
+	// each curated commit individually.
+	Mode PlanMode `json:"mode"`
+
+	// SelectedCommitShas Ordered list of curated commit SHAs.
+	SelectedCommitShas []string `json:"selected_commit_shas"`
+	SessionId          string   `json:"session_id"`
+	TargetBranch       string   `json:"target_branch"`
+}
+
 // Invite A pending session invite record.
 type Invite struct {
 	// ExpiresAt ISO-8601 timestamp when the invite expires
@@ -689,6 +742,19 @@ type InviteRef struct {
 type InviteRequest struct {
 	// Email Email address of the invitee
 	Email openapi_types.Email `json:"email"`
+}
+
+// LockStatus Lock pointer + caller-relative metadata. Returned by
+// acquireFinalizeLock and embedded in the finalize-plan response.
+type LockStatus struct {
+	AcquiredAt      time.Time `json:"acquired_at"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	HeldByAccountId string    `json:"held_by_account_id"`
+
+	// IsCaller True when the caller is the lock holder.
+	IsCaller       bool      `json:"is_caller"`
+	LastActivityAt time.Time `json:"last_activity_at"`
+	LockId         string    `json:"lock_id"`
 }
 
 // MagicLinkExchangeBody defines model for MagicLinkExchangeBody.
@@ -822,6 +888,22 @@ type OrgRef struct {
 	Slug string `json:"slug"`
 }
 
+// PatchFinalizeLockRequest Request body for PATCH .../finalize/lock/{lockID}. Atomically
+// replaces curation state and bumps last_activity_at.
+type PatchFinalizeLockRequest struct {
+	BaseSha string `json:"base_sha"`
+
+	// CommitMessage Required when mode=squash; ignored when mode=preserve.
+	CommitMessage string `json:"commit_message,omitempty"`
+
+	// Mode Finalization mode. squash composes one commit from N curated
+	// commits with a Co-authored-by trailer list; preserve cherry-picks
+	// each curated commit individually.
+	Mode               PlanMode `json:"mode"`
+	SelectedCommitShas []string `json:"selected_commit_shas"`
+	TargetBranch       string   `json:"target_branch"`
+}
+
 // PatchSessionRequest Fields that can be updated on an active session. All fields are optional;
 // only present fields are updated. Scope is append-only (narrowing is rejected).
 type PatchSessionRequest struct {
@@ -838,6 +920,11 @@ type PatchSessionRequest struct {
 
 // PatchSessionRequestDefaultMode Updated default ref mode
 type PatchSessionRequestDefaultMode string
+
+// PlanMode Finalization mode. squash composes one commit from N curated
+// commits with a Co-authored-by trailer list; preserve cherry-picks
+// each curated commit individually.
+type PlanMode string
 
 // PresenceUpdatedPayload A participant's presence (active ref + tip SHA) was updated. PROTOCOL.md canonical fields: user_id, ref, current_sha, last_active.
 type PresenceUpdatedPayload struct {
@@ -1123,6 +1210,12 @@ type CreateCommentJSONRequestBody = CreateCommentRequest
 
 // ResolveCommentJSONRequestBody defines body for ResolveComment for application/json ContentType.
 type ResolveCommentJSONRequestBody = ResolveCommentRequest
+
+// AcquireFinalizeLockJSONRequestBody defines body for AcquireFinalizeLock for application/json ContentType.
+type AcquireFinalizeLockJSONRequestBody = AcquireFinalizeLockRequest
+
+// PatchFinalizeLockJSONRequestBody defines body for PatchFinalizeLock for application/json ContentType.
+type PatchFinalizeLockJSONRequestBody = PatchFinalizeLockRequest
 
 // InviteToSessionJSONRequestBody defines body for InviteToSession for application/json ContentType.
 type InviteToSessionJSONRequestBody = InviteRequest
@@ -1523,6 +1616,15 @@ type ServerInterface interface {
 	// Transition session to finalizing; idempotent if already finalizing
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize)
 	FinalizeSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
+	// Acquire the finalize lock for a session
+	// (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock)
+	AcquireFinalizeLock(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
+	// Release the finalize lock
+	// (DELETE /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID})
+	ReleaseFinalizeLock(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, lockID string)
+	// Update curation state on a held finalize lock
+	// (PATCH /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID})
+	PatchFinalizeLock(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, lockID string)
 	// Invite a user to a session by email; sends a magic-link-style join email
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/invites)
 	InviteToSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string)
@@ -1673,6 +1775,24 @@ func (_ Unimplemented) GetSessionFile(w http.ResponseWriter, r *http.Request, or
 // Transition session to finalizing; idempotent if already finalizing
 // (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize)
 func (_ Unimplemented) FinalizeSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Acquire the finalize lock for a session
+// (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock)
+func (_ Unimplemented) AcquireFinalizeLock(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Release the finalize lock
+// (DELETE /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID})
+func (_ Unimplemented) ReleaseFinalizeLock(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, lockID string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update curation state on a held finalize lock
+// (PATCH /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID})
+func (_ Unimplemented) PatchFinalizeLock(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, lockID string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2560,6 +2680,147 @@ func (siw *ServerInterfaceWrapper) FinalizeSession(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// AcquireFinalizeLock operation middleware
+func (siw *ServerInterfaceWrapper) AcquireFinalizeLock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", chi.URLParam(r, "sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcquireFinalizeLock(w, r, orgID, sessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReleaseFinalizeLock operation middleware
+func (siw *ServerInterfaceWrapper) ReleaseFinalizeLock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", chi.URLParam(r, "sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lockID" -------------
+	var lockID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lockID", chi.URLParam(r, "lockID"), &lockID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lockID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleaseFinalizeLock(w, r, orgID, sessionID, lockID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchFinalizeLock operation middleware
+func (siw *ServerInterfaceWrapper) PatchFinalizeLock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgID" -------------
+	var orgID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgID", chi.URLParam(r, "orgID"), &orgID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", chi.URLParam(r, "sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lockID" -------------
+	var lockID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lockID", chi.URLParam(r, "lockID"), &lockID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lockID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchFinalizeLock(w, r, orgID, sessionID, lockID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // InviteToSession operation middleware
 func (siw *ServerInterfaceWrapper) InviteToSession(w http.ResponseWriter, r *http.Request) {
 
@@ -2961,6 +3222,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/finalize", wrapper.FinalizeSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/finalize/lock", wrapper.AcquireFinalizeLock)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", wrapper.ReleaseFinalizeLock)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", wrapper.PatchFinalizeLock)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/orgs/{orgID}/sessions/{sessionID}/invites", wrapper.InviteToSession)
@@ -4277,6 +4547,241 @@ func (response FinalizeSession409JSONResponse) VisitFinalizeSessionResponse(w ht
 	return err
 }
 
+type AcquireFinalizeLockRequestObject struct {
+	OrgID     string `json:"orgID"`
+	SessionID string `json:"sessionID"`
+	Body      *AcquireFinalizeLockJSONRequestBody
+}
+
+type AcquireFinalizeLockResponseObject interface {
+	VisitAcquireFinalizeLockResponse(w http.ResponseWriter) error
+}
+
+type AcquireFinalizeLock201JSONResponse LockStatus
+
+func (response AcquireFinalizeLock201JSONResponse) VisitAcquireFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcquireFinalizeLock401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response AcquireFinalizeLock401JSONResponse) VisitAcquireFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcquireFinalizeLock403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response AcquireFinalizeLock403JSONResponse) VisitAcquireFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcquireFinalizeLock404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AcquireFinalizeLock404JSONResponse) VisitAcquireFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcquireFinalizeLock409JSONResponse ErrorEnvelope
+
+func (response AcquireFinalizeLock409JSONResponse) VisitAcquireFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseFinalizeLockRequestObject struct {
+	OrgID     string `json:"orgID"`
+	SessionID string `json:"sessionID"`
+	LockID    string `json:"lockID"`
+}
+
+type ReleaseFinalizeLockResponseObject interface {
+	VisitReleaseFinalizeLockResponse(w http.ResponseWriter) error
+}
+
+type ReleaseFinalizeLock204Response struct {
+}
+
+func (response ReleaseFinalizeLock204Response) VisitReleaseFinalizeLockResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ReleaseFinalizeLock401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ReleaseFinalizeLock401JSONResponse) VisitReleaseFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseFinalizeLock403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ReleaseFinalizeLock403JSONResponse) VisitReleaseFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseFinalizeLock404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReleaseFinalizeLock404JSONResponse) VisitReleaseFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchFinalizeLockRequestObject struct {
+	OrgID     string `json:"orgID"`
+	SessionID string `json:"sessionID"`
+	LockID    string `json:"lockID"`
+	Body      *PatchFinalizeLockJSONRequestBody
+}
+
+type PatchFinalizeLockResponseObject interface {
+	VisitPatchFinalizeLockResponse(w http.ResponseWriter) error
+}
+
+type PatchFinalizeLock200JSONResponse FinalizeLock
+
+func (response PatchFinalizeLock200JSONResponse) VisitPatchFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchFinalizeLock400JSONResponse ErrorEnvelope
+
+func (response PatchFinalizeLock400JSONResponse) VisitPatchFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchFinalizeLock401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PatchFinalizeLock401JSONResponse) VisitPatchFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchFinalizeLock403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PatchFinalizeLock403JSONResponse) VisitPatchFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchFinalizeLock404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PatchFinalizeLock404JSONResponse) VisitPatchFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchFinalizeLock409JSONResponse ErrorEnvelope
+
+func (response PatchFinalizeLock409JSONResponse) VisitPatchFinalizeLockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type InviteToSessionRequestObject struct {
 	OrgID     string `json:"orgID"`
 	SessionID string `json:"sessionID"`
@@ -4691,6 +5196,15 @@ type StrictServerInterface interface {
 	// Transition session to finalizing; idempotent if already finalizing
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize)
 	FinalizeSession(ctx context.Context, request FinalizeSessionRequestObject) (FinalizeSessionResponseObject, error)
+	// Acquire the finalize lock for a session
+	// (POST /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock)
+	AcquireFinalizeLock(ctx context.Context, request AcquireFinalizeLockRequestObject) (AcquireFinalizeLockResponseObject, error)
+	// Release the finalize lock
+	// (DELETE /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID})
+	ReleaseFinalizeLock(ctx context.Context, request ReleaseFinalizeLockRequestObject) (ReleaseFinalizeLockResponseObject, error)
+	// Update curation state on a held finalize lock
+	// (PATCH /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID})
+	PatchFinalizeLock(ctx context.Context, request PatchFinalizeLockRequestObject) (PatchFinalizeLockResponseObject, error)
 	// Invite a user to a session by email; sends a magic-link-style join email
 	// (POST /api/orgs/{orgID}/sessions/{sessionID}/invites)
 	InviteToSession(ctx context.Context, request InviteToSessionRequestObject) (InviteToSessionResponseObject, error)
@@ -5402,6 +5916,106 @@ func (sh *strictHandler) FinalizeSession(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// AcquireFinalizeLock operation middleware
+func (sh *strictHandler) AcquireFinalizeLock(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
+	var request AcquireFinalizeLockRequestObject
+
+	request.OrgID = orgID
+	request.SessionID = sessionID
+
+	var body AcquireFinalizeLockJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcquireFinalizeLock(ctx, request.(AcquireFinalizeLockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcquireFinalizeLock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcquireFinalizeLockResponseObject); ok {
+		if err := validResponse.VisitAcquireFinalizeLockResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleaseFinalizeLock operation middleware
+func (sh *strictHandler) ReleaseFinalizeLock(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, lockID string) {
+	var request ReleaseFinalizeLockRequestObject
+
+	request.OrgID = orgID
+	request.SessionID = sessionID
+	request.LockID = lockID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleaseFinalizeLock(ctx, request.(ReleaseFinalizeLockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleaseFinalizeLock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleaseFinalizeLockResponseObject); ok {
+		if err := validResponse.VisitReleaseFinalizeLockResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchFinalizeLock operation middleware
+func (sh *strictHandler) PatchFinalizeLock(w http.ResponseWriter, r *http.Request, orgID string, sessionID string, lockID string) {
+	var request PatchFinalizeLockRequestObject
+
+	request.OrgID = orgID
+	request.SessionID = sessionID
+	request.LockID = lockID
+
+	var body PatchFinalizeLockJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchFinalizeLock(ctx, request.(PatchFinalizeLockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchFinalizeLock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchFinalizeLockResponseObject); ok {
+		if err := validResponse.VisitPatchFinalizeLockResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // InviteToSession operation middleware
 func (sh *strictHandler) InviteToSession(w http.ResponseWriter, r *http.Request, orgID string, sessionID string) {
 	var request InviteToSessionRequestObject
@@ -5565,142 +6179,163 @@ func (sh *strictHandler) ListSessionRefs(w http.ResponseWriter, r *http.Request,
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7H1/c9u4kuBXQfG2KvZ7lGxPsu/e2jVV63GSN95Nxqk42b27UcqByJaEMQVwANCONuWq+xD3Ce+TbKEB",
-	"8JdAinJsx5PJ/JGxSAJoNBr9C92Nz1EilrngwLWKDj9HElQuuAL88VLIKUtT4OZHIrgGrs2fNM8zllDN",
-	"BN/7TQl8rZIFLKn5658kzKLD6H/sVT3v2bdq74WUQr7gV5CJHKKbm5s4SkElkuWms+gwooVeANemd0jJ",
-	"tNCEC01ykEumzZOZkEQvgEj4vQBlnogcJIIS3cTRL0K/FAVPHw7gChApCg1ESCJBiUImgKDPEJybOHrP",
-	"zdyEZP8FDwjekinF+NyAxfgVzVhKpkAlSKLFJfDItHCdmbGOkwRyfcqvmIafRLoyz3JpUKyZpQnb7PBz",
-	"a5y39NoMwDTYjslMiiWuFCwpy0jG+CX5vQC5IjmVdAkaZBRHepVDdBgpLRmfIzAGn0waFP3qxvpQfiam",
-	"v0GiDTLrcL61KxCAyb4gU5GukHAotjLooESBUkxwB/Q4ih/lPE/EcumIpAnHMUnsK0J5shASUqIFofiU",
-	"acJ4NcX1udE0laAUpBdaBLq2bw2a7BR3YDwfk0n0r4UCOYli/+feVJrB3ROaZSM6N9Q5iXajOOJFltFp",
-	"BtGhlgWsoSCOLOCbKNxh4Nh+bJrhLrpgaQDyJBEF1+T0OREzXJQSSdgoiiP4RJe5ASraP/iXH/4Gz34Y",
-	"7e/v74/+p/mHmn/2a/9FIbDt+JeMByD4zwXoBVgWZT8kTBFKFsWScrMJKSeIJAMKL5Zm9fFdFEf2+YfA",
-	"kFO3E5tjOcxY8macLKm8TMU1DwGdSDAM9YIGSOn0/Gz097/tHxDNlqA0XeYGe9jCfBBHMyGXpmGUUg0j",
-	"81VoiNCCeBBPn5Od969On+9uuQJPgyvgUT+AbP6dWeZrWHJWGKguuNCwDukZ/kEzUn1J8MsBhIxNroZj",
-	"93oBnPhGR8T0T9jMCLJObA+HYbratC/cp3Jt5I2DOIYS3Hvnjp/Wd90UMsHnimix5bof7G/kmSyNGgDV",
-	"GUNzk5acxm0kR0CNTdHDe4/TFNI3dJUJmvbx4WuqSC5QE2AWDZ7/EtfasALzfGbQ7pvlIMmbt2fvzk7O",
-	"Xo2XafncEvK4+Y5ywVlCMzJjkKXqkLA0JhUSYlLioPzTzDV2QiJGXhGTOv+Pif2iQkZMagRd+zFdxaS1",
-	"j8YT/l24VMLlu6y4K1nx3sqKTtYfbur2tUfWbMWiOEId0AKnivm8/EET88fI6e9BXH6XGl9dajwWIVCy",
-	"kyazs+r2hVrQ9bm9c3NiZkqG4bkJGps1uPFmLIOLnOrFel8vWQbkmukFq3DF9BNFtARwS2IsHPt8lMEV",
-	"lCJGDVmkjHG4kJTPkcpplp3NosNfN3FPPstYog1wb7HpzYe2/XkwYjyFT5AaywgIjlCD10zZQTsY+jYR",
-	"1NagZwX/Pcg5zrUsEl0Y88nQAzIzZ3JVfGQgB4mR4YT4iAPhFVP6rfOvBJhYIZWQo5zOGUfnR8aUrgGk",
-	"1u04pmGpOtmhIrixmCI5nUNMhEzBTHS6qgl78vzF+UkUV10NEJdmSm6OVEq6Mr85fNIXCU4hxCbp7wUQ",
-	"+9rKfaMUKUWoIh/t449tq9nYszPQycIQ/ISbAXAiY3I8VYZPCGnpCBmjkaRAqATCBVkKCfitsgrKBupv",
-	"MxVERQ8pvXVcc6BSaGQtpCXr3qTSuaaowzV0ry6Fq2rQzYOcYNULamHyHYfY0D2Kus1ixjA3o/6R64Uo",
-	"oayLh40yoYaO5shdK8r0sZRs83oyp+MXauG9Ld6JJGG2aVklzGKiFrSho6tiuaRyFVSjt9VEWZ8iips6",
-	"RBy1GdR7yihPUU45/fw3utybFPv7TxPXAH+Ae4aqe/2B093xUVCP2yQwz38+tsRK7dIE+7DIC5AqhxFK",
-	"G/dFC0tLUIrOYSMhGZxZSJtqhR83TE9WJD4HDYnuI6lCi9ES5BwkSd3HhBK9kACja7oi+I4krr8uG9K+",
-	"JXAVNiUbr29nUVpX9kUlZMtHSNGppDN9oVluX1GegNJC2l8eANU2OZWmulCevzE+b/TfMD8rUfXlxqZC",
-	"nYMtc4rozqnULGE5NbKyYYeWxuduXTSuUWBbCNZn303egpdoqpF70BLz+Fvv7A3IkVGeqkVOQVOWqeGy",
-	"vFLeQnPZ0gr0QriCx/BKT9mDDcMGOYVRiJ8QzXJCNY5o+vJbfEZZBqnbPFRrWOZ6uAHa2C69duitjLc1",
-	"9NSk8JfYb839EzKytAWAEqe6qFE5WS0NyiRZUp0sQFmFETFwt7adG67PuIujNWbTKyRQQCSiyFI8aZuC",
-	"Xfe0p+dOOejlnzu5cyMkdAl4whPsEplYUJGXyG/xvaVMpkoU1AwLZ0HXyIBOKU8FhzRgR2y0fdex15h3",
-	"e3e1+FWd3cRNxlrOdYC5XOMqa9byzD0N2LbG7K0buBJyoZgWchXcfsaMDKD+VWljKsJ4bbP5jplCk/M2",
-	"TNJZuG1O2VoV17sDcBOK3nqDu4knCJmqL7izoXdKm3q30mzcRK0FX47KuIY5SEetUocMYCr17fttzd4O",
-	"EuME+uY+yIJyQy+oIlOo+b7IFaPVSadZWkIt+zKCvpPDbVJ8kOfVrK4mVw0pH75FF5Nqi5NB1tcwlh5S",
-	"lVvWUslt+tlIOYmOoYPLiEygtIaHHr9bNzGevjsj7V6Opm95VtCL75M6riuTmqn68XvU3fcm116b/XkJ",
-	"d0fePQcFOvmCzKVy04FjM1/opAuxoDoUHeyogkOVjOkeIPnyQ5Ktz6Bb226d5pqO6e5tdybn4cgcTpcB",
-	"6foclBmTCDkn5osjUijrvkjBmNZW68mKeeOIlibLzQYyDtgNqNP/avyhCW8KM1pk+mIp0iDc+BYVM/MF",
-	"rr/3VtQtt5o+pVY8MaJdicwoKQa2akru5dpKzgXNArvS2OEaPhm7qnzuxaID44kids7sChrYczLIWifI",
-	"pyTMJKgFkRSVS54ybYOP0GdDlixNM7imMmgUhRf2fCGkJilTeUZXuLRlcJyDrwHTS/bJjjXFpV7XZhOR",
-	"B0b5t/OzXwiqOmbyyKbmmZgS29BYeDPGkR8vgFxLps3GI7az+vC/TiIlkz0Dwd5f/jKJ4kmkQWlVPfkw",
-	"jN7cgnmA4yYZhajxOZtDn+P9XSH5yLKbFD8t8ZgJoyBMGady9UQRmtplo9mJ4EgbjOPyCz6ecPOMMq4I",
-	"JdaY02abma+mmUgunTOKofCihmaYXhHFeGLpxHrB4wmnPCWU1PzpJTjoAk9oloWUkV4H/Gv6yTuB4Hei",
-	"jDbl1WE75Zo7HkH6SJzh1hqzNFMZ1397FlQ0zZQD+6lESZ5Rxt3W8ujOMnFt8FLX0Kz3kHgr0lgg4B/a",
-	"JR1P+ClPsiIFRXKA0pvisRuXQqHhikJukixQQ48J5emEU4N+Y7SN7DDecbhjaC0mK1FIs4VVXHkfdi1C",
-	"NgT2GVw0D0dCFNqM4gwwSuvZseqRI8E3tU+smOvw16vqiCtxZOsJCsy4Y3K+oDkQpiY8ESmMVA4Jm7Hk",
-	"iAgXdFs7YWHK2NoLq4GZHdFAQzUl7HqdDJbUaOkwkkBT5BT4HTHjlrqc4QhjF6x6gezT6nE16bT2RYij",
-	"eT/vGhAYRNEGofIKV+P4iNmOIdqaNE65Gje40mYT1lc6ZQayJeNUW3wtaZ6b3quDnTFNUzNCfwhLPUop",
-	"LpuWlkZ/67Y9FrtD1bF3v/c0Xzs+qRwJ49L/t8G+brvLa11snkHYpDTrIOcwVkWSAPQg8LX57Nx/VWsu",
-	"UhhbNtHdVqRwYj+pGuYSFPAExkWe0p7Jv3HfvbefVR1ImI1nQl52N30Ls5f4QdXIB5sB75mrY6YveBpq",
-	"OmOcZuy/kPp6278sP6w60YXcMLiRs42Rb0oZtvoFVRy7X27aoi2vvASCw6DAhABZ3sT9jcJ0sKlVFwUP",
-	"bdcm283t1rf7wDbbDrVGZBsxuL4bNjUJ0ER/g45Ns6lZJ+EObNiE8QN6vn8P6FmCCy04S0gOcuStFWUs",
-	"IKPn8WI5xXSAAWrUMM+699Vv8KuXBxFDI/psp4DZI1vE9dkHa55L7My8c8YnNWpnTe6hQpKXrMSbcy0Z",
-	"tM7RQ5ImJDriligNyMcG120x/wZzC/D3IAdtc+RQXNAVSERvwNdrNQTivjgiNLumK0UOKvQcfNjsjoXf",
-	"o2oU93kcVZiu6KJBcCHNxebahDy1OfDU6IPNjBoiIREyXffwwaecSVBbn5y5bl3zLwo1tXMh79+fPt8y",
-	"MP2HYEKCBQ0uMAUosJqYGeQ8m96H4No0xjdGzL+6n+MET53KSdq+b30Ex5RHIMNT8IcIyG+iJa6vfDeF",
-	"hX1bgzCrhZtjW4k3UGyJ17Zuj191Q/3Wnis+Vkrfms73fwifTSQsZ8D1MEqvzeWaKoJBe61UkDtZHHd4",
-	"0YRtILkNP71AUNF5wwl1EViNILDpyuYABljew/OFwfT7ms5Z8orxyxefrLzbOu1zaXoYYeJjKyXy/dtX",
-	"d5gLWULqlmYDp6jQV6h7RB+cyflrMHqdWrB8HZ7QrjyT89sIn/2D4d5hM0TdNzzAux9HUoTO59+5/JQq",
-	"LduR/xNFTIvSlShk8xABz/vC8Yh44LA20vu3r0aKzgAPK253JoG8wE3Y9YCzCq9d3Snc8rlZ3F2Esftz",
-	"04PUiejjlJJX4goymgQR3sEY/gMkmzFIXU6x4xCNnm9B02EJ4YNJb0OPQWVIyHkgMuM4y3BVl+VWUc4N",
-	"yZSnp6FRGe09tykmA2nCI6WxsA7aMHGY/oNy3YF78SDo7CdEC+UTdeckWHZ8xyT4m2D8FmFzlmyIbY1P",
-	"LLMZphmF+Vo5xYqJwRoPswNvZDs1kugkNYSijoFusjuvQpu/Iund2VpV55F3vl5e+dpxwoagK998uDtM",
-	"FvUt5MAVC/kNewO+0YOh1KzIMhfonRo9shF6yLgWOMPyxGlTAJML9cMQahvph39i/xsimcrPN4Xcnv98",
-	"TOhMu6xV7Dp89NIcM9ytD3EvQ2tccKHRpF1SrEdZT0hnZ/dNfJZhUpiS0xEn2vafVCPENRwF5hckjHV3",
-	"aMB7ImH2RJFEZBmdClvIxp5QGjidB2pQbonIUjwDjwmHa/wrfEx83RFw8Q5Pe69x8KBcd/2HW+YSrpgo",
-	"VGfz3sjb64VQUD+YTQdmZ5RAxdXMQmtxdlzoxQnNsilNLsOGQxKc27Gr2WMXBs8pS/Mml+KKpWHiLN+t",
-	"a+amy7ItCuyYuKPPOdOLYjqJGqzLPuyKQIZgTKcGwgVPgECyEGZH0eRyCOAtJNc+TCyW7ZCdKMZw0jB+",
-	"HwAjXdD3g9ttBJQFmy4KGdCR3niIaYNIjNVrsDyV4loZbr/AEPWpIfWUSZvqMyC5uTl6cA5yHlRQ/0g2",
-	"58NZgiEMvqE6WawHqrUjNA2bdekGlJuVdK5/grk8NuCkVu/DGDuWN2NGqnChGEcTLni2IvYAQdc/cf2N",
-	"yXkiMBaD0DwHno6wwQ6nUtoIGaaIhN+QhnaDkrw3qM6dmpG0FVzXH0M3MGTOd+5VMhenVTNFMiXIjH1y",
-	"sVVzUWiMKNsiHM2P0RGWpsbkdaEwFYQSVeQgFegymN3nZZiuJ3wH/0+CqLVR5c/298s1xY8vyo8vWouw",
-	"TaBbbL+wCOgJfVsn1vDZZ+hIpoqPfKKIP7AiO45QzbL/1etzu6hplATYr2kYm8/FyM9ij1GrZ2ZU6Qs7",
-	"QDBLufq2I5zdLY9XM92qNadipf569YJq7KEnnKZJvfMyamy4lbIpl6jeO1N+gtmqo/yDw+2QfN9azxv5",
-	"oO82dipTfSGamAsxyLehSR6TObPMo2WFTQ0vq1J37DZiupw7Mpt1/7hnVhuiEYxC3Yn4l0WWIUgYCWtj",
-	"ySTM1N4CaKr2vjCBudrfrT73D/7tP/7X//4/e/sHxycnxz+d7C0p44Mznk9qNF+zU3ae7ZMFfDK6sFSt",
-	"0LdpcvDD0xRmz/75b31/b5Xd3Kk2r4WA9PMaYs/PMXz1euvk+JxWzKTLfOk2QAIWlNssBhZDGDtGtGEh",
-	"TCfbgpmdFRQDsm6qzrEyADY189db8QvfR41y7zbfPrj0tYn2U0B/2ZJju+1UmxW0uQCuCOVcaFyhQDUT",
-	"00u4/xolKbJjcPMXRJbKaQK7Q93GhpVtchUjDB14eB2kvZN1usNSo3Wgt1SvXKDW1vlVZf5WX4LVPda0",
-	"CuksTrdet1GmVPX4bszb5lZjqpIySO2QokHrsoMKrpnhJ9JI9UIthmRF3TbF3cOBHhrbx/AE98eR9AI8",
-	"vZBAVSj46D8Xq8Y0MX7pyNfaYRk4e6cll3zi8gDEY4+3RnsPPLfLondRW3CRieQSa8VcDPGznz4nC5Gl",
-	"PvnF9zKaZeKamK6OavWJCm47HwLP489I6os1uoWT4WA/7ETGE76eBHs3ov9w8PFh/YglVMvqIfKthJwH",
-	"qevsmtt63XfornmMuV3d9RNesRkkq8QMVaug0MCyY33Vvq/HXfo4TSqTBQaOfmj6jlybAd4jt0bxkMyz",
-	"cI2Eioo/dAvHRnBxQMP2dL6gyjI/suOZTRqTkvPGRrc1PC8lotC7m3Vuw/5DSnaXYLC2rXm3zo/rZTcd",
-	"bFU5CxdpKgq9uayFG7wHXVg4oTubDxPWbG19QzkUk4YJ1UYlc5lNTrMYB0qplTX5W36ndy9Hfye+4I75",
-	"5ojAMtcry92ZurBZglieSRZhpuk/CgAtC6gEHQ7DVK0ulHJJiFW3UyEyoHjnwZKF835d49enr19g8HWZ",
-	"YGWEyB6m4dmM+fr1AyLRoEdKS6BLm3a1qdqaxZgDoz7L3iVsx+FvJHuNtQtrghZDjjXVsInQp6sL5wMJ",
-	"EXv1dkvHC1aoY5xphh5JB5Wvg9uPtdqgPVi6Zb1Ih7fh9SLdcHdfL9Ir/3/WepHvDORvKJPBQA5Q6qIZ",
-	"IjzMhHBNy4jMkKPBqHa36ty37ep9PVyigqXdOg7MMghdEHftzKCNbm5dyNI40AtYkZVhAC7tVYrMHoK6",
-	"qArMAd3O2407vCuConwZFpv4um7QCl/maIZlzBzoX+xmNibptZCXqELeoZfZndBXKN7a7VwhKLTa73MF",
-	"Ujsny3CPR4HNrMejK5Di4dzNk+huHM5D5K5FaofbDrNCkkIyvTo383GSDu/9OS5sERr766VnCgJZbhSH",
-	"OXH9yiDClCqqIJ1cSE0zYs/wjek7nvA37oBTcEKzjLx9cf4OawiomLw+eeP/pDwlc6ZH4grk6Od3796c",
-	"T/gOVcT8SX6iiiUkp0pdC5nujskZ95ZrDtKWiHVGut2OuHCoGSGsFQIXWuf2ZiTGZ4GaQgidKuTMGMLe",
-	"ovuNLpWxju3sxuSc8XlWhhSZ/SFxvkJOuAJ5BZIwo6KYThTZETRno0SkMAe+ixNNMuaT4NSE74gcuPkG",
-	"fyMwu2PiYk34nMgiwwpmE56KRO2dv3lxUiuJ8A/gIFHkI2ejiTZya8LPcuDHb0590tgheTreHz8lO9bz",
-	"QP7///1/pA4YWVLGsfJXKgDT+skK9ISrIjfTJk/HB0dkyeZuL2nJ5nOcJxkI1C5C1Z7VjoVKFVMFqKkr",
-	"LSnjWu0eTviIvFdAPnoBfIjK9Efyy9k78tHg6pD8ajeE0VvNV5Pow8eymbPyDl0D91MdfiQ71sw1MtBo",
-	"1k/HB7um1S+CfLyG6UKIS/MVFurwz//JsoKPNae1eYX+aMskSMFTW3XCcY+xe4FpjsSwFwJXIFfXRtmw",
-	"dRKYRiu0SV+1JL3DaH+8Pz5AD4GlkegwQoyhy14vcCvv0ZxZ67pKvtgDl8CByoaw/LO8HO00jQ4jn+JR",
-	"ZlJEsb+/zMfs3MmtZOGckpsmD8NS7nHzwrkf9vfvDIhK+Qpci/bOchLKpGNnBuHP9g+6Oi2h3Gtc41bn",
-	"tNHhrx9qRYlLZGNxunaGDJ4QONapS1iwv+DayloRpeDSOtH4YCtbz8EZtLDPQlVp5iyxN6bZKHMUGjtC",
-	"EsUye1Jub2yDlLBZmShV8EsurvmuWbJ/vkOC2XiX3qnh8FhSxXJ8Wzhkx8KeQsbMXscStIWE3V7i8JpM",
-	"gzYUm/MR4xYZLVoQ+G/iIhi76eCM1gId74kI1oMp/wBb+0HpxJaNEdLlcKauehGGZKKbrgx2XDKFpSvv",
-	"kf9Y1YwGAlkHcSFLeWW9vjDZYSAlDnSfNFdFlz4wwQWCRQPrfrwWBiqBOkvFB4P6ENAHJ8r3lmsa4it4",
-	"IviMzbEmVBkki9z06cMBVEbPGsWzBpB3Qlkm20viP8Gc8SB94xmcUXglGJtVNcKey28xQ7VF7s490Sdp",
-	"8YN3pcvjdsS+Fvuwjdul+XnAAHw87PgXuG7wlntUs/yRZl3H4nBNrBfqr/51gMdJuBKX0Lfm5v1dL7np",
-	"84JmWS1uNzqc0UxByM0/kDS+hCSehVwuVyLxMsNYUxruZA2b7ohfP9y01CODG0J9lV+zlFlWv8QB84Os",
-	"/b9bLaY9CJlDYAn/Afo1RPe4C2rZxCHZ4LxrjM+EDYhqZcM+CFbRf6d78rlzKexxGU/XAfRY9hm+4b1S",
-	"Vqm9J02gWQV3EF0f3J0iYDMuAgt8JudlMND9L6VFguNvQs6PuleVTCERS1A2DtelQTbWcu+zkPPT5zd7",
-	"tvbEkLU99XVWyuMXhTCv4wRDGJj55UL9bXRFhENG7bWLa+vQ5nMf7oeeamVnHpiYqtIxYSOCafAkdVS3",
-	"kLUgZbWTW9KaafR0c6OXQk5Zmvp74relTo48xJWA2XGILYkQ83h3j8ycUp9n3pxaH5HufbZ/mEfWS9BN",
-	"tva2+K9EtnFfTZ7ACH5aj2Fv1K/Z/yp2Vye7dUj0/qGjituJgmPERCW+HmyPmBb/8qB+BsRBZs1Mj4vt",
-	"9qpdYkLLMm7BLfsT9nBErmxlEuUUs79Wu9Vu4N2OTVuL5QtqZ6+Y0lVRj68gV76AgLcIOgyHoK8t7CsX",
-	"yVHTwB4ln0c4HYAYa2UZ/jqnL4syWJ7fQSQ+cKWXSnywyldm4s0QFcysplUSvMfsE9Us5M4gS8cTfoZ3",
-	"ewh3x0WZlu2i1+ncpb4g5BjlUoHuQma2gvU1/cSWxdKVH62HCFl5i1ZBDhKH7hg3Y0umG8OWFusP+3G0",
-	"tENEhwf75hfj7legROWHe5QXocCpkOupjJnyMWYZU/pr+om9GxhSR1KPd7+XtHPFFJtm4CNqEpplIMsc",
-	"UxQNwPVu7GZURaphmlWPfXFeBvr+8a2L4FUoD2xnlGF46yTog/YblutX2AKyFtnzqE2aRmZjVTNqiP2N",
-	"m6TX/vZba++z++v0+U2fQ+urbJS4K/Gja4hyLg+qlX3hhliCpinV1CUvWuWlkhIPZEw829ziF6FfGpNn",
-	"O3L+B+gqRfGJqqZLedqebY7nk2v0Vy+d8e1S4N1LhFDJkQc2qwfQv69t/tAC4bxVlKOsyGEr8NaFxbex",
-	"E20xD2IvGrIlSXauWQo2C4xnq10MGKjnGh1VdhXPVlvIkj2fj9PtKbMffBcs97axqkTZR0u+D+zGOq/l",
-	"+Xhflo0x386RZRHbzNBmeiEKXUsZOiIKtHKZhT/iMDGpsqF/LJfn9pusvImyz41xUl1X+e1tsW/MW+IX",
-	"9Gt4S9ZXrJha2MmMZdoA6E50axfnWtR1wNa+2Xs4Zl7aAaer8v7bS8ZTsgOfaKLtDcy7HYPinabxUJu5",
-	"eW9qNxjljcd2O2NuoyxgEpEfq3dm+x6RSYSBFfiq4M2XE05thtiPGGXgl7ubrGq3xlQz8umvLv0Thwum",
-	"u3bPx14K26gENAC3oatkb7WqbvhZeSHxFqNXFxx/LdnrqGa4788T8Z/X93evii06C0vWyXhlb657BGMX",
-	"EuNLz1jWpjY5Ct2Sf7c+t/VHtkoLPbA/0i9bYFv4K7j/lP7Ie92ODQemZ321y+tdzSisPN4ot3ELzXfv",
-	"s/vrNL3Zc8KyL7iyXu7qz6EQezrvGqbE32PgGeF6ZDeOa9yvOO9jEl4NOyqjvH1Z3sQ3/m5iNzDmzetS",
-	"gd2Khbym8rIqLUeoqpRsFN+UVxK8XTxuCy5ibwUfcO5hbwH/czCMF+Xt7U1LeAc+JVmh2BXsuhIZ+0an",
-	"FM5mnoNGmwbv8zQWzXsF5b3uF3V7XNeL+HuSNcYlJur+XqBUplnWYxbhzfFhq3d/wJ2n92odWFrpMwyq",
-	"G+rdtfRYa43y1N2B/w2p5sdKwXKaGblfSD6y5FRexi9Jdcv8ibsxnnGsKredOmBsQjVgH79kGfx5xL61",
-	"7LscVvjBlw3ysrTfDVd22pzT7bSELp+Vm/CjcqQ3Sn2F9mytINejFvYHD5hYh0jRQpCMyjmG51wxuCau",
-	"1sOOrddw8Pqn3e2YxkusrVQvgRYsqrYdg3CV4jptA1coDL4fSN3bgRRT9YpqO0JiESGvKVavdr9r03d7",
-	"YPVOUq5s1VV/XoWu++qoiqWwzAVuNTYLLMk2e21jbo+NJn8nvod03DqR56t401xOy8YUIlRlqyyib0OT",
-	"9SkQtiBU8Dpmn2BUL7UxUnqVAV5R2K62MXgnbZ+A5Gj6USQhPZDC+wfNdXp8cVlr+U7e5VUPdSj9X3+I",
-	"eMU/dLZUFQJsej0iU8ZTVY+Dd1Hx/juKDMilow3nNS65Zu+zCyY2zyQsRb8/3bx3tPTa31/7J2A2tQqW",
-	"GKmBaAoOWGLzCxX1Z1231LrR029DylqKKgnYB/C4Zbt9pJSE2Wgp0j6ttFEY9LtOOpwfBiuq3r4KiLuP",
-	"5GuFBX+757J2nZyPrusqIe9ikZgMvc3+GpRM+dZ89921su2p6GxTrJHZNliVPXgD1jcU5kM7LgEL3gfo",
-	"8JD6mx4t5jYNiNXALGHiZbxY11cd7u19Xgilb6I4uqKS0ak7clgIX0DanUBFmUhoZh4f/v3Zs6drlY7f",
-	"2DJ45gMELhcS+eWHm/8OAAD//w==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

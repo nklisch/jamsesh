@@ -174,6 +174,15 @@ func (m *magicLinkOnlyStrict) GetSessionFile(_ context.Context, _ openapi.GetSes
 func (m *magicLinkOnlyStrict) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
 	panic("UpsertRefMode: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) AcquireFinalizeLock(_ context.Context, _ openapi.AcquireFinalizeLockRequestObject) (openapi.AcquireFinalizeLockResponseObject, error) {
+	panic("AcquireFinalizeLock: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) PatchFinalizeLock(_ context.Context, _ openapi.PatchFinalizeLockRequestObject) (openapi.PatchFinalizeLockResponseObject, error) {
+	panic("PatchFinalizeLock: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
+	panic("ReleaseFinalizeLock: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

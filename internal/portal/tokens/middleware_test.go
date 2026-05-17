@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/tokens"
@@ -18,6 +19,10 @@ type mockService struct {
 
 func (m *mockService) Issue(_ context.Context, _ string) (tokens.Pair, error) {
 	return tokens.Pair{}, errors.New("not implemented")
+}
+
+func (m *mockService) IssueShortLived(_ context.Context, _ string, _ time.Duration) (string, time.Time, error) {
+	return "", time.Time{}, errors.New("not implemented")
 }
 
 func (m *mockService) Validate(ctx context.Context, raw string) (*store.Account, error) {

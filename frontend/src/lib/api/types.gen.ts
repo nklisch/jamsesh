@@ -415,6 +415,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orgs/{orgID}/sessions/{sessionID}/finalize/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acquire the finalize lock for a session
+         * @description Acquires a finalize lock. Idempotent for the caller. If another
+         *     member holds a fresh lock, returns 409 unless override=true is
+         *     passed (in which case the existing lock is superseded). If
+         *     another member holds a stale lock (>30 min idle), the stale
+         *     lock is released and the new one is created.
+         */
+        post: operations["acquireFinalizeLock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Release the finalize lock
+         * @description Releases the lock. Idempotent on already-released rows. Caller
+         *     must be the lock holder. Clears the sessions.finalize_locked_by
+         *     pointer when this lock was the active one. The session status
+         *     stays finalizing — release is not the same as abandon.
+         */
+        delete: operations["releaseFinalizeLock"];
+        options?: never;
+        head?: never;
+        /**
+         * Update curation state on a held finalize lock
+         * @description Atomically replaces the lock's selected_commit_shas,
+         *     target_branch, base_sha, mode, and commit_message; refreshes
+         *     last_activity_at. Caller must hold the lock. Returns 409 when
+         *     the lock is idle (>30 min), released, or superseded.
+         */
+        patch: operations["patchFinalizeLock"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1121,6 +1175,76 @@ export interface components {
             /** @description Full ref name (e.g. "refs/heads/jam/<session>/<user>/<branch>") */
             ref: string;
             mode: components["schemas"]["RefMode"];
+        };
+        /**
+         * @description Finalization mode. squash composes one commit from N curated
+         *     commits with a Co-authored-by trailer list; preserve cherry-picks
+         *     each curated commit individually.
+         * @enum {string}
+         */
+        PlanMode: "squash" | "preserve";
+        /**
+         * @description Durable finalize-flow lock row. Captures the in-flight curation
+         *     state for one finalize coordination.
+         */
+        FinalizeLock: {
+            id: string;
+            session_id: string;
+            acquired_by_account_id: string;
+            /** Format: date-time */
+            acquired_at: string;
+            /** Format: date-time */
+            last_activity_at: string;
+            /**
+             * Format: date-time
+             * @description last_activity_at + 30-minute idle TTL. Recomputed on every
+             *     read; not stored.
+             */
+            expires_at: string;
+            /** @description Ordered list of curated commit SHAs. */
+            selected_commit_shas: string[];
+            target_branch: string;
+            base_sha: string;
+            mode: components["schemas"]["PlanMode"];
+            /** @description Composed squash commit message (squash mode only). */
+            commit_message?: string | null;
+        };
+        /**
+         * @description Lock pointer + caller-relative metadata. Returned by
+         *     acquireFinalizeLock and embedded in the finalize-plan response.
+         */
+        LockStatus: {
+            lock_id: string;
+            held_by_account_id: string;
+            /** Format: date-time */
+            acquired_at: string;
+            /** Format: date-time */
+            last_activity_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @description True when the caller is the lock holder. */
+            is_caller: boolean;
+        };
+        /**
+         * @description Request body for POST .../finalize/lock. override=true takes a
+         *     fresh lock held by another member, marking the old lock
+         *     superseded.
+         */
+        AcquireFinalizeLockRequest: {
+            /** @description When true, supersede an existing fresh lock held by another member. */
+            override?: boolean;
+        };
+        /**
+         * @description Request body for PATCH .../finalize/lock/{lockID}. Atomically
+         *     replaces curation state and bumps last_activity_at.
+         */
+        PatchFinalizeLockRequest: {
+            selected_commit_shas: string[];
+            target_branch: string;
+            base_sha: string;
+            mode: components["schemas"]["PlanMode"];
+            /** @description Required when mode=squash; ignored when mode=preserve. */
+            commit_message?: string | null;
         };
     };
     responses: {
@@ -2094,6 +2218,135 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    acquireFinalizeLock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AcquireFinalizeLockRequest"];
+            };
+        };
+        responses: {
+            /** @description Lock acquired */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LockStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Another member holds an active fresh lock and override is
+             *     false. Error code: finalize.lock_held_by_other.
+             *     details.held_by_account_id carries the holding account.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    releaseFinalizeLock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+                /** @description Lock ID */
+                lockID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lock released (or already released) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    patchFinalizeLock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+                /** @description Lock ID */
+                lockID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchFinalizeLockRequest"];
+            };
+        };
+        responses: {
+            /** @description Lock curation updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinalizeLock"];
+                };
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Lock cannot be patched. Error codes:
+             *     finalize.lock_expired (idle >30 min — row is now released),
+             *     finalize.lock_released, finalize.lock_superseded.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
 }

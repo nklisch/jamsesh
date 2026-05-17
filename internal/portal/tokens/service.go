@@ -30,6 +30,12 @@ type Pair struct {
 type Service interface {
 	// Issue mints a new access+refresh pair for the given account.
 	Issue(ctx context.Context, accountID string) (Pair, error)
+	// IssueShortLived mints a single bound access token with a caller-supplied
+	// TTL. Used for ephemeral fetch-only credentials (e.g. finalize-run git
+	// fetch). No refresh token is issued. Validation uses the same per-row
+	// expiry path as Issue — Validate honours the row's expires_at without
+	// special-casing.
+	IssueShortLived(ctx context.Context, accountID string, ttl time.Duration) (accessRaw string, accessExpiresAt time.Time, err error)
 	// Validate returns the account associated with a raw token, or a
 	// normalized error (ErrInvalidToken, ErrExpiredToken, ErrRevokedToken).
 	Validate(ctx context.Context, rawToken string) (*store.Account, error)

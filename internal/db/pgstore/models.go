@@ -79,6 +79,22 @@ type EventSeq struct {
 	Next      int32  `json:"next"`
 }
 
+type FinalizeLock struct {
+	ID                  string             `json:"id"`
+	OrgID               string             `json:"org_id"`
+	SessionID           string             `json:"session_id"`
+	AcquiredByAccountID string             `json:"acquired_by_account_id"`
+	AcquiredAt          pgtype.Timestamptz `json:"acquired_at"`
+	LastActivityAt      pgtype.Timestamptz `json:"last_activity_at"`
+	SelectedCommitShas  []byte             `json:"selected_commit_shas"`
+	TargetBranch        string             `json:"target_branch"`
+	BaseSha             *string            `json:"base_sha"`
+	Mode                string             `json:"mode"`
+	CommitMessage       pgtype.Text        `json:"commit_message"`
+	SupersededByLockID  pgtype.Text        `json:"superseded_by_lock_id"`
+	ReleasedAt          pgtype.Timestamptz `json:"released_at"`
+}
+
 type MagicLinkToken struct {
 	ID        string     `json:"id"`
 	TokenHash string     `json:"token_hash"`

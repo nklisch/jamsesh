@@ -1779,3 +1779,162 @@ func pgComment(r pgstore.Comment) Comment {
 		ResolutionNote:      pgTextToPtr(r.ResolutionNote),
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FinalizeLockStore (outer adapter)
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) InsertFinalizeLock(ctx context.Context, p InsertFinalizeLockParams) error {
+	return mapPostgresErr(a.q.InsertFinalizeLock(ctx, pgInsertFinalizeLockParams(p)))
+}
+
+func (a *postgresAdapter) GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error) {
+	row, err := a.q.GetFinalizeLockByID(ctx, id)
+	if err != nil {
+		return FinalizeLock{}, mapPostgresErr(err)
+	}
+	return pgFinalizeLock(row), nil
+}
+
+func (a *postgresAdapter) GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error) {
+	row, err := a.q.GetActiveFinalizeLockForSession(ctx, sessionID)
+	if err != nil {
+		return FinalizeLock{}, mapPostgresErr(err)
+	}
+	return pgFinalizeLock(row), nil
+}
+
+func (a *postgresAdapter) UpdateFinalizeLockCuration(ctx context.Context, p UpdateFinalizeLockCurationParams) error {
+	baseSHA := p.BaseSHA
+	return mapPostgresErr(a.q.UpdateFinalizeLockCuration(ctx, pgstore.UpdateFinalizeLockCurationParams{
+		ID:                 p.ID,
+		SelectedCommitShas: []byte(p.SelectedCommitSHAs),
+		TargetBranch:       p.TargetBranch,
+		BaseSha:            &baseSHA,
+		Mode:               p.Mode,
+		CommitMessage:      ptrToPgText(p.CommitMessage),
+		LastActivityAt:     pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+	}))
+}
+
+func (a *postgresAdapter) TouchFinalizeLock(ctx context.Context, p TouchFinalizeLockParams) error {
+	return mapPostgresErr(a.q.TouchFinalizeLock(ctx, pgstore.TouchFinalizeLockParams{
+		ID:             p.ID,
+		LastActivityAt: pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+	}))
+}
+
+func (a *postgresAdapter) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error {
+	return mapPostgresErr(a.q.ReleaseFinalizeLock(ctx, pgstore.ReleaseFinalizeLockParams{
+		ID:         p.ID,
+		ReleasedAt: pgtype.Timestamptz{Time: p.ReleasedAt, Valid: true},
+	}))
+}
+
+func (a *postgresAdapter) SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error {
+	return mapPostgresErr(a.q.SupersedeFinalizeLock(ctx, pgstore.SupersedeFinalizeLockParams{
+		ID:                 p.ID,
+		SupersededByLockID: pgtype.Text{String: p.SupersededByLockID, Valid: true},
+	}))
+}
+
+// ---------------------------------------------------------------------------
+// FinalizeLockStore (TxStore)
+// ---------------------------------------------------------------------------
+
+func (s *postgresTxStore) InsertFinalizeLock(ctx context.Context, p InsertFinalizeLockParams) error {
+	return mapPostgresErr(s.q.InsertFinalizeLock(ctx, pgInsertFinalizeLockParams(p)))
+}
+
+func (s *postgresTxStore) GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error) {
+	row, err := s.q.GetFinalizeLockByID(ctx, id)
+	if err != nil {
+		return FinalizeLock{}, mapPostgresErr(err)
+	}
+	return pgFinalizeLock(row), nil
+}
+
+func (s *postgresTxStore) GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error) {
+	row, err := s.q.GetActiveFinalizeLockForSession(ctx, sessionID)
+	if err != nil {
+		return FinalizeLock{}, mapPostgresErr(err)
+	}
+	return pgFinalizeLock(row), nil
+}
+
+func (s *postgresTxStore) UpdateFinalizeLockCuration(ctx context.Context, p UpdateFinalizeLockCurationParams) error {
+	baseSHA := p.BaseSHA
+	return mapPostgresErr(s.q.UpdateFinalizeLockCuration(ctx, pgstore.UpdateFinalizeLockCurationParams{
+		ID:                 p.ID,
+		SelectedCommitShas: []byte(p.SelectedCommitSHAs),
+		TargetBranch:       p.TargetBranch,
+		BaseSha:            &baseSHA,
+		Mode:               p.Mode,
+		CommitMessage:      ptrToPgText(p.CommitMessage),
+		LastActivityAt:     pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+	}))
+}
+
+func (s *postgresTxStore) TouchFinalizeLock(ctx context.Context, p TouchFinalizeLockParams) error {
+	return mapPostgresErr(s.q.TouchFinalizeLock(ctx, pgstore.TouchFinalizeLockParams{
+		ID:             p.ID,
+		LastActivityAt: pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+	}))
+}
+
+func (s *postgresTxStore) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error {
+	return mapPostgresErr(s.q.ReleaseFinalizeLock(ctx, pgstore.ReleaseFinalizeLockParams{
+		ID:         p.ID,
+		ReleasedAt: pgtype.Timestamptz{Time: p.ReleasedAt, Valid: true},
+	}))
+}
+
+func (s *postgresTxStore) SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error {
+	return mapPostgresErr(s.q.SupersedeFinalizeLock(ctx, pgstore.SupersedeFinalizeLockParams{
+		ID:                 p.ID,
+		SupersededByLockID: pgtype.Text{String: p.SupersededByLockID, Valid: true},
+	}))
+}
+
+// pgInsertFinalizeLockParams converts domain InsertFinalizeLockParams to pgstore.InsertFinalizeLockParams.
+func pgInsertFinalizeLockParams(p InsertFinalizeLockParams) pgstore.InsertFinalizeLockParams {
+	baseSHA := p.BaseSHA
+	return pgstore.InsertFinalizeLockParams{
+		ID:                  p.ID,
+		OrgID:               p.OrgID,
+		SessionID:           p.SessionID,
+		AcquiredByAccountID: p.AcquiredByAccountID,
+		AcquiredAt:          pgtype.Timestamptz{Time: p.AcquiredAt, Valid: true},
+		LastActivityAt:      pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+		SelectedCommitShas:  []byte(p.SelectedCommitSHAs),
+		TargetBranch:        p.TargetBranch,
+		BaseSha:             &baseSHA,
+		Mode:                p.Mode,
+		CommitMessage:       ptrToPgText(p.CommitMessage),
+		SupersededByLockID:  ptrToPgText(p.SupersededByLockID),
+		ReleasedAt:          ptrToPgTimestamptz(p.ReleasedAt),
+	}
+}
+
+// pgFinalizeLock converts a pgstore.FinalizeLock to domain FinalizeLock.
+func pgFinalizeLock(r pgstore.FinalizeLock) FinalizeLock {
+	baseSHA := ""
+	if r.BaseSha != nil {
+		baseSHA = *r.BaseSha
+	}
+	return FinalizeLock{
+		ID:                  r.ID,
+		OrgID:               r.OrgID,
+		SessionID:           r.SessionID,
+		AcquiredByAccountID: r.AcquiredByAccountID,
+		AcquiredAt:          r.AcquiredAt.Time,
+		LastActivityAt:      r.LastActivityAt.Time,
+		SelectedCommitSHAs:  string(r.SelectedCommitShas),
+		TargetBranch:        r.TargetBranch,
+		BaseSHA:             baseSHA,
+		Mode:                r.Mode,
+		CommitMessage:       pgTextToPtr(r.CommitMessage),
+		SupersededByLockID:  pgTextToPtr(r.SupersededByLockID),
+		ReleasedAt:          pgTimestamptzToPtr(r.ReleasedAt),
+	}
+}

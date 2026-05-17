@@ -38,6 +38,7 @@ type TxStore interface {
 	SessionInviteStore
 	ConflictEventStore
 	CommentStore
+	FinalizeLockStore
 }
 
 // Store is the unified data-access interface for the portal. All handler and
@@ -60,6 +61,7 @@ type Store interface {
 	SessionInviteStore
 	ConflictEventStore
 	CommentStore
+	FinalizeLockStore
 
 	// WithTx opens a dialect-appropriate transaction, calls fn with a TxStore
 	// backed by that transaction, and commits on success or rolls back on any
@@ -840,4 +842,94 @@ type CommentStore interface {
 	ResolveComment(ctx context.Context, p ResolveCommentParams) error
 	// ListCommentsForSession returns cursor-paginated comments for a session.
 	ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error)
+}
+
+// FinalizeLock is a persisted finalize-flow lock row. The authoritative state
+// for one in-flight finalize coordination per session. The
+// sessions.finalize_locked_by_account_id pointer is a denormalised cache kept
+// in sync by lock acquire/release for cheap session-detail responses.
+type FinalizeLock struct {
+	ID                   string
+	OrgID                string
+	SessionID            string
+	AcquiredByAccountID  string
+	AcquiredAt           time.Time
+	LastActivityAt       time.Time
+	SelectedCommitSHAs   string // JSON array of commit SHAs, stored verbatim
+	TargetBranch         string
+	BaseSHA              string
+	Mode                 string  // "squash" | "preserve"
+	CommitMessage        *string // nullable
+	SupersededByLockID   *string // nullable; set when overridden
+	ReleasedAt           *time.Time
+}
+
+// InsertFinalizeLockParams are the parameters for inserting a finalize lock row.
+type InsertFinalizeLockParams struct {
+	ID                  string
+	OrgID               string
+	SessionID           string
+	AcquiredByAccountID string
+	AcquiredAt          time.Time
+	LastActivityAt      time.Time
+	SelectedCommitSHAs  string
+	TargetBranch        string
+	BaseSHA             string
+	Mode                string
+	CommitMessage       *string
+	SupersededByLockID  *string
+	ReleasedAt          *time.Time
+}
+
+// UpdateFinalizeLockCurationParams are the parameters for updating a lock's
+// curation state. Bumps last_activity_at atomically with the curation columns.
+type UpdateFinalizeLockCurationParams struct {
+	ID                 string
+	SelectedCommitSHAs string
+	TargetBranch       string
+	BaseSHA            string
+	Mode               string
+	CommitMessage      *string
+	LastActivityAt     time.Time
+}
+
+// TouchFinalizeLockParams refreshes only last_activity_at on a lock.
+type TouchFinalizeLockParams struct {
+	ID             string
+	LastActivityAt time.Time
+}
+
+// ReleaseFinalizeLockParams sets released_at on a held lock. Idempotent: the
+// underlying query is a no-op if released_at is already set.
+type ReleaseFinalizeLockParams struct {
+	ID         string
+	ReleasedAt time.Time
+}
+
+// SupersedeFinalizeLockParams sets superseded_by_lock_id on an older lock
+// when a fresh override creates a replacement.
+type SupersedeFinalizeLockParams struct {
+	ID                 string
+	SupersededByLockID string
+}
+
+// FinalizeLockStore covers writes and reads on the finalize_locks table.
+type FinalizeLockStore interface {
+	// InsertFinalizeLock inserts a new lock row.
+	InsertFinalizeLock(ctx context.Context, p InsertFinalizeLockParams) error
+	// GetFinalizeLockByID returns the lock by its ID, or ErrNotFound.
+	GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error)
+	// GetActiveFinalizeLockForSession returns the single active lock row
+	// (released_at IS NULL AND superseded_by_lock_id IS NULL) for the
+	// session, or ErrNotFound when none exists.
+	GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error)
+	// UpdateFinalizeLockCuration updates curation columns + last_activity_at.
+	UpdateFinalizeLockCuration(ctx context.Context, p UpdateFinalizeLockCurationParams) error
+	// TouchFinalizeLock bumps last_activity_at only.
+	TouchFinalizeLock(ctx context.Context, p TouchFinalizeLockParams) error
+	// ReleaseFinalizeLock sets released_at on the row. Idempotent against
+	// already-released rows.
+	ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error
+	// SupersedeFinalizeLock points superseded_by_lock_id at a replacement lock.
+	SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error
 }

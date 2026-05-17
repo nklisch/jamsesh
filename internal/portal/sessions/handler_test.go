@@ -137,6 +137,15 @@ func (h *sessionsOnlyStrict) GetSessionFile(ctx context.Context, req openapi.Get
 func (h *sessionsOnlyStrict) UpsertRefMode(ctx context.Context, req openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
 	return h.Handler.UpsertRefMode(ctx, req)
 }
+func (h *sessionsOnlyStrict) AcquireFinalizeLock(_ context.Context, _ openapi.AcquireFinalizeLockRequestObject) (openapi.AcquireFinalizeLockResponseObject, error) {
+	panic("not wired")
+}
+func (h *sessionsOnlyStrict) PatchFinalizeLock(_ context.Context, _ openapi.PatchFinalizeLockRequestObject) (openapi.PatchFinalizeLockResponseObject, error) {
+	panic("not wired")
+}
+func (h *sessionsOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*sessionsOnlyStrict)(nil)
 

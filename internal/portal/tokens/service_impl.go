@@ -80,6 +80,34 @@ func (s *service) Issue(ctx context.Context, accountID string) (Pair, error) {
 	}, nil
 }
 
+// IssueShortLived mints a single access token bound to accountID with the
+// supplied TTL. No refresh token is issued — short-lived tokens are intended
+// for ephemeral flows (e.g. git fetch in finalize-run) where the credential
+// cannot be refreshed.
+func (s *service) IssueShortLived(ctx context.Context, accountID string, ttl time.Duration) (string, time.Time, error) {
+	now := s.clock.Now()
+
+	accessRaw, accessHash, err := generateToken()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	accessExpiry := now.Add(ttl)
+
+	if _, err := s.store.CreateOAuthToken(ctx, store.CreateOAuthTokenParams{
+		ID:        uuid.New().String(),
+		AccountID: accountID,
+		TokenHash: accessHash,
+		Kind:      "access",
+		IssuedAt:  now,
+		ExpiresAt: accessExpiry,
+	}); err != nil {
+		return "", time.Time{}, err
+	}
+
+	return accessRaw, accessExpiry, nil
+}
+
 func (s *service) Validate(ctx context.Context, raw string) (*store.Account, error) {
 	if raw == "" {
 		return nil, ErrInvalidToken

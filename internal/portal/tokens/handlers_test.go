@@ -113,6 +113,15 @@ func (t *tokensOnlyHandler) GetSessionFile(_ context.Context, _ openapi.GetSessi
 func (t *tokensOnlyHandler) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
 	panic("UpsertRefMode: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) AcquireFinalizeLock(_ context.Context, _ openapi.AcquireFinalizeLockRequestObject) (openapi.AcquireFinalizeLockResponseObject, error) {
+	panic("AcquireFinalizeLock: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) PatchFinalizeLock(_ context.Context, _ openapi.PatchFinalizeLockRequestObject) (openapi.PatchFinalizeLockResponseObject, error) {
+	panic("PatchFinalizeLock: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
+	panic("ReleaseFinalizeLock: not implemented in token handler tests")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

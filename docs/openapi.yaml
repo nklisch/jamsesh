@@ -1048,6 +1048,132 @@ components:
         mode:
           $ref: '#/components/schemas/RefMode'
 
+    PlanMode:
+      type: string
+      enum: [squash, preserve]
+      description: |
+        Finalization mode. squash composes one commit from N curated
+        commits with a Co-authored-by trailer list; preserve cherry-picks
+        each curated commit individually.
+
+    FinalizeLock:
+      type: object
+      required:
+        - id
+        - session_id
+        - acquired_by_account_id
+        - acquired_at
+        - last_activity_at
+        - expires_at
+        - selected_commit_shas
+        - target_branch
+        - base_sha
+        - mode
+      description: |
+        Durable finalize-flow lock row. Captures the in-flight curation
+        state for one finalize coordination.
+      properties:
+        id:
+          type: string
+        session_id:
+          type: string
+        acquired_by_account_id:
+          type: string
+        acquired_at:
+          type: string
+          format: date-time
+        last_activity_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: |
+            last_activity_at + 30-minute idle TTL. Recomputed on every
+            read; not stored.
+        selected_commit_shas:
+          type: array
+          items:
+            type: string
+          description: Ordered list of curated commit SHAs.
+        target_branch:
+          type: string
+        base_sha:
+          type: string
+        mode:
+          $ref: '#/components/schemas/PlanMode'
+        commit_message:
+          type: string
+          nullable: true
+          description: Composed squash commit message (squash mode only).
+
+    LockStatus:
+      type: object
+      required:
+        - lock_id
+        - held_by_account_id
+        - acquired_at
+        - last_activity_at
+        - expires_at
+        - is_caller
+      description: |
+        Lock pointer + caller-relative metadata. Returned by
+        acquireFinalizeLock and embedded in the finalize-plan response.
+      properties:
+        lock_id:
+          type: string
+        held_by_account_id:
+          type: string
+        acquired_at:
+          type: string
+          format: date-time
+        last_activity_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        is_caller:
+          type: boolean
+          description: True when the caller is the lock holder.
+
+    AcquireFinalizeLockRequest:
+      type: object
+      description: |
+        Request body for POST .../finalize/lock. override=true takes a
+        fresh lock held by another member, marking the old lock
+        superseded.
+      properties:
+        override:
+          type: boolean
+          description: When true, supersede an existing fresh lock held by another member.
+
+    PatchFinalizeLockRequest:
+      type: object
+      required:
+        - selected_commit_shas
+        - target_branch
+        - base_sha
+        - mode
+      description: |
+        Request body for PATCH .../finalize/lock/{lockID}. Atomically
+        replaces curation state and bumps last_activity_at.
+      properties:
+        selected_commit_shas:
+          type: array
+          items:
+            type: string
+        target_branch:
+          type: string
+        base_sha:
+          type: string
+        mode:
+          $ref: '#/components/schemas/PlanMode'
+        commit_message:
+          type: string
+          nullable: true
+          description: Required when mode=squash; ignored when mode=preserve.
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -2066,6 +2192,163 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock:
+    post:
+      summary: Acquire the finalize lock for a session
+      description: |
+        Acquires a finalize lock. Idempotent for the caller. If another
+        member holds a fresh lock, returns 409 unless override=true is
+        passed (in which case the existing lock is superseded). If
+        another member holds a stale lock (>30 min idle), the stale
+        lock is released and the new one is created.
+      operationId: acquireFinalizeLock
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcquireFinalizeLockRequest'
+      responses:
+        '201':
+          description: Lock acquired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LockStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Another member holds an active fresh lock and override is
+            false. Error code: finalize.lock_held_by_other.
+            details.held_by_account_id carries the holding account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}:
+    patch:
+      summary: Update curation state on a held finalize lock
+      description: |
+        Atomically replaces the lock's selected_commit_shas,
+        target_branch, base_sha, mode, and commit_message; refreshes
+        last_activity_at. Caller must hold the lock. Returns 409 when
+        the lock is idle (>30 min), released, or superseded.
+      operationId: patchFinalizeLock
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: lockID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Lock ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchFinalizeLockRequest'
+      responses:
+        '200':
+          description: Lock curation updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinalizeLock'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Lock cannot be patched. Error codes:
+            finalize.lock_expired (idle >30 min — row is now released),
+            finalize.lock_released, finalize.lock_superseded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      summary: Release the finalize lock
+      description: |
+        Releases the lock. Idempotent on already-released rows. Caller
+        must be the lock holder. Clears the sessions.finalize_locked_by
+        pointer when this lock was the active one. The session status
+        stays finalizing — release is not the same as abandon.
+      operationId: releaseFinalizeLock
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: lockID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Lock ID
+      responses:
+        '204':
+          description: Lock released (or already released)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

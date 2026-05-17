@@ -29,9 +29,11 @@ type Querier interface {
 	GetAccountByEmail(ctx context.Context, email string) (Account, error)
 	GetAccountByGitHubUserID(ctx context.Context, githubUserID sql.NullString) (Account, error)
 	GetAccountByID(ctx context.Context, id string) (Account, error)
+	GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error)
 	GetArchivedSession(ctx context.Context, arg GetArchivedSessionParams) (ArchivedSession, error)
 	GetCommentByID(ctx context.Context, id string) (Comment, error)
 	GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error)
+	GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error)
 	GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error)
 	GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OauthToken, error)
 	GetOrgByID(ctx context.Context, id string) (Org, error)
@@ -48,6 +50,7 @@ type Querier interface {
 	InsertComment(ctx context.Context, arg InsertCommentParams) error
 	InsertConflictEvent(ctx context.Context, arg InsertConflictEventParams) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) error
+	InsertFinalizeLock(ctx context.Context, arg InsertFinalizeLockParams) error
 	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
 	InsertOrgInvite(ctx context.Context, arg InsertOrgInviteParams) (OrgInvite, error)
 	InsertSessionInvite(ctx context.Context, arg InsertSessionInviteParams) (SessionInvite, error)
@@ -74,6 +77,7 @@ type Querier interface {
 	MarkConflictEventResolved(ctx context.Context, arg MarkConflictEventResolvedParams) error
 	MarkOrgInviteAccepted(ctx context.Context, arg MarkOrgInviteAcceptedParams) error
 	MarkSessionInviteAccepted(ctx context.Context, arg MarkSessionInviteAcceptedParams) error
+	ReleaseFinalizeLock(ctx context.Context, arg ReleaseFinalizeLockParams) error
 	RemoveOrgMember(ctx context.Context, arg RemoveOrgMemberParams) error
 	RemoveSessionMember(ctx context.Context, arg RemoveSessionMemberParams) error
 	ResolveComment(ctx context.Context, arg ResolveCommentParams) error
@@ -82,8 +86,11 @@ type Querier interface {
 	SetFinalizeLock(ctx context.Context, arg SetFinalizeLockParams) error
 	SetSessionBaseSHA(ctx context.Context, arg SetSessionBaseSHAParams) error
 	SetSessionEndReason(ctx context.Context, arg SetSessionEndReasonParams) error
+	SupersedeFinalizeLock(ctx context.Context, arg SupersedeFinalizeLockParams) error
+	TouchFinalizeLock(ctx context.Context, arg TouchFinalizeLockParams) error
 	TouchOAuthTokenLastUsed(ctx context.Context, arg TouchOAuthTokenLastUsedParams) error
 	UpdateAccountDisplayName(ctx context.Context, arg UpdateAccountDisplayNameParams) error
+	UpdateFinalizeLockCuration(ctx context.Context, arg UpdateFinalizeLockCurationParams) error
 	UpdateSessionGoalScopeMode(ctx context.Context, arg UpdateSessionGoalScopeModeParams) error
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	UpsertPresence(ctx context.Context, arg UpsertPresenceParams) error

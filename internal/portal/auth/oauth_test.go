@@ -131,6 +131,15 @@ func (o *oauthOnlyStrict) GetSessionFile(_ context.Context, _ openapi.GetSession
 func (o *oauthOnlyStrict) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
 	panic("UpsertRefMode: not wired in OAuth tests")
 }
+func (o *oauthOnlyStrict) AcquireFinalizeLock(_ context.Context, _ openapi.AcquireFinalizeLockRequestObject) (openapi.AcquireFinalizeLockResponseObject, error) {
+	panic("AcquireFinalizeLock: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) PatchFinalizeLock(_ context.Context, _ openapi.PatchFinalizeLockRequestObject) (openapi.PatchFinalizeLockResponseObject, error) {
+	panic("PatchFinalizeLock: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
+	panic("ReleaseFinalizeLock: not wired in OAuth tests")
+}
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 

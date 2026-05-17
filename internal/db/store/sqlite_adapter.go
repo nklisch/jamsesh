@@ -1776,3 +1776,162 @@ func sqliteComment(r sqlitestore.Comment) Comment {
 		ResolutionNote:      nullStringToPtr(r.ResolutionNote),
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FinalizeLockStore (outer adapter)
+// ---------------------------------------------------------------------------
+
+func (a *sqliteAdapter) InsertFinalizeLock(ctx context.Context, p InsertFinalizeLockParams) error {
+	return mapSQLiteErr(a.q.InsertFinalizeLock(ctx, sqliteInsertFinalizeLockParams(p)))
+}
+
+func (a *sqliteAdapter) GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error) {
+	row, err := a.q.GetFinalizeLockByID(ctx, id)
+	if err != nil {
+		return FinalizeLock{}, mapSQLiteErr(err)
+	}
+	return sqliteFinalizeLock(row), nil
+}
+
+func (a *sqliteAdapter) GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error) {
+	row, err := a.q.GetActiveFinalizeLockForSession(ctx, sessionID)
+	if err != nil {
+		return FinalizeLock{}, mapSQLiteErr(err)
+	}
+	return sqliteFinalizeLock(row), nil
+}
+
+func (a *sqliteAdapter) UpdateFinalizeLockCuration(ctx context.Context, p UpdateFinalizeLockCurationParams) error {
+	baseSHA := p.BaseSHA
+	return mapSQLiteErr(a.q.UpdateFinalizeLockCuration(ctx, sqlitestore.UpdateFinalizeLockCurationParams{
+		ID:                 p.ID,
+		SelectedCommitShas: p.SelectedCommitSHAs,
+		TargetBranch:       p.TargetBranch,
+		BaseSha:            &baseSHA,
+		Mode:               p.Mode,
+		CommitMessage:      ptrToNullString(p.CommitMessage),
+		LastActivityAt:     p.LastActivityAt,
+	}))
+}
+
+func (a *sqliteAdapter) TouchFinalizeLock(ctx context.Context, p TouchFinalizeLockParams) error {
+	return mapSQLiteErr(a.q.TouchFinalizeLock(ctx, sqlitestore.TouchFinalizeLockParams{
+		ID:             p.ID,
+		LastActivityAt: p.LastActivityAt,
+	}))
+}
+
+func (a *sqliteAdapter) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error {
+	return mapSQLiteErr(a.q.ReleaseFinalizeLock(ctx, sqlitestore.ReleaseFinalizeLockParams{
+		ID:         p.ID,
+		ReleasedAt: sql.NullTime{Time: p.ReleasedAt, Valid: true},
+	}))
+}
+
+func (a *sqliteAdapter) SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error {
+	return mapSQLiteErr(a.q.SupersedeFinalizeLock(ctx, sqlitestore.SupersedeFinalizeLockParams{
+		ID:                 p.ID,
+		SupersededByLockID: sql.NullString{String: p.SupersededByLockID, Valid: true},
+	}))
+}
+
+// ---------------------------------------------------------------------------
+// FinalizeLockStore (TxStore)
+// ---------------------------------------------------------------------------
+
+func (s *sqliteTxStore) InsertFinalizeLock(ctx context.Context, p InsertFinalizeLockParams) error {
+	return mapSQLiteErr(s.q.InsertFinalizeLock(ctx, sqliteInsertFinalizeLockParams(p)))
+}
+
+func (s *sqliteTxStore) GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error) {
+	row, err := s.q.GetFinalizeLockByID(ctx, id)
+	if err != nil {
+		return FinalizeLock{}, mapSQLiteErr(err)
+	}
+	return sqliteFinalizeLock(row), nil
+}
+
+func (s *sqliteTxStore) GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error) {
+	row, err := s.q.GetActiveFinalizeLockForSession(ctx, sessionID)
+	if err != nil {
+		return FinalizeLock{}, mapSQLiteErr(err)
+	}
+	return sqliteFinalizeLock(row), nil
+}
+
+func (s *sqliteTxStore) UpdateFinalizeLockCuration(ctx context.Context, p UpdateFinalizeLockCurationParams) error {
+	baseSHA := p.BaseSHA
+	return mapSQLiteErr(s.q.UpdateFinalizeLockCuration(ctx, sqlitestore.UpdateFinalizeLockCurationParams{
+		ID:                 p.ID,
+		SelectedCommitShas: p.SelectedCommitSHAs,
+		TargetBranch:       p.TargetBranch,
+		BaseSha:            &baseSHA,
+		Mode:               p.Mode,
+		CommitMessage:      ptrToNullString(p.CommitMessage),
+		LastActivityAt:     p.LastActivityAt,
+	}))
+}
+
+func (s *sqliteTxStore) TouchFinalizeLock(ctx context.Context, p TouchFinalizeLockParams) error {
+	return mapSQLiteErr(s.q.TouchFinalizeLock(ctx, sqlitestore.TouchFinalizeLockParams{
+		ID:             p.ID,
+		LastActivityAt: p.LastActivityAt,
+	}))
+}
+
+func (s *sqliteTxStore) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error {
+	return mapSQLiteErr(s.q.ReleaseFinalizeLock(ctx, sqlitestore.ReleaseFinalizeLockParams{
+		ID:         p.ID,
+		ReleasedAt: sql.NullTime{Time: p.ReleasedAt, Valid: true},
+	}))
+}
+
+func (s *sqliteTxStore) SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error {
+	return mapSQLiteErr(s.q.SupersedeFinalizeLock(ctx, sqlitestore.SupersedeFinalizeLockParams{
+		ID:                 p.ID,
+		SupersededByLockID: sql.NullString{String: p.SupersededByLockID, Valid: true},
+	}))
+}
+
+// sqliteInsertFinalizeLockParams converts domain InsertFinalizeLockParams to sqlitestore.InsertFinalizeLockParams.
+func sqliteInsertFinalizeLockParams(p InsertFinalizeLockParams) sqlitestore.InsertFinalizeLockParams {
+	baseSHA := p.BaseSHA
+	return sqlitestore.InsertFinalizeLockParams{
+		ID:                  p.ID,
+		OrgID:               p.OrgID,
+		SessionID:           p.SessionID,
+		AcquiredByAccountID: p.AcquiredByAccountID,
+		AcquiredAt:          p.AcquiredAt,
+		LastActivityAt:      p.LastActivityAt,
+		SelectedCommitShas:  p.SelectedCommitSHAs,
+		TargetBranch:        p.TargetBranch,
+		BaseSha:             &baseSHA,
+		Mode:                p.Mode,
+		CommitMessage:       ptrToNullString(p.CommitMessage),
+		SupersededByLockID:  ptrToNullString(p.SupersededByLockID),
+		ReleasedAt:          ptrToNullTime(p.ReleasedAt),
+	}
+}
+
+// sqliteFinalizeLock converts a sqlitestore.FinalizeLock to domain FinalizeLock.
+func sqliteFinalizeLock(r sqlitestore.FinalizeLock) FinalizeLock {
+	baseSHA := ""
+	if r.BaseSha != nil {
+		baseSHA = *r.BaseSha
+	}
+	return FinalizeLock{
+		ID:                  r.ID,
+		OrgID:               r.OrgID,
+		SessionID:           r.SessionID,
+		AcquiredByAccountID: r.AcquiredByAccountID,
+		AcquiredAt:          r.AcquiredAt,
+		LastActivityAt:      r.LastActivityAt,
+		SelectedCommitSHAs:  r.SelectedCommitShas,
+		TargetBranch:        r.TargetBranch,
+		BaseSHA:             baseSHA,
+		Mode:                r.Mode,
+		CommitMessage:       nullStringToPtr(r.CommitMessage),
+		SupersededByLockID:  nullStringToPtr(r.SupersededByLockID),
+		ReleasedAt:          nullTimeToPtr(r.ReleasedAt),
+	}
+}
