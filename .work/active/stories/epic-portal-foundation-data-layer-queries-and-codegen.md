@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-data-layer-queries-and-codegen
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-foundation-data-layer
 depends_on: [epic-portal-foundation-data-layer-schema-and-migrations]
@@ -140,3 +140,14 @@ returns `org_id` on each row.
 - sqlitestore: generated with `database/sql` DBTX
 - pgstore: generated with `pgx/v5` DBTX (`sql_package: pgx/v5`)
 - go build: clean, go vet: clean
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `Account.GithubUserID` divergence (`sql.NullString` vs `pgtype.Text`) is intrinsic to nullable-text handling without a per-engine override. The adapter translates both to `*string`, so callers never see the difference. Could push a deeper override later if more nullable columns appear, but not worth it for one field.
+
+**Notes**: org_id discipline is visible at a glance in the SQL — every sessions/session_members query opens with `WHERE org_id = ?` or includes org_id in INSERT. The one cross-org query (`ListSessionMembershipsForAccount`) carries an inline comment documenting the exception. The sqlc.yaml override additions (timestamp columns explicit on Postgres block, `joined_at` on both) are pre-emptive fixes that prevent type drift across dialects — exactly right. The `interface_compat.go` compile-time check is a good guard.
