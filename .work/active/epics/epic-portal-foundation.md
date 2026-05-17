@@ -38,6 +38,30 @@ auto-merger (`epic-auto-merger`), or any session/comment API endpoints
 - `docs/SECURITY.md` — Authentication, Authorization, Self-host security posture
 - `docs/PROTOCOL.md` — REST API > Auth section, HTTP error contract
 
+## Design decisions
+
+- **HTTP routing framework**: `chi` — jamsesh's HTTP surface has multiple distinct
+  auth mechanisms per route group (`/api/*` Bearer, `/git/*` HTTP Basic,
+  `/mcp/*` Bearer with headersHelper, `/ws` upgrade). Chi's per-subroute middleware
+  stacks make this clean; stdlib middleware composition gets verbose for the multi-auth
+  shape. Compatible with `http.Handler` so we can drop into stdlib anywhere.
+- **OAuth identity model**: both magic-link direct + delegated OAuth (GitHub/Google).
+  Magic-link is always available (no password concept ever). Delegated OAuth is offered
+  alongside as a convenience. Aligns with the epic-portal-ui auth-UX lock (both equally
+  prominent on the sign-in card).
+- **Org provisioning**: self-serve at signup. First sign-in creates a personal org by
+  default; users can also create additional orgs from the portal UI. SaaS-friendly;
+  self-host operators get the same flow (the "first user" is the operator).
+- **Magic-link email delivery**: pluggable provider abstraction. Interface over
+  delivery (Send method takes recipient + magic-link URL); concrete implementations
+  for SMTP (self-host default), SendGrid, Postmark, Resend. Selected by config. More
+  code up front, no rewrites later when hosted deployment needs a transactional
+  provider.
+
+<!-- Feature-design will fill in interfaces, signatures, and implementation
+units when /agile-workflow:feature-design runs on this. -->
+
+
 ## Anticipated child features
 
 Provisional — actual decomposition lands when this epic is designed.
