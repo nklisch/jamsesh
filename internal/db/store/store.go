@@ -36,6 +36,7 @@ type TxStore interface {
 	OrgInviteStore
 	RefModeStore
 	SessionInviteStore
+	ConflictEventStore
 }
 
 // Store is the unified data-access interface for the portal. All handler and
@@ -56,6 +57,7 @@ type Store interface {
 	OrgInviteStore
 	RefModeStore
 	SessionInviteStore
+	ConflictEventStore
 
 	// WithTx opens a dialect-appropriate transaction, calls fn with a TxStore
 	// backed by that transaction, and commits on success or rolls back on any
@@ -693,6 +695,61 @@ type SessionInviteStore interface {
 	GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error)
 	MarkSessionInviteAccepted(ctx context.Context, arg MarkSessionInviteAcceptedParams) error
 	ListPendingSessionInvitesForSession(ctx context.Context, arg ListPendingSessionInvitesForSessionParams) ([]SessionInvite, error)
+}
+
+// ConflictEvent is a persisted conflict event row.
+type ConflictEvent struct {
+	ID                 string
+	OrgID              string
+	SessionID          string
+	SourceCommit       string
+	DraftTip           string
+	Ancestor           string
+	Conflicts          string     // JSON text
+	AddressedTo        string     // JSON text
+	Status             string     // "open" | "resolved"
+	ResolvingCommitSHA *string    // nullable
+	CreatedAt          time.Time
+	ResolvedAt         *time.Time // nullable
+}
+
+// InsertConflictEventParams are the parameters for inserting a conflict event row.
+type InsertConflictEventParams struct {
+	ID                 string
+	OrgID              string
+	SessionID          string
+	SourceCommit       string
+	DraftTip           string
+	Ancestor           string
+	Conflicts          string // JSON text
+	AddressedTo        string // JSON text
+	Status             string // "open"
+	ResolvingCommitSHA *string
+	CreatedAt          time.Time
+	ResolvedAt         *time.Time
+}
+
+// MarkConflictEventResolvedParams are the parameters for resolving a conflict event.
+type MarkConflictEventResolvedParams struct {
+	ID                 string
+	SessionID          string
+	ResolvingCommitSHA string
+	ResolvedAt         time.Time
+}
+
+// ConflictEventStore covers conflict event writes and reads.
+type ConflictEventStore interface {
+	// InsertConflictEvent inserts a new conflict event row with status "open".
+	InsertConflictEvent(ctx context.Context, p InsertConflictEventParams) error
+	// GetConflictEventByID returns a conflict event by its ID.
+	GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error)
+	// MarkConflictEventResolved marks a conflict event as resolved (no-op if
+	// already resolved or not found — the WHERE status='open' guard is safe
+	// for replay).
+	MarkConflictEventResolved(ctx context.Context, p MarkConflictEventResolvedParams) error
+	// ListOpenConflictEventsForSession returns all open conflict events for a
+	// session, ordered by created_at ascending.
+	ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error)
 }
 
 // OAuthStateStore covers the transient OAuth state-nonce table.

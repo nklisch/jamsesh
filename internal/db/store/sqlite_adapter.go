@@ -80,6 +80,23 @@ func ptrToNullString(s *string) sql.NullString {
 	return sql.NullString{String: *s, Valid: true}
 }
 
+// nullTimeToPtr converts sql.NullTime to *time.Time for domain types.
+func nullTimeToPtr(nt sql.NullTime) *time.Time {
+	if !nt.Valid {
+		return nil
+	}
+	t := nt.Time
+	return &t
+}
+
+// ptrToNullTime converts *time.Time to sql.NullTime for query params.
+func ptrToNullTime(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: *t, Valid: true}
+}
+
 // ---------------------------------------------------------------------------
 // Row mappers
 // ---------------------------------------------------------------------------
@@ -1480,4 +1497,122 @@ func (s *sqliteTxStore) ListPendingSessionInvitesForSession(ctx context.Context,
 		invites[i] = sqliteSessionInvite(r)
 	}
 	return invites, nil
+}
+
+// ---------------------------------------------------------------------------
+// ConflictEventStore (outer adapter)
+// ---------------------------------------------------------------------------
+
+func (a *sqliteAdapter) InsertConflictEvent(ctx context.Context, p InsertConflictEventParams) error {
+	return mapSQLiteErr(a.q.InsertConflictEvent(ctx, sqlitestore.InsertConflictEventParams{
+		ID:                 p.ID,
+		OrgID:              p.OrgID,
+		SessionID:          p.SessionID,
+		SourceCommit:       p.SourceCommit,
+		DraftTip:           p.DraftTip,
+		Ancestor:           p.Ancestor,
+		Conflicts:          p.Conflicts,
+		AddressedTo:        p.AddressedTo,
+		Status:             p.Status,
+		ResolvingCommitSha: ptrToNullString(p.ResolvingCommitSHA),
+		CreatedAt:          p.CreatedAt,
+		ResolvedAt:         ptrToNullTime(p.ResolvedAt),
+	}))
+}
+
+func (a *sqliteAdapter) GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error) {
+	row, err := a.q.GetConflictEventByID(ctx, id)
+	if err != nil {
+		return ConflictEvent{}, mapSQLiteErr(err)
+	}
+	return sqliteConflictEvent(row), nil
+}
+
+func (a *sqliteAdapter) MarkConflictEventResolved(ctx context.Context, p MarkConflictEventResolvedParams) error {
+	return mapSQLiteErr(a.q.MarkConflictEventResolved(ctx, sqlitestore.MarkConflictEventResolvedParams{
+		ID:                 p.ID,
+		SessionID:          p.SessionID,
+		ResolvingCommitSha: ptrToNullString(&p.ResolvingCommitSHA),
+		ResolvedAt:         ptrToNullTime(&p.ResolvedAt),
+	}))
+}
+
+func (a *sqliteAdapter) ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error) {
+	rows, err := a.q.ListOpenConflictEventsForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	out := make([]ConflictEvent, len(rows))
+	for i, r := range rows {
+		out[i] = sqliteConflictEvent(r)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// ConflictEventStore (TxStore)
+// ---------------------------------------------------------------------------
+
+func (s *sqliteTxStore) InsertConflictEvent(ctx context.Context, p InsertConflictEventParams) error {
+	return mapSQLiteErr(s.q.InsertConflictEvent(ctx, sqlitestore.InsertConflictEventParams{
+		ID:                 p.ID,
+		OrgID:              p.OrgID,
+		SessionID:          p.SessionID,
+		SourceCommit:       p.SourceCommit,
+		DraftTip:           p.DraftTip,
+		Ancestor:           p.Ancestor,
+		Conflicts:          p.Conflicts,
+		AddressedTo:        p.AddressedTo,
+		Status:             p.Status,
+		ResolvingCommitSha: ptrToNullString(p.ResolvingCommitSHA),
+		CreatedAt:          p.CreatedAt,
+		ResolvedAt:         ptrToNullTime(p.ResolvedAt),
+	}))
+}
+
+func (s *sqliteTxStore) GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error) {
+	row, err := s.q.GetConflictEventByID(ctx, id)
+	if err != nil {
+		return ConflictEvent{}, mapSQLiteErr(err)
+	}
+	return sqliteConflictEvent(row), nil
+}
+
+func (s *sqliteTxStore) MarkConflictEventResolved(ctx context.Context, p MarkConflictEventResolvedParams) error {
+	return mapSQLiteErr(s.q.MarkConflictEventResolved(ctx, sqlitestore.MarkConflictEventResolvedParams{
+		ID:                 p.ID,
+		SessionID:          p.SessionID,
+		ResolvingCommitSha: ptrToNullString(&p.ResolvingCommitSHA),
+		ResolvedAt:         ptrToNullTime(&p.ResolvedAt),
+	}))
+}
+
+func (s *sqliteTxStore) ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error) {
+	rows, err := s.q.ListOpenConflictEventsForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	out := make([]ConflictEvent, len(rows))
+	for i, r := range rows {
+		out[i] = sqliteConflictEvent(r)
+	}
+	return out, nil
+}
+
+// sqliteConflictEvent converts a sqlitestore.ConflictEvent to domain ConflictEvent.
+func sqliteConflictEvent(r sqlitestore.ConflictEvent) ConflictEvent {
+	return ConflictEvent{
+		ID:                 r.ID,
+		OrgID:              r.OrgID,
+		SessionID:          r.SessionID,
+		SourceCommit:       r.SourceCommit,
+		DraftTip:           r.DraftTip,
+		Ancestor:           r.Ancestor,
+		Conflicts:          r.Conflicts,
+		AddressedTo:        r.AddressedTo,
+		Status:             r.Status,
+		ResolvingCommitSHA: nullStringToPtr(r.ResolvingCommitSha),
+		CreatedAt:          r.CreatedAt,
+		ResolvedAt:         nullTimeToPtr(r.ResolvedAt),
+	}
 }

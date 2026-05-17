@@ -31,6 +31,7 @@ type Querier interface {
 	GetAccountByGitHubUserID(ctx context.Context, githubUserID pgtype.Text) (Account, error)
 	GetAccountByID(ctx context.Context, id string) (Account, error)
 	GetArchivedSession(ctx context.Context, arg GetArchivedSessionParams) (ArchivedSession, error)
+	GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error)
 	GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error)
 	GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OauthToken, error)
 	GetOrgByID(ctx context.Context, id string) (Org, error)
@@ -44,6 +45,7 @@ type Querier interface {
 	GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error)
 	GetSessionMember(ctx context.Context, arg GetSessionMemberParams) (SessionMember, error)
 	InsertArchivedSession(ctx context.Context, arg InsertArchivedSessionParams) error
+	InsertConflictEvent(ctx context.Context, arg InsertConflictEventParams) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) error
 	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
 	InsertOrgInvite(ctx context.Context, arg InsertOrgInviteParams) (OrgInvite, error)
@@ -51,6 +53,7 @@ type Querier interface {
 	ListEventsSince(ctx context.Context, arg ListEventsSinceParams) ([]Event, error)
 	ListEventsSinceForDigest(ctx context.Context, arg ListEventsSinceForDigestParams) ([]Event, error)
 	ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OauthToken, error)
+	ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error)
 	ListOrgMembers(ctx context.Context, orgID string) ([]ListOrgMembersRow, error)
 	ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error)
 	ListPendingOrgInvitesForEmail(ctx context.Context, arg ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error)
@@ -66,6 +69,7 @@ type Querier interface {
 	ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]ListSessionMembershipsForAccountRow, error)
 	ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error)
 	ListSessionsForOrgWithCursor(ctx context.Context, arg ListSessionsForOrgWithCursorParams) ([]Session, error)
+	MarkConflictEventResolved(ctx context.Context, arg MarkConflictEventResolvedParams) error
 	MarkOrgInviteAccepted(ctx context.Context, arg MarkOrgInviteAcceptedParams) error
 	MarkSessionInviteAccepted(ctx context.Context, arg MarkSessionInviteAcceptedParams) error
 	RemoveOrgMember(ctx context.Context, arg RemoveOrgMemberParams) error

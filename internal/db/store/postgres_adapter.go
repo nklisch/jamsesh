@@ -75,6 +75,23 @@ func ptrToPgText(s *string) pgtype.Text {
 	return pgtype.Text{String: *s, Valid: true}
 }
 
+// pgTimestamptzToPtr converts pgtype.Timestamptz to *time.Time for domain types.
+func pgTimestamptzToPtr(ts pgtype.Timestamptz) *time.Time {
+	if !ts.Valid {
+		return nil
+	}
+	t := ts.Time
+	return &t
+}
+
+// ptrToPgTimestamptz converts *time.Time to pgtype.Timestamptz for query params.
+func ptrToPgTimestamptz(t *time.Time) pgtype.Timestamptz {
+	if t == nil {
+		return pgtype.Timestamptz{}
+	}
+	return pgtype.Timestamptz{Time: *t, Valid: true}
+}
+
 // ---------------------------------------------------------------------------
 // Row mappers
 // ---------------------------------------------------------------------------
@@ -1483,4 +1500,122 @@ func (s *postgresTxStore) ListPendingSessionInvitesForSession(ctx context.Contex
 		invites[i] = pgSessionInvite(r)
 	}
 	return invites, nil
+}
+
+// ---------------------------------------------------------------------------
+// ConflictEventStore (outer adapter)
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) InsertConflictEvent(ctx context.Context, p InsertConflictEventParams) error {
+	return mapPostgresErr(a.q.InsertConflictEvent(ctx, pgstore.InsertConflictEventParams{
+		ID:                 p.ID,
+		OrgID:              p.OrgID,
+		SessionID:          p.SessionID,
+		SourceCommit:       p.SourceCommit,
+		DraftTip:           p.DraftTip,
+		Ancestor:           p.Ancestor,
+		Conflicts:          p.Conflicts,
+		AddressedTo:        p.AddressedTo,
+		Status:             p.Status,
+		ResolvingCommitSha: ptrToPgText(p.ResolvingCommitSHA),
+		CreatedAt:          p.CreatedAt,
+		ResolvedAt:         ptrToPgTimestamptz(p.ResolvedAt),
+	}))
+}
+
+func (a *postgresAdapter) GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error) {
+	row, err := a.q.GetConflictEventByID(ctx, id)
+	if err != nil {
+		return ConflictEvent{}, mapPostgresErr(err)
+	}
+	return pgConflictEvent(row), nil
+}
+
+func (a *postgresAdapter) MarkConflictEventResolved(ctx context.Context, p MarkConflictEventResolvedParams) error {
+	return mapPostgresErr(a.q.MarkConflictEventResolved(ctx, pgstore.MarkConflictEventResolvedParams{
+		ID:                 p.ID,
+		SessionID:          p.SessionID,
+		ResolvingCommitSha: ptrToPgText(&p.ResolvingCommitSHA),
+		ResolvedAt:         ptrToPgTimestamptz(&p.ResolvedAt),
+	}))
+}
+
+func (a *postgresAdapter) ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error) {
+	rows, err := a.q.ListOpenConflictEventsForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	out := make([]ConflictEvent, len(rows))
+	for i, r := range rows {
+		out[i] = pgConflictEvent(r)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// ConflictEventStore (TxStore)
+// ---------------------------------------------------------------------------
+
+func (s *postgresTxStore) InsertConflictEvent(ctx context.Context, p InsertConflictEventParams) error {
+	return mapPostgresErr(s.q.InsertConflictEvent(ctx, pgstore.InsertConflictEventParams{
+		ID:                 p.ID,
+		OrgID:              p.OrgID,
+		SessionID:          p.SessionID,
+		SourceCommit:       p.SourceCommit,
+		DraftTip:           p.DraftTip,
+		Ancestor:           p.Ancestor,
+		Conflicts:          p.Conflicts,
+		AddressedTo:        p.AddressedTo,
+		Status:             p.Status,
+		ResolvingCommitSha: ptrToPgText(p.ResolvingCommitSHA),
+		CreatedAt:          p.CreatedAt,
+		ResolvedAt:         ptrToPgTimestamptz(p.ResolvedAt),
+	}))
+}
+
+func (s *postgresTxStore) GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error) {
+	row, err := s.q.GetConflictEventByID(ctx, id)
+	if err != nil {
+		return ConflictEvent{}, mapPostgresErr(err)
+	}
+	return pgConflictEvent(row), nil
+}
+
+func (s *postgresTxStore) MarkConflictEventResolved(ctx context.Context, p MarkConflictEventResolvedParams) error {
+	return mapPostgresErr(s.q.MarkConflictEventResolved(ctx, pgstore.MarkConflictEventResolvedParams{
+		ID:                 p.ID,
+		SessionID:          p.SessionID,
+		ResolvingCommitSha: ptrToPgText(&p.ResolvingCommitSHA),
+		ResolvedAt:         ptrToPgTimestamptz(&p.ResolvedAt),
+	}))
+}
+
+func (s *postgresTxStore) ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error) {
+	rows, err := s.q.ListOpenConflictEventsForSession(ctx, sessionID)
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	out := make([]ConflictEvent, len(rows))
+	for i, r := range rows {
+		out[i] = pgConflictEvent(r)
+	}
+	return out, nil
+}
+
+// pgConflictEvent converts a pgstore.ConflictEvent to domain ConflictEvent.
+func pgConflictEvent(r pgstore.ConflictEvent) ConflictEvent {
+	return ConflictEvent{
+		ID:                 r.ID,
+		OrgID:              r.OrgID,
+		SessionID:          r.SessionID,
+		SourceCommit:       r.SourceCommit,
+		DraftTip:           r.DraftTip,
+		Ancestor:           r.Ancestor,
+		Conflicts:          r.Conflicts,
+		AddressedTo:        r.AddressedTo,
+		Status:             r.Status,
+		ResolvingCommitSHA: pgTextToPtr(r.ResolvingCommitSha),
+		CreatedAt:          r.CreatedAt,
+		ResolvedAt:         pgTimestamptzToPtr(r.ResolvedAt),
+	}
 }

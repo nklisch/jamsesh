@@ -29,6 +29,21 @@ type ArchivedSession struct {
 	FinalBranchName  sql.NullString `json:"final_branch_name"`
 }
 
+type ConflictEvent struct {
+	ID                 string         `json:"id"`
+	OrgID              string         `json:"org_id"`
+	SessionID          string         `json:"session_id"`
+	SourceCommit       string         `json:"source_commit"`
+	DraftTip           string         `json:"draft_tip"`
+	Ancestor           string         `json:"ancestor"`
+	Conflicts          string         `json:"conflicts"`
+	AddressedTo        string         `json:"addressed_to"`
+	Status             string         `json:"status"`
+	ResolvingCommitSha sql.NullString `json:"resolving_commit_sha"`
+	CreatedAt          time.Time      `json:"created_at"`
+	ResolvedAt         sql.NullTime   `json:"resolved_at"`
+}
+
 type Event struct {
 	ID        string    `json:"id"`
 	OrgID     string    `json:"org_id"`
