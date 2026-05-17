@@ -22,6 +22,7 @@ import (
 	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/handlerauth"
+	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/storage"
 )
@@ -57,6 +58,16 @@ func (h *Handler) CreateSession(ctx context.Context, req openapi.CreateSessionRe
 			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get org member: %w", fail.Err))
 		}
 		return createSessionFail(fail), nil
+	}
+
+	// Validate the writable_scope globs at the front door so malformed
+	// patterns are surfaced as an immediate 400 rather than as an opaque
+	// push-time failure. Empty scope means deny-all and is allowed.
+	if msg, ok := validateWritableScope(req.Body.Scope); !ok {
+		return openapi.CreateSession400JSONResponse(openapi.ErrorEnvelope{
+			Error:   "session.invalid_writable_scope",
+			Message: msg,
+		}), nil
 	}
 
 	now := time.Now().UTC()
@@ -178,6 +189,12 @@ func (h *Handler) PatchSession(ctx context.Context, req openapi.PatchSessionRequ
 	}
 	if req.Body.Scope != "" {
 		newScope := req.Body.Scope
+		if msg, ok := validateWritableScope(newScope); !ok {
+			return openapi.PatchSession400JSONResponse(openapi.ErrorEnvelope{
+				Error:   "session.invalid_writable_scope",
+				Message: msg,
+			}), nil
+		}
 		if isScopeNarrowing(scope, newScope) {
 			return openapi.PatchSession400JSONResponse(openapi.ErrorEnvelope{
 				Error:   "session.scope_narrowing_rejected",
@@ -373,6 +390,27 @@ func (h *Handler) AbandonSession(ctx context.Context, req openapi.AbandonSession
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// validateWritableScope parses the JSON-encoded writable_scope payload and
+// compiles each glob through prereceive.CompileScope. It returns (msg, false)
+// when the payload is unparseable JSON or contains a malformed glob; the
+// message is suitable for the body of a `session.invalid_writable_scope` 400.
+//
+// An empty string or the literal `[]` payload is the deny-all scope and is
+// always accepted — that's the existing behavior at the store layer.
+func validateWritableScope(raw string) (string, bool) {
+	if raw == "" {
+		return "", true
+	}
+	var globs []string
+	if err := json.Unmarshal([]byte(raw), &globs); err != nil {
+		return fmt.Sprintf("writable_scope must be a JSON array of strings: %v", err), false
+	}
+	if _, err := prereceive.CompileScope(globs); err != nil {
+		return err.Error(), false
+	}
+	return "", true
+}
 
 // isScopeNarrowing returns true if any glob in oldScope is absent from newScope.
 // This enforces the strict append-only rule: new scope must be a superset of old scope.

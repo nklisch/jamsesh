@@ -138,13 +138,21 @@ Patterns use `/` as the path separator regardless of host OS. Paths are
 matched relative to the repository root (e.g. `src/main.go`, not
 `/src/main.go`).
 
-**Validation contract** — patterns are validated at push time when the
-`pre-receive` hook compiles the session's scope into a matcher. Malformed
-patterns (unclosed `{`, invalid character classes, etc.) cause the push to
-be rejected by the portal's pre-receive subprocess. The portal currently
-does **not** pre-validate `writable_scope` at session-create or
-session-patch time, so a malformed pattern stored at creation surfaces only
-on the next push; closing this gap is tracked in the backlog.
+**Validation contract** — patterns are validated at two layers (defence in
+depth):
+
+1. **API time.** `POST /api/orgs/{orgID}/sessions` and
+   `PATCH /api/orgs/{orgID}/sessions/{sessionID}` compile the supplied
+   `writable_scope` and reject malformed patterns (unclosed `{`, invalid
+   character classes, etc.) with `400 session.invalid_writable_scope`
+   before the row is written or updated. This is the front door — most
+   malformed scopes are caught here, immediately visible to the session
+   creator.
+2. **Push time.** The `pre-receive` hook re-compiles the session's stored
+   scope on every push and rejects the push if compilation fails. This
+   covers the back door — a malformed pattern that somehow lands in the
+   database (e.g. a botched migration) still cannot silently authorize
+   writes.
 
 **Examples**:
 

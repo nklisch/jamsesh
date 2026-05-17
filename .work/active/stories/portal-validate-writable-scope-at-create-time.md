@@ -1,7 +1,7 @@
 ---
 id: portal-validate-writable-scope-at-create-time
 kind: story
-stage: implementing
+stage: review
 tags: [portal, ux]
 parent: null
 depends_on: []
@@ -90,3 +90,30 @@ The push-time validation in `internal/portal/prereceive/validate.go`
 should stay as defence in depth — a malformed pattern that somehow gets
 into the database (e.g. a botched migration) is still caught at push
 time. This story closes the front door, not the back.
+
+## Implementation notes
+
+- Added a shared `validateWritableScope(raw string) (msg, ok)` helper in
+  `internal/portal/sessions/handler.go`. It mirrors the existing
+  `parseWritableScope` shape in `internal/portal/prereceive/validate.go` —
+  empty string is deny-all and accepted unchanged, otherwise JSON-unmarshal
+  to `[]string` then call `prereceive.CompileScope`. On any failure the
+  helper returns a human-readable message that becomes the body of a
+  `session.invalid_writable_scope` 400.
+- Wired the helper into `CreateSession` (immediately after the org-member
+  auth check, before the Tx) and into `PatchSession` (alongside the
+  existing `session.scope_narrowing_rejected` check, evaluated first so a
+  malformed widening attempt surfaces as `invalid_writable_scope` rather
+  than masking under the narrowing rule).
+- `docs/PROTOCOL.md > HTTP error contract` now lists
+  `session.invalid_writable_scope` and `session.scope_narrowing_rejected`
+  as 400 business codes.
+- `docs/SPEC.md > Writable scope syntax` rewritten to describe the
+  two-layer (API + push) validation contract. Removed the
+  "currently does not pre-validate" caveat and the backlog cross-ref.
+- New table-driven tests in
+  `internal/portal/sessions/scope_validation_test.go` cover both
+  `CreateSession` and `PatchSession` with malformed (`docs/{`, `[abc`,
+  `{a,b`), well-formed, and empty/deny-all payloads. The patch test also
+  asserts the session row is unchanged on rejection. All 10 sub-tests
+  pass; `go build ./...` clean.

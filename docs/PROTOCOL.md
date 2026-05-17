@@ -381,6 +381,8 @@ Common error codes:
 - `session.not_found`
 - `session.not_member`
 - `session.ended`
+- `session.invalid_writable_scope` (400; `writable_scope` glob failed validation at session-create or session-patch time)
+- `session.scope_narrowing_rejected` (400; `writable_scope` patch removed a pattern present on the existing session)
 - `push.scope_violation` (with `details.paths` listing offenders)
 - `push.ref_namespace_violation`
 - `push.missing_trailer` (with `details.missing` listing absent trailers)
