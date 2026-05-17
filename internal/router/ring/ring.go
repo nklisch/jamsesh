@@ -117,6 +117,52 @@ func (r *Ring) Get(key string) Pod {
 	return snap.pods[podID]
 }
 
+// Pods returns a snapshot of all real pods currently in the ring. The slice is
+// a copy; modifications do not affect the ring. Returns nil when the ring is
+// empty. Safe for concurrent use.
+func (r *Ring) Pods() []Pod {
+	snap := r.ptr.Load()
+	if snap == nil || len(snap.pods) == 0 {
+		return nil
+	}
+	out := make([]Pod, 0, len(snap.pods))
+	for _, p := range snap.pods {
+		out = append(out, p)
+	}
+	return out
+}
+
+// GetNext returns the pod responsible for key that is different from skipID,
+// i.e. the "next" pod in ring order after the one that would normally own key.
+// It is used by the router to find a retry target when the primary pod returns
+// 503. Returns zero Pod when the ring has fewer than two pods or all remaining
+// pods share the same ID as skipID.
+func (r *Ring) GetNext(key, skipID string) Pod {
+	snap := r.ptr.Load()
+	if snap == nil || len(snap.vnodes) == 0 {
+		return Pod{}
+	}
+
+	h := hashKey(key)
+	vs := snap.vnodes
+
+	// Find the starting index (same as Get).
+	start := sort.Search(len(vs), func(i int) bool { return vs[i].hash >= h })
+	if start == len(vs) {
+		start = 0
+	}
+
+	// Walk the ring from start+1 until we find a pod with a different ID.
+	for i := 1; i < len(vs); i++ {
+		idx := (start + i) % len(vs)
+		podID := vs[idx].podID
+		if podID != skipID {
+			return snap.pods[podID]
+		}
+	}
+	return Pod{}
+}
+
 // ── Hash helpers ──────────────────────────────────────────────────────────────
 
 // hashVnode produces a deterministic hash for the i-th virtual node of a pod.

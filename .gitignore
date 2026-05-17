@@ -1,6 +1,9 @@
 # Portal binary (built by go build)
 /portal
 
+# Router binary (built by go build)
+/jamsesh-router
+
 # Frontend build output copied into assets package for go:embed
 # The .gitkeep and .gitignore inside this dir are tracked; build artifacts are not.
 internal/portal/assets/dist/*
