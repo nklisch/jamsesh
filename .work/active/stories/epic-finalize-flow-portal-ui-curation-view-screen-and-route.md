@@ -4,7 +4,7 @@ kind: story
 stage: implementing
 tags: [ui]
 parent: epic-finalize-flow-portal-ui-curation-view
-depends_on: []
+depends_on: [epic-finalize-flow-plan-generation-locks-schema-and-rest, epic-finalize-flow-plan-generation-plan-fetch-and-script, epic-finalize-flow-plan-generation-fetch-token-and-mark-shipped]
 release_binding: null
 gate_origin: null
 created: 2026-05-17
