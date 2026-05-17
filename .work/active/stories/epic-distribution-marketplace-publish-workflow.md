@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-marketplace-publish-workflow
 kind: story
-stage: review
+stage: done
 tags: [infra]
 parent: epic-distribution-marketplace
 depends_on: []
@@ -49,3 +49,9 @@ Add `marketplace` job to release.yml that publishes the plugin to the `jamsesh-c
 - Fixed minor deviation from feature design: CHANGELOG uses prepend (newest-first)
   rather than append, matching standard CHANGELOG conventions.
 - `actionlint` passes clean on the combined workflow file.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Mirror-via-rm+cp keeps source/dist in lockstep mechanically. CHANGELOG newest-first prepend matches standard conventions. Deploy-key auth pattern documented.

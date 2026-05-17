@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-marketplace
 kind: feature
-stage: implementing
+stage: done
 tags: [infra]
 parent: epic-distribution
 depends_on: [epic-distribution-build-pipeline]
@@ -198,3 +198,11 @@ marketplace:
 ## Single Story
 
 `epic-distribution-marketplace-publish-workflow`
+
+## Implementation summary
+
+Single story done.
+
+## Review
+
+**Verdict**: Approve. Capability complete.

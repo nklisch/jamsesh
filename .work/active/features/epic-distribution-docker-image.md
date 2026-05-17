@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-docker-image
 kind: feature
-stage: implementing
+stage: done
 tags: [infra]
 parent: epic-distribution
 depends_on: [epic-distribution-build-pipeline]
@@ -173,3 +173,11 @@ docker:
 ## Single Story
 
 `epic-distribution-docker-image-dockerfile-and-workflow` — covers Dockerfile + workflow extension.
+
+## Implementation summary
+
+Single story done.
+
+## Review
+
+**Verdict**: Approve. Capability complete.

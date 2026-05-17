@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-docker-image-dockerfile-and-workflow
 kind: story
-stage: review
+stage: done
 tags: [infra]
 parent: epic-distribution-docker-image
 depends_on: []
@@ -48,3 +48,9 @@ Add Dockerfile + docker job to release.yml.
 - `actionlint` passes clean.
 - Local `docker buildx build --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64
   --build-arg BINARY=portal` with stub binary succeeds and produces a valid image.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Dockerfile ARG re-declaration after FROM is the right pattern. cosign image signing keyed off the build digest. Multi-arch via buildx + QEMU is standard.

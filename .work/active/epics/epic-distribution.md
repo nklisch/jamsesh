@@ -1,7 +1,7 @@
 ---
 id: epic-distribution
 kind: epic
-stage: implementing
+stage: done
 tags: [infra]
 parent: null
 depends_on: []
@@ -139,3 +139,9 @@ Critical path: `build-pipeline → {docker-image || marketplace}`, with
   setups; config-flag changes without doc updates cause real outages.
   Mitigation: tested-quickstart CI job keeps the install steps honest;
   the gate-docs skill at release-deploy time catches drift.
+
+## Final review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: All 4 child features done: build-pipeline (release.yml with 10-target matrix + cosign + SLSA + SBOM), self-host-docs (README + SELF_HOST.md + quickstart-ci), docker-image (distroless + ghcr), marketplace (publish workflow). Six epics now at done.
