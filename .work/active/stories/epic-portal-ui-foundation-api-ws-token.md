@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-foundation-api-ws-token
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-portal-ui-foundation
 depends_on: [epic-portal-ui-foundation-vite-svelte-routing]
@@ -67,3 +67,43 @@ persists it to localStorage.
 - Token refresh flow (using `auth.refresh` to fetch a new access
   token on 401) is OUT OF SCOPE for this story — it's a follow-up
   triage item once `/api/auth/refresh` exists.
+
+## Implementation notes
+
+### Files delivered
+
+- `frontend/src/lib/api/client.ts` — `openapi-fetch` client with Bearer
+  middleware reading `auth.token` at request time. Uses a `lateFetch`
+  wrapper (`(...args) => globalThis.fetch(...args)`) so `vi.spyOn` works
+  in tests (openapi-fetch captures `baseFetch` at `createClient()` time;
+  the wrapper defers the lookup to call time). `baseUrl` is derived from
+  `window.location.origin` so relative paths work in both production
+  (same-origin) and jsdom tests (`http://localhost:3000`).
+- `frontend/src/lib/auth.svelte.ts` — rune-based auth store using the
+  wrapper-object pattern (Svelte 5 prohibits `export const x = $derived(…)`).
+  Persists to localStorage under `jamsesh.token` / `jamsesh.refresh`.
+  `loadCurrentUser` is a no-op TODO pending `epic-portal-foundation-accounts`.
+- `frontend/src/lib/ws.svelte.ts` — WebSocket subscription manager. One
+  socket per sessionId; subsequent subscribes reuse the connection.
+  Authenticates via `Sec-WebSocket-Protocol: jamsesh.bearer.<token>`.
+  `EventEnvelope` typed as `{ type: string; [key: string]: unknown }` locally;
+  when `EventEnvelope` lands in the OpenAPI spec, swap the local alias for
+  `components['schemas']['EventEnvelope']` — no API surface changes needed.
+
+### Test notes
+
+- 3 tests for `client.ts`, 7 for `auth.svelte.ts`, 11 for `ws.svelte.ts` = 21
+  total, all green.
+- `ws.test.ts` uses `vi.stubGlobal('WebSocket', MockWebSocket)` with a
+  synchronous mock class that lets tests trigger `message`/`close` events
+  directly.
+- `auth.test.ts` uses `vi.doMock` + `vi.resetModules()` per test so rune
+  state starts fresh; `navigate` from the router is mocked per test.
+
+### Pre-existing issues (not in scope)
+
+- `svelte-check` reports 21 errors in `src/lib/components/*.test.ts` (Badge,
+  Button, Card, InlineCode) — all passing `children: () => 'string'` where
+  Svelte 5 requires a `Snippet` value. These are sibling design-system story
+  bugs. The `epic-portal-ui-design-system-tokens-and-components` review should
+  address them before those tests are promoted to CI gates.
