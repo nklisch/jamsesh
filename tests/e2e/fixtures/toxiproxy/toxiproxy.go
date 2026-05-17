@@ -32,6 +32,12 @@ type Toxiproxy struct {
 	// e.g. "http://localhost:PORT". Use it to create proxies and inject toxics.
 	AdminURL string
 
+	// ContainerIP is the Docker bridge network IP of the Toxiproxy container.
+	// Use this when configuring another Docker container (e.g. the portal
+	// fixture) to connect through a proxy — from inside Docker the host-mapped
+	// port is not reachable but the bridge IP is.
+	ContainerIP string
+
 	container testcontainers.Container
 }
 
@@ -70,9 +76,15 @@ func Start(ctx context.Context, t *testing.T) *Toxiproxy {
 		t.Fatalf("toxiproxy: get port: %v", err)
 	}
 
+	containerIP, err := c.ContainerIP(ctx)
+	if err != nil {
+		t.Fatalf("toxiproxy: get container IP: %v", err)
+	}
+
 	return &Toxiproxy{
-		AdminURL:  fmt.Sprintf("http://%s:%d", host, mappedPort.Num()),
-		container: c,
+		AdminURL:    fmt.Sprintf("http://%s:%d", host, mappedPort.Num()),
+		ContainerIP: containerIP,
+		container:   c,
 	}
 }
 

@@ -117,6 +117,15 @@ func requireDocker(t *testing.T) {
 	}
 }
 
+// Stop stops the MailHog container without removing it. It is safe to call
+// multiple times. The t.Cleanup registered by Start will still call
+// TerminateContainer (which is a no-op on an already-stopped container).
+// Stop is used by failure-mode tests that need to simulate SMTP unavailability
+// mid-test.
+func (m *MailHog) Stop(ctx context.Context) error {
+	return m.container.Stop(ctx, nil)
+}
+
 // CheckReachable performs a quick HTTP GET against the MailHog API to verify
 // it is reachable. Returns a non-nil error if it is not.
 func (m *MailHog) CheckReachable() error {

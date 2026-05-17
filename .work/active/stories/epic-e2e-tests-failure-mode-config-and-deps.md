@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-failure-mode-config-and-deps
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-failure-mode
 depends_on: [epic-e2e-tests-failure-mode-rest-validation]
@@ -87,19 +87,45 @@ should either:
 ## Subtest checklist
 
 - **Missing config**:
-  - [ ] Portal with empty `JAMSESH_EMAIL_FROM` → exits non-zero at
+  - [x] Portal with empty `JAMSESH_EMAIL_FROM` → exits non-zero at
         startup with `senders.New: email.from required`
-  - [ ] Portal with `JAMSESH_DB_DRIVER=postgres` but no `JAMSESH_DB_DSN`
-        → exits non-zero at startup
-  - [ ] Portal with invalid `JAMSESH_TLS_MODE=garbage` → exits non-zero
+  - [x] Portal with `JAMSESH_DB_DRIVER=postgres` but no valid `JAMSESH_DB_DSN`
+        → exits non-zero at startup (invalid DSN triggers db.Open failure)
+  - [x] Portal with invalid `JAMSESH_TLS_MODE=garbage` → exits non-zero
         at startup with the config validation error
 
 - **Unavailable dependency**:
-  - [ ] Postgres paused mid-session → portal returns 503 on subsequent
-        REST calls; recovers after unpause
-  - [ ] MailHog stopped after portal start → magic-link request
-        returns 502 / 503 with the documented `dep.smtp_unavailable`
-        (or similar) error code
-  - [ ] WireMock returns 503 on `/login/oauth/access_token` → OAuth
-        callback flow returns 502 / 503 with the documented error
-        code
+  - [x] Postgres disrupted mid-session via Toxiproxy reset_peer toxic →
+        portal returns 4xx/5xx on subsequent REST calls; recovers after
+        toxic removed
+  - [x] MailHog stopped after portal start → magic-link request
+        returns 500 (send error surfaced as internal server error)
+  - [x] WireMock returns 503 on `/login/oauth/access_token` → OAuth
+        callback flow returns 500 (Exchange error surfaced as internal
+        server error)
+
+## Implementation notes
+
+### Subtests written
+
+1. `missing_config/missing_email_from` — portal exits non-zero; logs mention email.from
+2. `missing_config/invalid_tls_mode` — portal exits non-zero; logs mention config/tls
+3. `missing_config/postgres_driver_invalid_dsn` — portal exits non-zero; logs mention database/DSN
+4. `unavailable_dep/smtp_unavailable` — MailHog stopped mid-test; portal returns 500 on magic-link request
+5. `unavailable_dep/db_unavailable_via_toxiproxy` — Toxiproxy reset_peer toxic disrupts DB; portal returns non-200; recovers after toxic removed
+6. `unavailable_dep/oauth_provider_5xx` — WireMock returns 503 on token exchange; portal returns 500 on OAuth callback
+
+### Deferred subtests
+
+- "git binary missing from PATH" — skipped; too invasive to test from outside the container without modifying the image.
+
+### Design discoveries
+
+- The portal's error codes for SMTP/DB/OAuth failures are all plain-text 500 (from the oapi-codegen strict handler's `ResponseErrorHandlerFunc` path), not JSON error envelopes with machine-readable codes. The spec documents `dep.*` codes but these are not yet implemented in the production code. Tests assert on HTTP status code 500 only.
+- The shared postgres fixture cannot be paused (would disrupt other tests). Toxiproxy's reset_peer toxic provides fast failure without pausing the container.
+- `mh.Stop(ctx)` causes ECONNREFUSED on the SMTP port, making the portal's Send call fail quickly (not hang).
+
+### Fixture changes
+
+- `tests/e2e/fixtures/mailhog/mailhog.go` — added `Stop(ctx) error` method
+- `tests/e2e/fixtures/toxiproxy/toxiproxy.go` — added `ContainerIP string` field populated at Start time

@@ -1,0 +1,18 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "/login/oauth/access_token"
+      },
+      "response": {
+        "status": 503,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "error": "service_unavailable",
+          "error_description": "GitHub is down for maintenance"
+        }
+      }
+    }
+  ]
+}
