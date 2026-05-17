@@ -1,14 +1,14 @@
 ---
 id: epic-portal-api-mcp-endpoint
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-api-events-log, epic-portal-api-sessions-rest, epic-portal-api-comments-rest, epic-portal-foundation-tokens, epic-portal-foundation-http-skeleton, epic-portal-git-storage]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Portal API — MCP Endpoint
@@ -112,5 +112,142 @@ auth-flows). Does NOT cover the actual comment/session state mutations
   tool (`query_session_state` is simplest) end-to-end with the SDK,
   confirm auth and dispatch work, THEN design the other three.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+## Design decisions
+
+- **SDK**: `github.com/modelcontextprotocol/go-sdk` v1.x per the auto-loaded `mcp-go-sdk` skill.
+- **Package**: `internal/portal/mcpendpoint/`.
+- **Auth via `NewStreamableHTTPHandler` callback**: `getServer(r *http.Request) *mcp.Server` — extract Bearer token, validate via tokens.Service, return a per-request mcp.Server with the account captured.
+- **Tool routing**: each tool closure captures `account`. session_id from tool args → membership check via Store → delegate to library functions:
+  - post_comment → `comments.Service.Create`
+  - resolve_comment → `comments.Service.Resolve`
+  - fork → server-side ref creation (this feature owns the impl since no other feature has it)
+  - query_session_state → assembles from sessions.Service + comments.Service + events.Log
+- **ref_modes for fork**: reuse the `ref_modes` table from sessions-rest. fork upserts the row.
+- **Single story**: cohesive feature.
+
+## Implementation Units
+
+### Unit 1: Scaffold + auth callback
+
+**File**: `internal/portal/mcpendpoint/handler.go`
+**Story**: `epic-portal-api-mcp-endpoint-scaffold-and-tools`
+
+```go
+package mcpendpoint
+
+import (
+    "context"
+    "net/http"
+
+    "github.com/modelcontextprotocol/go-sdk/mcp"
+
+    "jamsesh/internal/db/store"
+    "jamsesh/internal/portal/comments"
+    "jamsesh/internal/portal/events"
+    "jamsesh/internal/portal/storage"
+    "jamsesh/internal/portal/tokens"
+)
+
+type Endpoint struct {
+    Store          store.Store
+    Tokens         tokens.Service
+    Storage        storage.Service
+    Log            *events.Log
+    Comments       *comments.Service
+}
+
+func (e *Endpoint) Handler() http.Handler {
+    return mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+        // Auth
+        authz := r.Header.Get("Authorization")
+        const prefix = "Bearer "
+        if !strings.HasPrefix(authz, prefix) { return nil }
+        token := strings.TrimPrefix(authz, prefix)
+        account, err := e.Tokens.Validate(r.Context(), token)
+        if err != nil { return nil }
+        
+        // Build per-request server with tools capturing account
+        s := mcp.NewServer(&mcp.Implementation{Name: "jamsesh", Version: "0.1"}, nil)
+        e.registerTools(s, account)
+        return s
+    }, nil)
+}
+
+func (e *Endpoint) registerTools(s *mcp.Server, account *store.Account) {
+    // 4 tools
+}
+```
+
+### Unit 2-5: Tool implementations
+
+Per parent feature body. Each tool:
+1. Decode params (typed struct)
+2. Verify session membership via `GetSessionMember(orgID, sessionID, account.ID)` — but the tool only has sessionID. The orgID comes from listing memberships: walk `ListSessionMembershipsForAccount(account.ID)`, find matching sessionID, extract orgID; if not found → permission error
+3. Delegate to library:
+   - post_comment → `Comments.Create(ctx, params)`
+   - resolve_comment → `Comments.Resolve(ctx, ...)`
+   - fork → create ref under `refs/heads/jam/<sessionID>/<account.ID>/<branch>` pointing at target_commit; upsert ref_modes; emit `ref.forked` event
+   - query_session_state → assemble {goal, scope, draft_tip, unresolved_comments, open_conflicts, recent_events} per default includes
+
+### fork implementation
+
+```go
+func (e *Endpoint) doFork(ctx, account *store.Account, orgID, sessionID, targetCommit, targetRef string, mode string) (forkResult, error) {
+    repo, err := openRepo(e.Storage, orgID, sessionID)
+    if err != nil { return ... }
+    
+    // Verify target commit exists
+    targetHash := plumbing.NewHash(targetCommit)
+    if _, err := repo.CommitObject(targetHash); err != nil { return ..., "target commit not found" }
+    
+    // Compute ref name: refs/heads/jam/<sessionID>/<account.ID>/<branch>
+    branch := targetRef
+    if branch == "" { branch = "fork-" + targetCommit[:7] }
+    refName := plumbing.NewBranchReferenceName(fmt.Sprintf("jam/%s/%s/%s", sessionID, account.ID, branch))
+    
+    // Create ref
+    ref := plumbing.NewHashReference(refName, targetHash)
+    if err := repo.Storer.SetReference(ref); err != nil { return ... }
+    
+    // Upsert mode
+    if mode == "" { mode = "sync" }  // default
+    e.Store.UpsertRefMode(ctx, store.UpsertRefModeParams{SessionID: sessionID, Ref: refName.String(), Mode: mode})
+    
+    // Emit ref.forked event
+    payload := openapi.RefForkedPayload{ParentSha: targetCommit, NewRef: refName.String(), Mode: mode}
+    data, _ := json.Marshal(payload)
+    e.Log.Emit(ctx, orgID, sessionID, "ref.forked", data)
+    
+    return forkResult{Ref: refName.String(), Sha: targetCommit}, nil
+}
+```
+
+### query_session_state
+
+Aggregate:
+- session (sessions.Service.Get)
+- unresolved comments addressed_to caller (comments.Service.List with addressed_to filter = account.Email)
+- open conflict events addressed_to caller (Store.ListOpenConflictEventsForSession + filter by addressed_to)
+- recent events since since_seq (events.Log.ListSince)
+
+Return as a typed struct.
+
+## Implementation Order
+
+Single story.
+
+## go.mod additions
+
+- `github.com/modelcontextprotocol/go-sdk@latest`
+
+## Testing
+
+- httptest server + mcp client (the SDK provides one) — call each tool
+- Auth: bad token → SDK returns 401
+- Non-member session → permission error from tool
+- Each tool's happy path
+- query_session_state: assembled response shape
+
+## Risks
+
+- **SDK API churn**: the SDK is pre-1.0; specific function signatures may shift. The `mcp-go-sdk` skill carries the verified API surface — use it as canonical.
