@@ -1,7 +1,7 @@
 ---
 id: dev-docker-compose
 kind: feature
-stage: review
+stage: done
 tags: [infra]
 parent: null
 depends_on: []
@@ -335,3 +335,25 @@ Verification: `go build ./...` clean, `wsgateway` tests green,
 `curl /healthz` returned `{"status":"ok"}`, `.go` file edits triggered
 air rebuilds within ~5s. The Vite WS criterion is manual-verify (requires
 a browser).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none (per-line concerns already filed during child reviews)
+
+**Notes**: Both child stories already reviewed individually (setup: Approve
+with comments, 2 backlog items filed; docs: Approve). Capability check
+against the feature's "What done looks like": `docker compose up` brings
+the portal up on :8443 (story corrected the brief's :8080 typo); `.go`
+edits trigger rebuilds via air; `make dev-down-v` cleans the data volume;
+the README documents the contributor path; the operator's `make build`
+flow is unaffected. The realized decomposition matches the design (two
+linear waves, setup → docs). Cross-cutting foundation-doc gap
+(`JAMSESH_WS_ALLOW_ORIGINS` missing from `docs/SELF_HOST.md`) was already
+captured during setup's review — not refiling.
+
+Now possible: `git clone && docker compose up` is the new front door for
+contributors. Onboarding friction drops from "read CLAUDE.md, run several
+commands in the right order" to "two commands, two terminals".
