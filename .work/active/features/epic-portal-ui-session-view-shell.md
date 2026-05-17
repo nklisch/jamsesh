@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-session-view-shell
 kind: feature
-stage: implementing
+stage: done
 tags: [ui]
 parent: epic-portal-ui
 depends_on: [epic-portal-ui-foundation, epic-portal-ui-design-system]
@@ -133,3 +133,11 @@ Does NOT cover: the artifact viewer or inline comments
 ### Unit 4: Routing
 
 `App.svelte` route `/orgs/<orgID>/sessions/<sessionID>` → SessionViewShell.
+
+## Implementation summary
+
+Single child story done. Capability complete.
+
+## Review
+
+**Verdict**: Approve.

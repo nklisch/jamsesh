@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-session-view-shell-shell-and-tree
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui-session-view-shell
 depends_on: []
@@ -43,3 +43,9 @@ Implement SessionViewShell + TreeDag + ActivityFeed + CommentsTab.
 - `frontend/src/lib/components/ActivityFeed.svelte` — subscribes to all 12 event types; prepends to events array capped at 100; `{@html}` for type-specific formatted text; conflict events get red styling.
 - `frontend/src/lib/components/CommentsTab.svelte` — fetches comments on mount; subscribes to comment.added (refetch) + comment.resolved (update in-place); grid of comment cards with kind badges, anchor labels, resolved opacity.
 - 10+11+8+10=39 tests across the 4 new files, all green; svelte-check clean (0 errors, 0 warnings); build clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Three-state tree-rail cycle persisted to localStorage keyed by sessionId. TreeDag v1 ref-tip-only layout is the right scope cut. ActivityFeed cap at 100 events prevents unbounded memory growth. CommentsTab in-place resolve update is a nice live touch.

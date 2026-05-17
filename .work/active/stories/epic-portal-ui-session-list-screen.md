@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-session-list-screen
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui-session-list
 depends_on: []
@@ -44,3 +44,9 @@ Implement the SessionList screen + NewSessionDrawer; wire into routing.
 - `frontend/src/lib/components/NewSessionDrawer.svelte` — right-side drawer overlay; form fields: name, goal, scope (comma-sep globs → JSON array), default_mode toggle (sync/isolated); `POST /api/orgs/{orgID}/sessions`; emits `oncreated(session)` on success; closes on `onclose()` / Escape / backdrop click.
 - `frontend/src/App.svelte` — replaced `SessionsLanding` import with `SessionList`; removed `Chrome` placeholder for session-view, replaced with `SessionViewShell`.
 - 13 tests green; svelte-check clean; build clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Three-zone Chrome+List+Drawer composition matches the mock. WS subscribe-per-session is wasteful but acceptable for v1; documented. NewSessionDrawer scope-string-to-JSON-array parser is the right v1 simplification.

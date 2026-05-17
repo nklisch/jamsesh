@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-session-list
 kind: feature
-stage: implementing
+stage: done
 tags: [ui]
 parent: epic-portal-ui
 depends_on: [epic-portal-ui-foundation, epic-portal-ui-design-system]
@@ -106,3 +106,11 @@ Form modal: name, goal, scope (textarea comma-sep globs → JSON array), default
 - Filter chip filters work
 - New session drawer submits + prepends new session
 - Live WS event updates row in place
+
+## Implementation summary
+
+Single child story done. Capability complete.
+
+## Review
+
+**Verdict**: Approve.
