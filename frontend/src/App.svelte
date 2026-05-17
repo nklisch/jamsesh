@@ -4,6 +4,7 @@
   import Login from '$lib/screens/Login.svelte';
   import SessionList from '$lib/screens/SessionList.svelte';
   import SessionViewShell from '$lib/screens/SessionViewShell.svelte';
+  import FinalizeView from '$lib/screens/FinalizeView.svelte';
   import NotFound from '$lib/screens/NotFound.svelte';
 
   // Auth gate: any non-login route requires authentication.
@@ -19,6 +20,11 @@
   <Login />
 {:else if current.name === 'sessions'}
   <SessionList orgId={current.params.orgId} />
+{:else if current.name === 'finalize'}
+  <FinalizeView
+    orgId={current.params.orgId}
+    sessionId={current.params.sessionId}
+  />
 {:else if current.name === 'session-view'}
   <SessionViewShell
     orgId={current.params.orgId}

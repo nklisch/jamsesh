@@ -33,6 +33,13 @@ describe('router — pattern matching', () => {
     expect(current.params).toEqual({ orgId: 'acme', sessionId: 'sess-42' });
   });
 
+  test('matches /orgs/:orgId/sessions/:sessionId/finalize (more specific than session-view)', async () => {
+    const { navigate, current } = await import('./router.svelte');
+    navigate('/orgs/acme/sessions/sess-42/finalize');
+    expect(current.name).toBe('finalize');
+    expect(current.params).toEqual({ orgId: 'acme', sessionId: 'sess-42' });
+  });
+
   test('decodes percent-encoded params', async () => {
     const { navigate, current } = await import('./router.svelte');
     navigate('/orgs/my%20org/sessions');

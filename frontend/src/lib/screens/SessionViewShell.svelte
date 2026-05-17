@@ -173,7 +173,11 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="header-btn" aria-label="Finalize session">Finalize</button>
+        <button
+          class="header-btn"
+          aria-label="Finalize session"
+          onclick={() => navigate(`/orgs/${orgId}/sessions/${sessionId}/finalize`)}
+        >Finalize</button>
       </div>
     </div>
 

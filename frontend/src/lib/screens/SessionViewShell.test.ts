@@ -172,6 +172,18 @@ describe('SessionViewShell', () => {
     });
   });
 
+  it('navigates to the finalize route when the Finalize header button is clicked', async () => {
+    render(SessionViewShell, { props: { orgId: 'org-1', sessionId: 'sess-1' } });
+
+    await waitFor(() => {
+      const btn = screen.getByRole('button', { name: /finalize session/i });
+      expect(btn).toBeInTheDocument();
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: /finalize session/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/orgs/org-1/sessions/sess-1/finalize');
+  });
+
   it('navigates to sessions list when breadcrumb org link is clicked', async () => {
     render(SessionViewShell, { props: { orgId: 'org-1', sessionId: 'sess-1' } });
 

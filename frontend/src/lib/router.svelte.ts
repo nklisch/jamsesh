@@ -4,9 +4,12 @@
 type Route = { pattern: RegExp; name: string; params: string[] };
 
 const routes: Route[] = [
-  { pattern: /^\/login$/,                                    name: 'login',        params: [] },
-  { pattern: /^\/orgs\/([^/]+)\/sessions$/,                  name: 'sessions',     params: ['orgId'] },
-  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)$/,         name: 'session-view', params: ['orgId', 'sessionId'] },
+  { pattern: /^\/login$/,                                              name: 'login',        params: [] },
+  { pattern: /^\/orgs\/([^/]+)\/sessions$/,                            name: 'sessions',     params: ['orgId'] },
+  // `finalize` must come BEFORE `session-view` so the more specific
+  // pattern wins under first-match semantics.
+  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/finalize$/,         name: 'finalize',     params: ['orgId', 'sessionId'] },
+  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)$/,                   name: 'session-view', params: ['orgId', 'sessionId'] },
 ];
 
 function match(path: string): { name: string; params: Record<string, string> } {
