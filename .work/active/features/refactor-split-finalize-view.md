@@ -1,7 +1,7 @@
 ---
 id: refactor-split-finalize-view
 kind: feature
-stage: drafting
+stage: implementing
 tags: [refactor, ui]
 parent: null
 depends_on: []
@@ -91,3 +91,10 @@ polling races, plan freshness). Mitigations:
 Children are listed in implementation order, but the depends_on chain is
 linear — each story depends on the previous so the orchestrator's prop
 surface stabilizes incrementally.
+
+## Design decision (autopilot)
+
+Stage advanced `drafting → implementing` directly without invoking
+`refactor-design` per-feature mode. Feature was emitted by discovery
+mode with full body, target shape, acceptance, and chained child stories.
+Per-feature mode would re-design content already present in the children.

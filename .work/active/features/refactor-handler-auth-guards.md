@@ -1,7 +1,7 @@
 ---
 id: refactor-handler-auth-guards
 kind: feature
-stage: drafting
+stage: implementing
 tags: [refactor, portal]
 parent: null
 depends_on: []
@@ -106,3 +106,12 @@ level catches any regression in response shape (error codes/messages).
 2. `refactor-handler-auth-guards-comments` — migrate `internal/portal/comments/handlers.go`
 3. `refactor-handler-auth-guards-accounts-tokens` — migrate
    `internal/portal/accounts/handlers.go` and `internal/portal/tokens/handlers.go`
+
+## Design decision (autopilot)
+
+Stage advanced `drafting → implementing` directly without invoking
+`refactor-design` per-feature mode. This feature was emitted by
+`refactor-design` discovery mode in the prior step — the body, target
+shape, acceptance criteria, and child stories with `depends_on` chains are
+all in place. Per-feature mode would mostly re-write content already
+present in the children's bodies. Children are ready to be worked.

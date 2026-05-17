@@ -1,7 +1,7 @@
 ---
 id: refactor-svelte-modal-component
 kind: feature
-stage: drafting
+stage: implementing
 tags: [refactor, ui]
 parent: null
 depends_on: []
@@ -113,3 +113,10 @@ before migrating consumers.
 1. `refactor-svelte-modal-component-define` — write `<Modal>` + its test
 2. `refactor-svelte-modal-component-migrate-dialogs` — migrate ForkDialog
    and ModeSwitchDialog
+
+## Design decision (autopilot)
+
+Stage advanced `drafting → implementing` directly without invoking
+`refactor-design` per-feature mode. Feature was emitted by discovery
+mode with full body, target shape, acceptance, and chained child stories.
+Per-feature mode would re-design content already present in the children.
