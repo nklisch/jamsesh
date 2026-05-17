@@ -1,7 +1,7 @@
 ---
 id: portal-validate-writable-scope-at-create-time
 kind: story
-stage: review
+stage: done
 tags: [portal, ux]
 parent: null
 depends_on: []
@@ -117,3 +117,28 @@ time. This story closes the front door, not the back.
   `{a,b`), well-formed, and empty/deny-all payloads. The patch test also
   asserts the session row is unchanged on rejection. All 10 sub-tests
   pass; `go build ./...` clean.
+
+## Review
+
+**Verdict:** Approve.
+
+- Helper `validateWritableScope` mirrors `prereceive.parseWritableScope`
+  (empty → deny-all, JSON-unmarshal then `prereceive.CompileScope`) and
+  reuses the production compiler, so API-time and push-time accept
+  exactly the same set of globs. No duplicated validation logic to drift.
+- `CreateSession` invokes the helper after the org-member auth check and
+  before the Tx — malformed payloads are rejected before any DB write.
+- `PatchSession` invokes the helper before `isScopeNarrowing`, so a
+  malformed widening surfaces as `session.invalid_writable_scope` rather
+  than masking under `session.scope_narrowing_rejected`. Correct ordering.
+- Error envelope shape matches the existing `scope_narrowing_rejected`
+  pattern (`openapi.ErrorEnvelope{Error, Message}` via the typed 400
+  response). Patch test re-fetches the row and confirms no mutation on
+  rejection.
+- `docs/SPEC.md > Writable scope syntax` and `docs/PROTOCOL.md > HTTP
+  error contract` are rolled-forward in place — no "previously was"
+  prose, the two-layer contract reads as the current truth.
+- `go test ./internal/portal/sessions/... ./internal/portal/prereceive/...`
+  passes; `go build ./...` clean.
+
+**Findings:** 0 blockers, 0 important, 0 nits.
