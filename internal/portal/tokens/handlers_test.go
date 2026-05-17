@@ -98,6 +98,12 @@ func (t *tokensOnlyHandler) AcceptSessionInvite(_ context.Context, _ openapi.Acc
 func (t *tokensOnlyHandler) RemoveSessionMember(_ context.Context, _ openapi.RemoveSessionMemberRequestObject) (openapi.RemoveSessionMemberResponseObject, error) {
 	panic("RemoveSessionMember: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
+	panic("ListComments: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) ResolveComment(_ context.Context, _ openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
+	panic("ResolveComment: not implemented in token handler tests")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

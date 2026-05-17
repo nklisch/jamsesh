@@ -903,6 +903,91 @@ components:
           type: string
           description: Raw invite token from the email link query parameter
 
+    # ---------------------------------------------------------------------------
+    # Comments schemas
+    # ---------------------------------------------------------------------------
+
+    CommentKind:
+      type: string
+      enum: [question, suggestion, action-request, fyi]
+      description: Structured kind of comment
+
+    Comment:
+      type: object
+      required: [id, session_id, author_id, author_kind, anchor, body, kind, created_at]
+      description: A comment anchored to a commit in a session.
+      properties:
+        id:
+          type: string
+          description: Comment ID (ULID)
+          example: "01926e42-0000-7000-a000-000000000030"
+        session_id:
+          type: string
+          description: Session the comment belongs to
+          example: "01926e42-0000-7000-a000-000000000010"
+        author_id:
+          type: string
+          description: Account ID of the comment author
+          example: "01926e42-0000-7000-a000-000000000000"
+        author_kind:
+          type: string
+          enum: [human, agent]
+          description: Whether the author is a human or an agent
+        anchor:
+          $ref: '#/components/schemas/CommentAnchor'
+        body:
+          type: string
+          description: Comment body in markdown
+        addressed_to:
+          type: string
+          nullable: true
+          description: Addressing token (e.g. "@user", "@user/branch", "@all-agents")
+        kind:
+          $ref: '#/components/schemas/CommentKind'
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp of creation
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO-8601 timestamp when resolved; null if open
+        resolved_by:
+          type: string
+          nullable: true
+          description: Account ID of resolver; null if open
+        resolution_note:
+          type: string
+          nullable: true
+          description: Optional resolution note
+
+    CommentListResponse:
+      type: object
+      required: [items]
+      description: Cursor-paginated list of comments.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+          description: Comments on this page, ordered by created_at DESC
+        next_cursor:
+          type: string
+          nullable: true
+          description: |
+            Opaque cursor token. Pass as `cursor` query parameter to fetch the
+            next page. Absent or null when there are no more pages.
+
+    ResolveCommentRequest:
+      type: object
+      description: Request body for resolving a comment.
+      properties:
+        resolution_note:
+          type: string
+          nullable: true
+          description: Optional resolution note
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -1652,3 +1737,143 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/comments:
+    get:
+      summary: List comments in a session, cursor-paginated, with optional filters
+      operationId: listComments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Opaque cursor from a previous response's next_cursor field.
+            Omit to start from the first page.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Maximum number of comments to return per page
+        - name: addressed_to
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring filter on the addressed_to field
+        - name: kind
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/CommentKind'
+          description: Filter by comment kind (exact match)
+        - name: resolved
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+          description: |
+            Filter by resolved status. "true" = resolved only; "false" = unresolved only;
+            absent = all comments.
+        - name: anchor_commit_sha
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by anchor commit SHA (exact match)
+        - name: anchor_file_path
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by anchor file path (exact match)
+      responses:
+        '200':
+          description: Paginated comment list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentListResponse'
+        '400':
+          description: Invalid or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve:
+    post:
+      summary: Mark a comment as resolved with an optional resolution note
+      operationId: resolveComment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Comment ID
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveCommentRequest'
+      responses:
+        '200':
+          description: Comment resolved; returns updated comment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Comment already resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'

@@ -159,6 +159,12 @@ func (m *magicLinkOnlyStrict) AcceptSessionInvite(_ context.Context, _ openapi.A
 func (m *magicLinkOnlyStrict) RemoveSessionMember(_ context.Context, _ openapi.RemoveSessionMemberRequestObject) (openapi.RemoveSessionMemberResponseObject, error) {
 	panic("RemoveSessionMember: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
+	panic("ListComments: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) ResolveComment(_ context.Context, _ openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
+	panic("ResolveComment: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

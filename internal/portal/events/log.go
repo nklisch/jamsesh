@@ -85,6 +85,15 @@ func (l *Log) Subscribe(typeFilter string) (<-chan Event, func()) {
 	return ch, unsubscribe
 }
 
+// FanOut delivers a pre-built event to all subscribers. It is intended for
+// callers that handle DB persistence themselves (e.g. the comments service
+// which inserts the event row inside its own transaction). Sends are
+// non-blocking; subscribers that are full receive a Warn log and the event is
+// dropped.
+func (l *Log) FanOut(e Event) {
+	l.fanOut(e)
+}
+
 // fanOut delivers e to all subscribers whose filter matches. Sends are
 // non-blocking; subscribers that are full receive a Warn log and the event is
 // dropped.

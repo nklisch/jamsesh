@@ -30,6 +30,7 @@ type Querier interface {
 	GetAccountByGitHubUserID(ctx context.Context, githubUserID sql.NullString) (Account, error)
 	GetAccountByID(ctx context.Context, id string) (Account, error)
 	GetArchivedSession(ctx context.Context, arg GetArchivedSessionParams) (ArchivedSession, error)
+	GetCommentByID(ctx context.Context, id string) (Comment, error)
 	GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error)
 	GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error)
 	GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OauthToken, error)
@@ -44,11 +45,13 @@ type Querier interface {
 	GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error)
 	GetSessionMember(ctx context.Context, arg GetSessionMemberParams) (SessionMember, error)
 	InsertArchivedSession(ctx context.Context, arg InsertArchivedSessionParams) error
+	InsertComment(ctx context.Context, arg InsertCommentParams) error
 	InsertConflictEvent(ctx context.Context, arg InsertConflictEventParams) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) error
 	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
 	InsertOrgInvite(ctx context.Context, arg InsertOrgInviteParams) (OrgInvite, error)
 	InsertSessionInvite(ctx context.Context, arg InsertSessionInviteParams) (SessionInvite, error)
+	ListCommentsForSession(ctx context.Context, arg ListCommentsForSessionParams) ([]Comment, error)
 	ListEventsSince(ctx context.Context, arg ListEventsSinceParams) ([]Event, error)
 	ListEventsSinceForDigest(ctx context.Context, arg ListEventsSinceForDigestParams) ([]Event, error)
 	ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OauthToken, error)
@@ -73,6 +76,7 @@ type Querier interface {
 	MarkSessionInviteAccepted(ctx context.Context, arg MarkSessionInviteAcceptedParams) error
 	RemoveOrgMember(ctx context.Context, arg RemoveOrgMemberParams) error
 	RemoveSessionMember(ctx context.Context, arg RemoveSessionMemberParams) error
+	ResolveComment(ctx context.Context, arg ResolveCommentParams) error
 	RevokeAllOAuthTokensForAccount(ctx context.Context, arg RevokeAllOAuthTokensForAccountParams) error
 	RevokeOAuthToken(ctx context.Context, arg RevokeOAuthTokenParams) error
 	SetFinalizeLock(ctx context.Context, arg SetFinalizeLockParams) error

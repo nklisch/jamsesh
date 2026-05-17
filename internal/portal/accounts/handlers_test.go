@@ -135,6 +135,12 @@ func (a *accountsOnlyStrict) AcceptSessionInvite(_ context.Context, _ openapi.Ac
 func (a *accountsOnlyStrict) RemoveSessionMember(_ context.Context, _ openapi.RemoveSessionMemberRequestObject) (openapi.RemoveSessionMemberResponseObject, error) {
 	panic("RemoveSessionMember: not wired in accounts tests")
 }
+func (a *accountsOnlyStrict) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
+	panic("ListComments: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) ResolveComment(_ context.Context, _ openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
+	panic("ResolveComment: not wired in accounts tests")
+}
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 

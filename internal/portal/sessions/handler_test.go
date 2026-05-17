@@ -122,6 +122,12 @@ func (h *sessionsOnlyStrict) CreateOrgInvite(_ context.Context, _ openapi.Create
 func (h *sessionsOnlyStrict) AcceptOrgInvite(_ context.Context, _ openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
 	panic("not wired")
 }
+func (h *sessionsOnlyStrict) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
+	panic("not wired")
+}
+func (h *sessionsOnlyStrict) ResolveComment(_ context.Context, _ openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*sessionsOnlyStrict)(nil)
 

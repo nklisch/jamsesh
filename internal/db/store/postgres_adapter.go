@@ -1619,3 +1619,163 @@ func pgConflictEvent(r pgstore.ConflictEvent) ConflictEvent {
 		ResolvedAt:         pgTimestamptzToPtr(r.ResolvedAt),
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CommentStore (outer adapter)
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) InsertComment(ctx context.Context, p InsertCommentParams) error {
+	return mapPostgresErr(a.q.InsertComment(ctx, pgInsertCommentParams(p)))
+}
+
+func (a *postgresAdapter) GetCommentByID(ctx context.Context, id string) (Comment, error) {
+	row, err := a.q.GetCommentByID(ctx, id)
+	if err != nil {
+		return Comment{}, mapPostgresErr(err)
+	}
+	return pgComment(row), nil
+}
+
+func (a *postgresAdapter) ResolveComment(ctx context.Context, p ResolveCommentParams) error {
+	return mapPostgresErr(a.q.ResolveComment(ctx, pgstore.ResolveCommentParams{
+		ID:                  p.ID,
+		SessionID:           p.SessionID,
+		ResolvedAt:          pgtype.Timestamptz{Time: p.ResolvedAt, Valid: true},
+		ResolvedByAccountID: pgtype.Text{String: p.ResolvedByAccountID, Valid: true},
+		ResolutionNote:      ptrToPgText(p.ResolutionNote),
+	}))
+}
+
+func (a *postgresAdapter) ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error) {
+	rows, err := a.q.ListCommentsForSession(ctx, pgListCommentsParams(p))
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	out := make([]Comment, len(rows))
+	for i, r := range rows {
+		out[i] = pgComment(r)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// CommentStore (TxStore)
+// ---------------------------------------------------------------------------
+
+func (s *postgresTxStore) InsertComment(ctx context.Context, p InsertCommentParams) error {
+	return mapPostgresErr(s.q.InsertComment(ctx, pgInsertCommentParams(p)))
+}
+
+func (s *postgresTxStore) GetCommentByID(ctx context.Context, id string) (Comment, error) {
+	row, err := s.q.GetCommentByID(ctx, id)
+	if err != nil {
+		return Comment{}, mapPostgresErr(err)
+	}
+	return pgComment(row), nil
+}
+
+func (s *postgresTxStore) ResolveComment(ctx context.Context, p ResolveCommentParams) error {
+	return mapPostgresErr(s.q.ResolveComment(ctx, pgstore.ResolveCommentParams{
+		ID:                  p.ID,
+		SessionID:           p.SessionID,
+		ResolvedAt:          pgtype.Timestamptz{Time: p.ResolvedAt, Valid: true},
+		ResolvedByAccountID: pgtype.Text{String: p.ResolvedByAccountID, Valid: true},
+		ResolutionNote:      ptrToPgText(p.ResolutionNote),
+	}))
+}
+
+func (s *postgresTxStore) ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error) {
+	rows, err := s.q.ListCommentsForSession(ctx, pgListCommentsParams(p))
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	out := make([]Comment, len(rows))
+	for i, r := range rows {
+		out[i] = pgComment(r)
+	}
+	return out, nil
+}
+
+// pgInsertCommentParams converts domain InsertCommentParams to pgstore.InsertCommentParams.
+func pgInsertCommentParams(p InsertCommentParams) pgstore.InsertCommentParams {
+	var lineStart, lineEnd pgtype.Int4
+	if p.AnchorLineStart != nil {
+		lineStart = pgtype.Int4{Int32: *p.AnchorLineStart, Valid: true}
+	}
+	if p.AnchorLineEnd != nil {
+		lineEnd = pgtype.Int4{Int32: *p.AnchorLineEnd, Valid: true}
+	}
+	return pgstore.InsertCommentParams{
+		ID:                  p.ID,
+		OrgID:               p.OrgID,
+		SessionID:           p.SessionID,
+		AuthorAccountID:     p.AuthorAccountID,
+		AuthorKind:          p.AuthorKind,
+		AnchorCommitSha:     p.AnchorCommitSHA,
+		AnchorFilePath:      ptrToPgText(p.AnchorFilePath),
+		AnchorLineStart:     lineStart,
+		AnchorLineEnd:       lineEnd,
+		Body:                p.Body,
+		AddressedTo:         ptrToPgText(p.AddressedTo),
+		Kind:                p.Kind,
+		CreatedAt:           p.CreatedAt,
+		ResolvedAt:          ptrToPgTimestamptz(p.ResolvedAt),
+		ResolvedByAccountID: ptrToPgText(p.ResolvedByAccountID),
+		ResolutionNote:      ptrToPgText(p.ResolutionNote),
+	}
+}
+
+// pgListCommentsParams converts domain ListCommentsForSessionParams to pgstore.ListCommentsForSessionParams.
+func pgListCommentsParams(p ListCommentsForSessionParams) pgstore.ListCommentsForSessionParams {
+	addrFilter := ""
+	if p.AddressedTo != "" {
+		addrFilter = p.AddressedTo
+	}
+	return pgstore.ListCommentsForSessionParams{
+		SessionID:       p.SessionID,
+		Column2:         addrFilter,
+		Column3:         pgtype.Text{String: addrFilter, Valid: addrFilter != ""},
+		Column4:         p.Kind,
+		Kind:            p.Kind,
+		Column6:         p.ResolvedFilter,
+		Column7:         p.ResolvedFilter,
+		Column8:         p.ResolvedFilter,
+		Column9:         p.AnchorCommitSHA,
+		AnchorCommitSha: p.AnchorCommitSHA,
+		Column11:        p.AnchorFilePath,
+		AnchorFilePath:  pgtype.Text{String: p.AnchorFilePath, Valid: p.AnchorFilePath != ""},
+		CreatedAt:       p.Before,
+		Limit:           int32(p.Limit),
+	}
+}
+
+// pgComment converts a pgstore.Comment to domain Comment.
+func pgComment(r pgstore.Comment) Comment {
+	var lineStart, lineEnd *int32
+	if r.AnchorLineStart.Valid {
+		v := r.AnchorLineStart.Int32
+		lineStart = &v
+	}
+	if r.AnchorLineEnd.Valid {
+		v := r.AnchorLineEnd.Int32
+		lineEnd = &v
+	}
+	return Comment{
+		ID:                  r.ID,
+		OrgID:               r.OrgID,
+		SessionID:           r.SessionID,
+		AuthorAccountID:     r.AuthorAccountID,
+		AuthorKind:          r.AuthorKind,
+		AnchorCommitSHA:     r.AnchorCommitSha,
+		AnchorFilePath:      pgTextToPtr(r.AnchorFilePath),
+		AnchorLineStart:     lineStart,
+		AnchorLineEnd:       lineEnd,
+		Body:                r.Body,
+		AddressedTo:         pgTextToPtr(r.AddressedTo),
+		Kind:                r.Kind,
+		CreatedAt:           r.CreatedAt,
+		ResolvedAt:          pgTimestamptzToPtr(r.ResolvedAt),
+		ResolvedByAccountID: pgTextToPtr(r.ResolvedByAccountID),
+		ResolutionNote:      pgTextToPtr(r.ResolutionNote),
+	}
+}

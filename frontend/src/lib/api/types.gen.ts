@@ -346,6 +346,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orgs/{orgID}/sessions/{sessionID}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List comments in a session, cursor-paginated, with optional filters */
+        get: operations["listComments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a comment as resolved with an optional resolution note */
+        post: operations["resolveComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -954,6 +988,69 @@ export interface components {
         AcceptInviteRequest: {
             /** @description Raw invite token from the email link query parameter */
             token: string;
+        };
+        /**
+         * @description Structured kind of comment
+         * @enum {string}
+         */
+        CommentKind: "question" | "suggestion" | "action-request" | "fyi";
+        /** @description A comment anchored to a commit in a session. */
+        Comment: {
+            /**
+             * @description Comment ID (ULID)
+             * @example 01926e42-0000-7000-a000-000000000030
+             */
+            id: string;
+            /**
+             * @description Session the comment belongs to
+             * @example 01926e42-0000-7000-a000-000000000010
+             */
+            session_id: string;
+            /**
+             * @description Account ID of the comment author
+             * @example 01926e42-0000-7000-a000-000000000000
+             */
+            author_id: string;
+            /**
+             * @description Whether the author is a human or an agent
+             * @enum {string}
+             */
+            author_kind: "human" | "agent";
+            anchor: components["schemas"]["CommentAnchor"];
+            /** @description Comment body in markdown */
+            body: string;
+            /** @description Addressing token (e.g. "@user", "@user/branch", "@all-agents") */
+            addressed_to?: string | null;
+            kind: components["schemas"]["CommentKind"];
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp of creation
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when resolved; null if open
+             */
+            resolved_at?: string | null;
+            /** @description Account ID of resolver; null if open */
+            resolved_by?: string | null;
+            /** @description Optional resolution note */
+            resolution_note?: string | null;
+        };
+        /** @description Cursor-paginated list of comments. */
+        CommentListResponse: {
+            /** @description Comments on this page, ordered by created_at DESC */
+            items: components["schemas"]["Comment"][];
+            /**
+             * @description Opaque cursor token. Pass as `cursor` query parameter to fetch the
+             *     next page. Absent or null when there are no more pages.
+             */
+            next_cursor?: string | null;
+        };
+        /** @description Request body for resolving a comment. */
+        ResolveCommentRequest: {
+            /** @description Optional resolution note */
+            resolution_note?: string | null;
         };
     };
     responses: {
@@ -1704,6 +1801,107 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listComments: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Opaque cursor from a previous response's next_cursor field.
+                 *     Omit to start from the first page.
+                 */
+                cursor?: string;
+                /** @description Maximum number of comments to return per page */
+                limit?: number;
+                /** @description Substring filter on the addressed_to field */
+                addressed_to?: string;
+                /** @description Filter by comment kind (exact match) */
+                kind?: components["schemas"]["CommentKind"];
+                /**
+                 * @description Filter by resolved status. "true" = resolved only; "false" = unresolved only;
+                 *     absent = all comments.
+                 */
+                resolved?: "true" | "false";
+                /** @description Filter by anchor commit SHA (exact match) */
+                anchor_commit_sha?: string;
+                /** @description Filter by anchor file path (exact match) */
+                anchor_file_path?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated comment list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentListResponse"];
+                };
+            };
+            /** @description Invalid or mismatched cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resolveComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+                /** @description Comment ID */
+                commentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ResolveCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Comment resolved; returns updated comment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Comment already resolved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
 }

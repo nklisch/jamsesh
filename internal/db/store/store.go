@@ -37,6 +37,7 @@ type TxStore interface {
 	RefModeStore
 	SessionInviteStore
 	ConflictEventStore
+	CommentStore
 }
 
 // Store is the unified data-access interface for the portal. All handler and
@@ -58,6 +59,7 @@ type Store interface {
 	RefModeStore
 	SessionInviteStore
 	ConflictEventStore
+	CommentStore
 
 	// WithTx opens a dialect-appropriate transaction, calls fn with a TxStore
 	// backed by that transaction, and commits on success or rolls back on any
@@ -763,4 +765,79 @@ type OAuthStateStore interface {
 	// CleanupExpiredOAuthState deletes nonces whose expires_at is before the
 	// given time. Intended for operator-cron cleanup.
 	CleanupExpiredOAuthState(ctx context.Context, before time.Time) error
+}
+
+// Comment is a persisted comment row.
+type Comment struct {
+	ID                  string
+	OrgID               string
+	SessionID           string
+	AuthorAccountID     string
+	AuthorKind          string     // "human" | "agent"
+	AnchorCommitSHA     string
+	AnchorFilePath      *string    // nullable
+	AnchorLineStart     *int32     // nullable
+	AnchorLineEnd       *int32     // nullable
+	Body                string
+	AddressedTo         *string    // nullable
+	Kind                string     // "question" | "suggestion" | "action-request" | "fyi"
+	CreatedAt           time.Time
+	ResolvedAt          *time.Time // nullable
+	ResolvedByAccountID *string    // nullable
+	ResolutionNote      *string    // nullable
+}
+
+// InsertCommentParams are the parameters for inserting a comment row.
+type InsertCommentParams struct {
+	ID                  string
+	OrgID               string
+	SessionID           string
+	AuthorAccountID     string
+	AuthorKind          string
+	AnchorCommitSHA     string
+	AnchorFilePath      *string
+	AnchorLineStart     *int32
+	AnchorLineEnd       *int32
+	Body                string
+	AddressedTo         *string
+	Kind                string
+	CreatedAt           time.Time
+	ResolvedAt          *time.Time
+	ResolvedByAccountID *string
+	ResolutionNote      *string
+}
+
+// ResolveCommentParams are the parameters for resolving a comment.
+type ResolveCommentParams struct {
+	ID                  string
+	SessionID           string
+	ResolvedAt          time.Time
+	ResolvedByAccountID string
+	ResolutionNote      *string
+}
+
+// ListCommentsForSessionParams are the parameters for listing comments.
+// ResolvedFilter: 0 = all, 1 = resolved only, 2 = unresolved only.
+type ListCommentsForSessionParams struct {
+	SessionID       string
+	AddressedTo     string // substring match; empty = no filter
+	Kind            string // exact match; empty = no filter
+	ResolvedFilter  int    // 0 = all, 1 = resolved only, 2 = unresolved only
+	AnchorCommitSHA string // empty = no filter
+	AnchorFilePath  string // empty = no filter
+	Before          time.Time
+	Limit           int64
+}
+
+// CommentStore covers comment writes and reads.
+type CommentStore interface {
+	// InsertComment inserts a new comment row.
+	InsertComment(ctx context.Context, p InsertCommentParams) error
+	// GetCommentByID returns a comment by its ID.
+	GetCommentByID(ctx context.Context, id string) (Comment, error)
+	// ResolveComment marks a comment resolved (no-op if already resolved —
+	// the WHERE resolved_at IS NULL guard is safe for replay).
+	ResolveComment(ctx context.Context, p ResolveCommentParams) error
+	// ListCommentsForSession returns cursor-paginated comments for a session.
+	ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error)
 }

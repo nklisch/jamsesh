@@ -30,6 +30,25 @@ type ArchivedSession struct {
 	FinalBranchName  pgtype.Text        `json:"final_branch_name"`
 }
 
+type Comment struct {
+	ID                  string             `json:"id"`
+	OrgID               string             `json:"org_id"`
+	SessionID           string             `json:"session_id"`
+	AuthorAccountID     string             `json:"author_account_id"`
+	AuthorKind          string             `json:"author_kind"`
+	AnchorCommitSha     string             `json:"anchor_commit_sha"`
+	AnchorFilePath      pgtype.Text        `json:"anchor_file_path"`
+	AnchorLineStart     pgtype.Int4        `json:"anchor_line_start"`
+	AnchorLineEnd       pgtype.Int4        `json:"anchor_line_end"`
+	Body                string             `json:"body"`
+	AddressedTo         pgtype.Text        `json:"addressed_to"`
+	Kind                string             `json:"kind"`
+	CreatedAt           time.Time          `json:"created_at"`
+	ResolvedAt          pgtype.Timestamptz `json:"resolved_at"`
+	ResolvedByAccountID pgtype.Text        `json:"resolved_by_account_id"`
+	ResolutionNote      pgtype.Text        `json:"resolution_note"`
+}
+
 type ConflictEvent struct {
 	ID                 string             `json:"id"`
 	OrgID              string             `json:"org_id"`

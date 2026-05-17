@@ -31,6 +31,7 @@ import (
 	"jamsesh/internal/portal/assets"
 	"jamsesh/internal/portal/auth"
 	"jamsesh/internal/portal/automerger"
+	"jamsesh/internal/portal/comments"
 	"jamsesh/internal/portal/config"
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/githttp"
@@ -56,6 +57,7 @@ type combinedHandler struct {
 	*auth.OAuthHandler
 	AccountsHandler  *accounts.Handler
 	SessionsHandler  *sessions.Handler
+	CommentsHandler  *comments.Handler
 }
 
 // GetMe delegates to the accounts handler.
@@ -138,6 +140,16 @@ func (c *combinedHandler) RemoveSessionMember(ctx context.Context, req openapi.R
 	return c.SessionsHandler.RemoveSessionMember(ctx, req)
 }
 
+// ListComments delegates to the comments handler.
+func (c *combinedHandler) ListComments(ctx context.Context, req openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
+	return c.CommentsHandler.ListComments(ctx, req)
+}
+
+// ResolveComment delegates to the comments handler.
+func (c *combinedHandler) ResolveComment(ctx context.Context, req openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
+	return c.CommentsHandler.ResolveComment(ctx, req)
+}
+
 // compile-time assertion that combinedHandler satisfies the full interface.
 var _ openapi.StrictServerInterface = (*combinedHandler)(nil)
 
@@ -218,6 +230,10 @@ func main() {
 	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
 	sessionsHandler := sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
 
+	// Build the comments service and handler.
+	commentsSvc := &comments.Service{Store: dbStore, Log: eventLog}
+	commentsHandler := comments.NewHandler(commentsSvc)
+
 	// Build and start the auto-merger worker. It subscribes to commit.arrived
 	// events and runs merge + apply in per-session goroutines.
 	portalHost := cfg.PortalURL
@@ -258,6 +274,7 @@ func main() {
 		OAuthHandler:     oauthHandler,
 		AccountsHandler:  accountsHandler,
 		SessionsHandler:  sessionsHandler,
+		CommentsHandler:  commentsHandler,
 	}, nil)
 
 	// Build a ServerInterfaceWrapper so we have http.HandlerFunc-compatible
@@ -344,6 +361,10 @@ func main() {
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/invites", apiWrapper.InviteToSession)
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", apiWrapper.AcceptSessionInvite)
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove", apiWrapper.RemoveSessionMember)
+
+				// Comments: any session member can list; resolve also requires session membership.
+				r.Get("/orgs/{orgID}/sessions/{sessionID}/comments", apiWrapper.ListComments)
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve", apiWrapper.ResolveComment)
 			})
 		},
 	})

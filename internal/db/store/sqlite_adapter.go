@@ -1616,3 +1616,163 @@ func sqliteConflictEvent(r sqlitestore.ConflictEvent) ConflictEvent {
 		ResolvedAt:         nullTimeToPtr(r.ResolvedAt),
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CommentStore (outer adapter)
+// ---------------------------------------------------------------------------
+
+func (a *sqliteAdapter) InsertComment(ctx context.Context, p InsertCommentParams) error {
+	return mapSQLiteErr(a.q.InsertComment(ctx, sqliteInsertCommentParams(p)))
+}
+
+func (a *sqliteAdapter) GetCommentByID(ctx context.Context, id string) (Comment, error) {
+	row, err := a.q.GetCommentByID(ctx, id)
+	if err != nil {
+		return Comment{}, mapSQLiteErr(err)
+	}
+	return sqliteComment(row), nil
+}
+
+func (a *sqliteAdapter) ResolveComment(ctx context.Context, p ResolveCommentParams) error {
+	return mapSQLiteErr(a.q.ResolveComment(ctx, sqlitestore.ResolveCommentParams{
+		ID:                  p.ID,
+		SessionID:           p.SessionID,
+		ResolvedAt:          sql.NullTime{Time: p.ResolvedAt, Valid: true},
+		ResolvedByAccountID: sql.NullString{String: p.ResolvedByAccountID, Valid: true},
+		ResolutionNote:      ptrToNullString(p.ResolutionNote),
+	}))
+}
+
+func (a *sqliteAdapter) ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error) {
+	rows, err := a.q.ListCommentsForSession(ctx, sqliteListCommentsParams(p))
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	out := make([]Comment, len(rows))
+	for i, r := range rows {
+		out[i] = sqliteComment(r)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// CommentStore (TxStore)
+// ---------------------------------------------------------------------------
+
+func (s *sqliteTxStore) InsertComment(ctx context.Context, p InsertCommentParams) error {
+	return mapSQLiteErr(s.q.InsertComment(ctx, sqliteInsertCommentParams(p)))
+}
+
+func (s *sqliteTxStore) GetCommentByID(ctx context.Context, id string) (Comment, error) {
+	row, err := s.q.GetCommentByID(ctx, id)
+	if err != nil {
+		return Comment{}, mapSQLiteErr(err)
+	}
+	return sqliteComment(row), nil
+}
+
+func (s *sqliteTxStore) ResolveComment(ctx context.Context, p ResolveCommentParams) error {
+	return mapSQLiteErr(s.q.ResolveComment(ctx, sqlitestore.ResolveCommentParams{
+		ID:                  p.ID,
+		SessionID:           p.SessionID,
+		ResolvedAt:          sql.NullTime{Time: p.ResolvedAt, Valid: true},
+		ResolvedByAccountID: sql.NullString{String: p.ResolvedByAccountID, Valid: true},
+		ResolutionNote:      ptrToNullString(p.ResolutionNote),
+	}))
+}
+
+func (s *sqliteTxStore) ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error) {
+	rows, err := s.q.ListCommentsForSession(ctx, sqliteListCommentsParams(p))
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	out := make([]Comment, len(rows))
+	for i, r := range rows {
+		out[i] = sqliteComment(r)
+	}
+	return out, nil
+}
+
+// sqliteInsertCommentParams converts domain InsertCommentParams to sqlitestore.InsertCommentParams.
+func sqliteInsertCommentParams(p InsertCommentParams) sqlitestore.InsertCommentParams {
+	var lineStart, lineEnd sql.NullInt64
+	if p.AnchorLineStart != nil {
+		lineStart = sql.NullInt64{Int64: int64(*p.AnchorLineStart), Valid: true}
+	}
+	if p.AnchorLineEnd != nil {
+		lineEnd = sql.NullInt64{Int64: int64(*p.AnchorLineEnd), Valid: true}
+	}
+	return sqlitestore.InsertCommentParams{
+		ID:                  p.ID,
+		OrgID:               p.OrgID,
+		SessionID:           p.SessionID,
+		AuthorAccountID:     p.AuthorAccountID,
+		AuthorKind:          p.AuthorKind,
+		AnchorCommitSha:     p.AnchorCommitSHA,
+		AnchorFilePath:      ptrToNullString(p.AnchorFilePath),
+		AnchorLineStart:     lineStart,
+		AnchorLineEnd:       lineEnd,
+		Body:                p.Body,
+		AddressedTo:         ptrToNullString(p.AddressedTo),
+		Kind:                p.Kind,
+		CreatedAt:           p.CreatedAt,
+		ResolvedAt:          ptrToNullTime(p.ResolvedAt),
+		ResolvedByAccountID: ptrToNullString(p.ResolvedByAccountID),
+		ResolutionNote:      ptrToNullString(p.ResolutionNote),
+	}
+}
+
+// sqliteListCommentsParams converts domain ListCommentsForSessionParams to sqlitestore.ListCommentsForSessionParams.
+func sqliteListCommentsParams(p ListCommentsForSessionParams) sqlitestore.ListCommentsForSessionParams {
+	addrFilter := ""
+	if p.AddressedTo != "" {
+		addrFilter = p.AddressedTo
+	}
+	return sqlitestore.ListCommentsForSessionParams{
+		SessionID:       p.SessionID,
+		Column2:         addrFilter,
+		Column3:         sql.NullString{String: addrFilter, Valid: addrFilter != ""},
+		Column4:         p.Kind,
+		Kind:            p.Kind,
+		Column6:         p.ResolvedFilter,
+		Column7:         p.ResolvedFilter,
+		Column8:         p.ResolvedFilter,
+		Column9:         p.AnchorCommitSHA,
+		AnchorCommitSha: p.AnchorCommitSHA,
+		Column11:        p.AnchorFilePath,
+		AnchorFilePath:  sql.NullString{String: p.AnchorFilePath, Valid: p.AnchorFilePath != ""},
+		CreatedAt:       p.Before,
+		Limit:           p.Limit,
+	}
+}
+
+// sqliteComment converts a sqlitestore.Comment to domain Comment.
+func sqliteComment(r sqlitestore.Comment) Comment {
+	var lineStart, lineEnd *int32
+	if r.AnchorLineStart.Valid {
+		v := int32(r.AnchorLineStart.Int64)
+		lineStart = &v
+	}
+	if r.AnchorLineEnd.Valid {
+		v := int32(r.AnchorLineEnd.Int64)
+		lineEnd = &v
+	}
+	return Comment{
+		ID:                  r.ID,
+		OrgID:               r.OrgID,
+		SessionID:           r.SessionID,
+		AuthorAccountID:     r.AuthorAccountID,
+		AuthorKind:          r.AuthorKind,
+		AnchorCommitSHA:     r.AnchorCommitSha,
+		AnchorFilePath:      nullStringToPtr(r.AnchorFilePath),
+		AnchorLineStart:     lineStart,
+		AnchorLineEnd:       lineEnd,
+		Body:                r.Body,
+		AddressedTo:         nullStringToPtr(r.AddressedTo),
+		Kind:                r.Kind,
+		CreatedAt:           r.CreatedAt,
+		ResolvedAt:          nullTimeToPtr(r.ResolvedAt),
+		ResolvedByAccountID: nullStringToPtr(r.ResolvedByAccountID),
+		ResolutionNote:      nullStringToPtr(r.ResolutionNote),
+	}
+}
