@@ -47,6 +47,46 @@ machine).
 - `docs/PROTOCOL.md` — Conflict event schema, Commit trailer conventions
 - `docs/PRINCIPLES.md` — Liveness via continuous integration
 
+## Design decisions
+
+- **Conflict-resolution heuristics**: auto-resolve safe cases; escalate
+  everything else. "Safe" is precisely defined to keep the auto-merger
+  honest. Auto-resolve only:
+  - **Whitespace-only conflicts** — trailing whitespace differences,
+    line-ending differences (LF/CRLF), tab-vs-space changes that don't
+    affect indentation depth
+  - **Non-overlapping additions** within the same conflict hunk where
+    both sides ADD different lines and neither modifies or deletes a
+    shared line (interleave both sides in the order they appear)
+  - **Identical edits** — both sides made the same change (textually
+    equal post-merge)
+  Escalate to `conflict.detected` for any conflict involving:
+  - Both sides modifying the same line(s) differently
+  - One side deleting + other side modifying
+  - Rename + modification interactions (let git's rename detection
+    surface these as conflicts)
+  - Any case where the resolution would be a judgment call
+
+  Auto-resolved merge commits carry an extra trailer:
+  `Auto-Resolved: whitespace` / `additions` / `identical` so the
+  resolution heuristic is auditable from `git log`.
+
+- **Merge-commit author identity**: author = the source commit's author
+  (the human whose work is being integrated); committer = synthetic
+  `jamsesh auto-merger <auto-merger@<portal-host>>` identity; trailer
+  `Auto-Merger: true` + `Source-Commit: <sha>`. This uses git's
+  canonical author/committer distinction correctly: Alice wrote the
+  change, auto-merger applied it to draft. `git log` reads naturally
+  ("alice: Add refresh-token revocation endpoint") while still being
+  machine-distinguishable as auto-merger-generated via the committer
+  field and the trailers. The auto-merger is invisible plumbing — its
+  identity surfaces only in the committer field and trailers, never as
+  the author of the integration work.
+
+<!-- Feature-design will fill in interfaces, signatures, and implementation
+units when /agile-workflow:feature-design runs on this. -->
+
+
 ## Anticipated child features
 
 Provisional — actual decomposition lands when this epic is designed.
