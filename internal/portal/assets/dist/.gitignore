@@ -1,0 +1,5 @@
+# Built SPA output — populated by `make frontend-build` (copies from frontend/dist/).
+# Only .gitkeep and this .gitignore are tracked; build artifacts are ignored.
+*
+!.gitignore
+!.gitkeep
