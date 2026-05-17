@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-data-layer-schema-and-migrations
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-foundation-data-layer
 depends_on: []
@@ -104,3 +104,15 @@ Manually verified that `db/schema/sqlite.sql`, `db/schema/postgres.sql`,
 `internal/db/migrations/postgres/00001_initial.sql` declare identical
 columns in the same order for all 7 tables. Only type differences
 (TEXT vs TIMESTAMPTZ for timestamps) are expected and intentional.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `_validate.sql` scaffolding files in `db/queries/{sqlite,postgres}/` were intentionally left for the next story to delete — already removed by `queries-and-codegen`. Acceptable as inter-story handoff.
+- `.gitkeep` files in the generated dirs (`internal/db/{sqlitestore,pgstore}/`) — minor; replaced by real generated files in the next story.
+
+**Notes**: Migration runner uses `goose.NewProvider` (Provider API) instead of package-level globals, which keeps concurrent test runs safe. The deviation from the design's `db/migrations/` path to `internal/db/migrations/` is forced by Go's `//go:embed` constraint and documented in the implementation notes. SQLite-FK-enforcement-during-migrations decision (skipped — initial migrations are CREATE TABLE only) is defensible and explicitly explained in source comments. Both `TestMigrateUpSQLite_Idempotent` and the gated Postgres test verify the contract correctly.
