@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-fuzzing-pre-receive-validators
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-tests-fuzzing
 depends_on: []
@@ -188,3 +188,16 @@ workaround.
 
 Added `make test-fuzz` target running all four harnesses with `-fuzztime=30s`
 each.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**:
+- `CompileScope` behavior change: previously malformed globs compiled "successfully" and panicked at first match; now they return an error at compile time. Strictly better, but worth documenting in `docs/SPEC.md`. Filed `docs-scope-glob-validation-rules` for the foundation-doc follow-on.
+
+**Nits**:
+- `probeGlob` iterates byte-by-byte up to 8 bytes — the magic number 8 deserves a one-liner justification in the comment.
+
+**Notes**: Both production-bug fixes are surgically scoped and well-commented (refSegmentSafe cites git's own rules; probeGlob cites the upstream issue). Seed corpora include OWASP path-traversal payloads — exactly the value a fuzz program should add. The fuzz program quite literally paid for itself by surfacing a real DOS vector (malformed scope → portal panic on push). Excellent first-pass work.
