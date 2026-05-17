@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-fuzzing
 kind: feature
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-infrastructure]
@@ -104,3 +104,74 @@ Picked by bug-density × blast-radius:
 - [ ] Any crash / panic discovered by the harnesses is filed as a
       story with the discovering seed checked in — finds become
       regressions
+
+## Design decisions
+
+Locked under autopilot (2026-05-17):
+
+- **2 stories, not 4**. The 4 fuzz surfaces from the brief split
+  cleanly into 2 packages: pre-receive validators (3 surfaces) and
+  MCP tool input (1 surface). One story per package keeps the seed
+  corpora and Makefile target organization clean.
+
+- **Fuzz tests live next to the code they test**, not under
+  `tests/e2e/fuzz/`. Go convention: `Fuzz*` functions in the same
+  package as the function under test. Seeds at
+  `testdata/fuzz/<FuzzFuncName>/` per stdlib expectations.
+  Exception: the MCP fuzz spec drives the real HTTP endpoint via
+  the e2e test stack, so it lives at `tests/e2e/fuzz/` (different
+  shape — property-based, not coverage-based).
+
+- **`make test-fuzz` runs all harnesses with a 30s budget each** in
+  CI. Deeper continuous fuzzing (e.g., 30 minutes per harness on a
+  nightly schedule) is a follow-on backlog item, not part of this
+  feature's scope.
+
+- **Production bugs found during fuzz implementation must be
+  filed**, not silently fixed. A fuzz harness's job is to surface
+  bugs; the right disposition is "file the crashing seed as a
+  backlog story, leave the test failing with a clear comment if the
+  bug isn't fixable inline." Per the user's test-handling directive.
+
+## Story decomposition
+
+Two stories:
+
+1. `epic-e2e-tests-fuzzing-pre-receive-validators` — 3 Go fuzz
+   harnesses in `internal/portal/prereceive/` (or wherever the
+   validators actually live). Covers commit-trailer parser,
+   ref-namespace validator, path-scope validator. No deps beyond
+   infrastructure (done).
+
+2. `epic-e2e-tests-fuzzing-mcp-tool-input` — property-based fuzzer
+   for the MCP tools, driving real HTTP POSTs to `/mcp` via the
+   e2e test stack. Lives at `tests/e2e/fuzz/`. No deps beyond
+   infrastructure (done) — but benefits from using `mcpclient` if
+   that lands via `collab-merge`.
+
+## Implementation Order
+
+Wave 1 (parallel — different packages, no overlap):
+- `pre-receive-validators` (in `internal/portal/prereceive/...`)
+- `mcp-tool-input` (in `tests/e2e/fuzz/`)
+
+Both depend only on infrastructure which is done. They can run
+fully in parallel.
+
+## Risks
+
+- **Validators may not be exported** — the pre-receive parser /
+  validators may be internal to their package and not accessible
+  from a sibling `_test.go` file in the same package. If they're
+  internal, the fuzz test file uses `package prereceive` (internal
+  test) so it has access to unexported functions. Document the
+  choice in implementation notes.
+
+- **MCP fuzzer needs auth** — the harness must sign in via the
+  authflow fixture to get a real bearer token, then drive `/mcp`.
+  This is more setup than the pre-receive fuzzers (which work
+  in-process against pure functions).
+
+- **Property-based generator dep** — adding `gopter` to
+  `tests/e2e/go.mod` is acceptable; tests/e2e is allowed to grow
+  its own dep tree without touching root go.mod.
