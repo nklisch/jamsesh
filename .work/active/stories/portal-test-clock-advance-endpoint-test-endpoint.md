@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-advance-endpoint-test-endpoint
 kind: story
-stage: review
+stage: done
 tags: [testing, testability]
 parent: portal-test-clock-advance-endpoint
 depends_on: [portal-test-clock-advance-endpoint-clock-abstraction]
@@ -498,3 +498,40 @@ contributor accidentally drops the build tag from any file in
   `make test-portal-image` before `make test-e2e-go` (it already
   does — `make test-e2e-go` is downstream of fixtures, and the
   fixture itself documents the make target as a precondition).
+
+## Review
+
+**Verdict**: Approve.
+
+Implementation lands the three-layer production-safety strategy
+exactly as specced: compilation gate (`//go:build e2etest` on all of
+`internal/portal/testclock/*.go` and `cmd/portal/test_clock_advance.go`,
+`//go:build !e2etest` on the prod stub), wiring gate (router skips
+`/test` r.Route when `MountTest` is nil), and CI guardrail test
+(`TestProductionBuild_HasNoTestEndpoint` runs on no-tags builds and
+asserts 404). All three load-bearing layers verified intact.
+
+**Builds**:
+- `go build ./...` — clean.
+- `go build -tags e2etest ./...` — clean.
+
+**Tests**:
+- `go test ./...` — full repo green, production safety guardrail
+  passes.
+- `go test -tags e2etest ./cmd/portal/... ./internal/portal/testclock/...` —
+  green; happy/sad/cumulative/zero/negative/invalid-json/non-integer/
+  unknown-field/missing-field paths all covered.
+- `go test -tags e2etest -race ./internal/portal/testclock/...` — green.
+
+**Design discrepancy assessment**: The path-agnostic `RouteMount` (vs.
+the specced nested `http.NewServeMux`) is well-justified — chi does
+not rewrite `r.URL.Path` before delegating to a stdlib `ServeMux`, so
+the original spec would have produced 404s on `/test/clock-advance`.
+Resolution by registering at the chi level via
+`r.Method("POST", "/clock-advance", ...)` is cleaner (chi-native 405
+handling, no prefix-stripping gotcha) and is documented in the package
+doc comment and implementation notes.
+
+**Findings**: 0 blockers, 0 important, 0 nits. Parked: none.
+
+Advancing review → done.
