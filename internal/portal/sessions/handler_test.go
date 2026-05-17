@@ -125,8 +125,17 @@ func (h *sessionsOnlyStrict) AcceptOrgInvite(_ context.Context, _ openapi.Accept
 func (h *sessionsOnlyStrict) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
 	panic("not wired")
 }
+func (h *sessionsOnlyStrict) CreateComment(_ context.Context, _ openapi.CreateCommentRequestObject) (openapi.CreateCommentResponseObject, error) {
+	panic("not wired")
+}
 func (h *sessionsOnlyStrict) ResolveComment(_ context.Context, _ openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
 	panic("not wired")
+}
+func (h *sessionsOnlyStrict) GetSessionFile(ctx context.Context, req openapi.GetSessionFileRequestObject) (openapi.GetSessionFileResponseObject, error) {
+	return h.Handler.GetSessionFile(ctx, req)
+}
+func (h *sessionsOnlyStrict) UpsertRefMode(ctx context.Context, req openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
+	return h.Handler.UpsertRefMode(ctx, req)
 }
 
 var _ openapi.StrictServerInterface = (*sessionsOnlyStrict)(nil)

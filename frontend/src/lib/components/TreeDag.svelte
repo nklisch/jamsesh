@@ -13,13 +13,20 @@
     treeState,
     selectedSha,
     onselect,
+    onrefaction,
   }: {
     orgId: string;
     sessionId: string;
     treeState: 'tree-collapsed' | 'tree-expanded' | 'tree-wide';
     selectedSha: string | null;
     onselect: (sha: string) => void;
+    onrefaction?: (event: { ref: string; action: 'menu'; x: number; y: number }) => void;
   } = $props();
+
+  function handleRefContextMenu(ref: string, e: MouseEvent) {
+    e.preventDefault();
+    onrefaction?.({ ref, action: 'menu', x: e.clientX, y: e.clientY });
+  }
 
   let refs = $state<Ref[]>([]);
 
@@ -95,6 +102,7 @@
             title="{shortName} · {ref.mode} · {ref.sha.slice(0, 7)}"
             role="group"
             aria-label={shortName}
+            oncontextmenu={(e) => handleRefContextMenu(ref.ref, e)}
           >
             <span
               class="rail-mode"
@@ -127,7 +135,12 @@
         {@const shortName = shortRefName(ref.ref)}
         {@const isModeSync = ref.mode === 'sync'}
         {@const isDraft = isDraftRef(ref)}
-        <div class="ref-group" role="group" aria-label={shortName}>
+        <div
+          class="ref-group"
+          role="group"
+          aria-label={shortName}
+          oncontextmenu={(e) => handleRefContextMenu(ref.ref, e)}
+        >
           <div class="ref-header">
             <AuthorDot {authorId} size={12} />
             <span class="name" class:draft-name={isDraft}>{shortName}</span>

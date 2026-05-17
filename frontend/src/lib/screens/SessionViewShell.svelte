@@ -6,6 +6,11 @@
   import TreeDag from '$lib/components/TreeDag.svelte';
   import ActivityFeed from '$lib/components/ActivityFeed.svelte';
   import CommentsTab from '$lib/components/CommentsTab.svelte';
+  import ArtifactPane from '$lib/components/ArtifactPane.svelte';
+  import CommentComposer from '$lib/components/CommentComposer.svelte';
+  import RefActionsMenu from '$lib/components/RefActionsMenu.svelte';
+  import ForkDialog from '$lib/components/ForkDialog.svelte';
+  import ModeSwitchDialog from '$lib/components/ModeSwitchDialog.svelte';
   import { auth } from '$lib/auth.svelte';
   import { navigate } from '$lib/router.svelte';
   import type { components } from '$lib/api/types.gen';
@@ -13,6 +18,7 @@
   type Session = components['schemas']['Session'];
   type TreeState = 'tree-collapsed' | 'tree-expanded' | 'tree-wide';
   type BottomTab = 'activity' | 'comments';
+  type ActiveDialog = null | 'fork' | 'mode-switch';
 
   let {
     orgId,
@@ -62,9 +68,46 @@
 
   // Commit selection
   let selectedCommitSha = $state<string | null>(null);
+  // File selection (set by future file-tree or external signal)
+  let selectedFilePath = $state<string | null>(null);
 
   function handleSelectCommit(sha: string) {
     selectedCommitSha = sha;
+    // Clear file selection when switching commits.
+    selectedFilePath = null;
+  }
+
+  // Comment composer
+  let composerOpen = $state(false);
+  let composerRange = $state<{ start: number; end: number } | null>(null);
+
+  function handleRangeSelect(range: { start: number; end: number } | null) {
+    composerRange = range;
+    if (range) composerOpen = true;
+  }
+
+  // Ref actions
+  let activeMenuRef = $state<{ ref: string; x: number; y: number } | null>(null);
+  let activeDialog = $state<ActiveDialog>(null);
+  let activeDialogRef = $state<string>('');
+  let activeDialogRefMode = $state<'sync' | 'isolated' | undefined>(undefined);
+
+  function handleRefAction(event: { ref: string; action: 'menu'; x: number; y: number }) {
+    activeMenuRef = { ref: event.ref, x: event.x, y: event.y };
+  }
+
+  function handleMenuAction(action: 'fork' | 'mode-switch', ref: string) {
+    activeMenuRef = null;
+    activeDialogRef = ref;
+    activeDialog = action;
+    // Fetch current mode for the mode-switch dialog (best-effort).
+    activeDialogRefMode = undefined;
+  }
+
+  function closeDialog() {
+    activeDialog = null;
+    activeDialogRef = '';
+    activeDialogRefMode = undefined;
   }
 
   async function loadSession() {
@@ -154,28 +197,36 @@
             {treeState}
             selectedSha={selectedCommitSha}
             onselect={handleSelectCommit}
+            onrefaction={handleRefAction}
           />
         </div>
       </aside>
 
       <!-- Artifact slot -->
       <main class="pane artifact" aria-label="Artifact">
-        <div
-          class="artifact-slot"
-          data-selected-sha={selectedCommitSha ?? ''}
-          aria-label="Artifact viewer slot"
-        >
-          <div class="artifact-placeholder">
-            <p class="placeholder-msg">
-              {#if selectedCommitSha}
-                Artifact viewer landing in epic-portal-ui-artifact-and-comments.<br />
-                Selected: <code>{selectedCommitSha}</code>
-              {:else}
-                Select a commit from the tree to view the artifact.
-              {/if}
-            </p>
-          </div>
+        <div class="artifact-slot" data-selected-sha={selectedCommitSha ?? ''}>
+          <ArtifactPane
+            {sessionId}
+            {orgId}
+            selectedSha={selectedCommitSha}
+            selectedPath={selectedFilePath}
+            onrangeselect={handleRangeSelect}
+          />
         </div>
+        {#if composerOpen && selectedCommitSha}
+          <div class="composer-overlay">
+            <CommentComposer
+              {orgId}
+              {sessionId}
+              anchorCommitSha={selectedCommitSha}
+              anchorFilePath={selectedFilePath}
+              anchorLineStart={composerRange?.start ?? null}
+              anchorLineEnd={composerRange?.end ?? null}
+              onsubmit={() => { composerOpen = false; }}
+              oncancel={() => { composerOpen = false; }}
+            />
+          </div>
+        {/if}
       </main>
     </div>
 
@@ -241,6 +292,39 @@
         </div>
       {/if}
     </div>
+
+    <!-- Ref context menu -->
+    {#if activeMenuRef}
+      <RefActionsMenu
+        ref={activeMenuRef.ref}
+        x={activeMenuRef.x}
+        y={activeMenuRef.y}
+        onaction={handleMenuAction}
+        onclose={() => { activeMenuRef = null; }}
+      />
+    {/if}
+
+    <!-- Fork dialog -->
+    {#if activeDialog === 'fork'}
+      <ForkDialog
+        {sessionId}
+        sourceRef={activeDialogRef}
+        onclose={closeDialog}
+        onsuccess={closeDialog}
+      />
+    {/if}
+
+    <!-- Mode-switch dialog -->
+    {#if activeDialog === 'mode-switch'}
+      <ModeSwitchDialog
+        {orgId}
+        {sessionId}
+        ref={activeDialogRef}
+        currentMode={activeDialogRefMode}
+        onclose={closeDialog}
+        onsuccess={closeDialog}
+      />
+    {/if}
   {:else}
     <div class="loading-shell" aria-busy="true">Loading session…</div>
   {/if}
@@ -456,35 +540,23 @@
 
   .pane.artifact {
     background: var(--color-bg-primary);
+    position: relative;
   }
 
   .artifact-slot {
     flex: 1;
     height: 100%;
-    overflow-y: auto;
-  }
-
-  .artifact-placeholder {
+    overflow: hidden;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    min-height: 200px;
-    padding: 40px;
+    flex-direction: column;
   }
 
-  .placeholder-msg {
-    text-align: center;
-    color: var(--color-text-tertiary);
-    font-size: var(--font-size-sm);
-    line-height: 1.6;
-  }
-
-  .placeholder-msg code {
-    font-family: var(--font-mono);
-    background: var(--color-bg-tertiary);
-    padding: 2px 6px;
-    border-radius: 3px;
+  /* Composer overlay anchored to the bottom-right of the artifact pane */
+  .composer-overlay {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    z-index: 50;
   }
 
   /* ── Bottom panel ──────────────────────────────────────────────── */

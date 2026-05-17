@@ -101,8 +101,17 @@ func (t *tokensOnlyHandler) RemoveSessionMember(_ context.Context, _ openapi.Rem
 func (t *tokensOnlyHandler) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
 	panic("ListComments: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) CreateComment(_ context.Context, _ openapi.CreateCommentRequestObject) (openapi.CreateCommentResponseObject, error) {
+	panic("CreateComment: not implemented in token handler tests")
+}
 func (t *tokensOnlyHandler) ResolveComment(_ context.Context, _ openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
 	panic("ResolveComment: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) GetSessionFile(_ context.Context, _ openapi.GetSessionFileRequestObject) (openapi.GetSessionFileResponseObject, error) {
+	panic("GetSessionFile: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
+	panic("UpsertRefMode: not implemented in token handler tests")
 }
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)

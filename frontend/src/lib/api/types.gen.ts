@@ -356,7 +356,8 @@ export interface paths {
         /** List comments in a session, cursor-paginated, with optional filters */
         get: operations["listComments"];
         put?: never;
-        post?: never;
+        /** Create a new comment anchored to a commit in the session */
+        post: operations["createComment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -374,6 +375,40 @@ export interface paths {
         put?: never;
         /** Mark a comment as resolved with an optional resolution note */
         post: operations["resolveComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch file content at a specific commit */
+        get: operations["getSessionFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}/ref-modes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upsert the collaboration mode for a specific ref */
+        post: operations["upsertRefMode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -924,9 +959,8 @@ export interface components {
             /**
              * @description Collaboration mode for this ref (per-ref override or session default)
              * @example sync
-             * @enum {string}
              */
-            mode: "sync" | "isolated";
+            mode: components["schemas"]["RefMode"];
         };
         /** @description All refs in the session repository with mode annotations. */
         RefListResponse: {
@@ -1051,6 +1085,42 @@ export interface components {
         ResolveCommentRequest: {
             /** @description Optional resolution note */
             resolution_note?: string | null;
+        };
+        /** @description Request body for creating a comment. */
+        CreateCommentRequest: {
+            /** @description Commit SHA the comment is anchored to */
+            anchor_commit_sha: string;
+            /** @description File path within the commit tree; null for commit-level comments */
+            anchor_file_path?: string | null;
+            /** @description 1-indexed start line; null for file-level or commit-level comments */
+            anchor_line_start?: number | null;
+            /** @description 1-indexed end line; null for file-level or commit-level comments */
+            anchor_line_end?: number | null;
+            /** @description Comment body in markdown */
+            body: string;
+            /** @description Addressing token (e.g. "@user", "@all-agents") */
+            addressed_to?: string | null;
+            kind: components["schemas"]["CommentKind"];
+        };
+        /** @description Text content of a file at a specific commit. */
+        SessionFileResponse: {
+            /** @description UTF-8 file content; empty when is_binary is true */
+            content: string;
+            /** @description Detected MIME type (e.g. "text/plain", "application/octet-stream") */
+            mime: string;
+            /** @description True when the file is detected as binary */
+            is_binary: boolean;
+        };
+        /**
+         * @description Collaboration mode for a session ref
+         * @enum {string}
+         */
+        RefMode: "sync" | "isolated";
+        /** @description Request body for upserting a ref's collaboration mode. */
+        UpsertRefModeRequest: {
+            /** @description Full ref name (e.g. "refs/heads/jam/<session>/<user>/<branch>") */
+            ref: string;
+            mode: components["schemas"]["RefMode"];
         };
     };
     responses: {
@@ -1861,6 +1931,47 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    createComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Comment created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     resolveComment: {
         parameters: {
             query?: never;
@@ -1902,6 +2013,87 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+        };
+    };
+    getSessionFile: {
+        parameters: {
+            query: {
+                /** @description Commit SHA */
+                commit: string;
+                /** @description File path within the commit tree */
+                path: string;
+            };
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File content */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionFileResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description File too large to view inline (>1MB) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    upsertRefMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertRefModeRequest"];
+            };
+        };
+        responses: {
+            /** @description Ref mode updated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

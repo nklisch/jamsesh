@@ -146,9 +146,24 @@ func (c *combinedHandler) ListComments(ctx context.Context, req openapi.ListComm
 	return c.CommentsHandler.ListComments(ctx, req)
 }
 
+// CreateComment delegates to the comments handler.
+func (c *combinedHandler) CreateComment(ctx context.Context, req openapi.CreateCommentRequestObject) (openapi.CreateCommentResponseObject, error) {
+	return c.CommentsHandler.CreateComment(ctx, req)
+}
+
 // ResolveComment delegates to the comments handler.
 func (c *combinedHandler) ResolveComment(ctx context.Context, req openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
 	return c.CommentsHandler.ResolveComment(ctx, req)
+}
+
+// GetSessionFile delegates to the sessions handler.
+func (c *combinedHandler) GetSessionFile(ctx context.Context, req openapi.GetSessionFileRequestObject) (openapi.GetSessionFileResponseObject, error) {
+	return c.SessionsHandler.GetSessionFile(ctx, req)
+}
+
+// UpsertRefMode delegates to the sessions handler.
+func (c *combinedHandler) UpsertRefMode(ctx context.Context, req openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
+	return c.SessionsHandler.UpsertRefMode(ctx, req)
 }
 
 // compile-time assertion that combinedHandler satisfies the full interface.
@@ -374,9 +389,16 @@ func main() {
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", apiWrapper.AcceptSessionInvite)
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove", apiWrapper.RemoveSessionMember)
 
-				// Comments: any session member can list; resolve also requires session membership.
+				// Comments: any session member can list/create; resolve also requires session membership.
 				r.Get("/orgs/{orgID}/sessions/{sessionID}/comments", apiWrapper.ListComments)
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/comments", apiWrapper.CreateComment)
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve", apiWrapper.ResolveComment)
+
+				// Files: any session member can view file content.
+				r.Get("/orgs/{orgID}/sessions/{sessionID}/files", apiWrapper.GetSessionFile)
+
+				// Ref modes: any session member can upsert ref mode.
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/ref-modes", apiWrapper.UpsertRefMode)
 			})
 		},
 	})

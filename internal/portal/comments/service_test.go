@@ -107,6 +107,12 @@ func (c *commentsOnlyStrict) AcceptSessionInvite(_ context.Context, _ openapi.Ac
 func (c *commentsOnlyStrict) RemoveSessionMember(_ context.Context, _ openapi.RemoveSessionMemberRequestObject) (openapi.RemoveSessionMemberResponseObject, error) {
 	panic("not wired")
 }
+func (c *commentsOnlyStrict) GetSessionFile(_ context.Context, _ openapi.GetSessionFileRequestObject) (openapi.GetSessionFileResponseObject, error) {
+	panic("not wired")
+}
+func (c *commentsOnlyStrict) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*commentsOnlyStrict)(nil)
 
@@ -178,6 +184,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	r := chi.NewRouter()
 	r.Use(tokens.BearerMiddleware(tokenSvc))
 	r.Get("/api/orgs/{orgID}/sessions/{sessionID}/comments", apiWrapper.ListComments)
+	r.Post("/api/orgs/{orgID}/sessions/{sessionID}/comments", apiWrapper.CreateComment)
 	r.Post("/api/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve", apiWrapper.ResolveComment)
 
 	srv := httptest.NewServer(r)
@@ -641,5 +648,91 @@ func TestHandlerResolveCommentNotFound(t *testing.T) {
 	resp := env.post(t, path, nil)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CreateComment handler tests
+// ---------------------------------------------------------------------------
+
+func TestHandlerCreateComment_Success(t *testing.T) {
+	env := newTestEnv(t)
+
+	path := fmt.Sprintf("/api/orgs/%s/sessions/%s/comments", env.orgID, env.sessID)
+	body := map[string]any{
+		"anchor_commit_sha": "abc1234",
+		"anchor_file_path":  "pkg/auth.go",
+		"anchor_line_start": 10,
+		"anchor_line_end":   10,
+		"body":              "This looks suspect.",
+		"kind":              "question",
+		"addressed_to":      "@reviewer",
+	}
+	resp := env.post(t, path, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+
+	var c map[string]any
+	decode(t, resp, &c)
+	if c["id"] == nil {
+		t.Error("want id in response, got nil")
+	}
+	if c["body"] != "This looks suspect." {
+		t.Errorf("want body=%q, got %v", "This looks suspect.", c["body"])
+	}
+	if c["kind"] != "question" {
+		t.Errorf("want kind=question, got %v", c["kind"])
+	}
+	if c["author_kind"] != "human" {
+		t.Errorf("want author_kind=human, got %v", c["author_kind"])
+	}
+}
+
+func TestHandlerCreateComment_MissingBody(t *testing.T) {
+	env := newTestEnv(t)
+	path := fmt.Sprintf("/api/orgs/%s/sessions/%s/comments", env.orgID, env.sessID)
+	resp := env.post(t, path, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandlerCreateComment_WrongSession(t *testing.T) {
+	env := newTestEnv(t)
+	path := fmt.Sprintf("/api/orgs/%s/sessions/%s/comments", env.orgID, "nonexistent-session")
+	body := map[string]any{
+		"anchor_commit_sha": "abc",
+		"body":              "hi",
+		"kind":              "fyi",
+	}
+	resp := env.post(t, path, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("want 403 or 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandlerCreateComment_CommitLevelAnchor(t *testing.T) {
+	env := newTestEnv(t)
+	path := fmt.Sprintf("/api/orgs/%s/sessions/%s/comments", env.orgID, env.sessID)
+	body := map[string]any{
+		"anchor_commit_sha": "deadbeef",
+		"body":              "Commit-level comment.",
+		"kind":              "fyi",
+	}
+	resp := env.post(t, path, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+
+	var c map[string]any
+	decode(t, resp, &c)
+	anchor := c["anchor"].(map[string]any)
+	if anchor["file_path"] != nil && anchor["file_path"] != "" {
+		t.Errorf("want no file_path for commit-level comment, got %v", anchor["file_path"])
 	}
 }

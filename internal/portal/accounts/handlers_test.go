@@ -138,8 +138,17 @@ func (a *accountsOnlyStrict) RemoveSessionMember(_ context.Context, _ openapi.Re
 func (a *accountsOnlyStrict) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
 	panic("ListComments: not wired in accounts tests")
 }
+func (a *accountsOnlyStrict) CreateComment(_ context.Context, _ openapi.CreateCommentRequestObject) (openapi.CreateCommentResponseObject, error) {
+	panic("CreateComment: not wired in accounts tests")
+}
 func (a *accountsOnlyStrict) ResolveComment(_ context.Context, _ openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
 	panic("ResolveComment: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) GetSessionFile(_ context.Context, _ openapi.GetSessionFileRequestObject) (openapi.GetSessionFileResponseObject, error) {
+	panic("GetSessionFile: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
+	panic("UpsertRefMode: not wired in accounts tests")
 }
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)

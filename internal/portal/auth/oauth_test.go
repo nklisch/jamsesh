@@ -119,8 +119,17 @@ func (o *oauthOnlyStrict) RemoveSessionMember(_ context.Context, _ openapi.Remov
 func (o *oauthOnlyStrict) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
 	panic("ListComments: not wired in OAuth tests")
 }
+func (o *oauthOnlyStrict) CreateComment(_ context.Context, _ openapi.CreateCommentRequestObject) (openapi.CreateCommentResponseObject, error) {
+	panic("CreateComment: not wired in OAuth tests")
+}
 func (o *oauthOnlyStrict) ResolveComment(_ context.Context, _ openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
 	panic("ResolveComment: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) GetSessionFile(_ context.Context, _ openapi.GetSessionFileRequestObject) (openapi.GetSessionFileResponseObject, error) {
+	panic("GetSessionFile: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
+	panic("UpsertRefMode: not wired in OAuth tests")
 }
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)

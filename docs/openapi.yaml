@@ -820,8 +820,7 @@ components:
           description: Current tip commit SHA (40 hex chars)
           example: "abc123def456abc123def456abc123def456abc1"
         mode:
-          type: string
-          enum: [sync, isolated]
+          $ref: '#/components/schemas/RefMode'
           description: Collaboration mode for this ref (per-ref override or session default)
           example: "sync"
 
@@ -987,6 +986,67 @@ components:
           type: string
           nullable: true
           description: Optional resolution note
+
+    CreateCommentRequest:
+      type: object
+      required: [anchor_commit_sha, body, kind]
+      description: Request body for creating a comment.
+      properties:
+        anchor_commit_sha:
+          type: string
+          description: Commit SHA the comment is anchored to
+        anchor_file_path:
+          type: string
+          nullable: true
+          description: File path within the commit tree; null for commit-level comments
+        anchor_line_start:
+          type: integer
+          nullable: true
+          description: 1-indexed start line; null for file-level or commit-level comments
+        anchor_line_end:
+          type: integer
+          nullable: true
+          description: 1-indexed end line; null for file-level or commit-level comments
+        body:
+          type: string
+          description: Comment body in markdown
+        addressed_to:
+          type: string
+          nullable: true
+          description: Addressing token (e.g. "@user", "@all-agents")
+        kind:
+          $ref: '#/components/schemas/CommentKind'
+
+    SessionFileResponse:
+      type: object
+      required: [content, mime, is_binary]
+      description: Text content of a file at a specific commit.
+      properties:
+        content:
+          type: string
+          description: UTF-8 file content; empty when is_binary is true
+        mime:
+          type: string
+          description: Detected MIME type (e.g. "text/plain", "application/octet-stream")
+        is_binary:
+          type: boolean
+          description: True when the file is detected as binary
+
+    RefMode:
+      type: string
+      enum: [sync, isolated]
+      description: Collaboration mode for a session ref
+
+    UpsertRefModeRequest:
+      type: object
+      required: [ref, mode]
+      description: Request body for upserting a ref's collaboration mode.
+      properties:
+        ref:
+          type: string
+          description: Full ref name (e.g. "refs/heads/jam/<session>/<user>/<branch>")
+        mode:
+          $ref: '#/components/schemas/RefMode'
 
   responses:
     Unauthorized:
@@ -1826,6 +1886,49 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+    post:
+      summary: Create a new comment anchored to a commit in the session
+      operationId: createComment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve:
     post:
@@ -1877,3 +1980,95 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/files:
+    get:
+      summary: Fetch file content at a specific commit
+      operationId: getSessionFile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: commit
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Commit SHA
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: File path within the commit tree
+      responses:
+        '200':
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionFileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: File too large to view inline (>1MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/ref-modes:
+    post:
+      summary: Upsert the collaboration mode for a specific ref
+      operationId: upsertRefMode
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertRefModeRequest'
+      responses:
+        '204':
+          description: Ref mode updated
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'

@@ -162,8 +162,17 @@ func (m *magicLinkOnlyStrict) RemoveSessionMember(_ context.Context, _ openapi.R
 func (m *magicLinkOnlyStrict) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
 	panic("ListComments: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) CreateComment(_ context.Context, _ openapi.CreateCommentRequestObject) (openapi.CreateCommentResponseObject, error) {
+	panic("CreateComment: not wired in this test")
+}
 func (m *magicLinkOnlyStrict) ResolveComment(_ context.Context, _ openapi.ResolveCommentRequestObject) (openapi.ResolveCommentResponseObject, error) {
 	panic("ResolveComment: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) GetSessionFile(_ context.Context, _ openapi.GetSessionFileRequestObject) (openapi.GetSessionFileResponseObject, error) {
+	panic("GetSessionFile: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
+	panic("UpsertRefMode: not wired in this test")
 }
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)

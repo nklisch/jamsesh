@@ -22,6 +22,121 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // ---------------------------------------------------------------------------
+// CreateComment — POST /api/orgs/{orgID}/sessions/{sessionID}/comments
+// ---------------------------------------------------------------------------
+
+// CreateComment inserts a new comment and emits a comment.added event.
+func (h *Handler) CreateComment(ctx context.Context, req openapi.CreateCommentRequestObject) (openapi.CreateCommentResponseObject, error) {
+	acc, ok := tokens.AccountFromContext(ctx)
+	if !ok {
+		return openapi.CreateComment401JSONResponse{
+			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+				Error:   "auth.invalid_token",
+				Message: "invalid token",
+			},
+		}, nil
+	}
+
+	orgID := req.OrgID
+	sessionID := req.SessionID
+
+	if req.Body == nil {
+		return openapi.CreateComment400JSONResponse(openapi.ErrorEnvelope{
+			Error:   "request.invalid",
+			Message: "request body is required",
+		}), nil
+	}
+
+	body := req.Body
+
+	// Require org membership.
+	if _, err := h.s.GetOrgMember(ctx, store.GetOrgMemberParams{
+		OrgID:     orgID,
+		AccountID: acc.ID,
+	}); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return openapi.CreateComment403JSONResponse{
+				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
+					Error:   "auth.insufficient_permission",
+					Message: "not a member of this org",
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("comments: create: get org member: %w", err)
+	}
+
+	// Require session membership.
+	if _, err := h.s.GetSessionMember(ctx, store.GetSessionMemberParams{
+		OrgID:     orgID,
+		SessionID: sessionID,
+		AccountID: acc.ID,
+	}); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return openapi.CreateComment403JSONResponse{
+				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
+					Error:   "auth.insufficient_permission",
+					Message: "not a member of this session",
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("comments: create: get session member: %w", err)
+	}
+
+	// Verify session exists.
+	if _, err := h.s.GetSession(ctx, orgID, sessionID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return openapi.CreateComment404JSONResponse{
+				NotFoundJSONResponse: openapi.NotFoundJSONResponse{
+					Error:   "session.not_found",
+					Message: "session not found",
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("comments: create: get session: %w", err)
+	}
+
+	// Build optional pointer fields.
+	var anchorFilePath *string
+	if body.AnchorFilePath != "" {
+		s := body.AnchorFilePath
+		anchorFilePath = &s
+	}
+	var anchorLineStart, anchorLineEnd *int32
+	if body.AnchorLineStart != 0 {
+		v := int32(body.AnchorLineStart)
+		anchorLineStart = &v
+	}
+	if body.AnchorLineEnd != 0 {
+		v := int32(body.AnchorLineEnd)
+		anchorLineEnd = &v
+	}
+	var addressedTo *string
+	if body.AddressedTo != "" {
+		s := body.AddressedTo
+		addressedTo = &s
+	}
+
+	comment, err := h.svc.Create(ctx, CreateParams{
+		OrgID:           orgID,
+		SessionID:       sessionID,
+		AuthorAccountID: acc.ID,
+		AuthorKind:      "human",
+		AnchorCommitSHA: body.AnchorCommitSha,
+		AnchorFilePath:  anchorFilePath,
+		AnchorLineStart: anchorLineStart,
+		AnchorLineEnd:   anchorLineEnd,
+		Body:            body.Body,
+		AddressedTo:     addressedTo,
+		Kind:            string(body.Kind),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("comments: create: %w", err)
+	}
+
+	return openapi.CreateComment201JSONResponse(storeCommentToAPI(comment)), nil
+}
+
+// ---------------------------------------------------------------------------
 // ListComments — GET /api/orgs/{orgID}/sessions/{sessionID}/comments
 // ---------------------------------------------------------------------------
 
