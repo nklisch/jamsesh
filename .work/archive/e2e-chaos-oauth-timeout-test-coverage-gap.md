@@ -1,7 +1,7 @@
 ---
 id: e2e-chaos-oauth-timeout-test-coverage-gap
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, oauth]
 parent: null
 depends_on: []
@@ -116,3 +116,42 @@ The band `[14s, 18s]` is calibrated around the 15s portal timeout:
 
 Build-verified with `go build ./chaos/...` (clean). Full execution requires
 Docker + Testcontainers and was not run in this session.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+- The diff matches the story's design exactly: file renamed via `git mv`
+  (similarity 96%), WireMock delay 10000 → 30000ms, test client timeout
+  raised to 20s, band assertion replacing the upper-bound-only check, doc
+  comments corrected in three places.
+- The chosen numbers are well-calibrated: portal timeout 15s is a
+  deterministic `time.Timer`, so client-side elapsed ≈ 15s + small overhead.
+  The 14s lower bound gives 1s of tolerance to absorb container scheduling
+  jitter without false negatives, and the 18s upper bound catches portal
+  hangs past timeout + 3s grace.
+- The "too fast" error message explicitly names the false-pass shape ("portal
+  likely did not exercise the 15s timeout (WireMock responded before timeout
+  fired)") — excellent debuggability for whoever sees this fail in CI six
+  months from now.
+- The test client timeout of 20s sits cleanly between portal timeout (15s)
+  and WireMock delay (30s). If portal times out at 15s the test gets a
+  response well before 20s; if portal regresses (no timeout) the test client
+  fires at 20s, still well before WireMock would respond at 30s — either
+  shape produces a useful failure.
+- Build verification passed (`go build ./chaos/...` clean). Full e2e
+  execution requires Docker + WireMock + portal image and was not run; this
+  is the usual shape for chaos-test changes.
+
+## What's now possible
+
+The chaos test `oauth_provider_timeout` now genuinely tests what its name
+claims: the portal's 15s OAuth HTTP client timeout fires under a slow
+provider scenario. A future regression that removes the timeout or lets
+the portal hang will produce a clear failure with a specific error
+message that points at the false-pass shape.
