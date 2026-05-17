@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-hydration-handoff-hydrator
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy-hydration-handoff
 depends_on: []
@@ -46,3 +46,21 @@ New:
 - `git fsck --no-dangling` is run via `exec.CommandContext(ctx, "git", "-C", repoPath, "fsck", "--no-dangling")`. Dangling objects are normal in a freshly-hydrated repo (manifest's pack list doesn't reference every loose object). FsckOK = (exit code == 0); non-fatal failure → log slog.Warn but don't return error.
 - `Storage.RepoPath(orgID, sessionID)` returns the bare repo path. Hydrator signature: `Hydrate(ctx, orgID, sessionID)`.
 - Metrics emission deferred to Unit 3 (wiring story); pre-declare the call sites with nil-safe `if h.Metrics != nil` guards.
+
+## Implementation notes
+
+### Files produced
+
+- `internal/portal/storage/objectstore/hydrate.go` — `Hydrator`, `HydrationOutput`, `Hydrate`, `writeAtomic`, `isAlreadyExistsErr`
+- `internal/portal/storage/objectstore/hydrate_test.go` — 8 tests using `memBackend` + temp repo dirs; includes parallel-timing, atomic-failure, and nil-metrics coverage
+- `internal/portal/metrics/metrics.go` — added `HydrationsTotal` (CounterVec, label `result`), `HydrationDurationSeconds` (Histogram), `HydrationBytesTotal` (Counter); registered in `New()`
+
+### Key implementation choices
+
+- **Option A for metrics** (add handles to metrics.go now): chose this per the story directive; wiring story can use the handles directly without churn.
+- **Manifest + Hydrator Backend separation**: the test wires `Manifests` to the unfailing `*memBackend` and `Backend` to the `slowBackend`/`failAfterNBackend` wrapper. This lets the Hydrator load manifests without delay while testing pack download behaviour in isolation.
+- **Loose-object key format confirmed**: `sessions/<id>/objects/<xx>/<rest>` — matched exactly from `sync.go:uploadLooseObjects`. Packs are at `sessions/<id>/packs/<sha>.pack` (not under `objects/`), so the objects/ listing contains only loose objects; the pack-prefix guard in `downloadLooseObjects` is a defensive safety net.
+- **`isAlreadyExistsErr`**: matches substring `"already exists"` in the error message (storage.Service.CreateRepo returns a formatted string, not a sentinel). This is intentionally liberal to handle concurrent CreateRepo calls safely.
+- **Parallel counts**: `downloadPacks` returns `len(packs)` as the pair count (not individual file count) to match `HydrationOutput.PacksDownloaded` semantics.
+- **`TestHydrator_ParallelTiming`** completes in ≈210ms on a local machine (10 downloads at 100ms each, Workers=8 → two waves), well within the 250ms ceiling.
+- **fsck warnings in tests**: tests that use bogus pack data (fake bytes, not real git objects) produce fsck warnings — this is expected. `TestHydrator_FsckOK` specifically validates an empty bare repo (which always passes fsck).

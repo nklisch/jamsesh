@@ -114,6 +114,25 @@ type Registry struct {
 	// because the per-session in-flight count exceeded QueueSize.
 	ObjectStorageBackpressureTotal prometheus.Counter
 
+	// ── Object-storage hydration metrics ──────────────────────────────────────
+	// These fields track the hydration pipeline (download from object storage to
+	// local disk). They are populated only in clustered mode when a Hydrator is
+	// configured; nil in single-instance mode. Use nil checks before
+	// incrementing.
+
+	// HydrationsTotal counts Hydrate completions by result.
+	// Label "result" is one of: ok (hydrated and fsck passed), fresh (no
+	// manifest — empty session), error (fsck failed or download error).
+	HydrationsTotal *prometheus.CounterVec
+
+	// HydrationDurationSeconds observes the wall-clock duration of each
+	// Hydrate call (from start through fsck), in seconds.
+	HydrationDurationSeconds prometheus.Histogram
+
+	// HydrationBytesTotal tracks cumulative bytes downloaded from object
+	// storage across all Hydrate calls (loose objects + pack + idx files).
+	HydrationBytesTotal prometheus.Counter
+
 	reg *prometheus.Registry
 }
 
@@ -255,6 +274,28 @@ func New() *Registry {
 	})
 	reg.MustRegister(objectStorageBackpressureTotal)
 
+	// ── Object-storage hydration metrics ──────────────────────────────────────
+
+	hydrationsTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "jamsesh_object_storage_hydrations_total",
+		Help: "Total number of Hydrate completions, labeled by result " +
+			"(ok, fresh, error).",
+	}, []string{"result"})
+	reg.MustRegister(hydrationsTotal)
+
+	hydrationDurationSeconds := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "jamsesh_object_storage_hydration_duration_seconds",
+		Help:    "Wall-clock duration of each Hydrate call (start through fsck), in seconds.",
+		Buckets: prometheus.DefBuckets,
+	})
+	reg.MustRegister(hydrationDurationSeconds)
+
+	hydrationBytesTotal := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "jamsesh_object_storage_hydration_bytes_total",
+		Help: "Cumulative bytes downloaded from object storage across all Hydrate calls.",
+	})
+	reg.MustRegister(hydrationBytesTotal)
+
 	return &Registry{
 		HTTPRequestsTotal:             httpRequestsTotal,
 		HTTPRequestDuration:           httpRequestDuration,
@@ -274,7 +315,10 @@ func New() *Registry {
 		ObjectStorageUploadBytesTotal:      objectStorageUploadBytesTotal,
 		ObjectStorageUploadDurationSeconds: objectStorageUploadDurationSeconds,
 		ObjectStorageBackpressureTotal:     objectStorageBackpressureTotal,
-		reg:                                reg,
+		HydrationsTotal:                   hydrationsTotal,
+		HydrationDurationSeconds:          hydrationDurationSeconds,
+		HydrationBytesTotal:               hydrationBytesTotal,
+		reg:                               reg,
 	}
 }
 
