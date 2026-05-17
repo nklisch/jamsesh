@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-portal-ui-curation-view-squash-editor-and-coauthor-chips
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-finalize-flow-portal-ui-curation-view
 depends_on: [epic-finalize-flow-portal-ui-curation-view-screen-and-route]
@@ -92,3 +92,58 @@ let { authors }: { authors: components['schemas']['CoAuthor'][] } = $props();
 - No write path to the server lives here — the editor only owns
   the local UI affordance and the `onmessagechange` callback.
   All persistence (debounced PATCH) is the parent's job.
+
+## Implementation notes
+
+- `CoAuthorChipRow.svelte` — replaced the empty placeholder. Renders
+  the entire `.coauthors` block (label + chips) only when
+  `authors.length > 0`, so single-author edge cases don't leave a
+  dangling "Co-authors" label or open up a grid gap. Each chip is
+  an `<AuthorDot size={8}>` + the author's display name in
+  `var(--font-mono)`. Color seed is `account_id ?? email`, mirroring
+  the FinalizeView cart-item dot seed (`account_id ?? author_email`)
+  so the same contributor renders the same color whether they appear
+  in the cart row or as a chip.
+- `SquashMessageEditor.svelte` — replaced the story-1 minimum-viable
+  textarea. Class names + CSS now match the locked Option-3 mock
+  (`.msg-editor`, `.label-row`, `.hint`). Added the
+  "Squash mode · pre-filled from session goal + commit subjects ·
+  editable" hint span next to the label. Textarea continues to
+  forward `oninput` directly to `onmessagechange(value)` per
+  keystroke; the parent owns debouncing. Pure input/output surface
+  driven entirely by props.
+- Made `coAuthors` a **required** prop (was optional `=[]` in
+  story-1 placeholder) per the story signature; FinalizeView already
+  passes `coAuthors={distinctAuthors}` so this is a tightening.
+- Reused `AuthorDot.svelte` rather than re-implementing the 8px
+  colored marker, which keeps the per-author color hashing
+  centralized.
+- Tests expanded from 3 placeholder smoke tests per file to 7
+  (SquashMessageEditor) + 8 (CoAuthorChipRow) targeted tests.
+  Covers: pre-population, hint row, label association, keystroke
+  callback, embedded chip-row composition, empty-author no-op,
+  prop reactivity (same-node rerender), chip count per author,
+  AuthorDot composition with --author-N color, account_id vs email
+  seed handling, chip-row disappearance when authors empties out.
+- AuthorDot color-seed design check: `account_id ?? email` is stable
+  across renders. The tree pane (`TreeDag.svelte`) uses a different
+  seed strategy (agent name from ref path) so co-author chip color
+  won't always match a chip-vs-tree comparison in general — but it
+  *will* match the cart-item dot in the same FinalizeView, which is
+  the locally-meaningful color identity for this screen. No
+  escape-hatch needed — the existing system already accepts this
+  cross-surface drift (e.g. SessionList seeds by account_id, TreeDag
+  seeds by ref-path username), so applying the same convention here
+  keeps the chip row consistent with the FinalizeView cart it sits
+  next to.
+
+## Verification
+
+- `cd frontend && pnpm test` — 256 tests pass (15 in the two
+  changed suites: 7 SquashMessageEditor + 8 CoAuthorChipRow).
+- `cd frontend && pnpm check` — 0 errors, 1 pre-existing warning in
+  unrelated `ModeSwitchDialog.svelte`.
+- `go build ./...` — fails in `cmd/jamsesh/finalizecmd/finalizerun.go`
+  on missing `chooseFetchSource`/`performFetch`. Unrelated:
+  `fetchsource_stub.go` is staged-deleted in the index from other
+  in-flight work; no Go files were touched by this story.

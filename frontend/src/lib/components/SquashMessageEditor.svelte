@@ -1,11 +1,14 @@
 <script lang="ts">
-  // Placeholder for the squash commit-message editor.
-  // Story 1 (FinalizeView + route) lands this as a minimum-viable
-  // textarea wired to `message` + `onmessagechange` so the parent's
-  // PATCH debounce path is exercised. Story 2
-  // (curation-view-squash-editor-and-coauthor-chips) replaces this
-  // body with the full editor + collapsed/expanded states + diff
-  // chrome.
+  // Squash-mode commit-message editor. Owns no state — pure
+  // input/output surface driven by the `message` prop and emitting
+  // `onmessagechange(value)` on every keystroke. The parent
+  // (FinalizeView) holds the source of truth and debounces the PATCH.
+  //
+  // Embeds <CoAuthorChipRow/> below the textarea; the row hides
+  // itself when `coAuthors` is empty (single-author edge case).
+  //
+  // Visual contract: matches `.msg-editor` in the locked Option-3
+  // mock at .mockups/screens/epic-finalize-flow-portal-ui-curation-view/option-3.html
   import type { components } from '$lib/api/types.gen';
   import CoAuthorChipRow from './CoAuthorChipRow.svelte';
 
@@ -14,11 +17,11 @@
   let {
     message,
     onmessagechange,
-    coAuthors = [],
+    coAuthors,
   }: {
     message: string;
     onmessagechange: (next: string) => void;
-    coAuthors?: CoAuthor[];
+    coAuthors: CoAuthor[];
   } = $props();
 
   function handleInput(e: Event) {
@@ -27,11 +30,15 @@
   }
 </script>
 
-<div class="squash-editor">
-  <label class="label" for="squash-message">Commit message</label>
+<div class="msg-editor">
+  <div class="label-row">
+    <label for="squash-message">Commit message</label>
+    <span class="hint">
+      Squash mode &middot; pre-filled from session goal + commit subjects &middot; editable
+    </span>
+  </div>
   <textarea
     id="squash-message"
-    class="textarea"
     value={message}
     oninput={handleInput}
     rows="8"
@@ -41,19 +48,30 @@
 </div>
 
 <style>
-  .squash-editor {
+  .msg-editor {
     display: grid;
-    gap: var(--space-2);
+    gap: 8px;
   }
 
-  .label {
+  .label-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .msg-editor label {
     font: var(--font-weight-semibold) 10px var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--color-text-secondary);
   }
 
-  .textarea {
+  .label-row .hint {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+  }
+
+  .msg-editor textarea {
     width: 100%;
     box-sizing: border-box;
     min-height: 150px;
@@ -66,7 +84,7 @@
     font: var(--font-size-sm) / 1.55 var(--font-mono);
   }
 
-  .textarea:focus {
+  .msg-editor textarea:focus {
     outline: 2px solid var(--color-accent);
     outline-offset: -1px;
     border-color: var(--color-accent);
