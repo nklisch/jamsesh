@@ -51,6 +51,50 @@ plugin's finalize subcommand).
 - `docs/PROTOCOL.md` — Lifecycle hook contracts, Local state schema
 - `docs/UX.md` — Flow: joining a session, Flow: an agent turn
 
+## Design decisions
+
+- **OAuth callback flow for `jamsesh auth`**: both — local HTTP listener
+  as the default, `--device-code` flag for headless/SSH environments.
+  - Default: open a browser to the portal OAuth endpoint with
+    `redirect_uri=http://localhost:<port>/callback` (ephemeral port picked
+    at runtime); run a one-shot HTTP server on that port to catch the code;
+    exchange code for tokens; shut down listener.
+  - `--device-code`: portal returns a short user code and verification URL;
+    user opens the URL on any browser-capable device and enters the code;
+    `jamsesh auth` polls the portal until the code is confirmed and tokens
+    are issued.
+  - Covers desktop CC sessions (local listener) and remote-dev sessions
+    via SSH/tmux (device-code) without forcing the user to port-forward.
+  - Refresh-token rotation handled silently in the background by the
+    binary on any portal API call that returns 401; if refresh fails, the
+    next hook surfaces "session token expired, run `jamsesh auth` to
+    reauthenticate" via additionalContext.
+
+- **Push-failure handling in PostToolUse hook**: hybrid retry policy.
+  - **Transient errors** (network unreachable, 5xx from portal, timeouts):
+    retry up to 3 times with exponential backoff (250ms, 1s, 4s). If all
+    3 retries fail, surface to the agent via the hook's stdout: "push
+    queued for retry — last error: <message>" + add the commit to a
+    local retry queue (next `UserPromptSubmit` retries before generating
+    the digest).
+  - **Permanent errors** (pre-receive rejection 4xx with structured error,
+    auth failures 401, scope violations): fail loud immediately. Surface
+    the full rejection message to the agent so it can react (e.g., scope
+    violation → agent can revert the offending change).
+  - The local binary distinguishes transient vs permanent by HTTP status
+    + structured error code in the response body. Pre-receive rejection
+    messages follow the standard error contract (`error: push.scope_violation`
+    + `details.paths: [...]`) so the agent gets actionable detail.
+  - Retry queue is per-session, ordered, FIFO. If a queued push has a
+    parent commit that's also queued, the parent goes first. If the queue
+    grows beyond a sensible threshold (say 10 queued commits), Stop hook
+    refuses to fire and surfaces a "session is wedged, run `jamsesh status`
+    to investigate" error.
+
+<!-- Feature-design will fill in interfaces, signatures, and implementation
+units when /agile-workflow:feature-design runs on this. -->
+
+
 ## Anticipated child features
 
 Provisional — actual decomposition lands when this epic is designed.
