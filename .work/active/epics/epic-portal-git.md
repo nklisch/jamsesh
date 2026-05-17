@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git
 kind: epic
-stage: drafting
+stage: implementing
 tags: [portal]
 parent: null
 depends_on: [epic-portal-foundation]
@@ -52,6 +52,8 @@ post-receive events); it does NOT cover any REST endpoints
 
 ## Design decisions
 
+Locked at epicize time:
+
 - **Smart-HTTP serving mechanism**: invoke `git-receive-pack` and
   `git-upload-pack` as subprocesses directly (the Gitea/Forgejo pattern).
   Portal HTTP handlers parse the request, run pre-receive validation,
@@ -70,20 +72,94 @@ post-receive events); it does NOT cover any REST endpoints
   data-retention story for GDPR/compliance asks. No restore path
   by design — restore is "you should have used the 90-day window."
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+Locked at epic-design time (this pass):
 
+- **Bare repo init timing**: eager. The bare repo is created during
+  `POST /api/sessions` handling (cross-epic call from portal-api into a
+  storage helper here), atomic with the `sessions` row insert. Order:
+  create repo, then insert row; on insert failure, `rm -rf` the repo.
+  Invariant after success: "session row exists ⟹ bare repo exists."
+  Rationale: simpler invariant than lazy-init; no smart-http handler
+  needs to guard against a missing repo.
+- **Pre-receive execution model**: validation runs in the portal's Go
+  HTTP handler before invoking `git-receive-pack`. NOT via a shell
+  `hooks/pre-receive` script that calls back into the portal. The
+  handler uses `go-git` (already SPEC.md-locked) for object walking
+  and pack inspection. Rationale: matches Gitea/Forgejo; avoids
+  fork-back-into-portal complexity; keeps policy enforcement on the
+  request path.
+- **Concurrent push handling**: rely on git's native ref locking. No
+  portal-level lock layer. Concurrent pushes to different refs proceed
+  in parallel; same-ref pushes serialize naturally. Rationale: git
+  already solved this; layering portal locking would be both slower
+  and a correctness regression.
+- **Storage path schema**: lock the v1 layout
+  `<storage>/orgs/<org_id>/sessions/<session_id>.git`. No path
+  abstraction layer. Future reshapes (sharding, renames) ship as
+  explicit one-shot migration tools. Rationale: premature abstraction
+  is worse than a future migration.
+- **Pack-file size cap**: 50 MB per push by default, configurable via
+  portal config (`git.max_push_bytes`). Rejected with `push.size_limit`
+  error code. Rationale: protects the portal; default is generous for
+  the doc-writing use case; operators can tune.
 
-## Anticipated child features
+## Decomposition
 
-Provisional — actual decomposition lands when this epic is designed.
+Four child features, split by responsibility within the receive-pack
+lifecycle:
 
-- Bare repo hosting (on-disk layout, lifecycle, gc concerns)
-- Smart-HTTP serving (CGI wrap of `git-http-backend` or subprocess approach)
-- HTTP Basic auth integration with portal token validation
-- Pre-receive policy enforcement (trailers, scope globs, ref namespace,
-  force-push rejection)
-- Post-receive event emission into the portal event log
-- Session base-ref creation flow (the special creator-pushes-HEAD pathway)
+- **storage** is the foundation — bare repo creation, archived-session
+  semantics, on-disk path resolution. Everything else consumes it.
+- **pre-receive** is the policy library that runs before
+  `git-receive-pack` accepts a push.
+- **post-receive** emits events into the portal event log after
+  acceptance.
+- **smart-http** is the HTTP handler trio that assembles everything,
+  including HTTP Basic auth via the foundation tokens feature.
 
-<!-- Design pass on each child feature will fill in specifics. -->
+Critical path: `storage → {pre-receive || post-receive} → smart-http`.
+Three deep with the middle pair parallelizable. The only cross-epic dep
+is `smart-http → epic-portal-foundation-tokens` for the token validator
+that maps HTTP Basic password to an account.
+
+### Child features
+
+- `epic-portal-git-storage` — bare-repo init/teardown, on-disk layout,
+  archived-session table + stub formatter, atomic creation with sessions
+  row — depends on: `[]`
+- `epic-portal-git-pre-receive` — in-process Go validation library
+  (trailers, scope globs, ref namespace, force-push rejection, size
+  limit) using `go-git` — depends on: `[epic-portal-git-storage]`
+- `epic-portal-git-post-receive` — commit-arrived event emission into
+  the portal event log (table owned by `epic-portal-api`) — depends on:
+  `[epic-portal-git-storage]`
+- `epic-portal-git-smart-http` — HTTP handler trio (`info/refs`,
+  upload-pack, receive-pack), HTTP Basic auth, subprocess invocation,
+  streaming, archived-stub response — depends on:
+  `[epic-portal-git-storage, epic-portal-git-pre-receive,
+  epic-portal-git-post-receive, epic-portal-foundation-tokens]`
+
+### Decomposition risks
+
+- **Pre-receive is the highest-risk feature.** Wire-protocol validation
+  has historically been a long tail of edge cases. Mitigation: use
+  `go-git` (already locked) for object walking rather than rolling our
+  own pack parser; lock the validation test matrix at feature-design
+  time (the cartesian of trailer × scope × namespace × force-push ×
+  size).
+- **Cross-epic dep on the events table.** post-receive writes into the
+  `events` table owned by `epic-portal-api`. The design pass on
+  post-receive is best sequenced after portal-api's events-table feature
+  exists; if running ahead, lock to `docs/PROTOCOL.md > WebSocket event
+  types` (which already pins `commit.arrived` payload shape).
+- **Streaming discipline.** smart-http must stream gigabyte-scale
+  fetches without memory blowup (`io.Pipe` + `http.Flusher`). Subprocess
+  error mid-stream needs to map to the git-protocol report-status the
+  client expects. Mitigation: design pass references the Gitea/Forgejo
+  pattern and produces a fault-injection test plan.
+- **Storage atomicity.** "Repo created before session row inserted" is a
+  cross-process operation. If row insert fails after repo creation, the
+  storage feature must clean up loudly (alert on failure). If row insert
+  succeeds but repo creation already happened, the invariant holds.
+  Reverse order (insert first, then create repo) is rejected: would
+  produce orphan session rows under failure.
