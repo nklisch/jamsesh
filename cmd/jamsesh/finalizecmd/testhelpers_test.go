@@ -82,12 +82,14 @@ func pinGitToCwd(t *testing.T, cwd string) {
 	oldRunGitWithStdin := runGitWithStdin
 	oldRunGitCwd := runGitCwd
 	oldRunGitOutputCwd := runGitOutputCwd
+	oldRunGitCombined := runGitCombined
 	t.Cleanup(func() {
 		runGit = oldRunGit
 		runGitOutput = oldRunGitOutput
 		runGitWithStdin = oldRunGitWithStdin
 		runGitCwd = oldRunGitCwd
 		runGitOutputCwd = oldRunGitOutputCwd
+		runGitCombined = oldRunGitCombined
 	})
 
 	runGit = func(args ...string) error {
@@ -125,6 +127,12 @@ func pinGitToCwd(t *testing.T, cwd string) {
 		cmd.Stderr = os.Stderr
 		out, err := cmd.Output()
 		return strings.TrimSpace(string(out)), err
+	}
+	runGitCombined = func(args ...string) (string, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = cwd
+		out, err := cmd.CombinedOutput()
+		return string(out), err
 	}
 }
 

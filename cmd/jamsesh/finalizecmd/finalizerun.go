@@ -102,7 +102,40 @@ func finalizeRunAction(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	_ = pre.OriginalBranch // story 2 wires the cleanup; recorded here.
+
+	// Cleanup stack — wired with the root context so a SIGINT during
+	// any subsequent step drains the stack before exit. Outcome is
+	// flipped to outcomeSuccess only on a clean end-to-end completion;
+	// every other exit path (user abort, fetch failure, conflict)
+	// drains with outcomeAborted, which leaves the stash and the
+	// partial branch intact for recovery but still removes the
+	// temporary jamsesh remote.
+	cleanup := newCleanupStack(ctx, out)
+	outcome := outcomeAborted
+	defer func() { _ = cleanup.Run(outcome) }()
+
+	// Register the conditional cleanups first so they sit at the
+	// bottom of the LIFO stack — the unconditional remote removal
+	// runs before them on a clean exit, which is the order we want
+	// (drop the throwaway credential ASAP).
+	if pre.Stashed {
+		// We never push another stash during the run, so popping by
+		// HEAD targets the entry we created in preflight. The
+		// pre.StashMessage value is retained on the struct for debug
+		// surfaces (it is used by tests asserting the stash message
+		// shape) but the pop itself does not need it.
+		cleanup.Push("stash pop", true, func() error {
+			fmt.Fprintf(out, "+ git stash pop\n")
+			return runGit("stash", "pop")
+		})
+	}
+	if pre.OriginalBranch != "" {
+		original := pre.OriginalBranch
+		cleanup.Push("original branch restore", true, func() error {
+			fmt.Fprintf(out, "+ git checkout %s\n", original)
+			return runGit("checkout", original)
+		})
+	}
 
 	// Step 6: proceed prompt.
 	ok, err := confirmer("Proceed with the finalize?", true)
@@ -110,25 +143,26 @@ func finalizeRunAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	if !ok {
-		// Pop the stash we created if we created one — the user is
-		// bailing on the whole flow.
-		if pre.Stashed {
-			fmt.Fprintf(out, "+ git stash pop\n")
-			_ = runGit("stash", "pop")
-		}
+		// User declined: drain the stack right now with outcomeSuccess
+		// so the stash pops cleanly (we never registered a remote
+		// cleanup, so the unconditional layer is empty). Set outcome
+		// to success and let the deferred Run handle it — Run is
+		// idempotent, so the defer above will no-op on second call.
+		outcome = outcomeSuccess
 		return errors.New("aborted by user")
 	}
 
-	// Step 7: choose fetch source + fetch.
-	fs, err := chooseFetchSource(ctx, pc, plan, pid.SessionID)
+	// Step 7: choose fetch source. For the HTTPS path, chooseFetchSource
+	// registers the temporary `jamsesh` remote before returning so the
+	// cleanup func has something to remove. We push that cleanup
+	// (unconditional — runs on every exit path) immediately so any
+	// failure between here and Run drains the remote.
+	fs, err := chooseFetchSource(ctx, pc, plan, orgID, pid.SessionID)
 	if err != nil {
 		return fmt.Errorf("choosing fetch source: %w", err)
 	}
-	defer func() {
-		if cleanupErr := fs.cleanup(); cleanupErr != nil {
-			fmt.Fprintf(out, "Warning: fetch-source cleanup failed: %v\n", cleanupErr)
-		}
-	}()
+	cleanup.Push("fetch-source cleanup", false, fs.cleanup)
+
 	if err := performFetch(out, fs); err != nil {
 		return fmt.Errorf("fetching session refs: %w", err)
 	}
@@ -142,28 +176,23 @@ func finalizeRunAction(ctx context.Context, cmd *cli.Command) error {
 	// Step 9: execute the cherry-pick sequence.
 	execErr := execute(out, plan, runner)
 
-	// Step 10a: conflict halt — print resume hint and exit non-zero.
+	// Step 10a: conflict halt — print resume hint, leave the WT in the
+	// partial state, drain with outcomeAborted (the deferred Run
+	// already does this by default).
 	var conflict *conflictError
 	if errors.As(execErr, &conflict) {
 		renderConflict(out, conflict)
-		// IMPORTANT: do NOT pop the stash on conflict — the user
-		// needs a clean working tree to resolve.
 		return execErr
 	}
 	if execErr != nil {
 		return execErr
 	}
 
-	// Step 10b: clean exit — pop stash if we stashed, print next steps.
-	if pre.Stashed {
-		fmt.Fprintf(out, "+ git stash pop\n")
-		if err := runGit("stash", "pop"); err != nil {
-			// Non-fatal: the finalize succeeded; user can pop manually.
-			fmt.Fprintf(out, "Warning: `git stash pop` failed (%v); resolve with `git stash list`.\n", err)
-		}
-	}
+	// Step 10b: clean exit — print next steps and flip outcome so the
+	// deferred Run pops the stash and restores the original branch.
 	fmt.Fprintf(out, "\nBranch %q is ready. Push when you're ready:\n", plan.TargetBranch)
 	fmt.Fprintf(out, "  git push origin %s\n", plan.TargetBranch)
 	fmt.Fprintf(out, "Then mark the session shipped in the portal.\n")
+	outcome = outcomeSuccess
 	return nil
 }

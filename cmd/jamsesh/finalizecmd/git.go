@@ -67,3 +67,17 @@ var runGitWithStdin = func(stdinData string, args ...string) error {
 	return cmd.Run()
 }
 
+// runGitCombined executes `git <args>` and returns the combined
+// stdout/stderr output along with the exec error. Used for the
+// idempotent-cleanup paths (e.g. `git remote remove jamsesh`) where
+// the caller needs to classify the failure mode by inspecting stderr
+// without spewing it onto the user's terminal — git prints
+// "error: No such remote: 'jamsesh'" on stderr, which is benign in
+// the cleanup context but alarming in the user's scrollback if we
+// inherit stderr.
+var runGitCombined = func(args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
