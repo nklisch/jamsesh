@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-module-skeleton
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-infrastructure
 depends_on: []
@@ -55,3 +55,20 @@ subsequent stories have a place to land.
   absence of `tests/e2e/playwright/` (e.g. `test -d tests/e2e/playwright
   && cd tests/e2e/playwright && ... || echo "playwright not bootstrapped
   yet, skipping"`)
+
+## Implementation notes
+
+Files created:
+- `tests/e2e/go.mod` — module `jamsesh/tests/e2e`, `go 1.25.7`, no deps (intentionally minimal; Testcontainers-Go lands in the testcontainers-fixtures story)
+- `tests/e2e/scaffolding/placeholder_test.go` — package `scaffolding_test`, `TestE2EModuleBuilds` passes trivially; uses stdlib `testing` only, no testify
+- `tests/e2e/README.md` — documents how to run, container provenance, links back to the feature item
+- `Makefile` — appended `test-e2e`, `test-e2e-go`, `test-e2e-playwright` targets with a separate `.PHONY` line
+
+Deviations from story body:
+- The story body mentioned adding `github.com/stretchr/testify` as a dep; the implementation brief and notes override this — `go.mod` is intentionally dep-free at this stage. The placeholder test uses stdlib `testing` only.
+
+Verification:
+- `cd tests/e2e && go test ./...` → `ok jamsesh/tests/e2e/scaffolding`
+- `make test-e2e-go` → passes
+- `make test-e2e` → Go tests pass, playwright no-ops with "playwright not bootstrapped yet, skipping"
+- `git diff go.mod` → empty (root module untouched)

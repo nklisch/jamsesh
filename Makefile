@@ -33,3 +33,19 @@ go-build: frontend-build
 # build: full project build — codegen, frontend, Go.
 build: generate frontend-build
 	go build ./...
+
+.PHONY: test-e2e test-e2e-go test-e2e-playwright
+
+# test-e2e-go: run the Go-based e2e test suite.
+test-e2e-go:
+	cd tests/e2e && go test ./...
+
+# test-e2e-playwright: run Playwright browser tests.
+# No-ops cleanly when tests/e2e/playwright/ has not been bootstrapped yet.
+test-e2e-playwright:
+	@test -d tests/e2e/playwright \
+		&& (cd tests/e2e/playwright && npm test) \
+		|| echo "playwright not bootstrapped yet, skipping"
+
+# test-e2e: run the full e2e suite (Go then Playwright).
+test-e2e: test-e2e-go test-e2e-playwright
