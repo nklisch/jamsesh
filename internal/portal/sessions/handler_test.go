@@ -146,6 +146,9 @@ func (h *sessionsOnlyStrict) PatchFinalizeLock(_ context.Context, _ openapi.Patc
 func (h *sessionsOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
 	panic("not wired")
 }
+func (h *sessionsOnlyStrict) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*sessionsOnlyStrict)(nil)
 

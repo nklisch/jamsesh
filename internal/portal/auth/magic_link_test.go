@@ -183,6 +183,9 @@ func (m *magicLinkOnlyStrict) PatchFinalizeLock(_ context.Context, _ openapi.Pat
 func (m *magicLinkOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
 	panic("ReleaseFinalizeLock: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
+	panic("GetFinalizePlan: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

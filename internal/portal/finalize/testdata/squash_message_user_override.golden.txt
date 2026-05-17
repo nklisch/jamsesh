@@ -1,0 +1,6 @@
+Manual squash subject line
+
+- wip: experiment 1
+- wip: experiment 2
+
+Co-authored-by: Alice Smith <alice@example.com>

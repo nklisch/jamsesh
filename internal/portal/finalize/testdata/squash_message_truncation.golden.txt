@@ -1,0 +1,5 @@
+Wire up the authentication flow with magic-link senders and complete…
+
+- feat: magic-link sender
+
+Co-authored-by: Alice Smith <alice@example.com>

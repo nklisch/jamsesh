@@ -183,6 +183,11 @@ func (c *combinedHandler) ReleaseFinalizeLock(ctx context.Context, req openapi.R
 	return c.FinalizeHandler.ReleaseFinalizeLock(ctx, req)
 }
 
+// GetFinalizePlan delegates to the finalize handler.
+func (c *combinedHandler) GetFinalizePlan(ctx context.Context, req openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
+	return c.FinalizeHandler.GetFinalizePlan(ctx, req)
+}
+
 // compile-time assertion that combinedHandler satisfies the full interface.
 var _ openapi.StrictServerInterface = (*combinedHandler)(nil)
 
@@ -427,6 +432,10 @@ func main() {
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize/lock", apiWrapper.AcquireFinalizeLock)
 				r.Patch("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", apiWrapper.PatchFinalizeLock)
 				r.Delete("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", apiWrapper.ReleaseFinalizeLock)
+
+				// Finalize plan: any session member; the handler validates the
+				// lock_id binding and idle/superseded state.
+				r.Get("/orgs/{orgID}/sessions/{sessionID}/finalize-plan", apiWrapper.GetFinalizePlan)
 			})
 		},
 	})

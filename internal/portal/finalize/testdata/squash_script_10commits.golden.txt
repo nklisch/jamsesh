@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+echo "==> Fetching session refs"
+git fetch "$JAMSESH_FETCH_REMOTE"
+echo "==> Creating target branch ship/comments at fedcba987654"
+git checkout -b "ship/comments" fedcba9876543210fedcba9876543210fedcba98
+echo "==> Staging 10 curated commits"
+git cherry-pick --no-commit 0000000000000000000000000000000000000001 0000000000000000000000000000000000000002 0000000000000000000000000000000000000003 0000000000000000000000000000000000000004 0000000000000000000000000000000000000005 0000000000000000000000000000000000000006 0000000000000000000000000000000000000007 0000000000000000000000000000000000000008 0000000000000000000000000000000000000009 000000000000000000000000000000000000000a
+echo "==> Composing squash commit"
+git commit --author="$JAMSESH_RUNNER_NAME <$JAMSESH_RUNNER_EMAIL>" -F - <<'JAMSESH_MSG'
+Ship the comments feature
+
+- feat: comments REST endpoint
+- feat: comments WebSocket gateway
+- docs: document comments protocol
+
+Co-authored-by: Alice Smith <alice@example.com>
+Co-authored-by: Bob Tan <bob@example.com>
+JAMSESH_MSG
+echo "==> Done. Push when ready: git push origin ship/comments"

@@ -1,0 +1,7 @@
+Wire up the auth flow
+
+- feat: add login form
+- feat: wire token storage
+- fix: clear stale session on logout
+
+Co-authored-by: Alice Smith <alice@example.com>

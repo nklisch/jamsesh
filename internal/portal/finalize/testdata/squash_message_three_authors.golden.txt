@@ -1,0 +1,9 @@
+Ship the comments feature
+
+- feat: comments REST endpoint
+- feat: comments WebSocket gateway
+- docs: document comments protocol
+
+Co-authored-by: Alice Smith <alice@example.com>
+Co-authored-by: Bob Tan <bob@example.com>
+Co-authored-by: Carol Vasquez <carol@example.com>

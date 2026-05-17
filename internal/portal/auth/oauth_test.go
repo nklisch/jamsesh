@@ -140,6 +140,9 @@ func (o *oauthOnlyStrict) PatchFinalizeLock(_ context.Context, _ openapi.PatchFi
 func (o *oauthOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
 	panic("ReleaseFinalizeLock: not wired in OAuth tests")
 }
+func (o *oauthOnlyStrict) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
+	panic("GetFinalizePlan: not wired in OAuth tests")
+}
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 

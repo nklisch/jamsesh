@@ -1174,6 +1174,137 @@ components:
           nullable: true
           description: Required when mode=squash; ignored when mode=preserve.
 
+    CoAuthor:
+      type: object
+      required: [name, email]
+      description: |
+        Co-author of a squash commit. account_id is populated when the
+        portal has an account matching the commit author's email; null
+        otherwise (the Co-authored-by trailer still works on GitHub etc.).
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        account_id:
+          type: string
+          nullable: true
+
+    PlanCommit:
+      type: object
+      required: [sha, author_name, author_email, subject, committed_at]
+      description: |
+        Per-commit metadata for the curation summary panel. Resolved by the
+        portal from the bare repo via go-git at plan-generation time.
+      properties:
+        sha:
+          type: string
+        author_name:
+          type: string
+        author_email:
+          type: string
+        account_id:
+          type: string
+          nullable: true
+          description: |
+            Portal account matching this commit's author email, or null.
+        subject:
+          type: string
+          description: First line of the commit message.
+        committed_at:
+          type: string
+          format: date-time
+
+    FetchSource:
+      type: object
+      required: [kind]
+      description: |
+        How the local plugin should fetch the session refs needed to run
+        the script. kind=https carries the portal's smart-HTTP remote URL;
+        kind=local is set plugin-side when a local session checkout exists
+        (the portal never returns kind=local).
+      properties:
+        kind:
+          type: string
+          enum: [local, https]
+        path:
+          type: string
+          nullable: true
+          description: Local checkout path (plugin-set; never populated by the portal).
+        remote_url:
+          type: string
+          nullable: true
+          description: |
+            Portal git smart-HTTP URL for this session's bare repo. The
+            plugin pairs this with an ephemeral fetch token from
+            /finalize/fetch-token when no local checkout is present.
+        token_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Token expiry. Always null in the plan response; the token is
+            minted on the dedicated fetch-token endpoint, not on plan-fetch.
+
+    PlanResponse:
+      type: object
+      required:
+        - plan_id
+        - mode
+        - script
+        - lock_status
+        - fetch_source
+        - selected_commits
+        - target_branch
+        - base_sha
+      description: |
+        Deterministic finalize plan computed from a held lock's curation
+        state plus the live bare-repo commit metadata. The plan pins to
+        the curated SHAs at the moment of generation — even if draft
+        advances afterwards, the script references the exact reviewed SHAs.
+      properties:
+        plan_id:
+          type: string
+          description: Opaque to clients. Format `<session_id>:<lock_id>`.
+        mode:
+          $ref: '#/components/schemas/PlanMode'
+        script:
+          type: string
+          description: |
+            Bash script body. In squash mode: cherry-pick --no-commit of
+            every curated SHA followed by a single git commit consuming
+            the composed message as a heredoc. In preserve mode: one
+            git cherry-pick per curated SHA. Carries `set -euo pipefail`,
+            verbose `==>` echos, and the literal placeholders
+            `$JAMSESH_FETCH_REMOTE`, `$JAMSESH_RUNNER_NAME`,
+            `$JAMSESH_RUNNER_EMAIL` the plugin substitutes.
+        commit_message:
+          type: string
+          nullable: true
+          description: |
+            Composed squash message body (squash mode only). null in
+            preserve mode.
+        co_authors:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/CoAuthor'
+          description: |
+            Co-authors in first-appearance order across the selection
+            (squash mode only). null in preserve mode.
+        lock_status:
+          $ref: '#/components/schemas/LockStatus'
+        fetch_source:
+          $ref: '#/components/schemas/FetchSource'
+        selected_commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanCommit'
+        target_branch:
+          type: string
+        base_sha:
+          type: string
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -2355,3 +2486,68 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/finalize-plan:
+    get:
+      summary: Compute the finalize plan for a held lock
+      description: |
+        Returns a deterministic plan computed from the lock's curation
+        state plus the live bare-repo commit metadata: the per-commit
+        summary, the composed squash message + co-author trailer list
+        (squash mode), the bash script body, and the fetch-source the
+        plugin uses when no local session checkout exists. The same lock
+        state + same bare repo always produces the same plan bytes, so
+        the portal UI and the plugin render identical previews to the
+        human before execution.
+
+        409 codes carried in the ErrorEnvelope `error` field:
+          - finalize.lock_expired      — last_activity_at older than 30 min
+          - finalize.lock_superseded   — lock has been overridden
+          - finalize.commit_missing    — a curated SHA is absent from the
+                                         bare repo; details.missing_sha
+      operationId: getFinalizePlan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: lock_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: |
+            Lock ID. Plan generation is bound to a specific lock so the
+            response pins to that lock's curation state.
+      responses:
+        '200':
+          description: Finalize plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Plan cannot be generated. Error codes:
+            finalize.lock_expired, finalize.lock_superseded,
+            finalize.commit_missing (with details.missing_sha).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'

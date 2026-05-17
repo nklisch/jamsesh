@@ -1,0 +1,8 @@
+Refactor logging
+
+- refactor: extract logger interface
+- refactor: route logs through interface
+- refactor: clean up callers
+
+Co-authored-by: Alice Smith <Alice@example.com>
+Co-authored-by: Bob Tan <bob@example.com>

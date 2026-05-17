@@ -122,6 +122,9 @@ func (c *commentsOnlyStrict) PatchFinalizeLock(_ context.Context, _ openapi.Patc
 func (c *commentsOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
 	panic("not wired")
 }
+func (c *commentsOnlyStrict) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*commentsOnlyStrict)(nil)
 

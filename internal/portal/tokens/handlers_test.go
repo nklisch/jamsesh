@@ -122,6 +122,9 @@ func (t *tokensOnlyHandler) PatchFinalizeLock(_ context.Context, _ openapi.Patch
 func (t *tokensOnlyHandler) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
 	panic("ReleaseFinalizeLock: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
+	panic("GetFinalizePlan: not implemented in token handler tests")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

@@ -159,6 +159,9 @@ func (a *accountsOnlyStrict) PatchFinalizeLock(_ context.Context, _ openapi.Patc
 func (a *accountsOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.ReleaseFinalizeLockRequestObject) (openapi.ReleaseFinalizeLockResponseObject, error) {
 	panic("ReleaseFinalizeLock: not wired in accounts tests")
 }
+func (a *accountsOnlyStrict) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
+	panic("GetFinalizePlan: not wired in accounts tests")
+}
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 
