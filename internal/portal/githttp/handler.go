@@ -5,8 +5,6 @@
 package githttp
 
 import (
-	"net/http"
-
 	"github.com/go-chi/chi/v5"
 
 	"jamsesh/internal/db/store"
@@ -36,26 +34,8 @@ type Handler struct {
 func (h *Handler) Mount(r chi.Router) {
 	r.Route("/{orgID}/{sessionID}.git", func(r chi.Router) {
 		r.Use(h.basicAuth, h.requireSessionMember, h.checkArchived)
-		r.Get("/info/refs", h.stubInfoRefs)
-		r.Post("/git-upload-pack", h.stubUploadPack)
-		r.Post("/git-receive-pack", h.stubReceivePack)
+		r.Get("/info/refs", h.infoRefs)
+		r.Post("/git-upload-pack", h.uploadPack)
+		r.Post("/git-receive-pack", h.receivePack)
 	})
-}
-
-// stubInfoRefs is the placeholder for the info/refs endpoint.
-// Replaced by the upload-pack-fetch story.
-func (h *Handler) stubInfoRefs(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
-}
-
-// stubUploadPack is the placeholder for the git-upload-pack endpoint.
-// Replaced by the upload-pack-fetch story.
-func (h *Handler) stubUploadPack(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
-}
-
-// stubReceivePack is the placeholder for the git-receive-pack endpoint.
-// Replaced by the receive-pack-push story.
-func (h *Handler) stubReceivePack(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
 }

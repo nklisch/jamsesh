@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-smart-http-upload-pack-fetch
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-git-smart-http
 depends_on: [epic-portal-git-smart-http-auth-and-routing]
@@ -35,3 +35,12 @@ Implement the fetch side: info/refs advertisement and upload-pack streaming subp
 
 - Subprocess: `git upload-pack --stateless-rpc <repoPath>`. For info/refs: `git upload-pack --stateless-rpc --advertise-refs <repoPath>` (prefixed with smart-HTTP service line).
 - The smart-HTTP skill carries the verified pkt-line + streaming pattern.
+
+## Implementation notes
+
+- `internal/portal/githttp/info_refs.go` — `infoRefs` handler: validates service param, runs `git <svc> --stateless-rpc --advertise-refs`, writes pkt-line service prefix + subprocess output. Propagates `Git-Protocol` header after regex validation to prevent env injection.
+- `internal/portal/githttp/upload_pack.go` — `uploadPack` handler: pipes `r.Body` to subprocess stdin, streams stdout via `streamWithFlush` (defined in `stream.go`, shared with receive-pack). Logs non-zero exit after headers are sent.
+- `internal/portal/githttp/handler.go` — Mount updated to use `h.infoRefs` and `h.uploadPack` (stubs for those two removed). `stubReceivePack` was already replaced by the sibling story's `receivePack`.
+- `streamWithFlush` lives in `stream.go` (created by sibling receive-pack story); upload-pack and receive-pack both use it.
+- Tests: `upload_pack_test.go` adds `TestInfoRefs_UploadPack`, `TestInfoRefs_InvalidService`, and `TestGitClone_EndToEnd`. The clone test builds a synthetic bare repo via shell git, spins up an httptest server with a real sqlite-backed Handler, and runs `git clone` with embedded credentials — verifies the cloned HEAD SHA matches what was seeded.
+- `handler_test.go` updated: stub test replaced with `TestValidMember_PassesAuthMiddleware` (checks 401 does not occur); `TestAccountFromContext` assertion loosened to "not 401" since info/refs is real now.

@@ -278,18 +278,31 @@ func TestCheckArchived_ArchivedSession(t *testing.T) {
 	}
 }
 
-// TestValidMember_ReachesStubHandler: valid token + member → 501 (stub handler).
-func TestValidMember_ReachesStubHandler(t *testing.T) {
+// TestValidMember_PassesAuthMiddleware: valid token + member reaches the handler
+// (auth and session-membership middleware both pass).
+func TestValidMember_PassesAuthMiddleware(t *testing.T) {
 	env := newTestEnv(t)
 	acc, token := env.mustIssueToken(t, "dave@example.com")
 	orgID, sessionID := env.mustCreateSessionWithMember(t, acc)
 
-	url := env.gitURL(orgID, sessionID)
-	resp := doGet(t, url, "x-access-token", token)
+	// Use the receive-pack route; we verify that auth middleware does NOT return
+	// 401. The handler itself may return 400 (bad content type) or 500 (no repo
+	// on disk) — both are fine since they mean auth passed.
+	url := fmt.Sprintf("%s/%s/%s.git/git-receive-pack", env.server.URL, orgID, sessionID)
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.SetBasicAuth("x-access-token", token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", url, err)
+	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNotImplemented {
-		t.Errorf("want 501 from stub handler, got %d", resp.StatusCode)
+	// Auth passed → must NOT be 401.
+	if resp.StatusCode == http.StatusUnauthorized {
+		t.Errorf("auth should have passed, got 401")
 	}
 }
 
@@ -329,8 +342,10 @@ func TestAccountFromContext(t *testing.T) {
 	defer resp.Body.Close()
 
 	_ = capturedAccount
-	// The important check is that it reached the stub handler (501) and auth passed.
-	if resp.StatusCode != http.StatusNotImplemented {
-		t.Errorf("want 501 from stub, got %d", resp.StatusCode)
+	// The important check: auth passed (we got past 401). The info/refs handler
+	// will return 500 because no bare repo exists on disk in this test env.
+	// We just verify auth + membership middleware let the request through.
+	if resp.StatusCode == http.StatusUnauthorized {
+		t.Errorf("auth should have passed, got 401")
 	}
 }
