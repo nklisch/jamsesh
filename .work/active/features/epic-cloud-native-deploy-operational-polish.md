@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish
 kind: feature
-stage: implementing
+stage: review
 tags: [infra, portal]
 parent: epic-cloud-native-deploy
 depends_on: []
@@ -637,3 +637,20 @@ depends on all five so the documentation reflects final shape.
 - `docs/SPEC.md` — Deployment-shape section grows by the new env
   vars when this feature reaches `stage: done`.
 - `docs/SELF_HOST.md` — substantial updates per Unit 6.
+
+## Children complete (2026-05-17)
+
+All 6 child stories landed across 3 orchestrator waves + 1 docs-only wave:
+
+| Story | Verdict | Notes |
+|---|---|---|
+| secrets-from-file | Approve | `_FILE` precedence helper + 6 secret-var migrations + 15 tests |
+| readyz | Approve | New probes package + parallel-execution Handler + 6 tests; Store gained Ping(ctx) propagated to 3 adapters |
+| metrics | Approve | Isolated Prometheus registry + chi-pattern cardinality safety + 9 tests; instrumentation through HTTP/git/automerger/events |
+| db-pool-and-lock | Approve | DBConfig + PoolConfig + Postgres migration advisory lock; db.Open signature change propagated through 22 test files |
+| graceful-shutdown | Approve with comments | Shared grace budget + parallel auto-merger/WS drain. Filed Important finding `graceful-shutdown-shutdownstart-race` (benign-in-practice race in shutdownStart variable; backlog) |
+| docs | review (pending) | SELF_HOST.md §2/§8/§9/new §13; SPEC.md Deployment shape; rolling-foundation honored |
+
+Verification: `go build ./... && go test ./...` clean across 43 packages.
+
+Feature advanced `implementing → review`. The single review finding (graceful-shutdown race) is filed as a backlog item; doesn't block feature advancement.
