@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage-handlers-workers-mcp
 kind: story
-stage: review
+stage: done
 tags: [testing, testability, portal]
 parent: portal-test-clock-broaden-coverage
 depends_on: []
@@ -487,3 +487,84 @@ feature unlocks the file.
 - `go test -count=1 ./...` — full repo green.
 - `TestProductionBuild_HasNoTestEndpoint` (in `cmd/portal/`) — green,
   the production binary still returns 404 on `POST /test/clock-advance`.
+
+## Review (2026-05-17, commit e54ea0b)
+
+**Verdict: Approve.**
+
+### What was checked
+
+- Read the story body, spec, design table, and acceptance criteria.
+- `git show e54ea0b --stat` — 23 files, +907/-39 LoC. File list
+  matches the design exactly: six production packages touched,
+  six clock_test.go files added, main.go + both test_clock_advance
+  files updated.
+- Spot-checked representative files: `comments/service.go`,
+  `finalize/handler.go`, `events/log.go`, `automerger/outcomes.go`,
+  `mcpendpoint/handler.go`, `storage/service.go`, `cmd/portal/main.go`,
+  both `test_clock_advance{,_prod}.go`.
+- Cross-checked the 17 wrapped sites — confirmed all live in
+  the expected files; remaining `time.Now()` occurrences in the
+  six packages are only `realClock.Now()` definitions and nil-safe
+  fallback paths inside `s.now()` / `a.now()` / `e.now()` helpers.
+- Per-package Clock interface + NewWithClock pattern is consistent
+  across the six packages — uniform shape, structural typing carries
+  the "advance once, move everywhere" property.
+- `cmd/portal/main.go` additions are strictly additive against the
+  sibling `provisioning-and-state` story (`accountsClock()` block is
+  intact at lines 302-307; the seven new blocks for tokens, magic-link
+  (pre-existing), storage, events, comments, finalize, automerger,
+  mcp are all separately scoped).
+- `cmd/portal/test_clock_advance{,_prod}.go` — seven new typed
+  accessors added below the existing `accountsClock()` accessor; all
+  reference the single `*testclock.AdvanceableClock`.
+- `grep -rn 'testclock' cmd/portal/ internal/portal/` — only
+  `//go:build e2etest`-tagged files import the package; all other
+  matches are package-name mentions in comments.
+
+### Test results
+
+- `go build ./...` — clean.
+- `go build -tags e2etest ./...` — clean.
+- `go vet ./internal/portal/...` — clean.
+- `go test ./internal/portal/...` — all packages green
+  (finalize 0.554s, mcpendpoint 0.130s, others cached).
+- `TestProductionBuild_HasNoTestEndpoint` — passes.
+
+### Judgment on the sessions deferral
+
+The deferral is sound. At the time the implementer was working, the
+parent feature design called out `sessions/handler.go` as
+in-flight-locked by `portal-validate-writable-scope-at-create-time`.
+The implementer correctly observed that adding the `Handler.clock`
+field requires editing `handler.go` (the proposed
+`clock.go::WithClock(c Clock)` workaround structurally depends on
+the field existing). They held back the entire sessions package
+(handler.go's 2 sites + invites.go's 2 sites + listing.go's 1 site =
+5 sites total) rather than partially wire it in a way that could
+collide.
+
+Note: `portal-validate-writable-scope-at-create-time` has since
+landed (commit `87835cc`, stage:done), so `handler.go` is no longer
+locked. The conservative deferral was the right call at the time
+the implementer was scoped (the sibling story was still implementing
+when this story was designed), but the follow-on can now proceed
+without coordination overhead.
+
+### Follow-on filed
+
+`.work/backlog/portal-test-clock-broaden-coverage-sessions-followup.md`
+— picks up the 5 deferred sessions sites with the standard
+`NewWithClock` + `sessionsClock()` accessor pattern. ~50-80 LoC,
+single stride. No coordination needed since `handler.go` is unlocked.
+
+### Findings
+
+- **Blockers:** none.
+- **Important:** none.
+- **Nits:** none.
+
+The implementation is mechanically faithful to the design, builds
+cleanly under both tags, all tests pass, and the production binary
+remains free of test endpoints. The 17 sites + 7 accessors + 10 new
+unit tests align with the acceptance criteria.
