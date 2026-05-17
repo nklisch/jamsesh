@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger-merge-engine
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-auto-merger
 depends_on: []
@@ -364,3 +364,20 @@ detectors directly (with crafted byte inputs, no repo needed).
   (`github.com/sergi/go-diff`?) — re-evaluate post-launch.
 - **Line-ending heuristic + binary files**: don't run text
   heuristics on binary files. Use `binary` package to detect.
+
+## Implementation summary
+
+Children all at done.
+
+### Verification
+- `go build ./...` clean
+- `go test ./...` green
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+
+**Notes**: Both child stories done. Pure-library three-way merge with safe-auto-resolve heuristics + adversarial corpus. Ready for consumption by the worker + outcomes features.

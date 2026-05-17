@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-auth-flows
 kind: feature
-stage: implementing
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation
 depends_on: [epic-portal-foundation-tokens]
@@ -335,3 +335,20 @@ GitHub specifics:
 - **`oauth_state` cleanup**: expired nonces accumulate. Mitigation:
   cleanup on insert (delete WHERE expires_at < now) — cheap on
   small tables. Or operator-cron — same as oauth_tokens.
+
+## Implementation summary
+
+Children all at done.
+
+### Verification
+- `go build ./...` clean
+- `go test ./...` green
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+
+**Notes**: Both child stories done. OAuth (GitHub) + magic-link both work end-to-end via tokens.Service.Issue. Sender abstraction has 4 implementations. Auto-provisioning helper shared between both flows. Adding Google/OIDC = new provider.go-implementing file + config key.

@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger-merge-engine-safe-auto-resolve
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-auto-merger-merge-engine
 depends_on: [epic-auto-merger-merge-engine-three-way-merge]
@@ -122,3 +122,13 @@ heuristic is the riskiest operation actually performed.
   `Heuristic` field; `runScenario` gains safe-auto-resolve assertions and
   builder dispatch; `buildSafeAutoResolveScenario` added
 - `testdata/safe-auto-resolve/` — 7 corpus scenarios (3 safe, 4 adversarial)
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Three heuristics with adversarial corpus. The leading-tab-count check in isWhitespaceOnly correctly catches the tab→spaces indentation case. Duplicate-add safety check (oursAddedSet membership) is the right guard. Documented gotcha that Merge fast-paths identical edits before tryAutoResolve sees them — keeping isIdenticalEdit as defence-in-depth is reasonable.

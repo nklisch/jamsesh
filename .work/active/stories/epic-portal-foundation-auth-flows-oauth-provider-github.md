@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-auth-flows-oauth-provider-github
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation-auth-flows
 depends_on: [epic-portal-foundation-auth-flows-sender-and-magic-link]
@@ -154,3 +154,13 @@ endpoints.
   full happy path, nonce consumed on first use (second → 400), invalid
   state → 400, provider mismatch → 400, exchange error → 500, state store
   round-trip, ConsumeState on nonexistent → error.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Provider seam clean. Atomic DELETE…RETURNING for nonce consume avoids replay windows. Nil-provider-entry + 503 is the right defensive default for unconfigured deployments. Test injection via HTTPClient + BaseURL is minimal and effective.

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-auth-flows-sender-and-magic-link
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation-auth-flows
 depends_on: []
@@ -114,3 +114,13 @@ empty strings.
 - Token expiry is tested at the store level via the existing
   `magic_link_tokens` CRUD tests; HTTP expiry path is partially covered
   via the invalid-token path.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Four-provider Sender abstraction landed clean. Error taxonomy (ErrTransient/ErrPermanent/ErrAuth) is more refined than the design's two-bucket sketch — better. Resend SDK limitation on error typing is acknowledged and documented. combinedHandler pattern in main.go is the right way to compose strict-server methods across packages without coupling.
