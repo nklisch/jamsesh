@@ -1,7 +1,7 @@
 ---
 id: bug-gobwas-glob-panic-on-malformed-pattern
 kind: story
-stage: review
+stage: done
 tags: [bug, security, portal, prereceive]
 parent: null
 depends_on: []
@@ -136,3 +136,35 @@ A parked backlog item `backlog-replace-gobwas-glob` tracks the longer-term
 option of replacing `gobwas/glob` with a library that validates patterns
 correctly at compile time (e.g. `github.com/bmatcuk/doublestar`). Not blocking
 this story — the `probeGlob` defense is sound.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+- Tests verify the security contract (malformed-glob class rejected at
+  compile time) rather than implementation details of `probeGlob`. Three
+  subtests cover the panic class shape — digit prefix, alpha prefix, and
+  path prefix — which exercise different positions of the byte-prefix
+  probe loop. Good coverage without padding.
+- The "Discovery during implementation" finding (bare `"{"` does not
+  panic; only `"<literal-prefix>{"` does) is recorded in both the story
+  body and inline test comments. Future readers will not be confused by
+  the missing bare-`"{"` case.
+- Follow-up backlog item `backlog-replace-gobwas-glob` is well-scoped and
+  documents both the workaround's limitations and replacement candidates.
+  Right call to defer the library swap — this story stays minimal-safe.
+- `go test ./internal/portal/prereceive/...` and `go build ./...` both
+  passed after the change.
+
+## What's now possible
+
+The pre-receive scope validator is now defended against the gobwas/glob
+`<literal>{` panic class with both an inline runtime probe and an explicit
+regression test. A user with permission to set a scope glob can no longer
+crash the portal process on push by submitting `"0{"` or similar. The
+fuzz harness `FuzzPathScopeValidate` stays green.
