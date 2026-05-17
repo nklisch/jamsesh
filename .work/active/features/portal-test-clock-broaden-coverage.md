@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage
 kind: feature
-stage: implementing
+stage: review
 tags: [testing, testability, portal]
 parent: null
 depends_on: []
