@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-portal-image-build
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-module-skeleton]
@@ -95,3 +95,16 @@ to produce it too, from a fresh local `make go-build`.
    config defaults, so only `From` was missing). The test passes
    `-e JAMSESH_EMAIL_FROM=noreply@example.com`; SMTP dial is lazy so
    the fake address never causes a connection attempt.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `_ = strings.TrimSpace(string(out)) // container ID` in `portal_image_test.go` is dead code — `containerName` is the actual handle used.
+- `docker port` output parsing via "split `:`, take last" works for both IPv4-only and IPv4+IPv6 outputs but is fragile against output-format changes; a regex or `SplitN`-on-first-newline would be more robust.
+- The test removes the container without first capturing logs on failure — a CI debugger would need a separate path to inspect them.
+
+**Notes**: The two implementation discoveries (`CGO_ENABLED=0` for distroless; `JAMSESH_EMAIL_FROM` required at startup) are well-documented in the implementation notes and propagated forward via wave 3's fixtures.
