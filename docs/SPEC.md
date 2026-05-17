@@ -108,11 +108,53 @@ Every session is defined by:
   purpose.
 - **Writable scope** — required path globs (e.g. `docs/**`,
   `specs/auth/**`). Defines what files this session can write. Enforced
-  server-side by `pre-receive`.
+  server-side by `pre-receive`. See **Writable scope syntax** below.
 - **Default mode** — `sync` or `isolated`. New refs in the session inherit
   this mode unless overridden at ref creation.
 - **Base ref** — `jam/<session>/base`, seeded by the creator pushing their
   source-repo HEAD up at creation. Immutable for the session lifetime.
+
+## Writable scope syntax
+
+A session's writable scope is a JSON array of slash-separated glob patterns
+stored on the session row and consulted by `pre-receive` on every push. A
+pushed path must match at least one pattern to be writable; an empty scope
+denies all writes (deny-by-default).
+
+**Supported glob syntax** — matching is performed by
+[`bmatcuk/doublestar/v4`](https://github.com/bmatcuk/doublestar). The
+accepted shapes are:
+
+- `*` — matches any sequence of non-`/` characters within a single path
+  segment (`src/*.go` matches `src/main.go` but not `src/cmd/main.go`).
+- `**` — matches across directory boundaries (`docs/**` matches `docs/api.md`
+  and `docs/sub/deep.md`; `**` alone matches every path).
+- `?` — matches exactly one non-`/` character.
+- `[abc]` / `[a-z]` — character classes.
+- `{a,b,c}` — alternation; matches any of the comma-separated alternatives.
+- `\` — escapes a metacharacter.
+
+Patterns use `/` as the path separator regardless of host OS. Paths are
+matched relative to the repository root (e.g. `src/main.go`, not
+`/src/main.go`).
+
+**Validation contract** — patterns are validated at push time when the
+`pre-receive` hook compiles the session's scope into a matcher. Malformed
+patterns (unclosed `{`, invalid character classes, etc.) cause the push to
+be rejected by the portal's pre-receive subprocess. The portal currently
+does **not** pre-validate `writable_scope` at session-create or
+session-patch time, so a malformed pattern stored at creation surfaces only
+on the next push; closing this gap is tracked in the backlog.
+
+**Examples**:
+
+```json
+["docs/**", "specs/**/*.md", "src/*.go"]
+```
+
+Matches any file under `docs/`, any `.md` file at any depth under `specs/`,
+and any top-level `.go` file under `src/`. A push that touches
+`internal/cmd/main.go` against this scope is rejected by `pre-receive`.
 
 ## Ref structure
 

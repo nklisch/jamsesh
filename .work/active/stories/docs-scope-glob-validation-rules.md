@@ -1,7 +1,7 @@
 ---
 id: docs-scope-glob-validation-rules
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, portal]
 parent: null
 depends_on: []
@@ -46,8 +46,56 @@ Update `docs/SPEC.md` (or wherever session config is documented) with:
 
 ## Acceptance criteria
 
-- [ ] `docs/SPEC.md` documents the writable-scope glob contract
-- [ ] If a documented error code doesn't exist yet, file a follow-on
+- [x] `docs/SPEC.md` documents the writable-scope glob contract
+- [x] If a documented error code doesn't exist yet, file a follow-on
       for the portal to emit one
-- [ ] Rolling-foundation principle observed (no "previously this was…"
+- [x] Rolling-foundation principle observed (no "previously this was…"
       notes)
+
+## Implementation notes
+
+The "Finding" above was partially stale by the time this story landed.
+Two corrections from reading the code:
+
+1. **`gobwas/glob` has already been replaced.** Commit `9ae141f`
+   (`implement: backlog-replace-gobwas-glob`) switched
+   `internal/portal/prereceive/scope.go` to
+   `github.com/bmatcuk/doublestar/v4`. The `probeGlob` recover wrapper
+   from commit `3c43677` is gone — doublestar validates patterns at
+   parse time and never panics. `CompileScope` returns a normal Go
+   error on malformed input.
+2. **Validation runs at push time, not session-create time.**
+   `internal/portal/sessions/handler.go > CreateSession` and
+   `PatchSession` accept `req.Body.Scope` and store it without calling
+   `CompileScope`. Validation happens in
+   `internal/portal/prereceive/validate.go:46` when the pre-receive
+   hook compiles the scope on a push. Malformed patterns surface as an
+   opaque "internal failure" git error to the pusher rather than a
+   structured API response to the session creator.
+
+### What landed
+
+`docs/SPEC.md` gained a new `## Writable scope syntax` section between
+the existing `## Session shape` and `## Ref structure` sections,
+covering:
+
+- The actual matcher (`bmatcuk/doublestar/v4`) and supported glob
+  shapes (`**`, `*`, `?`, `[abc]`, `{a,b}`, escaping).
+- Path-separator conventions (`/`, relative to repo root).
+- The validation contract — patterns are validated at push time,
+  malformed patterns reject the push, no API-time pre-validation
+  today.
+- An example scope + an example rejection.
+
+The `## Session shape > Writable scope` bullet now cross-references
+the new section.
+
+### Follow-on parked
+
+The API-time validation gap (the "Finding" claimed this already
+existed; it does not) is parked as
+`.work/backlog/portal-validate-writable-scope-at-create-time.md`. That
+story adds `CompileScope` to the create/patch handlers and registers a
+`session.invalid_writable_scope` error code in `docs/PROTOCOL.md`. When
+it lands, the "currently does not pre-validate" caveat in SPEC.md gets
+removed.
