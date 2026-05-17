@@ -50,6 +50,30 @@ post-receive events); it does NOT cover any REST endpoints
 - `docs/SECURITY.md` — Git push authorization
 - `docs/PROTOCOL.md` — Git smart-HTTP routes, Commit trailer conventions
 
+## Design decisions
+
+- **Smart-HTTP serving mechanism**: invoke `git-receive-pack` and
+  `git-upload-pack` as subprocesses directly (the Gitea/Forgejo pattern).
+  Portal HTTP handlers parse the request, run pre-receive validation,
+  spawn the subprocess with appropriate env (`GIT_DIR`, etc.), pipe
+  request body to stdin and stream stdout back to the response. Most
+  control; cleaner than CGI wrapping for our auth + policy injection
+  needs. Process-per-request cost is acceptable for jamsesh's scale.
+- **Archived-session semantics (after 90-day retention)**: hard delete
+  the bare repo and DB rows. Retain a tiny `archived_sessions` table row
+  per archived session with: name, member list (account ids only),
+  goal/manifest text, end date, end reason (finalize/abandon/timeout),
+  the finalized branch name if any (purely for the session URL's
+  archived-stub response). The session URL responds with that stub:
+  "This session was archived on YYYY-MM-DD. Final branch:
+  `<name>` (pushed to <repo>)." Cleanest storage footprint; clearest
+  data-retention story for GDPR/compliance asks. No restore path
+  by design — restore is "you should have used the 90-day window."
+
+<!-- Feature-design will fill in interfaces, signatures, and implementation
+units when /agile-workflow:feature-design runs on this. -->
+
+
 ## Anticipated child features
 
 Provisional — actual decomposition lands when this epic is designed.
