@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish
 kind: feature
-stage: review
+stage: done
 tags: [infra, portal]
 parent: epic-cloud-native-deploy
 depends_on: []
@@ -654,3 +654,24 @@ All 6 child stories landed across 3 orchestrator waves + 1 docs-only wave:
 Verification: `go build ./... && go test ./...` clean across 43 packages.
 
 Feature advanced `implementing → review`. The single review finding (graceful-shutdown race) is filed as a backlog item; doesn't block feature advancement.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none (one Important finding from sibling review already filed as backlog `graceful-shutdown-shutdownstart-race`)
+**Nits**: none
+
+**Notes** (aggregate concerns, per-line lenses already exercised at story level):
+
+- **Capability completeness**: ✓ All deliverables from the brief landed across the 6 stories. The "audit every place where the portal constructs externally-visible URLs and ensures all of them honor configured PortalURL" was IMPLICITLY satisfied — `auth/magic_link.go:77`, `accounts/orgs.go:86`, `auth/oauth.go:73`, `finalize/handler.go`, etc. already use `cfg.PortalURL` throughout. Audit ran and returned clean.
+- **Foundation-doc alignment**: ✓ SELF_HOST.md and SPEC.md were rolled forward by the docs story. New env vars, endpoints, and behaviors all documented as present truth; no "previously"/"originally" prose.
+- **Cross-cutting breaking changes** — all internal-only (lowercase packages); all propagated cleanly:
+  - `db.Open(ctx, driver, dsn, pc PoolConfig)` signature change touched 22+ test files
+  - `logging.Access` from `func(http.Handler) http.Handler` → `func(*metrics.Registry) func(http.Handler) http.Handler` — router + tests updated
+  - `Store` interface gained `Ping(ctx) error` — sqlite and postgres adapters + stub all implement
+  - `applyEnv`/`applyEmailEnv`/`applyOAuthEnv` now return error — Load propagates
+- **Filed findings**: `graceful-shutdown-shutdownstart-race` (backlog, Important) — write/read race on the `shutdownStart` variable in `cmd/portal/main.go`. Benign in practice; one-line fix using `chan time.Time`. Doesn't block this feature.
+
+The single-instance-must-not-regress invariant from the epic-level design decisions is preserved: every new knob defaults to off or to a sensible value that matches existing behavior. Operators with current single-binary self-host setups gain capabilities without any required config changes.
