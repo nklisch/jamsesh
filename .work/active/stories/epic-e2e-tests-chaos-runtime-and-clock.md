@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-chaos-runtime-and-clock
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-chaos
 depends_on: []
@@ -83,3 +83,28 @@ One active chaos scenario + 1 documented-skip:
   process is paused mid-merge, the merge state is opaque. Resume
   semantics depend on the merge algorithm being idempotent.
   Document expected behavior; file as backlog if surprising
+
+## Implementation notes
+
+**Files changed:**
+- `tests/e2e/chaos/runtime_and_clock_test.go` (NEW) — `TestRuntimeAndClock`
+  with `automerger_pause` (active) and `clock_skew_token_expiry` (deferred skip)
+- `tests/e2e/fixtures/portal/portal.go` — added `(*Portal).ContainerName(ctx)`
+  helper that strips the leading `/` from `c.Name(ctx)`
+
+**Design decisions:**
+- `randEmail`, `requireDocker`, and `requirePortalImage` already exist in
+  `network_and_provider_test.go` (same `chaos_test` package) — reused, not
+  duplicated.
+- All other scenario-local types and helpers prefixed with `chaos` to avoid
+  future collisions when more chaos files are added.
+- Defensive `t.Cleanup(docker unpause)` registered before the pause so the
+  container is never left frozen if the test fails mid-scenario.
+- `docker pause` skip: if `ContainerName` returns empty or `docker pause`
+  itself errors (e.g. non-Linux CI without cgroups freeze support), the test
+  skips gracefully rather than failing.
+
+**Verification:** `go test ./chaos/ -run TestRuntimeAndClock -v -timeout 180s`
+passes with `automerger_pause` PASS and `clock_skew_token_expiry` SKIP.
+Resume semantics proved healthy on this machine — go-git resumes cleanly
+after a 5-second freeze, no spurious `conflict.detected` event observed.

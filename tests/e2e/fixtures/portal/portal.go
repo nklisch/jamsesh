@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,6 +84,20 @@ type Portal struct {
 	URL string
 
 	container testcontainers.Container
+}
+
+// ContainerName returns the Docker container name without the leading slash,
+// e.g. "tc-jamsesh-portal-abc123". Returns an empty string if the name cannot
+// be retrieved. The name is stable for the lifetime of the test.
+//
+// Callers that need to interact with the container directly (e.g. via
+// `docker pause`) should use this name.
+func (p *Portal) ContainerName(ctx context.Context) string {
+	name, err := p.container.Name(ctx)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(name, "/")
 }
 
 // Start spins up a fresh portal container with the given configuration,
