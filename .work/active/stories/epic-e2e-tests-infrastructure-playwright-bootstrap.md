@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-playwright-bootstrap
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, ui]
 parent: epic-e2e-tests-infrastructure
 depends_on: [epic-e2e-tests-infrastructure-testcontainers-fixtures]
@@ -70,3 +70,64 @@ Go layer).
 - Avoid `setTimeout` / `page.waitForTimeout` in the smoke spec —
   always wait on observable state (selector visibility, network
   responses)
+
+## Implementation notes
+
+### Files created
+
+- `tests/e2e/playwright/package.json` — `@playwright/test` pinned at `1.45.0`
+  (matches `mcr.microsoft.com/playwright:v1.45.0-jammy`); `@types/node` at
+  `20.19.41`; `typescript` at `5.4.5`; all exact versions, no `^` prefix
+- `tests/e2e/playwright/playwright.config.ts` — reads `PORTAL_URL` env var
+  (default `http://localhost:8443`); `trace: "retain-on-failure"`; HTML
+  reporter outputs to `playwright-report/`; retries 1 in CI, 0 locally
+- `tests/e2e/playwright/tsconfig.json` — `strict: true`,
+  `noUncheckedIndexedAccess: true`, `moduleResolution: "Bundler"`,
+  `target: "ES2022"`; `npx tsc --noEmit` passes clean
+- `tests/e2e/playwright/smoke.spec.ts` — two tests (see selector notes below)
+- `tests/e2e/playwright/README.md` — URL handoff docs, local run instructions,
+  trace viewer instructions
+- `tests/e2e/playwright/.gitignore` — excludes `node_modules/`,
+  `playwright-report/`, `test-results/`
+
+### Makefile change
+
+`test-e2e-playwright` target now runs `npm install --silent` then
+`npx playwright install --with-deps chromium` (idempotent) then
+`npx playwright test` when `tests/e2e/playwright/` exists.
+
+### Selector chosen
+
+Inspected `frontend/src/lib/screens/Login.svelte` and
+`frontend/src/lib/components/Input.svelte`. The magic-link form renders:
+
+```html
+<input type="email" placeholder="you@example.com" />
+```
+
+No `data-testid` attributes are present. The selector used is:
+
+```typescript
+page.getByPlaceholder("you@example.com")
+```
+
+This is a semantic handle — it fails only on a deliberate copy change and will
+not silently pass if the magic-link form disappears.
+
+### Router behaviour
+
+`App.svelte` has an auth guard: `$effect` redirects unauthenticated visitors
+from any route to `/login`. Navigating to `/` in a fresh browser session
+triggers this redirect, so the smoke spec's `page.goto("/")` reliably lands
+on the login screen. The second test navigates to `/login` directly as an
+additional verification.
+
+### Verification
+
+- `npx tsc --noEmit` — exits 0, no type errors
+- `npx playwright test --list` — lists 2 tests in `smoke.spec.ts`
+- Trace artifacts confirmed: failed run produced
+  `test-results/smoke-*/trace.zip` as expected
+- Failure mode without installed browsers: "Executable doesn't exist" (browser
+  not installed) — infrastructure problem, not a TS/config error; the
+  `make test-e2e-playwright` target installs browsers before running

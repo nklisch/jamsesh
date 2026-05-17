@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>org-session-invite-policy-settings — Option 1: Spec-sheet</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117;
+      color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .mock-meta button:hover { background: #161b22; }
+    .mock-meta button.on { background: #1f6b70; border-color: #1f6b70; color: #fff; }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      color: var(--color-text-primary);
+      background: var(--color-bg-primary);
+    }
+
+    .chrome {
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 32px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark {
+      font-weight: 600; letter-spacing: -0.02em;
+      font-size: var(--font-size-lg);
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .breadcrumb {
+      display: flex; gap: 6px; align-items: center;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .breadcrumb a { color: var(--color-text-link); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--color-text-link-hover); text-decoration: underline; }
+    .breadcrumb .here { color: var(--color-text-primary); font-weight: 500; }
+    .breadcrumb .sep { color: var(--color-text-tertiary); }
+    .chrome-spacer { margin-left: auto; }
+    .user-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--author-4); color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600;
+    }
+
+    main {
+      max-width: 880px; margin: 0 auto; padding: 32px;
+    }
+    .page-head {
+      margin-bottom: 32px;
+    }
+    .page-head h1 {
+      margin: 0 0 6px;
+      font-size: var(--font-size-2xl);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .page-head .sub {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+    }
+
+    .section {
+      border-top: 1px solid var(--color-border);
+      padding: 24px 0;
+    }
+    .section-head {
+      margin-bottom: 16px;
+    }
+    .section-head h2 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-lg);
+      font-weight: 600;
+    }
+    .section-head .helper {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 32px;
+      padding: 16px 0;
+      align-items: start;
+    }
+    .row + .row { border-top: 1px solid var(--color-border); }
+    .row-label .name {
+      font-weight: 500;
+      font-size: var(--font-size-base);
+      margin-bottom: 4px;
+    }
+    .row-label .desc {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      line-height: 1.5;
+    }
+    .row-control {
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .opt {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-secondary);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .opt:hover:not(.disabled) {
+      border-color: var(--color-border-strong);
+      background: var(--color-bg-tertiary);
+    }
+    .opt.selected {
+      border-color: var(--color-accent);
+      background: var(--color-accent-muted);
+    }
+    .opt.disabled { cursor: not-allowed; opacity: 0.7; }
+    .opt input[type="radio"] { margin-top: 2px; accent-color: var(--color-accent); }
+    .opt .opt-label {
+      font-weight: 500; font-size: var(--font-size-base);
+    }
+    .opt .opt-desc {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-xs);
+      line-height: 1.5; margin-top: 4px;
+    }
+
+    .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .btn {
+      border-radius: var(--radius-md);
+      padding: 6px 14px;
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    .btn.primary {
+      background: var(--color-accent);
+      color: #fff;
+      border-color: var(--color-accent);
+    }
+    .btn.primary:disabled {
+      opacity: 0.4; cursor: not-allowed;
+    }
+    .btn.ghost {
+      background: transparent;
+      color: var(--color-text-primary);
+      border-color: var(--color-border-strong);
+    }
+
+    .readonly-note {
+      margin-top: 6px;
+      padding: 8px 12px;
+      background: var(--color-warning-muted);
+      border-left: 3px solid var(--color-warning);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+
+    .future {
+      color: var(--color-text-tertiary);
+      font-size: var(--font-size-sm);
+      font-style: italic;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 1 — Spec-sheet</strong>
+    <span>Two-column label/control rows. Info-dense, every setting visible at a glance.</span>
+    <span class="controls">
+      <button id="t-admin" class="on" type="button">Admin</button>
+      <button id="t-member" type="button">Non-admin</button>
+    </span>
+  </header>
+
+  <header class="chrome">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <nav class="breadcrumb">
+      <a href="#">Acme Corp</a>
+      <span class="sep">/</span>
+      <a href="#">sessions</a>
+      <span class="sep">/</span>
+      <span class="here">settings</span>
+    </nav>
+    <div class="chrome-spacer"></div>
+    <span class="user-dot" title="Ada Lovelace">A</span>
+  </header>
+
+  <main>
+    <div class="page-head">
+      <h1>Settings</h1>
+      <div class="sub">Configure <strong>Acme Corp</strong>. Changes apply immediately.</div>
+    </div>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Session invites</h2>
+        <div class="helper">Who can be added to sessions in this org.</div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">
+          <div class="name">Policy</div>
+          <div class="desc">
+            Sets who is allowed to accept a session invite. Affects future invite-accept attempts only;
+            existing session members are grandfathered when the policy changes.
+          </div>
+        </div>
+        <div class="row-control">
+          <label class="opt selected" id="opt-members" data-val="members_only">
+            <input type="radio" name="policy" value="members_only" checked>
+            <div>
+              <div class="opt-label">Members only</div>
+              <div class="opt-desc">Invitee must already be an org member. Recommended default.</div>
+            </div>
+          </label>
+          <label class="opt" id="opt-open" data-val="open">
+            <input type="radio" name="policy" value="open">
+            <div>
+              <div class="opt-label">Open</div>
+              <div class="opt-desc">Anyone with a valid email invite can join as a session-only guest.</div>
+            </div>
+          </label>
+
+          <div id="readonly-note" class="readonly-note" hidden>
+            Only org creators can change this setting.
+          </div>
+
+          <div class="actions">
+            <button class="btn ghost" type="button">Discard</button>
+            <button class="btn primary" id="save-btn" type="button">Save</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Members <span style="font-size: var(--font-size-xs); color: var(--color-text-tertiary); font-weight: 400;">— coming soon</span></h2>
+        <div class="helper">Manage org members and their roles.</div>
+      </div>
+      <div class="future">Future section will live here.</div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Billing <span style="font-size: var(--font-size-xs); color: var(--color-text-tertiary); font-weight: 400;">— coming soon</span></h2>
+        <div class="helper">Plan, payment method, invoices.</div>
+      </div>
+      <div class="future">Future section will live here.</div>
+    </section>
+  </main>
+
+  <script>
+    // Admin/non-admin toggle.
+    const adminBtn = document.getElementById('t-admin');
+    const memberBtn = document.getElementById('t-member');
+    const note = document.getElementById('readonly-note');
+    const save = document.getElementById('save-btn');
+    const opts = document.querySelectorAll('.opt');
+
+    function setMode(admin) {
+      adminBtn.classList.toggle('on', admin);
+      memberBtn.classList.toggle('on', !admin);
+      note.hidden = admin;
+      save.disabled = !admin;
+      opts.forEach(o => {
+        const radio = o.querySelector('input');
+        radio.disabled = !admin;
+        o.classList.toggle('disabled', !admin);
+      });
+    }
+
+    adminBtn.addEventListener('click', () => setMode(true));
+    memberBtn.addEventListener('click', () => setMode(false));
+
+    // Radio selection visual.
+    opts.forEach(o => {
+      o.addEventListener('click', () => {
+        if (o.classList.contains('disabled')) return;
+        opts.forEach(x => x.classList.remove('selected'));
+        o.classList.add('selected');
+        o.querySelector('input').checked = true;
+      });
+    });
+  </script>
+</body>
+</html>

@@ -41,11 +41,17 @@ test-e2e-go:
 	cd tests/e2e && go test ./...
 
 # test-e2e-playwright: run Playwright browser tests.
+# Installs npm deps and Playwright browsers on first run (idempotent).
 # No-ops cleanly when tests/e2e/playwright/ has not been bootstrapped yet.
 test-e2e-playwright:
-	@test -d tests/e2e/playwright \
-		&& (cd tests/e2e/playwright && npm test) \
-		|| echo "playwright not bootstrapped yet, skipping"
+	@if [ -d tests/e2e/playwright ]; then \
+		cd tests/e2e/playwright \
+			&& npm install --silent \
+			&& npx playwright install --with-deps chromium \
+			&& npx playwright test; \
+	else \
+		echo "playwright not bootstrapped yet, skipping"; \
+	fi
 
 # test-e2e: run the full e2e suite (Go then Playwright).
 test-e2e: test-e2e-go test-e2e-playwright

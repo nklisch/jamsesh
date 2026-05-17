@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>org-session-invite-policy-settings — Option 2: Sidebar nav + content pane</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117;
+      color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .mock-meta button:hover { background: #161b22; }
+    .mock-meta button.on { background: #1f6b70; border-color: #1f6b70; color: #fff; }
+
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--font-sans);
+      color: var(--color-text-primary);
+      background: var(--color-bg-primary);
+    }
+
+    .chrome {
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark {
+      font-weight: 600; letter-spacing: -0.02em;
+      font-size: var(--font-size-lg);
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .breadcrumb {
+      display: flex; gap: 6px; align-items: center;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .breadcrumb a { color: var(--color-text-link); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--color-text-link-hover); text-decoration: underline; }
+    .breadcrumb .here { color: var(--color-text-primary); font-weight: 500; }
+    .breadcrumb .sep { color: var(--color-text-tertiary); }
+    .chrome-spacer { margin-left: auto; }
+    .user-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--author-4); color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: calc(100vh - 110px);
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--color-border);
+      padding: 24px 0;
+      background: var(--color-bg-secondary);
+    }
+    .sidebar-head {
+      padding: 0 20px 12px;
+      font-size: var(--font-size-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-tertiary);
+      font-weight: 600;
+    }
+    .nav { display: flex; flex-direction: column; }
+    .nav a {
+      padding: 8px 20px;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      border-left: 2px solid transparent;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav a:hover { background: var(--color-bg-tertiary); color: var(--color-text-primary); }
+    .nav a.active {
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+      border-left-color: var(--color-accent);
+      font-weight: 500;
+    }
+    .nav a.dim {
+      color: var(--color-text-tertiary);
+      cursor: not-allowed;
+    }
+    .nav a.dim:hover { background: transparent; color: var(--color-text-tertiary); }
+    .nav .soon {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      margin-left: 8px;
+      font-weight: 400;
+    }
+
+    .pane { padding: 32px 40px; max-width: 720px; }
+    .pane h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-xl);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .pane .pane-sub {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      margin-bottom: 28px;
+    }
+
+    .field {
+      margin-bottom: 20px;
+    }
+    .field-label {
+      font-weight: 500;
+      font-size: var(--font-size-base);
+      margin-bottom: 4px;
+    }
+    .field-desc {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .opt {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 12px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-secondary);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 8px;
+    }
+    .opt:hover:not(.disabled) {
+      border-color: var(--color-border-strong);
+    }
+    .opt.selected {
+      border-color: var(--color-accent);
+      background: var(--color-accent-muted);
+    }
+    .opt.disabled { cursor: not-allowed; opacity: 0.7; }
+    .opt input[type="radio"] { margin-top: 2px; accent-color: var(--color-accent); }
+    .opt .opt-label {
+      font-weight: 500; font-size: var(--font-size-base);
+    }
+    .opt .opt-desc {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      line-height: 1.5; margin-top: 4px;
+    }
+
+    .pane-actions {
+      display: flex; justify-content: flex-end; gap: 8px;
+      padding-top: 24px;
+      border-top: 1px solid var(--color-border);
+      margin-top: 32px;
+    }
+    .btn {
+      border-radius: var(--radius-md);
+      padding: 6px 14px;
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    .btn.primary {
+      background: var(--color-accent);
+      color: #fff;
+      border-color: var(--color-accent);
+    }
+    .btn.primary:disabled {
+      opacity: 0.4; cursor: not-allowed;
+    }
+    .btn.ghost {
+      background: transparent;
+      color: var(--color-text-primary);
+      border-color: var(--color-border-strong);
+    }
+
+    .readonly-note {
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      background: var(--color-warning-muted);
+      border-left: 3px solid var(--color-warning);
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 2 — Sidebar nav + content pane</strong>
+    <span>Anticipates future sections. Slack/GitHub-style.</span>
+    <span class="controls">
+      <button id="t-admin" class="on" type="button">Admin</button>
+      <button id="t-member" type="button">Non-admin</button>
+    </span>
+  </header>
+
+  <header class="chrome">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <nav class="breadcrumb">
+      <a href="#">Acme Corp</a>
+      <span class="sep">/</span>
+      <a href="#">sessions</a>
+      <span class="sep">/</span>
+      <span class="here">settings</span>
+    </nav>
+    <div class="chrome-spacer"></div>
+    <span class="user-dot" title="Ada Lovelace">A</span>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">Org settings</div>
+      <nav class="nav">
+        <a href="#" class="active">Session invites</a>
+        <a href="#" class="dim">Members <span class="soon">soon</span></a>
+        <a href="#" class="dim">Billing <span class="soon">soon</span></a>
+        <a href="#" class="dim">API keys <span class="soon">soon</span></a>
+      </nav>
+    </aside>
+
+    <main class="pane">
+      <h1>Session invites</h1>
+      <div class="pane-sub">Configure who can be added to sessions in <strong>Acme Corp</strong>.</div>
+
+      <div id="readonly-note" class="readonly-note" hidden>
+        Only org creators can change this setting. You're viewing it as a member.
+      </div>
+
+      <div class="field">
+        <div class="field-label">Policy</div>
+        <div class="field-desc">
+          Sets who is allowed to accept a session invite. Affects future invite-accept attempts only;
+          existing session members are grandfathered when the policy changes.
+        </div>
+
+        <label class="opt selected" data-val="members_only">
+          <input type="radio" name="policy" value="members_only" checked>
+          <div>
+            <div class="opt-label">Members only <span style="color: var(--color-text-tertiary); font-weight: 400; font-size: var(--font-size-xs); margin-left: 4px;">recommended</span></div>
+            <div class="opt-desc">Invitee must already be an org member. Strictest; matches the multi-tenancy default.</div>
+          </div>
+        </label>
+
+        <label class="opt" data-val="open">
+          <input type="radio" name="policy" value="open">
+          <div>
+            <div class="opt-label">Open</div>
+            <div class="opt-desc">Anyone with a valid email invite can join as a session-only guest. They get access to that session only — not to other org resources.</div>
+          </div>
+        </label>
+      </div>
+
+      <div class="pane-actions">
+        <button class="btn ghost" type="button">Discard</button>
+        <button class="btn primary" id="save-btn" type="button">Save changes</button>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const adminBtn = document.getElementById('t-admin');
+    const memberBtn = document.getElementById('t-member');
+    const note = document.getElementById('readonly-note');
+    const save = document.getElementById('save-btn');
+    const opts = document.querySelectorAll('.opt');
+
+    function setMode(admin) {
+      adminBtn.classList.toggle('on', admin);
+      memberBtn.classList.toggle('on', !admin);
+      note.hidden = admin;
+      save.disabled = !admin;
+      opts.forEach(o => {
+        o.querySelector('input').disabled = !admin;
+        o.classList.toggle('disabled', !admin);
+      });
+    }
+
+    adminBtn.addEventListener('click', () => setMode(true));
+    memberBtn.addEventListener('click', () => setMode(false));
+
+    opts.forEach(o => {
+      o.addEventListener('click', () => {
+        if (o.classList.contains('disabled')) return;
+        opts.forEach(x => x.classList.remove('selected'));
+        o.classList.add('selected');
+        o.querySelector('input').checked = true;
+      });
+    });
+  </script>
+</body>
+</html>

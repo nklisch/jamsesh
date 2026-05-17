@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>org-session-invite-policy-settings — Option 3: Card stack</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117;
+      color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .mock-meta button:hover { background: #161b22; }
+    .mock-meta button.on { background: #1f6b70; border-color: #1f6b70; color: #fff; }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      color: var(--color-text-primary);
+      background: var(--color-bg-tertiary);
+    }
+
+    .chrome {
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 32px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark {
+      font-weight: 600; letter-spacing: -0.02em;
+      font-size: var(--font-size-lg);
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .breadcrumb {
+      display: flex; gap: 6px; align-items: center;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .breadcrumb a { color: var(--color-text-link); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--color-text-link-hover); text-decoration: underline; }
+    .breadcrumb .here { color: var(--color-text-primary); font-weight: 500; }
+    .breadcrumb .sep { color: var(--color-text-tertiary); }
+    .chrome-spacer { margin-left: auto; }
+    .user-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--author-4); color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600;
+    }
+
+    main {
+      max-width: 760px; margin: 0 auto; padding: 32px;
+    }
+    .page-head {
+      margin-bottom: 24px;
+    }
+    .page-head .eyebrow {
+      font-size: var(--font-size-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-tertiary);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .page-head h1 {
+      margin: 0;
+      font-size: var(--font-size-2xl);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .card {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.03);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .card.placeholder {
+      box-shadow: none;
+      border-style: dashed;
+      background: transparent;
+    }
+    .card-head {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .card.placeholder .card-head {
+      border-bottom: none;
+    }
+    .card-head h2 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-lg);
+      font-weight: 600;
+    }
+    .card-head .helper {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .card-head .badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: var(--color-warning-muted);
+      color: var(--color-warning);
+      font-size: var(--font-size-xs);
+      font-weight: 500;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .card-body {
+      padding: 20px;
+    }
+    .card-foot {
+      padding: 12px 20px;
+      background: var(--color-bg-primary);
+      border-top: 1px solid var(--color-border);
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 8px;
+    }
+    .card-foot-meta {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+    }
+
+    .opt {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 12px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 8px;
+    }
+    .opt:last-child { margin-bottom: 0; }
+    .opt:hover:not(.disabled) {
+      border-color: var(--color-border-strong);
+      background: var(--color-bg-primary);
+    }
+    .opt.selected {
+      border-color: var(--color-accent);
+      background: var(--color-accent-muted);
+    }
+    .opt.disabled { cursor: not-allowed; opacity: 0.7; }
+    .opt input[type="radio"] { margin-top: 2px; accent-color: var(--color-accent); }
+    .opt .opt-label {
+      font-weight: 500; font-size: var(--font-size-base);
+    }
+    .opt .opt-desc {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      line-height: 1.5; margin-top: 4px;
+    }
+
+    .btn {
+      border-radius: var(--radius-md);
+      padding: 6px 14px;
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    .btn.primary {
+      background: var(--color-accent);
+      color: #fff;
+      border-color: var(--color-accent);
+    }
+    .btn.primary:disabled {
+      opacity: 0.4; cursor: not-allowed;
+    }
+    .btn.ghost {
+      background: transparent;
+      color: var(--color-text-primary);
+      border-color: var(--color-border-strong);
+    }
+
+    .readonly-banner {
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      background: var(--color-warning-muted);
+      border-left: 3px solid var(--color-warning);
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .readonly-banner .icon { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 3 — Card stack</strong>
+    <span>Modular cards, per-section Save. Familiar pattern; visual weight via shadow.</span>
+    <span class="controls">
+      <button id="t-admin" class="on" type="button">Admin</button>
+      <button id="t-member" type="button">Non-admin</button>
+    </span>
+  </header>
+
+  <header class="chrome">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <nav class="breadcrumb">
+      <a href="#">Acme Corp</a>
+      <span class="sep">/</span>
+      <a href="#">sessions</a>
+      <span class="sep">/</span>
+      <span class="here">settings</span>
+    </nav>
+    <div class="chrome-spacer"></div>
+    <span class="user-dot" title="Ada Lovelace">A</span>
+  </header>
+
+  <main>
+    <div class="page-head">
+      <div class="eyebrow">Acme Corp</div>
+      <h1>Settings</h1>
+    </div>
+
+    <div id="readonly-banner" class="readonly-banner" hidden>
+      <span class="icon">🔒</span>
+      <span>Read-only view. Only org creators can change these settings.</span>
+    </div>
+
+    <article class="card">
+      <header class="card-head">
+        <h2>Session invites</h2>
+        <div class="helper">Who can be added to sessions in this org.</div>
+      </header>
+      <div class="card-body">
+        <label class="opt selected" data-val="members_only">
+          <input type="radio" name="policy" value="members_only" checked>
+          <div>
+            <div class="opt-label">Members only <span style="color: var(--color-text-tertiary); font-weight: 400; font-size: var(--font-size-xs); margin-left: 4px;">recommended</span></div>
+            <div class="opt-desc">Invitee must already be an org member. Strictest; matches the multi-tenancy default.</div>
+          </div>
+        </label>
+        <label class="opt" data-val="open">
+          <input type="radio" name="policy" value="open">
+          <div>
+            <div class="opt-label">Open</div>
+            <div class="opt-desc">Anyone with a valid email invite can join as a session-only guest. Session access only — not org-wide.</div>
+          </div>
+        </label>
+      </div>
+      <footer class="card-foot">
+        <div class="card-foot-meta">Affects future invite-accepts; existing members grandfathered.</div>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn ghost" type="button">Reset</button>
+          <button class="btn primary" id="save-btn" type="button">Save</button>
+        </div>
+      </footer>
+    </article>
+
+    <article class="card placeholder">
+      <header class="card-head">
+        <h2>Members <span class="badge">soon</span></h2>
+        <div class="helper">Manage org members and roles.</div>
+      </header>
+    </article>
+
+    <article class="card placeholder">
+      <header class="card-head">
+        <h2>Billing <span class="badge">soon</span></h2>
+        <div class="helper">Plan, payment method, invoices.</div>
+      </header>
+    </article>
+  </main>
+
+  <script>
+    const adminBtn = document.getElementById('t-admin');
+    const memberBtn = document.getElementById('t-member');
+    const banner = document.getElementById('readonly-banner');
+    const save = document.getElementById('save-btn');
+    const opts = document.querySelectorAll('.opt');
+
+    function setMode(admin) {
+      adminBtn.classList.toggle('on', admin);
+      memberBtn.classList.toggle('on', !admin);
+      banner.hidden = admin;
+      save.disabled = !admin;
+      opts.forEach(o => {
+        o.querySelector('input').disabled = !admin;
+        o.classList.toggle('disabled', !admin);
+      });
+    }
+
+    adminBtn.addEventListener('click', () => setMode(true));
+    memberBtn.addEventListener('click', () => setMode(false));
+
+    opts.forEach(o => {
+      o.addEventListener('click', () => {
+        if (o.classList.contains('disabled')) return;
+        opts.forEach(x => x.classList.remove('selected'));
+        o.classList.add('selected');
+        o.querySelector('input').checked = true;
+      });
+    });
+  </script>
+</body>
+</html>
