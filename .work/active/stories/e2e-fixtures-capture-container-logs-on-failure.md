@@ -1,7 +1,7 @@
 ---
 id: e2e-fixtures-capture-container-logs-on-failure
 kind: story
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing]
 parent: null
 depends_on: []

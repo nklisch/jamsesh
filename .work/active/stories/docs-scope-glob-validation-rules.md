@@ -1,7 +1,7 @@
 ---
 id: docs-scope-glob-validation-rules
 kind: story
-stage: drafting
+stage: implementing
 tags: [documentation, portal]
 parent: null
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: spa-api-client-401-interceptor
 kind: story
-stage: drafting
+stage: implementing
 tags: [ui]
 parent: null
 depends_on: []
