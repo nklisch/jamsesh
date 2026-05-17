@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests
 kind: epic
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing]
 parent: null
 depends_on: []
@@ -196,6 +196,15 @@ Four deep with three-way parallel in the middle band.
   "contract" test that asserts the JSON shape against the spec in
   `docs/research/cc-plugin-hooks.md` (if it exists) or against a frozen
   example payload checked into `tests/e2e/fixtures/ccdriver/contract/`.
+
+## Autopilot decision log
+
+- 2026-05-17 — Advanced `drafting → implementing` directly without invoking
+  `epic-design`. The decomposition was already produced by
+  `e2e-test-design --bootstrap` (5 child features with depends_on chains,
+  full design decisions in this body). Re-running `epic-design` would either
+  no-op or risk duplicating children. The children are the work targets from
+  here on.
 
 ## Acceptance criteria for the epic
 
