@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure
 kind: feature
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: []
@@ -534,3 +534,20 @@ Testcontainers stack) passes locally.
 **Next**: `/agile-workflow:review epic-e2e-tests-infrastructure` once
 the user is ready. The feature gate lets the three sibling features
 (`golden-path`, `failure-mode`, `fuzzing`) become design-ready next.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+
+**Important** (3 already filed during child reviews + 2 cross-cutting):
+- `ccdriver-subprocess-env-inheritance` (backlog)
+- `e2e-fixtures-capture-container-logs-on-failure` (backlog)
+- `e2e-portal-fixture-oauth-base-url-default` (backlog)
+- `e2e-tests-go-module-version-skew` (backlog) — `tests/e2e/go.mod` declares `go 1.26` vs root `go 1.25.7`; undocumented project decision
+- `posttooluse-hook-over-stages-untracked-files` (backlog) — multiple child commits bundled unrelated `.mockups/` HTML files
+
+**Nits**: captured in individual story reviews.
+
+**Notes**: All 7 child stories landed approved. The feature delivers its brief — a working `tests/e2e/` module with separate go.mod, five Testcontainers fixtures, a ccdriver Go package, a Playwright bootstrap, the OAuth base-URL portal config wiring, Makefile entry points, and a CI workflow. The smoke spec proves the full stack works end-to-end. The four sibling features (`golden-path`, `failure-mode`, `chaos`, `fuzzing`) can now proceed to design pass — their depends_on entries pointing at this feature are satisfied.
