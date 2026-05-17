@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-discovery
 kind: story
-stage: implementing
+stage: review
 tags: [infra]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: [epic-cloud-native-deploy-routing-layer-core]
@@ -56,3 +56,23 @@ New:
 - Pod URLs constructed as `http://<addr>` (TLS terminated at ingress).
 - Publish callback signature per parent feature design:
   `func([]ring.Pod)`. Discoverer never holds the ring directly.
+
+## Implementation notes
+
+- Added `k8s.io/client-go@v0.36.1` and `k8s.io/api@v0.36.1` to go.mod.
+- `readyz.Probe.Check` runs all probe requests in parallel with goroutines
+  and a `sync.WaitGroup`; total latency is bounded by the client timeout, not
+  by `len(addrs)`.
+- Change-detection uses a `neverPublished` sentinel (`"\x00"`) so the first
+  probe pass always calls `publish` — even when the healthy set is empty —
+  giving the ring a clean initial state.
+- Static discoverer: Pod ID == address (`host:port`) — deterministic and
+  stable for static config.
+- k8s discoverer: uses `informers.NewSharedInformerFactoryWithOptions` with
+  `WithNamespace`; Pod add/update/delete events notify a buffered channel
+  (de-bounced to avoid thundering-herd on batch deploys); a ticker also
+  triggers re-probe on the configured interval.
+- `KubernetesWithClient` exported for test injection of a
+  `fake.NewSimpleClientset()` without exposing internal fields.
+- `go test -race ./internal/router/discovery/... ./internal/router/readyz/...`
+  passes clean.
