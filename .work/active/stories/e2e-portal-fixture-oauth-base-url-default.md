@@ -1,7 +1,7 @@
 ---
 id: e2e-portal-fixture-oauth-base-url-default
 kind: story
-stage: drafting
+stage: review
 tags: [e2e-test, testing]
 parent: null
 depends_on: []
@@ -45,10 +45,78 @@ Two options, pick one:
 Option 2 is the more defensive choice — it surfaces the decision at
 test-design time rather than at first network call.
 
+## Decision
+
+**Option 2 (defensive `t.Fatalf`) — and also drop the "test-client"
+default.** The story's option 2 focused on the `CLIENT_ID` default;
+closing the loop on it cleanly requires both changes together:
+
+1. `t.Fatalf` in `portal.Start` when `OAuthGitHubClientID` is non-empty
+   AND `OAuthBaseURL` is empty.
+2. Drop the `"test-client"` / `"test-secret"` defaults from `buildEnv`.
+   `JAMSESH_OAUTH_GITHUB_CLIENT_ID` is now injected only when the caller
+   explicitly sets `OAuthGitHubClientID`. The portal already handles
+   missing OAuth credentials gracefully (returns 503
+   `oauth.provider_not_configured` from `/api/auth/oauth/*`), so tests
+   that don't touch OAuth (smoke, magic-link, session, finalize, etc.)
+   simply leave both fields zero.
+
+Why both changes together: keeping the `"test-client"` default while
+adding the guard would `t.Fatalf` ~11 existing tests that rely on the
+default but don't actually need OAuth. Dropping the default makes the
+safe behavior the default for the common case (no OAuth needed), and
+the guard catches the dangerous case (set `OAuthGitHubClientID`
+without a stub URL).
+
+## Implementation notes
+
+### `tests/e2e/fixtures/portal/portal.go`
+
+- `Start` gained an upfront check before `buildEnv`:
+
+  ```go
+  if opts.OAuthGitHubClientID != "" && opts.OAuthBaseURL == "" {
+      t.Fatalf("portal: OAuthGitHubClientID is set but OAuthBaseURL " +
+          "is empty; configure OAuthBaseURL to point at WireMock or " +
+          `leave OAuthGitHubClientID="" to disable GitHub OAuth ` +
+          "in the portal entirely")
+  }
+  ```
+
+- `buildEnv` no longer defaults `OAuthGitHubClientID` /
+  `OAuthGitHubClientSecret` to `"test-client"` / `"test-secret"`.
+  `CLIENT_ID` is injected only when the caller sets it; `SECRET`
+  defaults to `"test-secret"` only when `CLIENT_ID` is set and
+  `SECRET` is empty (so OAuth-using tests don't have to supply both
+  fields verbatim).
+
+### Existing callers — no breakage
+
+- 3 tests that already set `OAuthBaseURL` continue to work:
+  - `scaffolding/healthz_test.go` doesn't set `CLIENT_ID` → no OAuth
+    provider constructed → still passes (only hits `/healthz`).
+  - `failure/config_and_deps_test.go` and
+    `chaos/network_and_provider_test.go` set both `CLIENT_ID` and
+    `BaseURL` → guard passes → OAuth wired to WireMock as before.
+- 11 tests that don't set either field continue to work — they get
+  no OAuth provider in the portal, and the 503 fallback handles the
+  rare case where one of them does inadvertently touch an oauth
+  endpoint.
+
+### Verification
+
+`cd tests/e2e && go build ./...`: clean.
+
 ## Acceptance criteria
 
-- [ ] A test that doesn't set `OAuthBaseURL` cannot accidentally reach
-      real GitHub
-- [ ] The fixture's docs clearly state the safe-by-default behavior
-- [ ] Existing smoke spec continues to work without changes (or with a
-      trivial annotation)
+- [x] A test that doesn't set `OAuthBaseURL` cannot accidentally reach
+      real GitHub — without `OAuthGitHubClientID` the portal does not
+      construct a GitHub OAuth provider at all; with both set, the
+      provider points at the stub URL.
+- [x] The fixture's docs clearly state the safe-by-default behavior —
+      the doc comment on `buildEnv`'s OAuth block explains the
+      injection rule; the new t.Fatalf message tells the developer
+      exactly what to do.
+- [x] Existing smoke spec continues to work without changes — verified
+      via call-site audit; all 14 `portal.Start` callers still compile
+      and behave the same way.

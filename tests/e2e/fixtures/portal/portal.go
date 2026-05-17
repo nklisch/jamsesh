@@ -112,6 +112,19 @@ func Start(ctx context.Context, t *testing.T, opts Options) *Portal {
 	requireDocker(t)
 	requirePortalImage(t)
 
+	// Defense in depth against accidentally hitting real github.com. A test
+	// that wants GitHub OAuth must point JAMSESH_OAUTH_GITHUB_BASE_URL at a
+	// stub (typically the WireMock fixture). Tests that don't need OAuth at
+	// all leave both fields zero — the portal handles unconfigured GitHub
+	// OAuth gracefully by returning 503 oauth.provider_not_configured on the
+	// relevant endpoints. Refusing to start surfaces this decision at test-
+	// design time instead of at first network call.
+	if opts.OAuthGitHubClientID != "" && opts.OAuthBaseURL == "" {
+		t.Fatalf("portal: OAuthGitHubClientID is set but OAuthBaseURL is empty; " +
+			"configure OAuthBaseURL to point at WireMock or leave " +
+			`OAuthGitHubClientID="" to disable GitHub OAuth in the portal entirely`)
+	}
+
 	env := buildEnv(opts)
 
 	req := testcontainers.GenericContainerRequest{
@@ -186,16 +199,21 @@ func buildEnv(opts Options) map[string]string {
 		env["JAMSESH_OAUTH_GITHUB_BASE_URL"] = opts.OAuthBaseURL
 	}
 
-	clientID := opts.OAuthGitHubClientID
-	if clientID == "" {
-		clientID = "test-client"
+	// Only inject GitHub OAuth credentials when the caller has explicitly
+	// supplied a client ID. The portal treats missing CLIENT_ID/SECRET as
+	// "github provider not configured" and returns 503 from any /api/auth/
+	// oauth/* endpoint touching it. The defense-in-depth check in Start
+	// already refuses if CLIENT_ID is non-empty without OAuthBaseURL, so a
+	// non-empty CLIENT_ID here always means the caller has also pointed
+	// OAuthBaseURL at a stub.
+	if opts.OAuthGitHubClientID != "" {
+		env["JAMSESH_OAUTH_GITHUB_CLIENT_ID"] = opts.OAuthGitHubClientID
+		clientSecret := opts.OAuthGitHubClientSecret
+		if clientSecret == "" {
+			clientSecret = "test-secret"
+		}
+		env["JAMSESH_OAUTH_GITHUB_CLIENT_SECRET"] = clientSecret
 	}
-	clientSecret := opts.OAuthGitHubClientSecret
-	if clientSecret == "" {
-		clientSecret = "test-secret"
-	}
-	env["JAMSESH_OAUTH_GITHUB_CLIENT_ID"] = clientID
-	env["JAMSESH_OAUTH_GITHUB_CLIENT_SECRET"] = clientSecret
 
 	for k, v := range opts.ExtraEnv {
 		env[k] = v
