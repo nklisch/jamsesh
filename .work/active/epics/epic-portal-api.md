@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api
 kind: epic
-stage: implementing
+stage: done
 tags: [portal]
 parent: null
 depends_on: [epic-portal-foundation, epic-portal-git, epic-auto-merger]
@@ -53,31 +53,44 @@ cross-component slice).
 
 ## Design decisions
 
-- **WebSocket library**: `nhooyr.io/websocket`. Modern, context-aware API
-  designed around Go's `context.Context` cancellation; simpler surface
-  than `gorilla/websocket`; smaller dependency footprint. Mature; the
-  gorilla project recommends nhooyr for new code.
+- **WebSocket library**: `github.com/coder/websocket` (the active fork of
+  `nhooyr.io/websocket`; nhooyr handed off stewardship to Coder in 2024).
+  Modern, context-aware API designed around Go's `context.Context`
+  cancellation; simpler surface than `gorilla/websocket`; smaller dependency
+  footprint. Pin v1.8.x.
 
-- **MCP server library**: `github.com/modelcontextprotocol/go-sdk` v1.x
-  (official Anthropic/Google SDK, v1.6.0+ as of May 2026). Drop-in chi
-  mount:
+- **MCP server library**: `github.com/modelcontextprotocol/go-sdk` v1.6.0
+  (official Anthropic/Google SDK; pin exact in `go.mod`). Drop-in chi mount
+  with the canonical `auth.RequireBearerToken` middleware:
   ```go
+  // Build a fresh mcp.Server per request via the streamable-http handler.
   handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-      if !validBearer(r.Header.Get("Authorization")) { return nil }
       s := mcp.NewServer(&mcp.Implementation{Name: "jamsesh", Version: "0.1"}, nil)
       mcp.AddTool(s, &mcp.Tool{Name: "post_comment", ...}, postComment)
       // ... 3 more tools
       return s
   }, nil)
-  mux.Mount("/mcp", handler)
+
+  // RequireBearerToken validates the Authorization header, produces a proper
+  // 401 with `WWW-Authenticate: Bearer resource_metadata="..."` per RFC 9728,
+  // and stashes *auth.TokenInfo into the request context (retrievable in
+  // tool handlers via auth.TokenInfoFromContext(ctx)). TokenInfo MUST carry
+  // a non-empty UserID (enables SDK session-hijack protection on the
+  // Mcp-Session-Id header) and a non-zero Expiration (silent 401 otherwise).
+  authed := auth.RequireBearerToken(verifyJamseshToken, nil)(handler)
+  r.Method("POST",   "/mcp", authed)
+  r.Method("GET",    "/mcp", authed)
+  r.Method("DELETE", "/mcp", authed)
   ```
-  Reasons over alternatives: (1) `getServer(*http.Request)` callback is the
-  cleanest fit for "inspect Bearer token, then dispatch" — no middleware
-  gymnastics; (2) v1.x stable API (mark3labs/mcp-go is still 0.x); (3)
-  typed-struct tool registration via generics gives less boilerplate for
-  our 4 tools; (4) first-party so spec changes land fast. Tracks MCP spec
-  2025-06-18 (the November 2025 release line). Fallback only on a v1.6 bug:
-  `mark3labs/mcp-go` is a safe second choice.
+  Reasons over alternatives: (1) v1.x stable typed-generics tool registration
+  vs. mark3labs/mcp-go's 0.x; (2) `auth.RequireBearerToken` middleware emits
+  RFC 9728-compliant 401s for free — inline auth in `getServer` only yields
+  an opaque HTTP 400; (3) first-party so spec changes land fast. v1.6.0
+  defaults to MCP protocol `2025-11-25` and back-negotiates to `2025-06-18` /
+  `2025-03-26` automatically. Fallback only on a v1.6 bug: `mark3labs/mcp-go`
+  is a safe second choice. **Cross-origin protection is OFF by default in
+  v1.6.0** — wrap with `http.NewCrossOriginProtection().Handler(h)` if any
+  browser-facing surface ever consumes the MCP endpoint directly.
 
 - **WebSocket event-envelope schema versioning**: bake `version: 1` into
   every envelope from day one. Envelope shape: `{seq, version, type,
@@ -195,3 +208,9 @@ mcp-endpoint pulls from `git-storage` for the fork tool.
   per-session row-count metric so growth is observable; archival
   (events older than N days → cold table) is a documented follow-up if
   growth becomes a problem.
+
+## Final review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: All 5 child features done: events-log (typed event envelope + monotonic seq), sessions-rest (11 endpoints, full session lifecycle + invites), comments-rest (Service + REST), websocket-gateway (real-time push), mcp-endpoint (4 tools the CC plugin consumes). The portal API surface is complete end-to-end.

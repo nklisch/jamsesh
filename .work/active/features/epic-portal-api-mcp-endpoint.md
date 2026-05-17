@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-mcp-endpoint
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-api-events-log, epic-portal-api-sessions-rest, epic-portal-api-comments-rest, epic-portal-foundation-tokens, epic-portal-foundation-http-skeleton, epic-portal-git-storage]
@@ -251,3 +251,11 @@ Single story.
 ## Risks
 
 - **SDK API churn**: the SDK is pre-1.0; specific function signatures may shift. The `mcp-go-sdk` skill carries the verified API surface — use it as canonical.
+
+## Implementation summary
+
+Single child story done. The 4 MCP tools (post_comment, resolve_comment, fork, query_session_state) are live; CC plugin can now invoke them end-to-end with token auth.
+
+## Review
+
+**Verdict**: Approve. portal-api epic has all 5 children done (events-log, sessions-rest, comments-rest, websocket-gateway, mcp-endpoint).

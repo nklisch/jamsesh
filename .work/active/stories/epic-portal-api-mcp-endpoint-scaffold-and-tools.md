@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-mcp-endpoint-scaffold-and-tools
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-api-mcp-endpoint
 depends_on: []
@@ -53,3 +53,9 @@ Build the streamable-HTTP MCP endpoint with Bearer auth via getServer callback +
 - **Tests**: 9 tests using raw JSON-RPC over `httptest.Server`. Covers: bad token (401), post_comment happy path + non-member error, resolve_comment happy path, fork happy path + bad commit error, query_session_state happy path + non-member + recent events.
 - **go.mod**: `github.com/modelcontextprotocol/go-sdk v1.6.0` added as direct dependency.
 - **`cmd/portal/main.go`**: `mcpendpoint.Endpoint` constructed and mounted via `router.Deps.MountMCP`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Followed the mcp-go-sdk skill's pitfalls (auth-as-middleware not in-getServer; non-zero TokenInfo.Expiration; UserID set). EventSummary output workaround for SDK's json.RawMessage handling is a clean adaptation. All 4 tools work end-to-end.
