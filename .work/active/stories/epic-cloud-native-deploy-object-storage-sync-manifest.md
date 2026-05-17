@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync-manifest
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy-object-storage-sync
 depends_on: [epic-cloud-native-deploy-object-storage-sync-backend]
@@ -54,3 +54,37 @@ New:
   that a pure ETag check wouldn't catch (the stale holder could have
   read an old manifest, mutated correctly per its view, and written
   with the right ETag — but with a stale token).
+
+## Implementation notes
+
+### Design decisions
+
+**Create-only guard in ManifestStore.Save**: The Backend.Put contract treats
+`ifMatch=""` as an unconditional overwrite (create-or-overwrite). However,
+the manifest layer's contract for `Save(ifMatch="")` is create-only: if a
+manifest already exists, it must return ErrPrecondition. This guard lives in
+`ManifestStore.Save` itself, using the ETag returned by the fencing pre-flight
+Load to detect an existing manifest. If `onDiskEtag != ""` and `ifMatch == ""`,
+Save returns ErrPrecondition before touching the Backend.
+
+**Fencing pre-flight reuses the Load result**: The same Load call used for the
+fencing token comparison also supplies the `onDiskEtag` for the create-only
+guard. This avoids a second round-trip to the Backend and keeps the logic in
+a single place.
+
+**Save defaults Version and UpdatedAt**: Callers do not need to set these.
+`Version` defaults to 1 if zero; `UpdatedAt` is always overwritten with
+`time.Now().UTC()` so on-disk values are always authoritative.
+
+### Test approach
+
+Pure unit tests using an in-memory `memBackend` (defined in test file).
+No S3 / MinIO required. The memBackend correctly implements all five Backend
+methods with ETag conditional-write semantics, byte-for-byte PutIdempotent
+comparison, and mutex-guarded map storage.
+
+Test coverage includes all acceptance criteria plus two additional cases:
+- `TestManifestStore_Save_FencingTokenEqualOnDisk`: verifies a tie (equal
+  tokens) is NOT fenced — required for the initial write where both sides are 0.
+- `TestManifestStore_Save_ErrFencedIsDistinctFromErrPrecondition`: verifies
+  the two sentinel errors are not aliased, since callers must distinguish them.
