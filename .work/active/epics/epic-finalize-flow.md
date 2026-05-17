@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow
 kind: epic
-stage: drafting
+stage: implementing
 tags: [portal, plugin, ui]
 parent: null
 depends_on: [epic-cc-plugin, epic-portal-ui, epic-auto-merger]
@@ -106,19 +106,87 @@ user's local environment with their own CC); it does NOT cover PR opening
   distinguishes `shipped` (cleanly finalized) from `abandoned` (closed
   without finalize) in archived-session stubs.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+Locked at epic-design time (this pass):
 
+- **Plan persistence model**: plans are computed on-demand from the
+  curation state stored in a `finalize_locks` table; `plan_id` is just
+  `<session_id>:<lock_id>`. Each plan-fetch returns a fresh script
+  pinning to the curated SHAs. The lock is the durable artifact; the
+  plan is a deterministic view. Rationale: avoids stale-plan-id
+  problems if draft advances between curation and execution.
+- **Lock recovery after browser close**: 30-min auto-release per the
+  prior epic decision. Other members see "Alice is finalizing — wait
+  or override." Override creates a new lock that supersedes; the old
+  lock becomes a ghost.
+- **CLI curation in v1**: no. Curation is a multi-commit-selection UX
+  that's hard in a terminal; the portal UI is the right home.
+  `--local` mode for the plugin is for headless users who curated via
+  web from another device and want the script locally.
+- **Curation granularity**: individual commits selected from
+  isolated refs, NOT whole-ref picks. More flexibility; matches the
+  "curation" framing.
+- **End-to-end validation as a feature?**: no. Each component
+  feature owns its own integration tests; the gate-tests skill at
+  release-deploy time coordinates if gaps surface.
 
-## Anticipated child features
+## Decomposition
 
-Provisional — actual decomposition lands when this epic is designed.
+Three child features along component boundaries. The cross-component
+nature is intentional — finalize is the value-capture moment, and
+keeping its curation UI + plan generation + local execution evolving
+together under one epic prevents drift across the three components.
 
-- Portal UI: finalize curation view (commit picker over draft + isolated
-  refs, ordering, target branch name input)
-- Portal API: cherry-pick plan generation (builds the script body)
-- Plugin: `jamsesh finalize` subcommand (browser-open + `--local` modes)
-- End-to-end finalize flow validation (joining → contributing → finalizing
-  → pushing succeeds end-to-end)
+- **plan-generation** (portal-API) owns the `finalize_locks` table,
+  lock-acquire/release endpoints, the plan computation endpoint, and
+  the `mark-shipped` status transition.
+- **portal-ui-curation-view** (portal-UI) is the dedicated full-page
+  curation surface (separate from the always-on session view).
+- **plugin-finalize-command** (CC plugin) wires `jamsesh finalize`
+  (browser-open + `--local`) and `jamsesh finalize-run <plan-id>`
+  (the one-click local execution).
 
-<!-- Design pass on each child feature will fill in specifics. -->
+Critical path: `plan-generation → {portal-ui-curation-view ||
+plugin-finalize-command}`. Two deep with the two consumers parallel.
+
+### Child features
+
+- `epic-finalize-flow-plan-generation` — `finalize_locks` table,
+  lock acquire/patch/release/override endpoints, `GET
+  /finalize-plan`, `POST /mark-shipped` — depends on:
+  `[epic-portal-api-events-log, epic-portal-api-sessions-rest,
+  epic-portal-foundation-http-skeleton, epic-portal-git-storage]`
+- `epic-finalize-flow-portal-ui-curation-view` — `/sessions/<id>/
+  finalize` route with commit-list curation, target-branch input,
+  plain-English summary panel, "Run locally" copy button,
+  "Mark as shipped" transition — depends on:
+  `[epic-finalize-flow-plan-generation, epic-portal-ui-foundation,
+  epic-portal-ui-session-view-shell]`
+- `epic-finalize-flow-plugin-finalize-command` — `jamsesh finalize`
+  (browser-open + `--local`) and `jamsesh finalize-run <plan-id>`
+  (interactive with Y/n prompt + verbose logging + clean conflict
+  halt) — depends on: `[epic-finalize-flow-plan-generation,
+  epic-cc-plugin-binary-foundation]`
+
+### Decomposition risks
+
+- **Concurrent finalize lock under network partition.** Alice locks,
+  her connection drops, she returns after 30 minutes (lock released),
+  finds someone else mid-finalize. Mitigation: the override UI is the
+  explicit conflict-resolution path; lock-status is visible in every
+  plan-fetch response.
+- **Plan determinism vs draft drift.** Between curation and
+  `jamsesh finalize-run` execution, draft might advance with new
+  commits. The plan must pin to curated SHAs at generation time, not
+  "draft tip at execution." Locked: plan reads SHAs from the lock
+  state, not live refs.
+- **`jamsesh finalize-run` safety on the user's local checkout.** One
+  command runs a long git sequence in the user's source repo. Mid-way
+  failure leaves the user in a half-cherry-picked state. Mitigation:
+  the plugin command halts cleanly on conflicts (user resolves with
+  their own CC); aborts on non-conflict errors with clear recovery
+  instructions; the `jamsesh` remote is cleaned up on exit so
+  remotes don't accumulate.
+- **"Mark as shipped" honesty.** The portal can't detect the user's
+  source-remote push. The button is an explicit user signal. The UI
+  surfaces "Ready to mark as shipped" prominently until clicked —
+  this is a UX truth, not a bug.
