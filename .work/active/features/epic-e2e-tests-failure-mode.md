@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-failure-mode
 kind: feature
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-infrastructure]
@@ -211,3 +211,12 @@ env test was tautological; onboarding emails not randomized.
 - SPA error states: 6 Playwright tests + 2 documented-skip
 
 **Next**: `/agile-workflow:review epic-e2e-tests-failure-mode` once the user is ready.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none new at feature level — every child reviewed individually with findings filed appropriately.
+
+**Notes**: All 4 child stories advanced to done. Feature realizes the brief — 6 categories covered, 21 active Go subtests + 6 active Playwright tests, 5 documented-skip with backlog references. Implementation paid for itself: 2 real production bugs caught and fixed (logging middleware Unwrap, sessions.status migration), 4 production-side backlog items surfaced (dep error codes, Dockerfile ops-review, SPA 401 interceptor, SPA WS reconnect). The auth-helpers extraction (`authflow` fixture) is now load-bearing infrastructure for golden-path and any future failure-mode additions.
