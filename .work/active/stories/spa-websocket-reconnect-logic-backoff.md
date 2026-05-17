@@ -1,7 +1,7 @@
 ---
 id: spa-websocket-reconnect-logic-backoff
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: spa-websocket-reconnect-logic
 depends_on: []
@@ -160,3 +160,64 @@ variance so delays are exact. Close-code assertions emit a
   layer lands in the next story.
 - The reconnect loop is per-session; two sessions reconnect
   independently with independent attempt counters.
+
+## Implementation notes
+
+**Files touched**
+
+- `frontend/src/lib/ws.svelte.ts` — refactored from a bare `sockets:
+  Map<string, WebSocket>` to a `records: Map<string, ConnectionRecord>`
+  holding `{ ws, status, attempt, closedByUs, reconnectTimer }`. Added
+  `shouldReconnect(code)` (exported for test coverage), `backoffDelay(attempt)`
+  (private — `min(BASE * MULT^attempt, CAP) * jitterFactor`), and the
+  `wsStatus` rune store using the wrapper-object pattern from
+  `auth.svelte.ts`. The `'open'` listener resets `attempt = 0` and sets
+  status `'open'`; the `'close'` listener decides reconnect-or-drop via
+  the predicate and schedules a `setTimeout`. `close(sessionId)` cancels
+  any pending timer and clears the status to `null`.
+
+- `frontend/src/lib/ws.test.ts` — extended `MockWebSocket.emit('close',
+  code?)` to carry a numeric close code (defaults to `1006` when omitted,
+  matching browser behaviour for transport tears). Added an
+  `emit('open')` helper so status-rune tests can drive the `'open'`
+  transition. Updated the pre-existing "socket close event causes a new
+  socket on next subscribe" test to use code `1000` (clean close → no
+  reconnect) so its semantics match the new behaviour. Added three new
+  describe blocks — `shouldReconnect predicate` (3 tests), `reconnect
+  loop / exponential backoff` (7 tests), `wsStatus rune store` (5
+  tests) — for 27 tests total in the file.
+
+**Decisions within the design envelope**
+
+- Exported `shouldReconnect` so the predicate can be unit-tested
+  directly. The design called for "a small pure function so each branch
+  can be unit-tested without spinning up a real socket"; exporting was
+  the cleanest way to satisfy that without test-double gymnastics.
+- `setStatus(sessionId, null)` deletes the key from the `_statuses`
+  rune state rather than storing `null`. Both shapes satisfy
+  `wsStatus.for() ?? null`, but deletion keeps the state object clean
+  and avoids growing it across the lifetime of the SPA.
+- `reopen()` re-reads `auth.token` at reconnect time. If the token has
+  been cleared (signOut while a reconnect was pending), the record is
+  dropped silently — the auth layer will redirect to login anyway, so
+  this is the right default.
+- The reconnect path in the test that asserts the second backoff
+  delay (~1600ms) drains the timer naturally; subsequent `emit('close',
+  1006)` on the freshly-opened socket increments the per-record
+  `attempt` counter via the existing scheduling path.
+
+**Test results**
+
+`cd frontend && npm test -- --run src/lib/ws.test.ts` — **27/27 pass**.
+Full suite (`npm test -- --run`) — **320/320 pass**.
+
+`npm run check` — six pre-existing errors in
+`src/lib/components/finalize/RefGroupList.test.ts` (unrelated `Set<unknown>` vs
+`Set<string>` typing); confirmed they reproduce on `main` without these
+changes. Zero new errors or warnings introduced.
+
+**Deviations from design**
+
+None. The story spec is implemented as written; the parent feature's
+broader scope (replay-from cursor, status banner component, e2e
+helpers) is deferred to the sibling stories as required.
