@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-websocket-gateway
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-api-events-log, epic-portal-foundation-http-skeleton, epic-portal-foundation-tokens]
@@ -250,3 +250,11 @@ Single story.
 
 - **Origin enforcement**: production deployment must set `AllowedOrigins` from config. Default to empty (deny all) in v1 to surface misconfiguration loudly. SELF_HOST.md operator note.
 - **Subscribe filter all-events**: the gateway gets all event types and filters by session. Alternative: per-session subscriptions in events.Log. v1 picks the simpler global subscribe path; revisit at scale.
+
+## Implementation summary
+
+Single story done. Real-time push surface live: subprotocol-token auth, per-session fan-out, replay-from-cursor, heartbeat, slow-consumer protection.
+
+## Review
+
+**Verdict**: Approve. The SPA can now connect to `/ws/sessions/<id>` and receive live event envelopes — completing the React-able half of the portal.

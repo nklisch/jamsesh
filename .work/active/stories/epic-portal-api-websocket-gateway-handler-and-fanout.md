@@ -1,7 +1,7 @@
 ---
 id: epic-portal-api-websocket-gateway-handler-and-fanout
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-api-websocket-gateway
 depends_on: []
@@ -70,3 +70,9 @@ All 5 tests green (`go test ./internal/portal/wsgateway/... -v`):
 - `TestHandler_SlowConsumer_ClosedWith1008`
 
 `go build ./...` clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Replay-from-cursor design with read goroutine + timeout-via-time.After avoids the context-cancellation-closes-conn gotcha. Slow-consumer test sequence (64 then sleep then 65th) carefully exercises the overflow path. AllowOrigins-empty-deny-all is the right secure default.
