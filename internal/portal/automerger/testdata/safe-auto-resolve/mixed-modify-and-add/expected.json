@@ -1,0 +1,10 @@
+{
+  "kind": "hard-conflict",
+  "description": "ours modifies line 1 and adds, theirs only adds — modify involved escalates to hard-conflict",
+  "conflicts": [
+    {
+      "file": "file.txt",
+      "ranges": []
+    }
+  ]
+}

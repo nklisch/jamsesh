@@ -1,0 +1,4 @@
+{
+  "kind": "clean-merge",
+  "description": "both sides make the exact same change — Merge fast-paths via blob hash equality, producing clean-merge"
+}

@@ -23,9 +23,10 @@ import (
 
 // expectedResult mirrors the shape of expected.json in each testdata scenario.
 type expectedResult struct {
-	Kind        string              `json:"kind"`
-	Description string              `json:"description"`
-	Conflicts   []expectedConflict  `json:"conflicts"`
+	Kind        string             `json:"kind"`
+	Heuristic   string             `json:"heuristic"`
+	Description string             `json:"description"`
+	Conflicts   []expectedConflict `json:"conflicts"`
 }
 
 type expectedConflict struct {
@@ -120,7 +121,11 @@ func runScenario(t *testing.T, dir string) {
 	case "hard-conflict/delete-vs-modify":
 		result = buildDeleteVsModifyScenario(t, dir)
 	default:
-		t.Skipf("no builder for scenario %s/%s", parent, scenario)
+		if parent == "safe-auto-resolve" {
+			result = buildSafeAutoResolveScenario(t, dir)
+		} else {
+			t.Skipf("no builder for scenario %s/%s", parent, scenario)
+		}
 	}
 
 	// Assert kind.
@@ -132,6 +137,16 @@ func runScenario(t *testing.T, dir string) {
 	if expected.Kind == "clean-merge" {
 		if result.MergedTreeSHA == "" {
 			t.Error("CleanMerge result has empty MergedTreeSHA")
+		}
+	}
+
+	// For safe-auto-resolve, verify MergedTreeSHA is set and heuristic matches.
+	if expected.Kind == "safe-auto-resolve" {
+		if result.MergedTreeSHA == "" {
+			t.Error("SafeAutoResolve result has empty MergedTreeSHA")
+		}
+		if expected.Heuristic != "" && result.Heuristic != expected.Heuristic {
+			t.Errorf("heuristic: got %q, want %q", result.Heuristic, expected.Heuristic)
 		}
 	}
 
@@ -242,6 +257,45 @@ func buildSameLineDifferentScenario(t *testing.T, dir string) automerger.MergeRe
 	baseContent, _ := os.ReadFile(filepath.Join(dir, "base.txt"))
 	oursContent, _ := os.ReadFile(filepath.Join(dir, "ours.txt"))
 	theirsContent, _ := os.ReadFile(filepath.Join(dir, "theirs.txt"))
+
+	baseCommit := commitFiles(t, repo, repoDir, nil, map[string][]byte{
+		"file.txt": baseContent,
+	}, "base")
+	oursCommit := commitFiles(t, repo, repoDir, baseCommit, map[string][]byte{
+		"file.txt": oursContent,
+	}, "ours")
+	theirsCommit := commitFiles(t, repo, repoDir, baseCommit, map[string][]byte{
+		"file.txt": theirsContent,
+	}, "theirs")
+
+	result, err := automerger.Merge(ctx, repo, theirsCommit, oursCommit, baseCommit)
+	if err != nil {
+		t.Fatalf("Merge error: %v", err)
+	}
+	return result
+}
+
+// buildSafeAutoResolveScenario: generic builder for safe-auto-resolve/* corpus
+// entries. Reads base.txt, ours.txt, theirs.txt and calls Merge with a single
+// file "file.txt" containing those contents.
+func buildSafeAutoResolveScenario(t *testing.T, dir string) automerger.MergeResult {
+	t.Helper()
+	ctx := context.Background()
+
+	baseContent, err := os.ReadFile(filepath.Join(dir, "base.txt"))
+	if err != nil {
+		t.Fatalf("read base.txt: %v", err)
+	}
+	oursContent, err := os.ReadFile(filepath.Join(dir, "ours.txt"))
+	if err != nil {
+		t.Fatalf("read ours.txt: %v", err)
+	}
+	theirsContent, err := os.ReadFile(filepath.Join(dir, "theirs.txt"))
+	if err != nil {
+		t.Fatalf("read theirs.txt: %v", err)
+	}
+
+	repo, repoDir := initRepo(t)
 
 	baseCommit := commitFiles(t, repo, repoDir, nil, map[string][]byte{
 		"file.txt": baseContent,

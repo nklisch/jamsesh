@@ -1,0 +1,5 @@
+{
+  "kind": "safe-auto-resolve",
+  "heuristic": "additions",
+  "description": "ours adds at top, theirs adds at bottom — disjoint additions resolve safely"
+}

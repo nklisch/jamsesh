@@ -1,0 +1,10 @@
+{
+  "kind": "hard-conflict",
+  "description": "binary files contain null bytes — binary detection escalates to hard-conflict",
+  "conflicts": [
+    {
+      "file": "file.txt",
+      "ranges": []
+    }
+  ]
+}

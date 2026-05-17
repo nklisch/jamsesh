@@ -1,0 +1,4 @@
+MODIFIED LINE ONE
+line two
+NEW LINE OURS
+line three

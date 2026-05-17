@@ -1,0 +1,5 @@
+{
+  "kind": "safe-auto-resolve",
+  "heuristic": "whitespace",
+  "description": "both sides remove trailing whitespace — safe whitespace-only resolution"
+}

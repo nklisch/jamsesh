@@ -1,0 +1,10 @@
+{
+  "kind": "hard-conflict",
+  "description": "looks whitespace-only but tabs converted to different-depth spaces — indentation change escalates to hard-conflict",
+  "conflicts": [
+    {
+      "file": "file.txt",
+      "ranges": []
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "kind": "hard-conflict",
+  "description": "both sides add the identical new line — duplicate-add concern escalates to hard-conflict",
+  "conflicts": [
+    {
+      "file": "file.txt",
+      "ranges": []
+    }
+  ]
+}

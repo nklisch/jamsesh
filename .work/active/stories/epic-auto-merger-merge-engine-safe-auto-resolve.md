@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger-merge-engine-safe-auto-resolve
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-auto-merger-merge-engine
 depends_on: [epic-auto-merger-merge-engine-three-way-merge]
@@ -73,3 +73,52 @@ or unsafe conflicts remain `HardConflict`.
   apply uniformly in the merged output.
 - Edge case: empty files. Heuristics short-circuit on zero-byte
   inputs.
+
+## Implementation notes
+
+### Design decisions made during implementation
+
+**isIdenticalEdit in tryAutoResolve is logically unreachable through Merge**:
+The `Merge` function fast-paths on `ourCh.toHash == theirCh.toHash` before
+calling `mergeFileContent`, so identical-blob edits never reach
+`tryAutoResolve`. The detector is correct and unit-tested in isolation; it
+provides defence-in-depth if `tryAutoResolve` is called directly by future
+callers.
+
+**Corpus test design**: The `safe-auto-resolve/` corpus tests route through
+the full `Merge` function (not `tryAutoResolve` directly). This means:
+- Scenarios where both sides produce the same blob (`identical-edits`,
+  `additions-shared-line` with matching content) are fast-pathed by Merge to
+  `clean-merge` — their expected.json reflects that reality.
+- Only scenarios that survive git's own merge (producing actual conflict
+  markers) reach the heuristic path. The whitespace, indentation, and
+  non-overlapping-addition adversarial cases are designed to produce real
+  git-merge-file conflicts.
+- Unit tests in `heuristics_test.go` independently exercise every branch of
+  each detector including the adversarial cases that Merge's fast-paths
+  would otherwise pre-empt.
+
+**isWhitespaceOnly tab guard**: The indentation-depth check counts leading
+tabs per line (not total file tabs). A tab-to-spaces conversion changes the
+leading tab count from N to 0 → detected and escalated.
+
+**isNonOverlappingAddition diff approach**: Uses `diff -u` via os/exec (same
+dependency as `git merge-file`). Parses unified diff hunks; any `-` line
+(deletion) aborts with nil (not pure-add). The `oursAddedSet` membership
+check for each theirs-added line catches the shared-line adversarial case in
+O(n) time.
+
+**Multi-file heuristic priority**: When multiple conflicted files resolve
+under different heuristics, the most conservative (lowest priority number)
+wins: identical(0) < whitespace(1) < additions(2). This ensures the reported
+heuristic is the riskiest operation actually performed.
+
+### Files changed
+- `internal/portal/automerger/heuristics.go` — new file, 250 LoC
+- `internal/portal/automerger/heuristics_test.go` — new file, 36 unit tests
+- `internal/portal/automerger/merge.go` — conflict path extended with
+  `tryAutoResolve` loop; `SafeAutoResolve` result path added
+- `internal/portal/automerger/merge_test.go` — `expectedResult` struct gains
+  `Heuristic` field; `runScenario` gains safe-auto-resolve assertions and
+  builder dispatch; `buildSafeAutoResolveScenario` added
+- `testdata/safe-auto-resolve/` — 7 corpus scenarios (3 safe, 4 adversarial)

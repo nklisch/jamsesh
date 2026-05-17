@@ -140,7 +140,19 @@ func Merge(
 		return MergeResult{}, fmt.Errorf("automerger: flatten base tree: %w", err)
 	}
 
+	// conflictedFile holds the raw blob content for a file that git
+	// merge-file reported as conflicted, so we can attempt auto-resolution.
+	type conflictedFile struct {
+		path    string
+		base    []byte
+		ours    []byte
+		theirs  []byte
+		mode    filemode.FileMode
+		ranges  []LineRange
+	}
+
 	var hardConflicts []Conflict
+	var conflictedFiles []conflictedFile
 
 	for path := range pathSet {
 		ourCh := ourChanges[path]
@@ -211,20 +223,79 @@ func Merge(
 				}
 				mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
 			} else {
-				// Conflict — keep conflict-marker content in merged blob for
-				// downstream consumers but record as hard conflict.
+				// Conflict — attempt safe auto-resolution before recording as hard.
 				ranges := ParseConflictRanges(merged)
-				hardConflicts = append(hardConflicts, Conflict{
-					File:   path,
-					Ranges: ranges,
+				conflictedFiles = append(conflictedFiles, conflictedFile{
+					path:   path,
+					base:   baseContent,
+					ours:   oursContent,
+					theirs: theirsContent,
+					mode:   ourCh.mode,
+					ranges: ranges,
 				})
-				// Write the conflict-marker blob anyway so the tree is complete.
+				// Write the conflict-marker blob as a placeholder; it will be
+				// replaced below if auto-resolution succeeds.
 				newHash, err := writeBlob(repo, merged)
 				if err != nil {
 					return MergeResult{}, fmt.Errorf("automerger: write conflict blob %s: %w", path, err)
 				}
 				mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
 			}
+		}
+	}
+
+	// Attempt safe auto-resolution for all conflicted files.
+	// Every file must auto-resolve for SafeAutoResolve; a single failure
+	// collapses the whole result to HardConflict.
+	if len(conflictedFiles) > 0 && len(hardConflicts) == 0 {
+		worstPriority := -1
+		worstHeuristic := ""
+		allResolved := true
+
+		for i := range conflictedFiles {
+			cf := &conflictedFiles[i]
+			resolved, heuristic, ok := tryAutoResolve(cf.base, cf.ours, cf.theirs)
+			if !ok {
+				allResolved = false
+				hardConflicts = append(hardConflicts, Conflict{
+					File:   cf.path,
+					Ranges: cf.ranges,
+				})
+				continue
+			}
+			p := heuristicPriority(heuristic)
+			if p > worstPriority {
+				worstPriority = p
+				worstHeuristic = heuristic
+			}
+			// Overwrite the placeholder blob with the cleanly resolved content.
+			newHash, err := writeBlob(repo, resolved)
+			if err != nil {
+				return MergeResult{}, fmt.Errorf("automerger: write auto-resolved blob %s: %w", cf.path, err)
+			}
+			mergedEntries[cf.path] = treeEntry{hash: newHash, mode: cf.mode}
+		}
+
+		if allResolved {
+			mergedTreeHash, err := buildTree(repo, mergedEntries)
+			if err != nil {
+				return MergeResult{}, fmt.Errorf("automerger: build auto-resolved tree: %w", err)
+			}
+			return MergeResult{
+				Kind:          SafeAutoResolve,
+				MergedTreeSHA: mergedTreeHash.String(),
+				Heuristic:     worstHeuristic,
+			}, nil
+		}
+	} else if len(conflictedFiles) > 0 {
+		// hardConflicts already non-empty; add conflict entries for the
+		// conflicted files too.
+		for i := range conflictedFiles {
+			cf := &conflictedFiles[i]
+			hardConflicts = append(hardConflicts, Conflict{
+				File:   cf.path,
+				Ranges: cf.ranges,
+			})
 		}
 	}
 
