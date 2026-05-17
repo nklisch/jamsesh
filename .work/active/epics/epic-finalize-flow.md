@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow
 kind: epic
-stage: implementing
+stage: done
 tags: [portal, plugin, ui]
 parent: null
 depends_on: [epic-cc-plugin, epic-portal-ui, epic-auto-merger]
@@ -310,3 +310,23 @@ plugin-finalize-command}`. Two deep with the two consumers parallel.
   source-remote push. The button is an explicit user signal. The UI
   surfaces "Ready to mark as shipped" prominently until clicked —
   this is a UX truth, not a bug.
+
+## Children complete (2026-05-17)
+
+All 3 child features done:
+- epic-finalize-flow-plan-generation (3 stories: locks-schema, plan-fetch, fetch-token+mark-shipped)
+- epic-finalize-flow-portal-ui-curation-view (2 stories: screen-and-route, squash-editor+chips)
+- epic-finalize-flow-plugin-finalize-command (2 stories: flow, fetch-source+cleanup)
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+Capability complete end-to-end. A user can: click Finalize from the session view → curate commits in the cart pattern (squash or preserve mode) → copy `jamsesh finalize-run <plan-id>` → run locally → resolve any conflicts → push to source remote → return to portal → click Mark as Shipped → session transitions to ended/shipped. Lock semantics protect against concurrent finalize; override flow handles the contested case; HTTPS-fallback handles users without a local checkout; cleanup-stack handles SIGINT.
+
+All 7 stories landed with substantial test coverage:
+- Backend: 33 finalize tests + 17 mark-shipped tests + golden file checks for script + message composition
+- Frontend: 256 tests including 21 for the curation flow + 15 for squash editor/chips
+- Plugin: 63 finalizecmd tests with real-git integration coverage
+
+Advancing to done.

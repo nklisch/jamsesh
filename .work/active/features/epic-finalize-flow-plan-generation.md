@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-plan-generation
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-finalize-flow
 depends_on: [epic-portal-api-events-log, epic-portal-api-sessions-rest, epic-portal-foundation-http-skeleton, epic-portal-git-storage]
@@ -713,3 +713,11 @@ Stories 2 and 3 run in parallel after 1.
   with the new `lock_id` in `details.superseded_by_lock_id` so the
   client UI can offer "switch to the new lock?" recovery.
 
+
+## Implementation summary
+
+3 child stories landed (commits bdb803c, 1ea6400, 2bfb61d). New `internal/portal/finalize/` package owns the lock state machine, plan generation (squash + preserve script composers, golden-tested), the fetch-token endpoint reusing tokens.IssueShortLived, and the mark-shipped transition. 2 migrations (00010 + 00011). The full finalize-API surface is live on the portal.
+
+## Review
+
+**Verdict**: Approve. End-to-end backend capability complete.

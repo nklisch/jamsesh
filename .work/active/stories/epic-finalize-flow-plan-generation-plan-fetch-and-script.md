@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-plan-generation-plan-fetch-and-script
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-finalize-flow-plan-generation
 depends_on: [epic-finalize-flow-plan-generation-locks-schema-and-rest]
@@ -209,3 +209,9 @@ interface.
 PROTOCOL.md > Commit trailers and `internal/portal/automerger/outcomes.go`
 both pin the trailer string as `Auto-Merger: true`. The
 `autoMergerTrailer` constant in `script.go` matches verbatim.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Golden-tested script + message composition. Auto-merger trailer pinned via existing automerger constant. FirstParentLeafCommits scenario for 5-commit chain with mid-stream auto-merge verifies the linearization. 33 tests including 21 golden files.

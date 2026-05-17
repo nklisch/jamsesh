@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-portal-ui-curation-view
 kind: feature
-stage: implementing
+stage: done
 tags: [ui]
 parent: epic-finalize-flow
 depends_on: [epic-finalize-flow-plan-generation, epic-portal-ui-foundation, epic-portal-ui-session-view-shell]
@@ -557,3 +557,11 @@ CoAuthorChipRow.test.ts:
    message + co-author chip rendering.
 
 Dependency: story 2 `depends_on: [story 1]`.
+
+## Implementation summary
+
+2 child stories landed (commits a547ca7, 1754890). FinalizeView screen with cart pattern + 300ms-debounced PATCH + stale-response guard, plus the SquashMessageEditor and CoAuthorChipRow polish components. 256 frontend tests pass.
+
+## Review
+
+**Verdict**: Approve. Cart-pattern curation flow ships clean.

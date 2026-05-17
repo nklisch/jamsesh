@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-plan-generation-fetch-token-and-mark-shipped
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-finalize-flow-plan-generation
 depends_on: [epic-finalize-flow-plan-generation-locks-schema-and-rest]
@@ -249,3 +249,9 @@ finalize-run command, end to end.
 - `internal/api/openapi/server.gen.go` (regenerated)
 - `frontend/src/lib/api/schema.d.ts` (regenerated)
 - `cmd/portal/main.go` (no further changes — story 1 wired the handler)
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: SQLite table-rebuild dance for CHECK widening matches 00006 pattern. Mark-shipped releases held lock on transition. 17 tests covering happy + idempotent + 5 error paths each.

@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-plugin-finalize-command-finalize-and-finalize-run-flow
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: epic-finalize-flow-plugin-finalize-command
 depends_on: [epic-finalize-flow-plan-generation-plan-fetch-and-script, epic-finalize-flow-plan-generation-fetch-token-and-mark-shipped]
@@ -221,3 +221,9 @@ Deviations from the spec:
 ## Review
 
 <!-- Filled in by /agile-workflow:review when this story reaches stage:review. -->
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: 11-step flow lands cleanly. 45 tests including 15 real-git integration tests. Mid-pick detection uses --show-toplevel anchoring (correctness improvement over naive spec form). Heredoc safety via cmd.Stdin reader avoids shell quoting.

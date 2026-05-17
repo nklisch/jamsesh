@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-portal-ui-curation-view-squash-editor-and-coauthor-chips
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-finalize-flow-portal-ui-curation-view
 depends_on: [epic-finalize-flow-portal-ui-curation-view-screen-and-route]
@@ -147,3 +147,9 @@ let { authors }: { authors: components['schemas']['CoAuthor'][] } = $props();
   on missing `chooseFetchSource`/`performFetch`. Unrelated:
   `fetchsource_stub.go` is staged-deleted in the index from other
   in-flight work; no Go files were touched by this story.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Components match the Option-3 mock. AuthorDot color seed strategy consistent with FinalizeView cart rows. 15 tests cover the prop reactivity matrix.

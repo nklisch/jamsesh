@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-portal-ui-curation-view-screen-and-route
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-finalize-flow-portal-ui-curation-view
 depends_on: [epic-finalize-flow-plan-generation-locks-schema-and-rest, epic-finalize-flow-plan-generation-plan-fetch-and-script, epic-finalize-flow-plan-generation-fetch-token-and-mark-shipped]
@@ -158,3 +158,9 @@ the real implementation is a one-line lift.
 - `cd frontend && pnpm check` — 0 errors, 1 pre-existing warning
   on `ModeSwitchDialog.svelte` (unrelated)
 - `go build ./...` — clean
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Cart pattern works; PATCH debouncing with patchSeq stale-response guard is the right invariant. WS event names corrected to match backend (session.finalizing, not session.finalize-lock-acquired). 21 new tests covering all 13 test-plan items.

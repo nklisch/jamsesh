@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-plugin-finalize-command-fetch-source-selection-and-cleanup
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: epic-finalize-flow-plugin-finalize-command
 depends_on: [epic-finalize-flow-plugin-finalize-command-finalize-and-finalize-run-flow]
@@ -220,3 +220,9 @@ upstream.
 ## Review
 
 <!-- Filled in by /agile-workflow:review when this story reaches stage:review. -->
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: LIFO cleanup stack with ctx-watcher goroutine + idempotent cleanups is the right shape. SIGINT integration test uses pre-cancelled context approach. Verbose log shows remote-name (jamsesh) not URL so the embedded token never appears in terminal output.

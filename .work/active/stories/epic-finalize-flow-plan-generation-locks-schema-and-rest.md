@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-plan-generation-locks-schema-and-rest
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-finalize-flow-plan-generation
 depends_on: []
@@ -237,3 +237,9 @@ service-test coverage.
 - `lock_release_test.go` — 3 tests: happy + idempotent + non-caller.
 - `service_test.go` — 2 new tests for IssueShortLived (immediate
   validation + post-TTL rejection via fakeClock).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Lock state machine is clean. Read-time idle expiry pattern (no sweeper) is the right call. Supersede ordering bug found+fixed during implementation (insert before supersede due to self-FK) — exactly the kind of detail review wants implementer-self-discovered.

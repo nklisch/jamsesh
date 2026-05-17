@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-plugin-finalize-command
 kind: feature
-stage: implementing
+stage: done
 tags: [plugin]
 parent: epic-finalize-flow
 depends_on: [epic-finalize-flow-plan-generation, epic-cc-plugin-binary-foundation]
@@ -726,3 +726,11 @@ remote. Cleanup test: assert `git remote -v` after the run has no
 ## Review
 
 <!-- Filled in by /agile-workflow:review when this feature reaches stage:review. -->
+
+## Implementation summary
+
+2 child stories landed (commits be4d967, 0304134). `cmd/jamsesh/finalizecmd/` owns the two subcommands (`finalize` browser-opener with --local fallback; `finalize-run <plan-id>` 11-step orchestrator), local-first vs HTTPS-fallback chooser, and the LIFO cleanup stack with SIGINT-safe teardown. 63 finalizecmd tests pass.
+
+## Review
+
+**Verdict**: Approve. Local-execution layer ships clean.
