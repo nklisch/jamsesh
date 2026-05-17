@@ -1,7 +1,7 @@
 ---
 id: e2e-portal-fixture-oauth-base-url-default
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: null
 depends_on: []
@@ -120,3 +120,29 @@ without a stub URL).
 - [x] Existing smoke spec continues to work without changes — verified
       via call-site audit; all 14 `portal.Start` callers still compile
       and behave the same way.
+
+## Review
+
+**Verdict: Approve.**
+
+Code matches the design exactly. Verified:
+
+- `Start` runs the `OAuthGitHubClientID != "" && OAuthBaseURL == ""`
+  guard before `buildEnv`, with an actionable error message.
+- `buildEnv` injects `JAMSESH_OAUTH_GITHUB_CLIENT_ID` only when set;
+  `CLIENT_SECRET` defaults to `"test-secret"` only when `CLIENT_ID` is
+  non-empty.
+- Portal-side fallback exists: `internal/portal/auth/oauth.go:63`
+  returns 503 `oauth.provider_not_configured` when the provider map
+  has no GitHub entry. `cmd/portal/main.go:261` only constructs the
+  provider when both `ClientID` and `ClientSecret` are non-empty.
+- Call-site audit: 18 `portal.Start(ctx, ...)` test sites across 13
+  files. Only `failure/config_and_deps_test.go` and
+  `chaos/network_and_provider_test.go` set `OAuthGitHubClientID`, and
+  both also set `OAuthBaseURL` — no caller trips the new guard.
+- `go build ./...` under `tests/e2e/` is clean.
+
+Findings: 0 blockers, 0 important, 1 nit (the "14 callers" figure in
+the implementation notes is slightly off — actual is 18 test sites
+plus the fixture's own internal test. The substantive claim that no
+caller breaks holds.) Nit not worth a follow-up item.
