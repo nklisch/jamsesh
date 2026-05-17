@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing-factory-and-retention
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy-lease-fencing
 depends_on: [epic-cloud-native-deploy-lease-fencing-postgres]
@@ -132,3 +132,20 @@ Modified:
 - `internal/db/connect_test.go` — updated for new signature
 - All test files that called db.Open — updated to ignore the *sql.DB with _
 - `cmd/portal/main.go` — lease manager wiring, retention goroutine
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `db.Open` signature changed from `(store.Store, error)` to `(store.Store, *sql.DB, error)` — needed by PostgresManager for `db.Conn(ctx)`. Touched 25+ test files. Reasonable trade-off; the alternative (exposing `*sql.DB` through the Store interface) would have leaked the dialect-specific connection type.
+
+**Notes**: Factory + retention + metrics all clean. `lease.New(deployMode, db, store, podID, heartbeatInterval, metricsReg)` returns NoopManager (single mode) or PostgresManager (clustered). RunRetention is a ctx-aware goroutine that ticks on the configured interval; exits cleanly on cancellation; returns `context.Canceled` on normal stop.
+
+Metrics emission added to PostgresManager via nil-safe helpers — Noop is correctly silent (avoids inflating counters in single-instance mode). `pgHandle.acquiredAt` + `mgr` back-reference enable hold-duration histogram observation at Release and LeaseLost emission in the heartbeat path.
+
+Config validation correctly rejects: unknown DeployMode, clustered+sqlite combination, non-positive intervals. The clustered+sqlite check is important — clustered mode requires Postgres because the advisory-lock primitive is PG-only.
+
+`podID` derives from `$HOSTNAME` (k8s default) with `os.Hostname()` fallback — no new config field needed. Sensible default.

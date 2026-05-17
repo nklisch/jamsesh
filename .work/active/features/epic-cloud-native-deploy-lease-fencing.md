@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing
 kind: feature
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy
 depends_on: [epic-cloud-native-deploy-operational-polish]
@@ -483,3 +483,25 @@ All 4 child stories landed and reviewed:
 Verification: `go build ./...` clean; `go test ./...` green across all packages.
 
 Feature advanced `implementing → review`. db.Open signature change touched 25+ test files; sibling story (factory-and-retention) handled the cascade.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- `db.Open` signature change (returns `*sql.DB` now) cascaded through 25+ test files in the factory-and-retention story. Necessary for PostgresManager's dedicated-conn requirement, but worth flagging as a cross-cutting API change that future Store-interface refactors should preserve.
+
+**Nits**: none
+
+**Notes** (aggregate concerns):
+
+- **Capability completeness**: ✓ Per-session Postgres advisory-lock leases with monotonic fencing tokens, NoopManager for single-instance, factory selecting at startup via `JAMSESH_DEPLOY_MODE`, retention goroutine, full Prometheus instrumentation.
+- **Foundation-doc alignment**: ✓ SELF_HOST + ARCHITECTURE were updated by the sibling routing-layer-metrics-and-docs story (preview-mode framing accurately describes lease-fencing as shipped).
+- **Cross-cutting changes**: Schema migrations (PG + SQLite mirror) for `leases` table + `jamsesh_lease_fencing_tokens` sequence. `Store` interface gained `LeaseStore` sub-interface. `db.Open` signature change. 5 new metric handles in `internal/portal/metrics/metrics.go`.
+- **Filed backlog items** (from child reviews):
+  - `lease-fencing-schema-verify-sqlc-regen` — sqlc wasn't installed when the schema story landed; agent hand-wrote the generated Go. Verify regen produces no diffs.
+
+The dedicated-connection pattern in PostgresManager.Acquire (via `db.Conn(ctx)`) is the correct defensive design for session-scoped PG advisory locks — addresses the connection-reuse concern flagged during the operational-polish db-pool-and-lock review.
+
+Validation correctly enforces clustered + Postgres (rejects clustered + sqlite at startup). This is critical — silently downgrading would mask a real misconfiguration in production.

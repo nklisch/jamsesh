@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer
 kind: feature
-stage: review
+stage: done
 tags: [infra]
 parent: epic-cloud-native-deploy
 depends_on: [epic-cloud-native-deploy-operational-polish]
@@ -544,3 +544,22 @@ All 6 child stories landed and reviewed across multiple orchestrator waves:
 Verification: `go build ./...` clean; `go test ./...` green across all packages.
 
 Feature advanced `implementing → review`. The single review finding (service agent's non-commit recovery) is a process observation, not a blocker.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes** (aggregate concerns; per-line lenses exercised at story level):
+
+- **Capability completeness**: ✓ Standalone `cmd/jamsesh-router/` binary with consistent-hash routing, hint cache, k8s + static discovery, `/readyz` probing, `/metrics` exposition, configurable graceful shutdown. MCP coordination via `Jam-Session-Id` header from the local `jamsesh mcp-headers` subcommand.
+- **Foundation-doc alignment**: ✓ SELF_HOST §14 "Clustered mode (preview)" + ARCHITECTURE "Horizontal scaling" subsection added by the metrics-and-docs child. Both accurately mark this as preview pending object-storage-sync + hydration-handoff.
+- **Cross-cutting changes**: `Ring.GetNext()` + `Ring.Pods()` added to the core ring package by the service story; `internal/portal/metrics/metrics.go` gained 4 router-specific handles (RouterDecisionsTotal, RouterRingSize, RouterRingRebalancesTotal, RouterProbeFailuresTotal); k8s client-go@v0.36.1 added as a new dependency (~5MB binary growth on the router only).
+- **Process observation**: routing-layer-service agent didn't commit; orchestrator recovered cleanly. Worth tracking if it happens again across orchestrator runs.
+
+Routing decisions emit metrics with bounded-cardinality labels (chi route patterns + fixed-enum result values). The hint cache is fully internal (no persistence; restart drops it). All routing/proxying is plain HTTP to portal pods — TLS terminated at cluster ingress per design.
+
+The clustered serving path is partially shipped — the router and lease primitives are in place; object-storage-sync (durability) and hydration-handoff (lease lifecycle) still need to land for true multi-pod production-ready operation. Documented accurately as "preview".

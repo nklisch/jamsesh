@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-metrics-and-docs
 kind: story
-stage: review
+stage: done
 tags: [infra, documentation]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: [epic-cloud-native-deploy-routing-layer-service, epic-cloud-native-deploy-routing-layer-discovery]
@@ -108,3 +108,17 @@ Edit:
   Postgres advisory locks, fencing token design intent, object-storage-sync and
   hydration-handoff (to come). Framed accurately as preview — no "previously"
   prose, rolling-foundation principle respected.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Clean delivery. 4 new metric handles appended to Registry (RouterDecisionsTotal, RouterRingSize, RouterRingRebalancesTotal, RouterProbeFailuresTotal) — nil-safe emission via helpers in proxy.go and probe.go. `cmd/jamsesh-router/main.go` mounts /metrics on a ServeMux in front of the proxy handler (clean separation; metrics scrape doesn't interfere with proxy traffic). publishWithMetrics wrapper is ready for kubernetes-mode wiring.
+
+Docs are thorough. SELF_HOST §14 "Clustered mode (preview)" has full k8s YAML (portal + router Deployments, Services, RBAC), config knob table, metrics table, explicit "preview limitations" naming the three missing capabilities. ARCHITECTURE "Horizontal scaling (clustered mode)" describes the topology accurately — router as consistent-hash proxy, advisory-lock leases, fencing tokens (intent), and notes object-storage-sync + hydration-handoff are still to come. Foundation-doc principle honored — no "previously" prose.
+
+Cardinality safety verified: `addr` label bounded by pod count (typically ≤20), `result` is a fixed enum. No unbounded labels introduced.
