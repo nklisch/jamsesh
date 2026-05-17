@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-infrastructure]
@@ -238,3 +238,32 @@ story extends them.
 
 Risks documented; no spike unit added (the feature is large but the
 risks are well-understood, not exploratory).
+
+## Implementation summary (2026-05-17)
+
+All 5 child stories landed:
+- `ccdriver-env-fix` (done)
+- `onboarding-auth` (done)
+- `session-lifecycle` (done)
+- `collab-merge` (review)
+- `finalize` (review)
+
+**Production bugs found and fixed during implementation**:
+- Dockerfile lacked git (session-lifecycle) — production Dockerfile updated to debian+git; separate Dockerfile.e2e added; reviewed and filed `portal-prod-dockerfile-base-image-review` for ops-team review
+- `logging.statusRecorder.Unwrap()` missing (session-lifecycle) — broke WS upgrade; fixed in `internal/portal/logging/logging.go`
+- `sessions.status` CHECK constraint missing `'finalizing'` (interrupted-ops from failure-mode, surfaced here too) — added migration `00012`
+- `receive-pack` never seeded `draft` for new repos (collab-merge) — auto-merger silently skipped merging; fixed in `internal/portal/githttp/receive_pack.go`
+
+**Test-side fixes applied in session** (per user directive):
+- authflow QP-decode for magic-link tokens
+- onboarding-test email randomization
+- ccdriver env-fix test strengthening
+
+**Coverage delivered**:
+- Auth journey (magic-link, org create, invite/accept, membership)
+- Session lifecycle (join, push, peer fetch, WS events)
+- Collab + auto-merger + MCP tools (fork, post_comment, addressed-to digest delivery)
+- Finalize curation + plan execution (squash mode + lock state machine)
+- 3 Playwright specs (login, session-list, finalize) + smoke + error-states from failure-mode
+
+**Next**: `/agile-workflow:review epic-e2e-tests-golden-path` once the user is ready.

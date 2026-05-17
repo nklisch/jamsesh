@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-fuzzing
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-infrastructure]
@@ -175,3 +175,25 @@ fully in parallel.
 - **Property-based generator dep** — adding `gopter` to
   `tests/e2e/go.mod` is acceptable; tests/e2e is allowed to grow
   its own dep tree without touching root go.mod.
+
+## Implementation summary (2026-05-17)
+
+Both child stories at review:
+- `pre-receive-validators` (review)
+- `mcp-tool-input` (review)
+
+**Production bugs found and fixed by fuzz harnesses** (the fuzzing program literally paid for itself):
+
+1. `checkRefNamespace` allowed `..` traversal in branch segments — security gap. Fixed inline in `internal/portal/prereceive/refs.go` with `refSegmentSafe` check. Defence in depth (git's own ref-format rules also reject these, but the validator now enforces it explicitly).
+
+2. `gobwas/glob` v0.2.3 panics on `Match` for patterns with unclosed `{` — DOS vector (a session with scope `"0{"` would panic the portal on every push). Inline `probeGlob` recover-wrapper workaround in `internal/portal/prereceive/scope.go`. Backlog item `bug-gobwas-glob-panic-on-malformed-pattern` filed for proper fix (upgrade/replace gobwas/glob).
+
+3. Same `probeGlob` had a UTF-8 byte-boundary issue surfaced by the fuzzer — fixed by switching to byte-index iteration.
+
+**Coverage**:
+- 3 Go fuzz harnesses with 30+ seeds each (commit-trailer parse, ref-namespace validate, path-scope validate)
+- 1 property-based MCP-tool-input harness with 22 hand-curated seeds + bounded random iterations
+- `make test-fuzz` runs Go fuzz harnesses with 30s budget each
+- `make test-fuzz-mcp` runs the MCP harness
+
+**Next**: `/agile-workflow:review epic-e2e-tests-fuzzing` once the user is ready.
