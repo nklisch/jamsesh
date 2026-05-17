@@ -20,9 +20,9 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/handlerauth"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/storage"
-	"jamsesh/internal/portal/tokens"
 )
 
 // Handler implements the openapi.StrictServerInterface session lifecycle methods.
@@ -47,33 +47,15 @@ func New(s store.Store, stor storage.Service, log *events.Log, sender senders.Se
 // creates the bare git repo on disk. On repo creation failure the session row
 // is deleted (compensation, since disk ops can't be rolled back in a DB Tx).
 func (h *Handler) CreateSession(ctx context.Context, req openapi.CreateSessionRequestObject) (openapi.CreateSessionResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
-	if !ok {
-		return openapi.CreateSession401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
-	}
-
 	orgID := req.OrgID
 
 	// Verify org membership — caller must be a member to create a session.
-	_, err := h.store.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: acc.ID,
-	})
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.CreateSession403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this org",
-				},
-			}, nil
+	acc, _, fail, ok := handlerauth.RequireOrgMember(ctx, h.store, orgID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, fmt.Errorf("sessions: get org member: %w", fail.Err)
 		}
-		return nil, fmt.Errorf("sessions: get org member: %w", err)
+		return createSessionFail(fail), nil
 	}
 
 	now := time.Now().UTC()
@@ -149,18 +131,27 @@ func (h *Handler) CreateSession(ctx context.Context, req openapi.CreateSessionRe
 // ---------------------------------------------------------------------------
 
 func (h *Handler) PatchSession(ctx context.Context, req openapi.PatchSessionRequestObject) (openapi.PatchSessionResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
+	orgID := req.OrgID
+	sessionID := req.SessionID
+
+	// Verify caller is a session member.
+	_, member, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
 	if !ok {
-		return openapi.PatchSession401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
+		if fail.Err != nil {
+			return nil, fmt.Errorf("sessions: get session member: %w", fail.Err)
+		}
+		return patchSessionFail(fail), nil
+	}
+
+	// Only the session creator may patch the session.
+	if member.Role != "creator" {
+		return openapi.PatchSession403JSONResponse{
+			ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
+				Error:   "auth.insufficient_permission",
+				Message: "only the session creator can patch the session",
 			},
 		}, nil
 	}
-
-	orgID := req.OrgID
-	sessionID := req.SessionID
 
 	sess, err := h.store.GetSession(ctx, orgID, sessionID)
 	if err != nil {
@@ -173,21 +164,6 @@ func (h *Handler) PatchSession(ctx context.Context, req openapi.PatchSessionRequ
 			}, nil
 		}
 		return nil, fmt.Errorf("sessions: get session: %w", err)
-	}
-
-	// Verify caller is the session creator.
-	member, err := h.store.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	})
-	if err != nil || member.Role != "creator" {
-		return openapi.PatchSession403JSONResponse{
-			ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-				Error:   "auth.insufficient_permission",
-				Message: "only the session creator can patch the session",
-			},
-		}, nil
 	}
 
 	// Apply patch fields — use zero-value sentinel for "not provided" since
@@ -242,14 +218,9 @@ func (h *Handler) PatchSession(ctx context.Context, req openapi.PatchSessionRequ
 // ---------------------------------------------------------------------------
 
 func (h *Handler) FinalizeSession(ctx context.Context, req openapi.FinalizeSessionRequestObject) (openapi.FinalizeSessionResponseObject, error) {
-	_, ok := tokens.AccountFromContext(ctx)
+	_, fail, ok := handlerauth.RequireAccount(ctx)
 	if !ok {
-		return openapi.FinalizeSession401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
+		return finalizeSessionFail(fail), nil
 	}
 
 	orgID := req.OrgID
@@ -315,18 +286,27 @@ func (h *Handler) FinalizeSession(ctx context.Context, req openapi.FinalizeSessi
 // ---------------------------------------------------------------------------
 
 func (h *Handler) AbandonSession(ctx context.Context, req openapi.AbandonSessionRequestObject) (openapi.AbandonSessionResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
+	orgID := req.OrgID
+	sessionID := req.SessionID
+
+	// Verify caller is a session member.
+	_, member, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
 	if !ok {
-		return openapi.AbandonSession401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
+		if fail.Err != nil {
+			return nil, fmt.Errorf("sessions: get session member: %w", fail.Err)
+		}
+		return abandonSessionFail(fail), nil
+	}
+
+	// Creator-only check.
+	if member.Role != "creator" {
+		return openapi.AbandonSession403JSONResponse{
+			ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
+				Error:   "auth.insufficient_permission",
+				Message: "only the session creator can abandon the session",
 			},
 		}, nil
 	}
-
-	orgID := req.OrgID
-	sessionID := req.SessionID
 
 	sess, err := h.store.GetSession(ctx, orgID, sessionID)
 	if err != nil {
@@ -339,21 +319,6 @@ func (h *Handler) AbandonSession(ctx context.Context, req openapi.AbandonSession
 			}, nil
 		}
 		return nil, fmt.Errorf("sessions: get session: %w", err)
-	}
-
-	// Creator-only check.
-	member, err := h.store.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	})
-	if err != nil || member.Role != "creator" {
-		return openapi.AbandonSession403JSONResponse{
-			ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-				Error:   "auth.insufficient_permission",
-				Message: "only the session creator can abandon the session",
-			},
-		}, nil
 	}
 
 	if sess.Status == "ended" || sess.Status == "archived" {
@@ -428,6 +393,41 @@ func isScopeNarrowing(oldScope, newScope string) bool {
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// Per-handler auth-fail wrappers
+//
+// Each function wraps a handlerauth.AuthFail into the operation-specific
+// response type required by oapi-codegen's strict-server interface.
+// ---------------------------------------------------------------------------
+
+func createSessionFail(f handlerauth.AuthFail) openapi.CreateSessionResponseObject {
+	if f.Status == 401 {
+		return openapi.CreateSession401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.CreateSession403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+func patchSessionFail(f handlerauth.AuthFail) openapi.PatchSessionResponseObject {
+	if f.Status == 401 {
+		return openapi.PatchSession401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.PatchSession403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+func finalizeSessionFail(f handlerauth.AuthFail) openapi.FinalizeSessionResponseObject {
+	if f.Status == 401 {
+		return openapi.FinalizeSession401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.FinalizeSession403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+func abandonSessionFail(f handlerauth.AuthFail) openapi.AbandonSessionResponseObject {
+	if f.Status == 401 {
+		return openapi.AbandonSession401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.AbandonSession403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
 }
 
 // sessionToOpenAPI maps a store.Session + member list to the openapi.Session type.
