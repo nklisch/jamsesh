@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-build-pipeline-release-workflow
 kind: story
-stage: implementing
+stage: review
 tags: [infra, security]
 parent: epic-distribution-build-pipeline
 depends_on: []
@@ -65,3 +65,62 @@ in and validated.
   `id-token: write`, `contents: write`, `attestations: write`.
 - Reference for cosign + GitHub OIDC patterns: the loaded
   `sigstore-cosign` skill.
+
+## Implementation notes
+
+### What landed
+
+**`.github/workflows/release.yml`** — full release workflow:
+- Triggers: `push: tags: v*` (real signed release) + `workflow_dispatch`
+  (unsigned dry-run artifacts, no release created)
+- Workflow-level `permissions: read-all`; jobs request only what they need
+- `build` job: 2 × 5 matrix (10 jobs), `ubuntu-latest`, cross-compiled via
+  `CGO_ENABLED=0`, reproducible flags (`-trimpath -buildvcs=false`), version
+  injected via `-X jamsesh/internal/buildinfo.Version` and `...Commit`
+- `sign-and-release` job: gated on tag push, downloads all 10 artifacts,
+  installs cosign, signs every binary, generates SBOM, generates + signs
+  checksums, attests SLSA provenance, uploads everything to GitHub Release
+
+**`internal/buildinfo/buildinfo.go`** — tiny package with `Version`, `Commit`
+vars and `String()` helper; compile-time defaults are `"dev"` / `"unknown"`.
+
+**`internal/buildinfo/buildinfo_test.go`** — 4 tests:
+`TestDefaultsNonEmpty`, `TestDefaultValues`, `TestStringRoundTrip`,
+`TestStringWithInjectedValues`. All pass (`go test ./internal/buildinfo/...`).
+
+### Verification results
+
+- `actionlint .github/workflows/release.yml` — exit 0, no issues
+- Matrix expansion: 2 binaries × 5 targets = 10 build jobs (verified by YAML parse)
+- Permissions: workflow-level `read-all`; `build` job `contents: read`;
+  `sign-and-release` job `id-token: write` + `contents: write` + `attestations: write`
+- `go test ./internal/buildinfo/...` — PASS (4/4)
+
+### Deviations from design sketch
+
+The feature design body (`epic-distribution-build-pipeline.md` Unit 1 sketch)
+referenced `sigstore/cosign-installer@v3` and the legacy `.sig` + `.pem` split
+output. The `sigstore-cosign` skill (verified 2026-05-16) corrects this:
+
+- **Action pin**: `sigstore/cosign-installer@v4.1.0` (not `@v3`)
+- **cosign release**: pinned to `v3.0.6` via `cosign-release:` input
+- **Bundle format**: `*.sigstore.json` single bundle per artifact (not split
+  `.sig` / `.pem`). The v3 cosign line defaults to the bundle format via
+  `sigstore-go`; old split files are a legacy pattern.
+- **`COSIGN_EXPERIMENTAL`**: removed — not needed or relevant in v3
+
+The checksums step and checksums.txt.sigstore.json signing are preserved
+from the design. The `attest-build-provenance` subject-path is scoped to
+`dist/portal-*` and `dist/jamsesh-*` globs (not `dist/*`) to exclude signing
+artifacts from being attested — this is a refinement over the design sketch.
+
+### Expected sequencing gap
+
+The workflow is correct. It will produce build failures for matrix jobs
+until the following sibling stories land:
+
+- `cmd/portal` — blocked on `epic-portal-foundation-http-skeleton-config-tls-and-entry`
+- `cmd/jamsesh` — blocked on `epic-cc-plugin-binary-foundation`
+
+Until both land, `workflow_dispatch` runs will show 10 failing build jobs.
+This is expected and does not indicate a workflow defect.

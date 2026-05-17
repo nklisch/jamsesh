@@ -1,0 +1,199 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Skip signing and release upload (produces unsigned workflow artifacts only)'
+        type: boolean
+        default: true
+
+# Default: lock everything down. Jobs request only what they need.
+permissions: read-all
+
+env:
+  GO_VERSION: '1.22.x'
+
+jobs:
+  build:
+    name: build (${{ matrix.binary }} ${{ matrix.target.goos }}/${{ matrix.target.goarch }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        binary: [portal, jamsesh]
+        target:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: false
+          cache: true
+
+      - name: build
+        env:
+          GOOS: ${{ matrix.target.goos }}
+          GOARCH: ${{ matrix.target.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+
+          # Derive version string: use the tag on real pushes, manufacture
+          # a dev version on workflow_dispatch so the binary is still
+          # stamped with something meaningful.
+          tag="${GITHUB_REF_NAME:-}"
+          if [ -z "${tag}" ] || [ "${tag#v}" = "${tag}" ]; then
+            tag="0.0.0-dev-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_SHA::8}"
+          fi
+
+          ext=''
+          if [ "${GOOS}" = 'windows' ]; then ext='.exe'; fi
+
+          out="dist/${{ matrix.binary }}-${GOOS}-${GOARCH}${ext}"
+          mkdir -p dist
+
+          go build \
+            -trimpath \
+            -buildvcs=false \
+            -ldflags "-s -w \
+              -X jamsesh/internal/buildinfo.Version=${tag} \
+              -X jamsesh/internal/buildinfo.Commit=${GITHUB_SHA}" \
+            -o "${out}" \
+            ./cmd/${{ matrix.binary }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          # Artifact name is the basename of the binary (no extension).
+          # Downstream jobs and sibling features rely on this convention.
+          name: ${{ matrix.binary }}-${{ matrix.target.goos }}-${{ matrix.target.goarch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  sign-and-release:
+    name: sign and publish
+    runs-on: ubuntu-latest
+    needs: build
+    # Only run on real tag pushes — workflow_dispatch produces unsigned
+    # artifacts visible in the workflow run UI but never creates a release.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      id-token: write     # required for cosign keyless OIDC + SLSA provenance
+      contents: write     # required for GitHub release upload
+      attestations: write # required for actions/attest-build-provenance
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download all 10 build artifacts into dist-staging/, then flatten
+      # into dist/ so every step below operates on one directory.
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-staging
+          merge-multiple: true
+
+      - name: assemble dist/
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          mv dist-staging/* dist/
+          echo "=== dist contents ==="
+          ls -la dist/
+
+      # cosign v3 line (sigstore-go based). Produces *.sigstore.json bundles
+      # (single file per artifact; replaces the legacy .sig + .pem split).
+      # Pin both the installer action and the cosign release version.
+      - name: install cosign
+        uses: sigstore/cosign-installer@v4.1.0
+        with:
+          cosign-release: 'v3.0.6'
+
+      # Sign every binary; emit one *.sigstore.json bundle per file.
+      # Bundles contain the Fulcio cert, the signature, and the Rekor
+      # inclusion proof — everything a verifier needs in one file.
+      - name: sign artifacts (keyless)
+        run: |
+          set -euo pipefail
+          for f in dist/*; do
+            [ -f "${f}" ] || continue
+            cosign sign-blob --yes \
+              --bundle "${f}.sigstore.json" \
+              "${f}"
+            echo "signed: ${f}"
+          done
+
+      # Generate a single SPDX JSON SBOM covering the whole dist/ tree.
+      # anchore/sbom-action wraps Syft; @v0 tracks the v0.x release line.
+      - name: generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: dist
+          format: spdx-json
+          output-file: dist/sbom.spdx.json
+
+      # Checksum file covers the binaries only (not sigs, bundles, or sbom).
+      # Then sign the checksum file itself so verifiers can audit the whole
+      # artifact set transitively.
+      - name: generate and sign checksums
+        run: |
+          set -euo pipefail
+          cd dist
+
+          # Collect binaries only (exclude sigs, bundles, sbom, any prior checksums).
+          find . -maxdepth 1 -type f \
+            ! -name '*.sigstore.json' \
+            ! -name 'sbom.spdx.json' \
+            ! -name 'checksums*' \
+            -printf '%f\n' \
+          | sort \
+          | xargs sha256sum > checksums.txt
+
+          echo "=== checksums.txt ==="
+          cat checksums.txt
+
+          cosign sign-blob --yes \
+            --bundle checksums.txt.sigstore.json \
+            checksums.txt
+
+      # SLSA Build Level 3 provenance attestation.
+      # subject-path intentionally scoped to binaries only via explicit
+      # include pattern — avoids attesting over sigs/bundles/sbom which
+      # are outputs of the signing step itself, not build outputs.
+      - name: attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            dist/portal-*
+            dist/jamsesh-*
+
+      # Upload everything to the GitHub Release for this tag.
+      # softprops/action-gh-release@v2 creates the release if it doesn't
+      # exist and appends assets if it does (safe for re-runs on same tag).
+      # List binaries + their bundles explicitly; then the remaining shared
+      # artifacts. The dist/*.sigstore.json glob covers binary bundles;
+      # checksums bundle is listed separately to make the manifest auditable.
+      - name: create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/portal-*
+            dist/jamsesh-*
+            dist/sbom.spdx.json
+            dist/checksums.txt
+            dist/checksums.txt.sigstore.json
