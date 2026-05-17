@@ -91,7 +91,7 @@ func (h *Handler) InviteToSession(ctx context.Context, req openapi.InviteToSessi
 		return nil, fmt.Errorf("sessions: invite: generate token: %w", err)
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	id := ulid.Make().String()
 	inviteeEmail := string(req.Body.Email)
 
@@ -172,7 +172,7 @@ func (h *Handler) AcceptSessionInvite(ctx context.Context, req openapi.AcceptSes
 	}
 
 	// Verify not expired.
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	if now.After(invite.ExpiresAt) {
 		return openapi.AcceptSessionInvite401JSONResponse{
 			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{

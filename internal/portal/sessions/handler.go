@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 
@@ -34,11 +33,19 @@ type Handler struct {
 	events    *events.Log
 	sender    senders.Sender
 	portalURL string
+	clock     Clock
 }
 
-// New constructs a Handler.
+// New constructs a Handler with the real system clock. Production callers use
+// this.
 func New(s store.Store, stor storage.Service, log *events.Log, sender senders.Sender, portalURL string) *Handler {
-	return &Handler{store: s, storage: stor, events: log, sender: sender, portalURL: portalURL}
+	return NewWithClock(s, stor, log, sender, portalURL, realClock{})
+}
+
+// NewWithClock constructs a Handler with the supplied clock. Used by unit
+// tests (fakeClock) and the e2etest-tagged binary (testclock.AdvanceableClock).
+func NewWithClock(s store.Store, stor storage.Service, log *events.Log, sender senders.Sender, portalURL string, clock Clock) *Handler {
+	return &Handler{store: s, storage: stor, events: log, sender: sender, portalURL: portalURL, clock: clock}
 }
 
 // ---------------------------------------------------------------------------
@@ -70,7 +77,7 @@ func (h *Handler) CreateSession(ctx context.Context, req openapi.CreateSessionRe
 		}), nil
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	sessionID := ulid.Make().String()
 
 	var sess store.Session
@@ -346,7 +353,7 @@ func (h *Handler) AbandonSession(ctx context.Context, req openapi.AbandonSession
 		}), nil
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	endReason := "abandoned"
 
 	// Update status and end_reason atomically.

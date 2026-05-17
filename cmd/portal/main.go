@@ -330,13 +330,15 @@ func main() {
 	}
 
 	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
-	//
-	// NOTE: clock injection for sessions is intentionally deferred — the
-	// `clock` field cannot land on the Handler struct without touching
-	// internal/portal/sessions/handler.go, which is held for a coordinated
-	// follow-on with the scope-validation work. See
-	// portal-test-clock-broaden-coverage feature body.
-	sessionsHandler := sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
+	// In e2etest builds, inject the advanceable clock so /test/clock-advance
+	// affects session created_at / ended_at stamps, invite created/expires/
+	// accepted/joined stamps, and the listing cursor "before" window.
+	var sessionsHandler *sessions.Handler
+	if c := testClk.sessionsClock(); c != nil {
+		sessionsHandler = sessions.NewWithClock(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL, c)
+	} else {
+		sessionsHandler = sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
+	}
 
 	// Build the comments service and handler. In e2etest builds, the
 	// Clock field is set to the advanceable clock via the struct-literal;

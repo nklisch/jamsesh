@@ -12,6 +12,7 @@ import (
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/finalize"
 	"jamsesh/internal/portal/mcpendpoint"
+	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
@@ -78,6 +79,12 @@ func (p *testClockProvider) automergerClock() automerger.Clock { return nil }
 // return type is the concrete mcpendpoint.Clock interface so the
 // field assignment is well-typed.
 func (p *testClockProvider) mcpClock() mcpendpoint.Clock { return nil }
+
+// sessionsClock returns nil. main.go interprets nil as "use the real
+// clock" and falls back to sessions.New. The return type is the
+// concrete sessions.Clock interface so the comparison against nil in
+// main.go is well-defined (no typed-nil trap).
+func (p *testClockProvider) sessionsClock() sessions.Clock { return nil }
 
 // mountTestEndpointsHook returns nil in production builds. router.New
 // skips the /test r.Route call when MountTest is nil, so the /test

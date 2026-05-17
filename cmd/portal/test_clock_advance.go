@@ -12,6 +12,7 @@ import (
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/finalize"
 	"jamsesh/internal/portal/mcpendpoint"
+	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/testclock"
 	"jamsesh/internal/portal/tokens"
@@ -78,6 +79,12 @@ func (p *testClockProvider) automergerClock() automerger.Clock { return p.clock 
 // the sentinel TokenInfo.Expiration stamp and the fork tool's ForkedAt
 // payload.
 func (p *testClockProvider) mcpClock() mcpendpoint.Clock { return p.clock }
+
+// sessionsClock returns the clock to inject into the sessions.Handler.
+// Implements sessions.Clock. Same shared AdvanceableClock — affects
+// session create/abandon stamps, invite create/expires/accept/join
+// stamps, and the ListSessions cursor "before" window.
+func (p *testClockProvider) sessionsClock() sessions.Clock { return p.clock }
 
 // mountTestEndpoints registers POST /clock-advance on r. The portal
 // router invokes this inside r.Route("/test", ...), so the public

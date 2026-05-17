@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage-sessions-followup
 kind: story
-stage: implementing
+stage: review
 tags: [testing, testability, portal]
 parent: null
 depends_on: []
@@ -70,3 +70,57 @@ Mirror the v1 clock-injection pattern for the sessions package:
 ## Estimated size
 
 ~50-80 LoC. Mechanical replication of the v1 pattern. Single stride.
+
+## Implementation notes
+
+Mirrored the v1 clock-injection pattern from `internal/portal/finalize`
+into `internal/portal/sessions`.
+
+### Files touched
+
+- `internal/portal/sessions/clock.go` — new. Defines `Clock` interface
+  + `realClock` (returns `time.Now().UTC()`). Same shape as
+  `finalize/handler.go` / `comments/service.go`.
+- `internal/portal/sessions/handler.go` — added `clock Clock` field to
+  `Handler`. `New(...)` now delegates to `NewWithClock(..., realClock{})`.
+  Dropped the now-unused `time` import.
+- `internal/portal/sessions/invites.go` — no constructor change; the 2
+  `time.Now().UTC()` sites swapped for `h.clock.Now()`. `time` import
+  retained for `sessionInviteTTL = 7 * 24 * time.Hour`.
+- `internal/portal/sessions/listing.go` — pagination cursor "before"
+  swapped to `h.clock.Now().Add(time.Second)`. `time` import retained.
+- `internal/portal/sessions/clock_test.go` — new. Two tests:
+  `TestHandler_CreateSessionUsesInjectedClock` proves
+  `NewWithClock(fakeClock)` controls the `CreatedAt` stamp, and
+  `TestHandler_NewVsNewWithClock_ProductionPathClean` proves the
+  default `New(...)` path still produces realClock stamps in
+  `[before, after]`.
+- `cmd/portal/main.go` — sessions handler construction now branches
+  `sessions.NewWithClock(..., c)` vs `sessions.New(...)` on
+  `testClk.sessionsClock() != nil`, mirroring the finalize wiring.
+  Removed the deferral NOTE comment that referenced this very story.
+- `cmd/portal/test_clock_advance.go` — added `sessionsClock()`
+  accessor returning `p.clock` (typed as `sessions.Clock`).
+- `cmd/portal/test_clock_advance_prod.go` — added `sessionsClock()`
+  stub returning typed nil.
+
+### Sites wrapped (post-edit line numbers)
+
+1. `handler.go:80` — `CreateSession` `created_at` / `joined_at` stamp.
+2. `handler.go:356` — `AbandonSession` `ended_at` stamp.
+3. `invites.go:94` — `InviteToSession` `CreatedAt` + `ExpiresAt`.
+4. `invites.go:175` — `AcceptSessionInvite` `AcceptedAt` + `JoinedAt`.
+5. `listing.go:68` — `ListSessions` pagination cursor "before".
+
+### Verification
+
+- `go build ./...` — clean.
+- `go build -tags e2etest ./...` — clean.
+- `go vet ./internal/portal/...` — clean.
+- `go test ./internal/portal/sessions/...` — pass.
+- `go test ./internal/portal/...` — all pass.
+- `go test ./cmd/portal/ -run TestProductionBuild_HasNoTestEndpoint` —
+  pass (production binary still rejects `POST /test/clock-advance` with
+  404).
+- Two new sessions tests pass (`TestHandler_CreateSessionUsesInjectedClock`,
+  `TestHandler_NewVsNewWithClock_ProductionPathClean`).

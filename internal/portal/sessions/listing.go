@@ -65,7 +65,7 @@ func (h *Handler) ListSessions(ctx context.Context, req openapi.ListSessionsRequ
 	}
 
 	// Decode cursor if provided, otherwise start from "now" (first page).
-	before := time.Now().Add(time.Second).UTC() // slight future to include now
+	before := h.clock.Now().Add(time.Second) // slight future to include now
 	if req.Params.Cursor != "" {
 		cur, err := pagination.Decode(req.Params.Cursor, filter)
 		if err != nil {
