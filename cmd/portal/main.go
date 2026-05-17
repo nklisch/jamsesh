@@ -295,7 +295,16 @@ func main() {
 	oauthHandler := auth.NewOAuthHandler(providers, dbStore, tokenSvc, cfg.PortalURL)
 
 	// Build the accounts handler (GET /api/me, POST /api/orgs, org members + invites).
-	accountsHandler := accounts.New(dbStore, emailSender, cfg.PortalURL)
+	// In e2etest builds, inject the advanceable clock so /test/clock-advance
+	// affects org-invite expiry and CreatedAt/ExpiresAt stamps; in production
+	// builds the provider's accountsClock() returns nil and the real-clock
+	// constructor is used.
+	var accountsHandler *accounts.Handler
+	if c := testClk.accountsClock(); c != nil {
+		accountsHandler = accounts.NewWithClock(dbStore, emailSender, cfg.PortalURL, c)
+	} else {
+		accountsHandler = accounts.New(dbStore, emailSender, cfg.PortalURL)
+	}
 
 	// Build the storage service and git HTTP handler (needed before sessions).
 	storageSvc := storage.New(cfg.Storage, dbStore)

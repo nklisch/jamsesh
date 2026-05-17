@@ -29,9 +29,17 @@ func GenerateNonce() (string, error) {
 
 // StoreState inserts a fresh state nonce into oauth_state with a
 // StateNonceTTL expiry. The nonce is consumed atomically on callback via
-// ConsumeState.
+// ConsumeState. Uses the real system clock; clock-injectable callers
+// should use StoreStateAt.
 func StoreState(ctx context.Context, s store.OAuthStateStore, nonce, provider, redirectURI string) error {
-	now := time.Now().UTC()
+	return StoreStateAt(ctx, s, nonce, provider, redirectURI, time.Now().UTC())
+}
+
+// StoreStateAt inserts a fresh state nonce using the supplied timestamp
+// as CreatedAt. ExpiresAt is now + StateNonceTTL. Used by
+// clock-injectable callers so test-clock advancement is observable in
+// both stamps.
+func StoreStateAt(ctx context.Context, s store.OAuthStateStore, nonce, provider, redirectURI string, now time.Time) error {
 	return s.InsertOAuthState(ctx, store.InsertOAuthStateParams{
 		Nonce:       nonce,
 		Provider:    provider,

@@ -5,6 +5,7 @@ package main
 import (
 	"github.com/go-chi/chi/v5"
 
+	"jamsesh/internal/portal/accounts"
 	"jamsesh/internal/portal/auth"
 	"jamsesh/internal/portal/tokens"
 )
@@ -27,6 +28,12 @@ func (p *testClockProvider) magicLinkClock() auth.Clock { return nil }
 // tokens.Clock interface so the comparison against nil in main.go is
 // well-defined (no typed-nil trap).
 func (p *testClockProvider) tokensClock() tokens.Clock { return nil }
+
+// accountsClock returns nil. main.go interprets nil as "use the real
+// clock" and falls back to accounts.New. The return type is the concrete
+// accounts.Clock interface so the comparison against nil in main.go is
+// well-defined (no typed-nil trap).
+func (p *testClockProvider) accountsClock() accounts.Clock { return nil }
 
 // mountTestEndpointsHook returns nil in production builds. router.New
 // skips the /test r.Route call when MountTest is nil, so the /test

@@ -5,6 +5,7 @@ package main
 import (
 	"github.com/go-chi/chi/v5"
 
+	"jamsesh/internal/portal/accounts"
 	"jamsesh/internal/portal/auth"
 	"jamsesh/internal/portal/testclock"
 	"jamsesh/internal/portal/tokens"
@@ -34,6 +35,11 @@ func (p *testClockProvider) magicLinkClock() auth.Clock { return p.clock }
 // Implements tokens.Clock. Same underlying AdvanceableClock as
 // magicLinkClock — advancing once moves both forward.
 func (p *testClockProvider) tokensClock() tokens.Clock { return p.clock }
+
+// accountsClock returns the clock to inject into the accounts.Handler.
+// Implements accounts.Clock. Same underlying AdvanceableClock as
+// magicLinkClock / tokensClock — advancing once moves all forward.
+func (p *testClockProvider) accountsClock() accounts.Clock { return p.clock }
 
 // mountTestEndpoints registers POST /clock-advance on r. The portal
 // router invokes this inside r.Route("/test", ...), so the public

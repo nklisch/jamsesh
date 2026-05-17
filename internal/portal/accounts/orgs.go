@@ -60,7 +60,7 @@ func (h *Handler) CreateOrgInvite(ctx context.Context, req openapi.CreateOrgInvi
 		return nil, fmt.Errorf("accounts: generate invite token: %w", err)
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	id := ulid.Make().String()
 	recipientEmail := string(req.Body.Email)
 
@@ -135,7 +135,7 @@ func (h *Handler) AcceptOrgInvite(ctx context.Context, req openapi.AcceptOrgInvi
 	}
 
 	// Verify not expired.
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	if now.After(invite.ExpiresAt) {
 		return openapi.AcceptOrgInvite401JSONResponse{
 			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{

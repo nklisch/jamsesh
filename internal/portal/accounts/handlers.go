@@ -16,18 +16,39 @@ import (
 	"jamsesh/internal/portal/senders"
 )
 
+// Clock is an injectable time source. The default realClock calls
+// time.Now().UTC(); tests inject a fakeClock to simulate org-invite
+// expiry. Shape mirrors internal/portal/auth.Clock and
+// internal/portal/tokens.Clock so a single AdvanceableClock instance
+// satisfies all three.
+type Clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now().UTC() }
+
 // Handler implements the openapi.StrictServerInterface methods for the
 // accounts endpoints: GET /api/me, POST /api/orgs, GET/POST /api/orgs/{orgID}/...
 type Handler struct {
 	store     store.Store
 	sender    senders.Sender
 	portalURL string
+	clock     Clock
 }
 
-// New returns a Handler backed by s.
+// New returns a Handler backed by s with the real system clock.
 // sender and portalURL are required for CreateOrgInvite to send invite emails.
 func New(s store.Store, sender senders.Sender, portalURL string) *Handler {
-	return &Handler{store: s, sender: sender, portalURL: portalURL}
+	return NewWithClock(s, sender, portalURL, realClock{})
+}
+
+// NewWithClock returns a Handler backed by s with the supplied clock.
+// Used by unit tests (fakeClock) and the e2etest-tagged binary
+// (testclock.AdvanceableClock).
+func NewWithClock(s store.Store, sender senders.Sender, portalURL string, clock Clock) *Handler {
+	return &Handler{store: s, sender: sender, portalURL: portalURL, clock: clock}
 }
 
 // GetMe implements GET /api/me.
@@ -82,7 +103,7 @@ func (h *Handler) CreateOrg(ctx context.Context, req openapi.CreateOrgRequestObj
 		return createOrgFail(fail), nil
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	org, err := auth.CreateOrgWithSlug(ctx, h.store, req.Body.Name, now)
 	if err != nil {
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: create org: %w", err))

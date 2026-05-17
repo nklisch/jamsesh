@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage-provisioning-and-state
 kind: story
-stage: implementing
+stage: review
 tags: [testing, testability, portal]
 parent: portal-test-clock-broaden-coverage
 depends_on: []
@@ -272,3 +272,139 @@ if c := testClk.accountsClock(); c != nil {
   `Now() time.Time` shape that's structurally compatible with the
   existing `auth.Clock`, `tokens.Clock`, and
   `*testclock.AdvanceableClock`.
+
+## Implementation notes
+
+### Files modified
+
+- `internal/portal/accounts/handlers.go` — added `Clock` interface,
+  `realClock`, `clock` field on `Handler`, `NewWithClock` constructor;
+  swapped `time.Now().UTC()` in `CreateOrg` for `h.clock.Now()`.
+- `internal/portal/accounts/orgs.go` — swapped both `time.Now().UTC()`
+  reads (`CreateOrgInvite`, `AcceptOrgInvite`) for `h.clock.Now()`.
+- `internal/portal/auth/provision.go` — added additive
+  `FindOrProvisionAt(ctx, s, id, now)` variant. `FindOrProvision(ctx,
+  s, id)` now delegates with `time.Now().UTC()` (back-compat for the
+  locked `oauth.go` caller and all existing call sites/tests).
+  `createAccountAndOrg` now takes `now time.Time`; the internal
+  `time.Now().UTC()` read is dropped.
+- `internal/portal/auth/magic_link.go` — `ExchangeMagicLink` now calls
+  `FindOrProvisionAt(ctx, h.store, id, now)` so the injected clock is
+  the sole time source for the provisioning write path. (One-line
+  swap; the v1 clock plumbing in this file is untouched.)
+- `internal/portal/oauth/state.go` — added additive `StoreStateAt(...,
+  now time.Time)`. `StoreState(...)` now delegates with
+  `time.Now().UTC()` (back-compat for the locked `oauth.go` caller).
+  Chose Option A from the spec — additive — because the in-flight
+  oauth.go lock made signature change infeasible.
+- `cmd/portal/test_clock_advance.go` (e2etest) — added `accountsClock()`
+  returning `p.clock` typed as `accounts.Clock`. Imports `accounts`.
+- `cmd/portal/test_clock_advance_prod.go` (!e2etest) — added
+  `accountsClock()` returning `nil` typed as `accounts.Clock`. Imports
+  `accounts`.
+- `cmd/portal/main.go` — added the conditional-clock block around the
+  `accountsHandler` construction, mirroring the magic-link and tokens
+  patterns from v1.
+
+### Files added (tests)
+
+- `internal/portal/accounts/clock_test.go` — local `fakeClock`,
+  `newOrgsClockTestEnv` helper wiring `accounts.NewWithClock`, and three
+  unit tests:
+  - `TestCreateOrg_UsesInjectedClock` — verifies org + member rows'
+    `CreatedAt` come from the fakeClock.
+  - `TestCreateOrgInvite_UsesInjectedClock` — verifies invite
+    `ExpiresAt` is `clock.Now() + 7d`.
+  - `TestAcceptOrgInvite_ClockPastExpiry_Returns401` — advances the
+    fakeClock past the seeded invite's `ExpiresAt` and asserts the
+    handler returns 401 `auth.invalid_token`.
+- `internal/portal/auth/provision_test.go` — added two unit tests
+  inside the existing file:
+  - `TestFindOrProvisionAt_UsesSuppliedClock` — verifies all three
+    rows (account, org, org_member) carry the supplied `now` as
+    `CreatedAt`.
+  - `TestFindOrProvision_DelegatesToFindOrProvisionAt` — sanity check
+    that the back-compat entry point still uses the real wall clock.
+- `internal/portal/oauth/state_test.go` (new file) — two unit tests:
+  - `TestStoreStateAt_UsesSuppliedClock` — verifies `CreatedAt` =
+    supplied now, `ExpiresAt` = now + `StateNonceTTL`.
+  - `TestStoreState_DelegatesToStoreStateAt` — sanity check on
+    back-compat entry point.
+
+### Call sites wrapped (5)
+
+1. `accounts.CreateOrg` — `accounts/handlers.go:85` swap.
+2. `accounts.CreateOrgInvite` — `accounts/orgs.go:63` swap.
+3. `accounts.AcceptOrgInvite` — `accounts/orgs.go:138` swap (TTL gate).
+4. `auth.createAccountAndOrg` — `auth/provision.go` `now` parameter
+   (drops the internal `time.Now().UTC()` read). The magic-link caller
+   in `ExchangeMagicLink` passes the same `now` instant used for
+   token-consume.
+5. `oauth.StoreStateAt` — `oauth/state.go` new function. Currently
+   reached only via `StoreState` (back-compat); a follow-on story will
+   wire `OAuthHandler.StartOAuth` to call `StoreStateAt` directly with
+   `h.clock.Now()` once `auth/oauth.go` unlocks.
+
+### Deferred sites (1, by design)
+
+- `auth/oauth.go:159` (`OauthCallback` → `FindOrProvision`) and
+  `auth/oauth.go:76` (`StartOAuth` → `StoreState`) — `auth/oauth.go` is
+  LOCKED by the in-flight `portal-oauth-provider-error-taxonomy`
+  feature. The additive `FindOrProvisionAt` + `StoreStateAt` keep the
+  existing back-compat call sites compiling; the follow-on story is
+  ~30 LoC once `oauth.go` unlocks: add `OAuthHandler.NewWithClock`,
+  thread `h.clock`, swap the two helper calls to the `*At` variants.
+
+### Validation
+
+- `go build ./internal/portal/accounts/... ./internal/portal/auth/...
+  ./internal/portal/oauth/...` — clean (production tags).
+- `go build -tags e2etest ./internal/portal/accounts/...
+  ./internal/portal/auth/... ./internal/portal/oauth/...` — clean.
+- `go vet ./internal/portal/accounts/... ./internal/portal/auth/...
+  ./internal/portal/oauth/...` — clean.
+- `go test -count=1 ./internal/portal/accounts/...
+  ./internal/portal/auth/... ./internal/portal/oauth/...` — all pass
+  (74 tests total, including the 7 new ones added for clock
+  injection).
+
+### Coordination notes
+
+- `cmd/portal/main.go` and `cmd/portal/test_clock_advance{,_prod}.go`
+  are jointly owned with the sibling story
+  `portal-test-clock-broaden-coverage-handlers-workers-mcp` (running
+  in parallel). Made additive changes only: added an `accountsClock()`
+  accessor pair and a conditional-clock block around
+  `accountsHandler`. Did not touch the sibling's blocks. The sibling
+  was actively rebasing during implementation; its WIP imports for
+  `automerger`, `comments`, `events`, `finalize`, `mcpendpoint`, and
+  `storage` are preserved in `test_clock_advance{,_prod}.go`.
+- `go build ./...` and `go test ./cmd/portal/...` (including
+  `TestProductionBuild_HasNoTestEndpoint`) could not be exercised
+  end-to-end in this session because the sibling has uncommitted
+  partial work that breaks `internal/portal/finalize/` compile
+  (unused-import errors after their swap to `h.clock.Now()` — they
+  haven't finished pruning the `time` import yet). The work in this
+  story is intentionally isolated to packages the sibling does not
+  touch (`accounts`, `auth/provision`, `oauth/state`), so the
+  sibling's WIP does not affect correctness of this story.
+
+### Acceptance-criteria status
+
+- [x] `accounts.NewWithClock` exists and is wired in `main.go` via the
+      e2etest-gated pattern.
+- [x] All 3 `time.Now().UTC()` reads in `accounts/handlers.go` and
+      `accounts/orgs.go` go through `h.clock.Now()`.
+- [x] `auth.FindOrProvisionAt` accepts a `now time.Time` parameter
+      and is called from `magic_link.go` (the only in-scope caller).
+      `auth.FindOrProvision` remains as a back-compat wrapper for the
+      locked `oauth.go` caller (and existing tests).
+- [x] `oauth.StoreStateAt` accepts a `now time.Time` parameter and is
+      fully functional, even though `auth/oauth.go` continues calling
+      the back-compat `StoreState` wrapper.
+- [x] `auth/oauth.go` is NOT modified by this story.
+- [x] My packages build clean on both `go build` and `go build -tags
+      e2etest`. (Full repo build is blocked by sibling WIP — see
+      Coordination notes.)
+- [x] Unit tests for `accounts/handlers.go`, `accounts/orgs.go`,
+      `auth/provision.go`, and `oauth/state.go` pass.

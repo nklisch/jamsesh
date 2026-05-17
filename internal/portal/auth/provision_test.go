@@ -143,6 +143,71 @@ func TestFindOrProvision_SlugCollision_AppendsSuffix(t *testing.T) {
 	}
 }
 
+// TestFindOrProvisionAt_UsesSuppliedClock asserts that the account, org,
+// and org_member rows created on first sign-in all carry the supplied
+// `now` as their CreatedAt — proving the clock parameter is the sole
+// source of time for the provisioning write path.
+func TestFindOrProvisionAt_UsesSuppliedClock(t *testing.T) {
+	s := openStore(t)
+	ctx := context.Background()
+
+	frozen := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	id := auth.Identity{
+		Provider:    "magic-link",
+		Email:       "frozen@example.com",
+		DisplayName: "frozen",
+	}
+
+	acc, org, err := auth.FindOrProvisionAt(ctx, s, id, frozen)
+	if err != nil {
+		t.Fatalf("FindOrProvisionAt: %v", err)
+	}
+
+	if !acc.CreatedAt.Equal(frozen) {
+		t.Errorf("account CreatedAt: want %v, got %v", frozen, acc.CreatedAt)
+	}
+	if !org.CreatedAt.Equal(frozen) {
+		t.Errorf("org CreatedAt: want %v, got %v", frozen, org.CreatedAt)
+	}
+
+	m, err := s.GetOrgMember(ctx, store.GetOrgMemberParams{
+		OrgID:     org.ID,
+		AccountID: acc.ID,
+	})
+	if err != nil {
+		t.Fatalf("GetOrgMember: %v", err)
+	}
+	if !m.CreatedAt.Equal(frozen) {
+		t.Errorf("org_member CreatedAt: want %v, got %v", frozen, m.CreatedAt)
+	}
+}
+
+// TestFindOrProvision_DelegatesToFindOrProvisionAt verifies that the
+// back-compat FindOrProvision entry point still produces an account
+// whose CreatedAt is close to the real wall clock (sanity check; the
+// equality bound spans the call duration).
+func TestFindOrProvision_DelegatesToFindOrProvisionAt(t *testing.T) {
+	s := openStore(t)
+	ctx := context.Background()
+
+	id := auth.Identity{
+		Provider:    "magic-link",
+		Email:       "delegate@example.com",
+		DisplayName: "delegate",
+	}
+
+	before := time.Now().UTC()
+	acc, _, err := auth.FindOrProvision(ctx, s, id)
+	if err != nil {
+		t.Fatalf("FindOrProvision: %v", err)
+	}
+	after := time.Now().UTC()
+
+	if acc.CreatedAt.Before(before) || acc.CreatedAt.After(after) {
+		t.Errorf("account CreatedAt %v not in [%v, %v]", acc.CreatedAt, before, after)
+	}
+}
+
 func TestFindOrProvision_GitHubIdentity_UsesProviderID(t *testing.T) {
 	s := openStore(t)
 	ctx := context.Background()

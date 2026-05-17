@@ -29,7 +29,9 @@ type Identity struct {
 
 // FindOrProvision returns the account+org pair for the given identity,
 // creating them on first sign-in. Idempotent: calling twice with the same
-// identity returns the same account and org.
+// identity returns the same account and org. Uses the real system clock
+// for provisioning timestamps; clock-injectable callers use
+// FindOrProvisionAt.
 //
 // Algorithm:
 //  1. Look up account by GitHub user ID (OAuth) or email (magic-link).
@@ -38,6 +40,14 @@ type Identity struct {
 //     prefix, suffix with 6 random alphanum chars on slug collision), insert
 //     org_member with role "creator", return both.
 func FindOrProvision(ctx context.Context, s store.Store, id Identity) (store.Account, store.Org, error) {
+	return FindOrProvisionAt(ctx, s, id, time.Now().UTC())
+}
+
+// FindOrProvisionAt is the clock-injectable variant of FindOrProvision.
+// Callers (e.g. MagicLinkHandler with an injectable Clock) pass their
+// clock's Now() so test-clock advancement is observable in the resulting
+// CreatedAt fields. See FindOrProvision for the algorithm.
+func FindOrProvisionAt(ctx context.Context, s store.Store, id Identity, now time.Time) (store.Account, store.Org, error) {
 	// Step 1: look up existing account.
 	acc, err := lookupAccount(ctx, s, id)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -54,7 +64,7 @@ func FindOrProvision(ctx context.Context, s store.Store, id Identity) (store.Acc
 	}
 
 	// Step 3: provision new account + org.
-	return createAccountAndOrg(ctx, s, id)
+	return createAccountAndOrg(ctx, s, id, now)
 }
 
 // lookupAccount attempts to find an existing account by the most specific
@@ -80,9 +90,10 @@ func primaryOrg(ctx context.Context, s store.Store, accountID string) (store.Org
 }
 
 // createAccountAndOrg creates a new account, a new personal org, and links
-// them with an org_member row (role=creator). Returns both.
-func createAccountAndOrg(ctx context.Context, s store.Store, id Identity) (store.Account, store.Org, error) {
-	now := time.Now().UTC()
+// them with an org_member row (role=creator). Returns both. The now
+// parameter stamps CreatedAt on every inserted row so a single instant
+// is shared across account, org, and org_member.
+func createAccountAndOrg(ctx context.Context, s store.Store, id Identity, now time.Time) (store.Account, store.Org, error) {
 	accountID := uuid.New().String()
 
 	displayName := id.DisplayName

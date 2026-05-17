@@ -155,7 +155,7 @@ func (h *MagicLinkHandler) ExchangeMagicLink(
 		Email:       row.Email,
 		DisplayName: emailPrefix(row.Email),
 	}
-	acc, _, err := FindOrProvision(ctx, h.store, id)
+	acc, _, err := FindOrProvisionAt(ctx, h.store, id, now)
 	if err != nil {
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("magic-link: provision account: %w", err))
 	}
