@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-tokens
 kind: feature
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation
 depends_on: [epic-portal-foundation-data-layer, epic-portal-foundation-http-skeleton]
@@ -577,3 +577,13 @@ route is PUBLIC — the refresh token itself is the credential.
 - `go build ./...` clean
 - `go test ./...` green (Go side)
 - `go vet ./...` clean
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability complete. Token core (Service + middleware + Basic-auth helper), refresh + revoke REST endpoints, openapi.yaml populated with first paths. Both child stories at done. Auth-flows feature can now call svc.Issue after OAuth/magic-link exchange; git smart-HTTP can call BasicAuthValidator for push auth.

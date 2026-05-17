@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-storage
 kind: feature
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-git
 depends_on: []
@@ -380,3 +380,13 @@ Two stories chained:
 - `go build ./...` clean
 - `go test ./...` green (Go side)
 - `go vet ./...` clean
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability complete. Storage Service with bare-repo helpers + archive operation + stub formatter. Schema-additive 00002 migration on both dialects. Both child stories at done. Pre-receive, post-receive, smart-http features can now consume the Service.

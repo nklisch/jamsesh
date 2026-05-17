@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-foundation
 kind: feature
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui
 depends_on: []
@@ -634,3 +634,13 @@ The empty post-login state. Real session listing lands in
 - `go build ./...` clean
 - `go test ./...` green (Go side)
 - `go vet ./...` clean
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability complete. Vite + Svelte 5 toolchain, hand-rolled History-API router, embedded SPA in Go binary, openapi-fetch typed client, WebSocket subscription primitive, auth rune store, login screen + chrome + sessions landing. All 3 child stories at done. The empty-paths situation for OpenAPI types resolved itself when tokens-refresh-and-revoke landed paths in the spec.
