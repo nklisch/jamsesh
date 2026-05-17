@@ -21,6 +21,42 @@ func TestCompileScope(t *testing.T) {
 			t.Error("empty scope should deny all paths")
 		}
 	})
+
+	// Regression: gobwas/glob@v0.2.3 silently compiles patterns with an
+	// unclosed "{" that has a literal prefix (e.g. "0{", "src/{") without
+	// returning an error. The resulting matcher panics on Match when the input
+	// matches the literal prefix. probeGlob must surface these as compile-time
+	// errors so the portal never stores a pattern that will panic on push.
+	//
+	// Original fuzz trigger: seed fc37b996e5096fc7 — pattern "0{", path "0".
+	// The panic: runtime error: slice bounds out of range [:2] with length 1,
+	// inside gobwas/glob Row.matchAll.
+	//
+	// Note: a bare "{" (no literal prefix) does NOT panic — gobwas/glob treats
+	// it as an empty alternatives group that matches only the empty string.
+	// Only patterns of the form "<literal-prefix>{" trigger the panic, because
+	// the literal prefix produces a two-element matcher list that matchAll then
+	// accesses out of bounds.
+	malformedPatterns := []struct {
+		name    string
+		pattern string
+	}{
+		// Primary fuzz trigger.
+		{name: "unclosed brace after digit", pattern: "0{"},
+		// Same class: alpha literal prefix.
+		{name: "unclosed brace after alpha", pattern: "a{"},
+		// Path prefix before unclosed brace — exercises longer byte-prefix probe.
+		{name: "unclosed brace after path prefix", pattern: "src/{"},
+	}
+
+	for _, tc := range malformedPatterns {
+		t.Run("rejects malformed: "+tc.name, func(t *testing.T) {
+			_, err := CompileScope([]string{tc.pattern})
+			if err == nil {
+				t.Errorf("CompileScope(%q) returned nil error; want error for malformed glob (would panic on Match)", tc.pattern)
+			}
+		})
+	}
 }
 
 func TestScopeMatcher_Match(t *testing.T) {

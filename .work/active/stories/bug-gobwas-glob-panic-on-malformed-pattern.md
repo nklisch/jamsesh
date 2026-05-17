@@ -1,7 +1,7 @@
 ---
 id: bug-gobwas-glob-panic-on-malformed-pattern
 kind: story
-stage: implementing
+stage: review
 tags: [bug, security, portal, prereceive]
 parent: null
 depends_on: []
@@ -59,11 +59,16 @@ set a malformed scope glob and cause a panic on every push to that session.
    `CompileScope` inside a deferred `recover()`. If it panics, return an error.
    This is a defensive wrapper that catches the library bug without a full fork.
 2. **Upgrade gobwas/glob** — check whether a newer release fixes the panic.
-   As of 2026-05-17 `v0.2.3` is the latest stable.
+   As of 2026-05-17 `v0.2.3` is the latest stable. No upgrade exists.
 3. **Replace gobwas/glob** — switch to a maintained library that does not
    panic on malformed patterns (e.g. `github.com/bmatcuk/doublestar`).
 
-Option 1 is the minimal safe fix. Options 2/3 are longer-term.
+**Chosen path: Option 1.** The `probeGlob` wrapper (already landed in
+`scope.go`) is the correct minimal fix. It probes each compiled glob against
+byte-prefixes of the pattern plus common short strings inside a deferred
+`recover`, turning the would-be panic into a compile-time error. Options 2 and
+3 are out of scope for this story — see the backlog item
+`backlog-replace-gobwas-glob` for the replacement follow-up.
 
 ## Files to touch
 
@@ -80,6 +85,54 @@ compiled glob against short strings (including byte-prefixes of the pattern)
 inside a deferred `recover`, turning the would-be panic into a compile-time
 error. The fuzz harness now passes.
 
-The remaining work in this story is to address the root cause (upgrade or
-replace gobwas/glob) and add a regression test in `scope_test.go` for the
-`"0{"` pattern. The inline fix is a workaround, not a cure.
+The remaining work in this story was to add a regression test in `scope_test.go`
+for the `"0{"` pattern and document the chosen fix path. Upgrading or replacing
+`gobwas/glob` is tracked as a separate follow-up backlog item.
+
+## Implementation notes
+
+### What was added
+
+Regression test in `internal/portal/prereceive/scope_test.go` within the
+existing `TestCompileScope` function. Three subtests cover the known-bad class
+of patterns — a literal prefix followed by an unclosed `{` — which gobwas/glob
+compiles silently but panics on Match:
+
+- `rejects malformed: unclosed brace after digit` — pattern `"0{"` (primary
+  fuzz trigger, seed `fc37b996e5096fc7`)
+- `rejects malformed: unclosed brace after alpha` — pattern `"a{"` (same class,
+  alpha prefix)
+- `rejects malformed: unclosed brace after path prefix` — pattern `"src/{"`
+  (longer prefix, exercises the byte-prefix probe loop further)
+
+Each subtest calls `CompileScope([]string{pattern})` and asserts the returned
+error is non-nil.
+
+### Discovery during implementation
+
+A bare `"{"` (no literal prefix) does NOT panic. gobwas/glob treats it as an
+empty alternatives group and `Match("")` returns `true`. Only patterns of the
+form `"<literal-prefix>{"` trigger the panic because the literal prefix produces
+a two-element internal matcher that `Row.matchAll` then indexes out of bounds.
+The test was corrected to remove the bare `"{"` case (it is not a security bug)
+and replaced with a more informative `"a{"` case from the same panic class.
+
+### Files touched
+
+- `internal/portal/prereceive/scope_test.go` — regression tests added
+- `.work/active/stories/bug-gobwas-glob-panic-on-malformed-pattern.md` — this file
+- `.work/backlog/backlog-replace-gobwas-glob.md` — follow-up filed
+
+### Verification
+
+```
+go test ./internal/portal/prereceive/...   # PASS (all 5 TestCompileScope subtests, 17 TestScopeMatcher_Match subtests)
+go build ./...                             # ok
+```
+
+### Follow-up
+
+A parked backlog item `backlog-replace-gobwas-glob` tracks the longer-term
+option of replacing `gobwas/glob` with a library that validates patterns
+correctly at compile time (e.g. `github.com/bmatcuk/doublestar`). Not blocking
+this story — the `probeGlob` defense is sound.
