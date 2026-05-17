@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schemas.anthropic.com/claude-plugin/manifest.json",
+  "name": "jamsesh",
+  "version": "0.1.0",
+  "description": "Multi-agent jamming for codebases — coordinated Claude Code sessions producing PR-shaped branches without merge headaches.",
+  "author": {
+    "name": "jamsesh maintainers",
+    "url": "https://github.com/nklisch/jamsesh"
+  },
+  "homepage": "https://github.com/nklisch/jamsesh",
+  "license": "Apache-2.0",
+  "bin": "bin/jamsesh"
+}

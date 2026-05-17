@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "SessionStart":     "bin/jamsesh hook session-start",
+    "UserPromptSubmit": "bin/jamsesh hook user-prompt-submit",
+    "PreToolUse":       "bin/jamsesh hook pre-tool-use",
+    "PostToolUse":      "bin/jamsesh hook post-tool-use",
+    "Stop":             "bin/jamsesh hook stop",
+    "SessionEnd":       "bin/jamsesh hook session-end"
+  }
+}

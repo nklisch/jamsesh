@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-packaging-artifacts-and-teaching-skill
 kind: story
-stage: implementing
+stage: review
 tags: [plugin, documentation]
 parent: epic-cc-plugin-packaging
 depends_on: []
@@ -47,6 +47,30 @@ publishing pipeline to consume.
 - [ ] Teaching skill references `docs/VISION.md`, `docs/PROTOCOL.md`,
       `docs/UX.md` for deeper reading (rather than duplicating
       their content)
+
+## Implementation notes
+
+All static artifacts authored and verified:
+
+- `.claude-plugin/plugin.json` — manifest with `$schema`, name, version,
+  description, author, homepage, license, and `bin` entry. Parses with `jq`.
+- `hooks/hooks.json` — 6 hook entries mapping all CC lifecycle events to
+  `bin/jamsesh hook <subcommand>`. Parses with `jq`.
+- `.mcp.json` — `streamable-http` server entry with `${JAMSESH_PORTAL_URL}/mcp`
+  URL and `headersHelper: ["bin/jamsesh", "mcp-headers"]`. Parses with `jq`.
+- `skills/jamsesh/SKILL.md` — auto-loaded teaching skill, 2045 words (≤2500).
+  All 8 sections present. Points to `docs/VISION.md`, `docs/PROTOCOL.md`,
+  `docs/UX.md` for deeper reading. `auto-load: true` in frontmatter.
+- `skills/join/SKILL.md`, `skills/status/SKILL.md`, `skills/fork/SKILL.md`,
+  `skills/mode/SKILL.md`, `skills/finalize/SKILL.md` — each has valid YAML
+  frontmatter (`name`, `description`, `argument-hint`) and a one-line body
+  delegating to `bin/jamsesh <name> $ARGUMENTS`.
+
+Verification commands run:
+- `jq . < .claude-plugin/plugin.json` — OK
+- `jq . < hooks/hooks.json` — OK (6 entries)
+- `jq . < .mcp.json` — OK
+- `wc -w skills/jamsesh/SKILL.md` — 2045 words
 
 ## Notes
 

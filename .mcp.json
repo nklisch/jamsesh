@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "jamsesh": {
+      "type": "streamable-http",
+      "url": "${JAMSESH_PORTAL_URL}/mcp",
+      "headersHelper": ["bin/jamsesh", "mcp-headers"]
+    }
+  }
+}
