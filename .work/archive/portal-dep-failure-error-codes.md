@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes
 kind: feature
-stage: review
+stage: done
 tags: [portal, documentation]
 parent: null
 depends_on: []
@@ -322,14 +322,104 @@ no leaking of internal stack traces or DSNs.
 
 ## Acceptance criteria
 
-- [ ] Every documented `dep.*` code is implemented end-to-end (handler
+- [x] Every documented `dep.*` code is implemented end-to-end (handler
       wrap → translator → envelope on the wire)
-- [ ] `docs/PROTOCOL.md > HTTP error contract` registers each new code
+- [x] `docs/PROTOCOL.md > HTTP error contract` registers each new code
       with status + Retry-After semantics
-- [ ] `tests/e2e/failure/config_and_deps_test.go` asserts on the typed
+- [x] `tests/e2e/failure/config_and_deps_test.go` asserts on the typed
       envelope (status + `error` field), not just status
-- [ ] Existing unit tests that asserted plain-text 500 on dep failure
+- [x] Existing unit tests that asserted plain-text 500 on dep failure
       are updated to assert the typed envelope
-- [ ] Foundation-doc rolling-forward principle observed — no
+- [x] Foundation-doc rolling-forward principle observed — no
       "previously this was..." prose anywhere
-- [ ] All child stories at `stage: done`
+- [x] All child stories at `stage: done`
+
+## Review
+
+**Verdict: Approve.**
+
+The four-code dep-failure taxonomy is wired end-to-end. Every child
+story landed at `stage: done` with its own Approve verdict and zero
+blocker findings. Aggregate verification follows.
+
+### Taxonomy coverage (handler wrap → translator → envelope)
+
+- **`dep.smtp_unavailable`** (503, Retry-After: 5) — `Sender.Send`
+  call sites in `auth/magic_link.go`, `accounts/orgs.go`,
+  `sessions/invites.go` wrap with `deperr.WrapSMTP`. All four
+  in-tree provider impls (`smtp`, `resend`, `postmark`, `sendgrid`)
+  classify failures into `ErrTransient`/`ErrAuth`/`ErrPermanent`.
+- **`dep.db_unavailable`** (503, Retry-After: 2) — 95 wrap sites
+  across 19 production files (accounts, sessions, comments,
+  finalize, auth, githttp). `WrapDBIfTransient` correctly preserves
+  `store.ErrNotFound` and `store.ErrUniqueViolation` via `errors.Is`.
+- **`dep.oauth_provider_unavailable`** (503, Retry-After: 10) —
+  single wrap on `provider.Exchange` in `auth/oauth.go` covers all
+  GitHub OAuth transport/HTTP failure paths.
+- **`dep.git_subprocess_failed`** (500, no Retry-After) — six
+  subprocess-failure sites in `githttp/{info_refs,upload_pack,
+  receive_pack}.go` emit via `httperr.ErrGitSubprocessFailed`.
+
+The translator (`httperr.WriteFromError`) is wired in
+`cmd/portal/main.go` via `NewStrictHandlerWithOptions` with both
+`ResponseErrorHandlerFunc` and `RequestErrorHandlerFunc` set. The
+order — `errors.As(*Error)` first, then `errors.Is` per sentinel,
+then default `ErrInternal` — preserves all pre-existing typed-error
+paths (notably middleware-emitted envelopes).
+
+### Doc + test coverage
+
+`docs/PROTOCOL.md > HTTP error contract > Dependency-failure codes`
+(lines 390–409) registers all four codes with status, Retry-After,
+trigger description, and the `store.ErrNotFound`/`ErrUniqueViolation`
+carve-out. No legacy "previously this was…" prose — rolling-forward
+principle observed.
+
+`tests/e2e/failure/config_and_deps_test.go` asserts on the full
+typed envelope (status + `Content-Type` prefix + decoded `{error,
+message}` + `Retry-After`) for SMTP, DB (Toxiproxy `reset_peer`),
+and OAuth-provider sub-tests. Per-package unit tests in `auth`,
+`accounts`, `sessions`, `comments`, `finalize`, and `githttp` cover
+the typed envelope contract at the strict-handler boundary.
+
+### Build + test results
+
+- `go build ./...` — clean.
+- `go test ./internal/portal/...` — 25 packages green (includes
+  `deperr` and `httperr` standalone + every handler family with
+  new dep-class assertions).
+- `go test ./internal/portal/deperr/... ./internal/portal/httperr/...
+  -count=1` — green.
+- `cd tests/e2e && go build ./...` — clean.
+- e2e `TestConfigAndDeps` reported PASS by the e2e-asserts story
+  (21.97s, stable across `-count=2`).
+
+### Parked edge-case gaps (not blockers)
+
+Two real product-edge gaps surfaced during implementation and were
+appropriately parked rather than expanding scope. The dep-failure
+contract holds for the common cases; these refine the long tail.
+
+- `portal-oauth-provider-error-taxonomy` — `Provider.Exchange`
+  bundles RFC 6749 business errors (e.g. `bad_verification_code`,
+  `invalid_grant`) with transport failures, so a 200-OK token-endpoint
+  body with `{"error":"bad_verification_code"}` currently classifies
+  as `dep.oauth_provider_unavailable` instead of a 400-class business
+  error. Mild client UX gap; sketch in backlog proposes an
+  `oauth.ErrBadGrant` sentinel + classify-then-wrap pattern.
+- `portal-bearer-middleware-dep-translate` — `tokens.BearerMiddleware`
+  defaults non-sentinel `svc.Validate` errors to
+  `httperr.Write(w, r, httperr.ErrInternal(err))`, bypassing the
+  strict-handler translator. Auth-gated endpoints under a DB outage
+  surface as plain 500 instead of `dep.db_unavailable` 503. Backlog
+  proposes routing through `WriteFromError` with
+  `deperr.WrapDBIfTransient`. Also flagged: a follow-up sweep for
+  other direct `httperr.Write(...ErrInternal(err))` sites.
+
+### Findings
+
+- Blockers: 0
+- Important: 0 (both gaps already parked)
+- Nits: 0
+
+Advancing review → done.
