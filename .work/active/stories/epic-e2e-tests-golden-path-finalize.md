@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path-finalize
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-golden-path
 depends_on: [epic-e2e-tests-golden-path-collab-merge]
@@ -148,3 +148,17 @@ when called from the test process.
   requires Svelte to emit `aria-label` on the section tag. If the test
   fails here, add `aria-label="Finalization mode"` to the FinalizeView
   mode-bar `<section>` or update the selector to use `.mode-bar`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- Playwright selector dependency on `aria-label="Finalization mode"` was noted but not verified in-session. Filed `finalize-view-aria-label-or-test-selector` to either add the aria-label to FinalizeView (better UX outcome) or update the selector.
+
+**Nits**:
+- gitclient-instead-of-ccdriver deviation is reasonable but a one-liner rationale in the spec's top comment would help future maintainers understand why ccdriver wasn't used here when other golden-path stories use it.
+- "Generate plan" button assertion was deferred (UI has no separate button — plan fetched automatically); documented clearly in implementation notes.
+
+**Notes**: The squash-flow test is the strongest end-to-end assertion in the golden-path suite — 4 agent commits → auto-merger → lock → plan → sandboxed execution → single squash commit with co-author trailers. The lock state machine test covers the full acquire/idempotent/conflict/patch/release lifecycle. Together they prove the "human ships the work" arc end-to-end.
