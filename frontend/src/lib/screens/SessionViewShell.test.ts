@@ -28,6 +28,10 @@ vi.mock('$lib/router.svelte', () => ({
 
 vi.mock('$lib/ws.svelte', () => ({
   subscribe: vi.fn().mockReturnValue(() => {}),
+  // WsStatusBanner (mounted inside SessionViewShell) reads from this
+  // rune store; the test doesn't exercise reconnect behavior, so a
+  // constant `null` (no active subscription) keeps the banner absent.
+  wsStatus: { for: () => null },
 }));
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

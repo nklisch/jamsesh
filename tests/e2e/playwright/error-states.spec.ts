@@ -222,27 +222,52 @@ test(
   },
 );
 
-// ─── 8. Skipped: network-loss WebSocket reconnect indicator ──────────────────
+// ─── 8. Network-loss WebSocket reconnect indicator ───────────────────────────
 //
-// Pending: ws.svelte.ts does not implement reconnect logic or surface a
-// "reconnecting" UI indicator. The socket's 'close' event handler currently
-// only removes the entry from the sockets map (no retry, no UI state).
+// ws.svelte.ts now implements exponential-backoff reconnect, exposes a
+// per-session `wsStatus` rune store, and SessionViewShell.svelte mounts a
+// `WsStatusBanner` (role="status", text "Reconnecting…") that appears
+// instantly when the socket's `close` event fires on an unexpected drop.
 //
-// Re-enable this test once:
-//   - ws.svelte.ts implements exponential-backoff reconnect
-//   - A stable "reconnecting" DOM element exists (e.g. role="status" with
-//     text /reconnecting/i, or a data-testid="ws-reconnecting" banner)
-test.skip(
+// The seeded fake token wouldn't satisfy the portal's session-load API,
+// so the SPA's session view would never render. We intercept the load
+// API to fake a successful Session payload, then abort every WS upgrade
+// attempt — the SPA's reconnect loop flips `wsStatus` to 'reconnecting'
+// and the banner appears.
+test(
   "network-loss state shows reconnecting indicator in session view",
   async ({ page, context }) => {
-    // Pending: SPA WebSocket reconnect UX (see frontend/src/lib/ws.svelte.ts).
-    // Re-enable once a stable reconnecting-state selector exists.
     await context.addInitScript(() => {
       localStorage.setItem("jamsesh.token", "valid-enough-token");
     });
-    await page.goto("/orgs/test-org/sessions/test-session");
-    // Simulate network failure — drop all WS connections.
+    // Fake the session-load API so the SPA renders SessionViewShell. The
+    // shape mirrors `components['schemas']['Session']` in
+    // frontend/src/lib/api/types.gen.ts (id, org_id, name, goal, scope,
+    // default_mode, status, created_at, members).
+    await page.route(
+      /\/api\/orgs\/[^/]+\/sessions\/[^/]+$/,
+      (route) =>
+        void route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: "test-session",
+            org_id: "test-org",
+            name: "Test session",
+            goal: "test",
+            scope: "[]",
+            default_mode: "sync",
+            status: "active",
+            members: [],
+            created_at: "2026-05-17T00:00:00Z",
+          }),
+        }),
+    );
+    // Simulate network failure — abort every WS upgrade. The SPA's
+    // close-handler flips wsStatus to 'reconnecting'; the banner is
+    // role="status" and instantly visible (no animation gating).
     await page.route("**/ws/**", (route) => void route.abort("connectionrefused"));
+    await page.goto("/orgs/test-org/sessions/test-session");
     await expect(
       page.getByRole("status", { name: /reconnecting/i }),
     ).toBeVisible({ timeout: 10_000 });

@@ -11,6 +11,7 @@
   import RefActionsMenu from '$lib/components/RefActionsMenu.svelte';
   import ForkDialog from '$lib/components/ForkDialog.svelte';
   import ModeSwitchDialog from '$lib/components/ModeSwitchDialog.svelte';
+  import WsStatusBanner from '$lib/components/WsStatusBanner.svelte';
   import { auth } from '$lib/auth.svelte';
   import { navigate } from '$lib/router.svelte';
   import type { components } from '$lib/api/types.gen';
@@ -180,6 +181,9 @@
         >Finalize</button>
       </div>
     </div>
+
+    <!-- WebSocket reconnect indicator (absent when the socket is healthy) -->
+    <WsStatusBanner {sessionId} />
 
     <!-- Main body: tree rail | artifact -->
     <div class="top" class:tree-collapsed={treeState === 'tree-collapsed'} class:tree-expanded={treeState === 'tree-expanded'} class:tree-wide={treeState === 'tree-wide'}>

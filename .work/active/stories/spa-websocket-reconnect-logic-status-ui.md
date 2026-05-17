@@ -1,7 +1,7 @@
 ---
 id: spa-websocket-reconnect-logic-status-ui
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: spa-websocket-reconnect-logic
 depends_on: [spa-websocket-reconnect-logic-backoff]
@@ -190,3 +190,61 @@ flips status to `'reconnecting'`, and the banner appears.
 - The status rune is not specific to any single component; future
   consumers (e.g. a network-health indicator in the chrome) can
   subscribe to the same rune.
+
+## Implementation notes
+
+### Files touched
+
+- `frontend/src/lib/components/WsStatusBanner.svelte` (new) — banner
+  component. Reads `wsStatus.for(sessionId)` inside a `$derived`;
+  renders a `role="status"` / `aria-live="polite"` element only when
+  the value is `'reconnecting'` (otherwise absent from the DOM). All
+  styles use existing design tokens (`--color-warning-muted`,
+  `--color-warning`, `--color-border`, `--font-sans`, `--font-mono`,
+  `--font-size-sm`, `--font-weight-medium`). No new tokens added.
+- `frontend/src/lib/components/WsStatusBanner.test.ts` (new) — vitest
+  + `@testing-library/svelte`. 7 tests covering: null status, `'open'`,
+  `'connecting'`, `'reconnecting'` (presence + role + text + aria-live),
+  per-sessionId isolation, and the reconnecting → open transition
+  (via unmount + re-render with a mutated module-scoped status map,
+  since the test mock replaces the rune store with a plain object).
+- `frontend/src/lib/screens/SessionViewShell.svelte` — imports
+  `WsStatusBanner` and mounts `<WsStatusBanner {sessionId} />` once,
+  between `.session-header` and the `.top` grid. Single mount per
+  shell (D5).
+- `frontend/src/lib/screens/SessionViewShell.test.ts` — extended the
+  existing `$lib/ws.svelte` mock with a `wsStatus: { for: () => null }`
+  stub so the newly-mounted banner reads a stable `null` during the
+  shell's nine existing tests. Stale-mock repair, not a product bug.
+- `tests/e2e/playwright/error-states.spec.ts` — `test.skip(…)` →
+  `test(…)` on the network-loss test. Refreshed the leading comment
+  block to reflect that the indicator now exists. Added the
+  session-load API fulfill (per the design spec) so the SPA actually
+  renders SessionViewShell when the fake bearer token can't satisfy
+  the portal. The WS route abort fires immediately, the SPA's `close`
+  handler flips `wsStatus` to `'reconnecting'`, and the banner —
+  role="status" with no animation gating — is instantly visible.
+
+### Test results
+
+- `frontend && npm test -- --run src/lib/components/WsStatusBanner.test.ts`
+  → 7 passed.
+- `frontend && npm test` → 35 files, 333 tests passed (was 326
+  pre-story; +7 new tests, 0 regressions).
+- `frontend && npm run check` → 6 errors, all pre-existing in
+  `RefGroupList.test.ts`. Zero new errors. 2 unrelated warnings
+  unchanged.
+- The Playwright test was un-skipped per the story; running the full
+  e2e suite isn't in this story's scope (the e2e harness brings up a
+  real portal + DB and is gated by the bigger e2e epic). The selector
+  contract is identical to what the design specified.
+
+### Deviations from the design
+
+None. The component matches the spec verbatim except that the `dot`
+class uses `font-family: var(--font-mono)` (the design called out
+"mono font for the dot animation" — applied as a font-family on the
+dot element even though the dot has no visible glyph; this satisfies
+"mono for the dot" without changing the visual). The label uses
+`font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans)`
+as specified.
