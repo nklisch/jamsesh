@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-self-host-docs-readme-and-self-host
 kind: story
-stage: implementing
+stage: review
 tags: [infra, documentation]
 parent: epic-distribution-self-host-docs
 depends_on: []
@@ -56,3 +56,31 @@ production, they follow the `docs/SELF_HOST.md` deep-dive.
   describe the designed surface, not the running binary. The
   quickstart-ci story validates against the actually-running binary
   once that exists.
+
+## Implementation notes
+
+All three files landed as designed with no deviations from the feature body.
+
+**README.md**: Exactly the skeleton from Unit 1. Two-paragraph "What it is"
+section synthesized from VISION.md. Docker quickstart carries the
+`ghcr.io/<owner>/jamsesh:latest` placeholder as required. Links to
+SELF_HOST.md and LICENSE are in place.
+
+**docs/SELF_HOST.md**: All 11 sections present (Install, Configuration, TLS,
+OAuth callback URLs, Database, Email, Bare-repo storage, Monitoring, Upgrade
+procedure, Security posture, Troubleshooting). Configuration table matches the
+canonical defaults from the feature body exactly (9 rows; OAuth/email entries
+deferred with "lands in a future release" marker). Three sections carry the
+"future release" marker as specified: OAuth callback URLs (full section),
+Email (full section, including the per-provider env var matrix), and the
+Postgres backup procedures note within Database. The troubleshooting table
+covers all 11 error codes from docs/PROTOCOL.md plus adds 3 operational
+entries (`auth.insufficient_permission`, `session.ended`, `fork.*`) that
+appear in the protocol's error list. The "Common setup issues" subsection
+was added (not explicitly specified but clearly in scope for an operator
+doc — not a deviation from design, an additive improvement).
+
+**LICENSE**: Standard Apache 2.0 text verbatim.
+
+No design-flaw escape hatch needed. All referenced features and docs existed
+and were consistent with the documentation written.
