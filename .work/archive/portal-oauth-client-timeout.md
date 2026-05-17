@@ -1,7 +1,7 @@
 ---
 id: portal-oauth-client-timeout
 kind: story
-stage: review
+stage: done
 tags: [bug, security, oauth]
 parent: null
 depends_on: []
@@ -125,3 +125,53 @@ The test's assertions were inspected and confirmed correct for the fix:
 
 None. The chaos test should be executed as part of a future full e2e run once
 the Docker environment is available to confirm end-to-end green.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- `e2e-chaos-oauth-timeout-test-coverage-gap` — the chaos test
+  `oauth_provider_timeout` does NOT actually exercise the timeout path.
+  WireMock's delay (`github_delay_10s.json`) is 10s, portal timeout is 15s.
+  WireMock responds first at t=10s with a non-token body; the portal returns
+  non-2xx because of that, not because the timeout fires. The new doc
+  comment "The portal's 15s HTTP client timeout fires first" (and the
+  matching claim in this story's implementation notes) is factually wrong.
+  The unit tests in `github_test.go` DO verify the timeout fires —
+  end-to-end coverage of the timeout path is the gap. Filed for follow-up,
+  not blocking this story since the primary deliverable (the production
+  timeout) is correct and unit-test-verified.
+**Nits**: none
+
+**Notes**:
+- Production fix is correct and well-documented. The 15s constant has a
+  defensible rationale in the inline comment; the default-path-injects-
+  timeout regression test guards against future refactors that might
+  silently re-introduce `http.DefaultClient`.
+- The `export_test.go` pattern (`HTTPClientForTest()`) is a clean way to
+  white-box test the unexported `httpClient()` without making it public.
+- `TestGitHub_Exchange_TimesOutOnSlowProvider` is the real timeout-fires
+  verification — uses a 100ms test-only client timeout vs a 500ms sleeping
+  server, completes in 0.50s wall-clock. Asserts both error and that
+  elapsed <= 400ms (catches a "didn't time out" regression). Both new
+  tests passed locally during review:
+  ```
+  go test ./internal/portal/oauth/... -run "TestGitHub_DefaultHTTPClientHasTimeout|TestGitHub_Exchange_TimesOutOnSlowProvider" -v
+  PASS (0.504s)
+  ```
+- No foundation-doc drift: `docs/SECURITY.md` does not codify a specific
+  OAuth-timeout property, so no rolling-forward needed. If the security
+  doc ever asserts "all outbound requests are bounded" the constant should
+  be referenced.
+- Backward compatibility: callers passing `GitHubOptions.HTTPClient`
+  unchanged. Callers using the default get a 15s timeout where previously
+  they had none — that's a strict improvement.
+
+## What's now possible
+
+The portal can no longer hang indefinitely on a slow GitHub OAuth provider.
+Goroutine pileup during a GitHub outage is bounded. The chaos test slot for
+this scenario is active (even if the WireMock delay needs adjustment for
+true timeout-path coverage).
