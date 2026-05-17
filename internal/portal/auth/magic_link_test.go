@@ -186,6 +186,12 @@ func (m *magicLinkOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.R
 func (m *magicLinkOnlyStrict) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
 	panic("GetFinalizePlan: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) IssueFetchToken(_ context.Context, _ openapi.IssueFetchTokenRequestObject) (openapi.IssueFetchTokenResponseObject, error) {
+	panic("IssueFetchToken: not wired in this test")
+}
+func (m *magicLinkOnlyStrict) MarkSessionShipped(_ context.Context, _ openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
+	panic("MarkSessionShipped: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

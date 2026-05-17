@@ -162,6 +162,12 @@ func (a *accountsOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.Re
 func (a *accountsOnlyStrict) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
 	panic("GetFinalizePlan: not wired in accounts tests")
 }
+func (a *accountsOnlyStrict) IssueFetchToken(_ context.Context, _ openapi.IssueFetchTokenRequestObject) (openapi.IssueFetchTokenResponseObject, error) {
+	panic("IssueFetchToken: not wired in accounts tests")
+}
+func (a *accountsOnlyStrict) MarkSessionShipped(_ context.Context, _ openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
+	panic("MarkSessionShipped: not wired in accounts tests")
+}
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 

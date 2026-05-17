@@ -125,6 +125,12 @@ func (c *commentsOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.Re
 func (c *commentsOnlyStrict) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
 	panic("not wired")
 }
+func (c *commentsOnlyStrict) IssueFetchToken(_ context.Context, _ openapi.IssueFetchTokenRequestObject) (openapi.IssueFetchTokenResponseObject, error) {
+	panic("not wired")
+}
+func (c *commentsOnlyStrict) MarkSessionShipped(_ context.Context, _ openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*commentsOnlyStrict)(nil)
 

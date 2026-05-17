@@ -143,6 +143,12 @@ func (o *oauthOnlyStrict) ReleaseFinalizeLock(_ context.Context, _ openapi.Relea
 func (o *oauthOnlyStrict) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
 	panic("GetFinalizePlan: not wired in OAuth tests")
 }
+func (o *oauthOnlyStrict) IssueFetchToken(_ context.Context, _ openapi.IssueFetchTokenRequestObject) (openapi.IssueFetchTokenResponseObject, error) {
+	panic("IssueFetchToken: not wired in OAuth tests")
+}
+func (o *oauthOnlyStrict) MarkSessionShipped(_ context.Context, _ openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
+	panic("MarkSessionShipped: not wired in OAuth tests")
+}
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 

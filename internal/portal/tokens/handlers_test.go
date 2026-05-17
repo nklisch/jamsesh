@@ -125,6 +125,12 @@ func (t *tokensOnlyHandler) ReleaseFinalizeLock(_ context.Context, _ openapi.Rel
 func (t *tokensOnlyHandler) GetFinalizePlan(_ context.Context, _ openapi.GetFinalizePlanRequestObject) (openapi.GetFinalizePlanResponseObject, error) {
 	panic("GetFinalizePlan: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) IssueFetchToken(_ context.Context, _ openapi.IssueFetchTokenRequestObject) (openapi.IssueFetchTokenResponseObject, error) {
+	panic("IssueFetchToken: not implemented in token handler tests")
+}
+func (t *tokensOnlyHandler) MarkSessionShipped(_ context.Context, _ openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
+	panic("MarkSessionShipped: not implemented in token handler tests")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

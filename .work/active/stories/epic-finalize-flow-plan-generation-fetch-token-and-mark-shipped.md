@@ -1,7 +1,7 @@
 ---
 id: epic-finalize-flow-plan-generation-fetch-token-and-mark-shipped
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-finalize-flow-plan-generation
 depends_on: [epic-finalize-flow-plan-generation-locks-schema-and-rest]
@@ -119,33 +119,123 @@ finalize-run command, end to end.
 
 ## Acceptance Criteria
 
-- [ ] `make generate` succeeds
-- [ ] `go build ./...` clean
-- [ ] `go test ./internal/portal/finalize/...` green (all 3 stories'
+- [x] `make generate` succeeds
+- [x] `go build ./...` clean
+- [x] `go test ./internal/portal/finalize/...` green (all 3 stories'
       test suites pass together)
-- [ ] `IssueFetchToken` returns a token that `tokens.Validate`
+- [x] `IssueFetchToken` returns a token that `tokens.Validate`
       immediately accepts and that expires 5 minutes after issuance
       (fake-clock test)
-- [ ] `FetchTokenResponse.remote_url` carries the token in the
+- [x] `FetchTokenResponse.remote_url` carries the token in the
       `x-access-token:<token>@` userinfo segment
-- [ ] `IssueFetchToken` from a non-session-member returns 403
-- [ ] `MarkSessionShipped` on a `finalizing` session transitions to
+- [x] `IssueFetchToken` from a non-session-member returns 403
+- [x] `MarkSessionShipped` on a `finalizing` session transitions to
       `ended` with `end_reason = "shipped"` and `ended_at` set
-- [ ] `MarkSessionShipped` is idempotent when already
+- [x] `MarkSessionShipped` is idempotent when already
       `ended` + `shipped`
-- [ ] `MarkSessionShipped` returns 409 `session.not_finalizing` when
+- [x] `MarkSessionShipped` returns 409 `session.not_finalizing` when
       called on `active`
-- [ ] `MarkSessionShipped` returns 409 `session.already_ended` when
+- [x] `MarkSessionShipped` returns 409 `session.already_ended` when
       called on `ended` with a different `end_reason`
-- [ ] `MarkSessionShipped` releases any held finalize lock
+- [x] `MarkSessionShipped` releases any held finalize lock
       (`released_at` set on the row, sessions pointer cleared)
-- [ ] `MarkSessionShipped` emits `session.ended` event with
+- [x] `MarkSessionShipped` emits `session.ended` event with
       `reason: "shipped"` and optional `final_branch_name`
-- [ ] The OpenAPI `SessionEndedPayload.reason` enum lists
+- [x] The OpenAPI `SessionEndedPayload.reason` enum lists
       `shipped` as an accepted value
-- [ ] Migration 00011 widens the SQLite + Postgres CHECK
+- [x] Migration 00011 widens the SQLite + Postgres CHECK
       constraint on `archived_sessions.end_reason` to accept
       `shipped`; `make generate-db` succeeds; existing tests still pass
+
+## Implementation notes
+
+- **OpenAPI extensions** — `docs/openapi.yaml` gained:
+  - `SessionEndedPayload.reason` enum extended to `[finalize, abandon,
+    timeout, shipped]`, plus an optional `final_branch_name` property
+    carried only when reason=shipped.
+  - `FetchTokenResponse` and `MarkShippedRequest` schemas.
+  - Two new paths under `/api/orgs/{orgID}/sessions/{sessionID}/`:
+    `finalize/fetch-token` (POST → 201 FetchTokenResponse) and
+    `mark-shipped` (POST → 200 Session).
+
+- **Handlers** — `internal/portal/finalize/fetch_token.go` and
+  `internal/portal/finalize/mark_shipped.go` follow the existing
+  strict-server-method pattern. Wired into `cmd/portal/main.go`'s
+  `combinedHandler` as two new delegations.
+
+- **Token issuance** — `IssueFetchToken` uses the
+  `tokens.Service.IssueShortLived` method added in story 1 with a
+  package-local `fetchTokenTTL = 5*time.Minute`. The remote URL is
+  composed via `url.Parse` so scheme/host/port from `cfg.PortalURL`
+  flow through unchanged for both `https://portal.example.com` and
+  `http://localhost:8080` configurations; userinfo is set via
+  `url.UserPassword("x-access-token", rawToken)` so URL-unsafe token
+  bytes are correctly encoded.
+
+- **Mark-shipped semantics** — Any session member (not just creator)
+  may mark a session shipped, since the user kicking off the ship may
+  not have created the session. State machine:
+  - `finalizing` → `ended/shipped`: status updated via
+    `UpdateSessionStatus`, end_reason + ended_at via
+    `SetSessionEndReason`, any active lock released via
+    `GetActiveFinalizeLockForSession` + `ReleaseFinalizeLock`
+    (idempotent on missing-lock case via `errors.Is(err,
+    store.ErrNotFound)`), sessions pointer cleared via
+    `ClearFinalizeLock` (only when it still points at the lock holder,
+    mirroring `lock_release.go`).
+  - `ended/shipped` → 200 idempotent: same row returned, no event
+    emitted (verified by post-subscribe test).
+  - `ended/<other>` → 409 `session.already_ended` with
+    `details.end_reason` set.
+  - `active` → 409 `session.not_finalizing`.
+
+- **Event emission** — `session.ended` payload uses
+  `{reason, final_branch_name?}` matching the openapi schema. JSON
+  uses `omitempty` so the field is absent (rather than null) when not
+  supplied — consumers see exactly the shape the schema defines.
+  Best-effort emission via `h.events.Emit` (return value ignored,
+  matches sessions.AbandonSession).
+
+- **sessionToOpenAPI** — duplicated locally in `mark_shipped.go`
+  rather than imported from `sessions`. Keeps `finalize` from
+  depending on `sessions` (which would create a circular-ish import
+  cluster); the helper is small and the byte-for-byte mirror is
+  intentional. If a third package ever needs the same projection,
+  promote it to a shared `internal/portal/sessionsdto` package.
+
+- **Migration 00011** — Postgres uses `DROP CONSTRAINT IF EXISTS`
+  + `ADD CONSTRAINT` (one-statement-each) since Postgres supports
+  CHECK alteration directly. SQLite uses the table-rebuild pattern
+  from 00006_sessions_lifecycle: `PRAGMA foreign_keys = OFF`, create
+  `archived_sessions_new`, copy rows, drop old, rename, recreate
+  `archived_sessions_org_idx`, `PRAGMA foreign_keys = ON`. No other
+  tables FK into `archived_sessions` so the rebuild is safe (no
+  escape-hatch trigger). Down migration is symmetric.
+
+- **sqlc generated code** — no SQL changes needed; `sqlc generate`
+  ran cleanly. The CHECK widening is a schema-level concern, not a
+  query shape.
+
+- **Tests** — 7 fetch-token tests + 10 mark-shipped tests = 17 new
+  test functions. Tests reuse the `newFinalizeEnv` helper from
+  `testhelpers_test.go` (story 1); fetch-token tests use a private
+  `newFetchTokenEnv` because they need a `tokens.Service` with an
+  injected `fakeClock` to assert TTL expiry deterministically. The
+  no-event-on-reship test subscribes AFTER the first mark-shipped to
+  avoid racing the first emission.
+
+- **Cross-package interface updates** — adding `IssueFetchToken` and
+  `MarkSessionShipped` to `openapi.StrictServerInterface` broke five
+  test-only stubs (`magicLinkOnlyStrict`, `oauthOnlyStrict`,
+  `sessionsOnlyStrict`, `accountsOnlyStrict`, `tokensOnlyHandler`,
+  `commentsOnlyStrict`). Added `panic("not wired")` stubs to each so
+  the compile-time `var _ StrictServerInterface = (*X)(nil)`
+  assertions still hold.
+
+- **No design-flaw escape hatches triggered.** The SQLite rebuild was
+  clean; no FK conflicts; no surprises from the strict-server
+  interface; no semantics-gap between the parent feature's design and
+  what the implementation needed.
 
 ## Files touched
 

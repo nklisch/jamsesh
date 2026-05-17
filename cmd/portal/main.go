@@ -188,6 +188,16 @@ func (c *combinedHandler) GetFinalizePlan(ctx context.Context, req openapi.GetFi
 	return c.FinalizeHandler.GetFinalizePlan(ctx, req)
 }
 
+// IssueFetchToken delegates to the finalize handler.
+func (c *combinedHandler) IssueFetchToken(ctx context.Context, req openapi.IssueFetchTokenRequestObject) (openapi.IssueFetchTokenResponseObject, error) {
+	return c.FinalizeHandler.IssueFetchToken(ctx, req)
+}
+
+// MarkSessionShipped delegates to the finalize handler.
+func (c *combinedHandler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
+	return c.FinalizeHandler.MarkSessionShipped(ctx, req)
+}
+
 // compile-time assertion that combinedHandler satisfies the full interface.
 var _ openapi.StrictServerInterface = (*combinedHandler)(nil)
 

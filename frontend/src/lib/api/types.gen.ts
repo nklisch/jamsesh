@@ -502,6 +502,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue an ephemeral fetch-only token for the session's bare repo
+         * @description Mints a short-TTL (5 min) access token bound to the caller, plus
+         *     a pre-composed git remote URL that splices the token into the
+         *     userinfo segment. Used by the plugin's HTTPS-fallback path when
+         *     no local session checkout is present. Only session members may
+         *     mint a token.
+         *
+         *     The credential is valid for the full TTL window — long enough for
+         *     `git fetch` to complete — and is accepted by the same basic-auth
+         *     middleware that protects the git smart-HTTP endpoints (per-row
+         *     expiry, no special-casing).
+         */
+        post: operations["issueFetchToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{orgID}/sessions/{sessionID}/mark-shipped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a finalizing session as shipped
+         * @description Transitions the session from `finalizing` to `ended` with
+         *     `end_reason = "shipped"`. Records the optional `final_branch_name`
+         *     on the `session.ended` event payload so the archive sweep can
+         *     display "shipped as <branch>" on the archived stub. Any held
+         *     finalize lock is released as part of the transition.
+         *
+         *     Idempotent: re-calling on a session already ended with reason
+         *     `shipped` returns 200 with the same session row (no event emission).
+         *
+         *     409 codes:
+         *       - `session.not_finalizing` — session is `active`; must finalize first
+         *       - `session.already_ended`  — session is `ended` with a different
+         *         end_reason; details.end_reason carries the value
+         */
+        post: operations["markSessionShipped"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -767,13 +828,19 @@ export interface components {
             /** @description Account ID of the participant who initiated finalization */
             by_user_id: string;
         };
-        /** @description A session has ended (finalized, abandoned, or timed out). PROTOCOL.md canonical fields: reason. */
+        /** @description A session has ended (finalized, abandoned, timed out, or shipped). PROTOCOL.md canonical fields: reason, final_branch_name. */
         SessionEndedPayload: {
             /**
              * @description The reason the session ended
              * @enum {string}
              */
-            reason: "finalize" | "abandon" | "timeout";
+            reason: "finalize" | "abandon" | "timeout" | "shipped";
+            /**
+             * @description When reason=shipped and the user supplied the target branch on
+             *     mark-shipped, the branch name the squash commit was pushed to.
+             *     Null otherwise.
+             */
+            final_branch_name?: string | null;
         };
         MeOrgMembership: {
             /**
@@ -1363,6 +1430,43 @@ export interface components {
             selected_commits: components["schemas"]["PlanCommit"][];
             target_branch: string;
             base_sha: string;
+        };
+        /**
+         * @description Ephemeral fetch-only credential issued for the plugin's HTTPS-
+         *     fallback path. The token is a regular access token bound to the
+         *     caller with a short TTL (5 min). The remote_url already carries
+         *     the token spliced into the userinfo segment so the plugin can
+         *     hand it straight to `git fetch`.
+         */
+        FetchTokenResponse: {
+            /**
+             * @description Raw access token. Use as the HTTP Basic password against the
+             *     portal git smart-HTTP endpoint with username `x-access-token`.
+             */
+            token: string;
+            /**
+             * @description Pre-composed git remote URL with the token spliced into the
+             *     userinfo segment, ready to pass to `git fetch`:
+             *     `https://x-access-token:<token>@<portal-host>/git/<orgID>/<sessionID>.git`.
+             */
+            remote_url: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the token expires.
+             */
+            expires_at: string;
+        };
+        /**
+         * @description Optional body for POST .../mark-shipped. final_branch_name records
+         *     the branch the squash commit was pushed to, so the archived-session
+         *     listing can show "shipped as <branch>".
+         */
+        MarkShippedRequest: {
+            /**
+             * @description The branch name the plugin pushed the squash commit to. Optional;
+             *     when omitted, the event payload omits it too.
+             */
+            final_branch_name?: string | null;
         };
     };
     responses: {
@@ -2503,6 +2607,79 @@ export interface operations {
              * @description Plan cannot be generated. Error codes:
              *     finalize.lock_expired, finalize.lock_superseded,
              *     finalize.commit_missing (with details.missing_sha).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    issueFetchToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token issued */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FetchTokenResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markSessionShipped: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MarkShippedRequest"];
+            };
+        };
+        responses: {
+            /** @description Session marked shipped (or already shipped — idempotent) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Session cannot be marked shipped. Error codes:
+             *     session.not_finalizing, session.already_ended (with
+             *     details.end_reason).
              */
             409: {
                 headers: {

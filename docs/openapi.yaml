@@ -514,14 +514,21 @@ components:
     SessionEndedPayload:
       type: object
       description: >
-        A session has ended (finalized, abandoned, or timed out).
-        PROTOCOL.md canonical fields: reason.
+        A session has ended (finalized, abandoned, timed out, or shipped).
+        PROTOCOL.md canonical fields: reason, final_branch_name.
       required: [reason]
       properties:
         reason:
           type: string
-          enum: [finalize, abandon, timeout]
+          enum: [finalize, abandon, timeout, shipped]
           description: The reason the session ended
+        final_branch_name:
+          type: string
+          nullable: true
+          description: |
+            When reason=shipped and the user supplied the target branch on
+            mark-shipped, the branch name the squash commit was pushed to.
+            Null otherwise.
 
     # ---------------------------------------------------------------------------
     # Accounts & orgs schemas
@@ -1304,6 +1311,46 @@ components:
           type: string
         base_sha:
           type: string
+
+    FetchTokenResponse:
+      type: object
+      required: [token, remote_url, expires_at]
+      description: |
+        Ephemeral fetch-only credential issued for the plugin's HTTPS-
+        fallback path. The token is a regular access token bound to the
+        caller with a short TTL (5 min). The remote_url already carries
+        the token spliced into the userinfo segment so the plugin can
+        hand it straight to `git fetch`.
+      properties:
+        token:
+          type: string
+          description: |
+            Raw access token. Use as the HTTP Basic password against the
+            portal git smart-HTTP endpoint with username `x-access-token`.
+        remote_url:
+          type: string
+          description: |
+            Pre-composed git remote URL with the token spliced into the
+            userinfo segment, ready to pass to `git fetch`:
+            `https://x-access-token:<token>@<portal-host>/git/<orgID>/<sessionID>.git`.
+        expires_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the token expires.
+
+    MarkShippedRequest:
+      type: object
+      description: |
+        Optional body for POST .../mark-shipped. final_branch_name records
+        the branch the squash commit was pushed to, so the archived-session
+        listing can show "shipped as <branch>".
+      properties:
+        final_branch_name:
+          type: string
+          nullable: true
+          description: |
+            The branch name the plugin pushed the squash commit to. Optional;
+            when omitted, the event payload omits it too.
 
   responses:
     Unauthorized:
@@ -2547,6 +2594,112 @@ paths:
             Plan cannot be generated. Error codes:
             finalize.lock_expired, finalize.lock_superseded,
             finalize.commit_missing (with details.missing_sha).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token:
+    post:
+      summary: Issue an ephemeral fetch-only token for the session's bare repo
+      description: |
+        Mints a short-TTL (5 min) access token bound to the caller, plus
+        a pre-composed git remote URL that splices the token into the
+        userinfo segment. Used by the plugin's HTTPS-fallback path when
+        no local session checkout is present. Only session members may
+        mint a token.
+
+        The credential is valid for the full TTL window — long enough for
+        `git fetch` to complete — and is accepted by the same basic-auth
+        middleware that protects the git smart-HTTP endpoints (per-row
+        expiry, no special-casing).
+      operationId: issueFetchToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      responses:
+        '201':
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchTokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/mark-shipped:
+    post:
+      summary: Mark a finalizing session as shipped
+      description: |
+        Transitions the session from `finalizing` to `ended` with
+        `end_reason = "shipped"`. Records the optional `final_branch_name`
+        on the `session.ended` event payload so the archive sweep can
+        display "shipped as <branch>" on the archived stub. Any held
+        finalize lock is released as part of the transition.
+
+        Idempotent: re-calling on a session already ended with reason
+        `shipped` returns 200 with the same session row (no event emission).
+
+        409 codes:
+          - `session.not_finalizing` — session is `active`; must finalize first
+          - `session.already_ended`  — session is `ended` with a different
+            end_reason; details.end_reason carries the value
+      operationId: markSessionShipped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkShippedRequest'
+      responses:
+        '200':
+          description: Session marked shipped (or already shipped — idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Session cannot be marked shipped. Error codes:
+            session.not_finalizing, session.already_ended (with
+            details.end_reason).
           content:
             application/json:
               schema:
