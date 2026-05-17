@@ -1,0 +1,13 @@
+{
+  "name": "@jamsesh/portal-frontend",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "generate": "openapi-typescript ../docs/openapi.yaml -o src/lib/api/types.gen.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "~7.13.0",
+    "typescript": "^5.4.0"
+  }
+}

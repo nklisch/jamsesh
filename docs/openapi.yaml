@@ -1,0 +1,84 @@
+openapi: 3.0.3
+info:
+  title: jamsesh portal
+  version: 0.0.1
+  description: |
+    REST surface for the jamsesh portal. Single source of truth for
+    server interfaces (oapi-codegen) and client types
+    (openapi-typescript). Authoring rules in
+    docs/SPEC.md > Generated contracts.
+
+    OpenAPI version: 3.0.3 (locked — oapi-codegen mainline does not yet
+    support 3.1; migration trigger in docs/SPEC.md > Generated contracts).
+
+    Authoring rules (3.0.3 subset constraints):
+    - Use `nullable: true` NOT `type: [string, "null"]`
+    - Use `example:` NOT `examples:` (array form is 3.1)
+    - No `webhooks:` block
+    - No `$schema` annotation
+    - All schemas under components.schemas; use $ref everywhere
+
+servers:
+  - url: https://{host}
+    variables:
+      host:
+        default: localhost:8443
+        description: Portal host and port
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        Opaque bearer token issued by the portal OAuth flow.
+        Present on all REST calls, MCP calls, and git-over-HTTPS
+        (as HTTP Basic password). One token per user account.
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: machine-readable error code (e.g. "auth.invalid_token")
+          example: auth.invalid_token
+        message:
+          type: string
+          description: human-readable error message
+          example: invalid token
+        details:
+          type: object
+          additionalProperties: true
+          description: |
+            Optional structured context for the error. Shape is
+            code-specific; omitted when there is nothing to add.
+
+  responses:
+    Unauthorized:
+      description: missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    Forbidden:
+      description: authenticated but not permitted for the requested operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    NotFound:
+      description: requested route or resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+paths: {}

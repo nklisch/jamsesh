@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-http-skeleton-openapi-bootstrap
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-foundation-http-skeleton
 depends_on: []
@@ -79,3 +79,59 @@ between `Write` and `Edit`.
   Svelte 5 + Vite app structure on top.
 - Do NOT add path definitions — those belong to the features that own
   the routes.
+
+## Implementation notes
+
+### Landed files
+
+- `docs/openapi.yaml` — OpenAPI 3.0.3 skeleton with `bearerAuth`
+  security scheme, `ErrorEnvelope` schema, `Unauthorized`/`Forbidden`/
+  `NotFound` reusable responses, empty `paths: {}`
+- `oapi-codegen.yaml` — chi-strict server config with `skip-prune: true`
+  under `output-options` (required to force `ErrorEnvelope` model
+  generation despite no paths referencing it)
+- `internal/api/openapi/doc.go` — package declaration + `//go:generate`
+  directive (paths relative to package directory: `../../../oapi-codegen.yaml`)
+- `internal/api/openapi/server.gen.go` — generated; exports
+  `StrictServerInterface` (empty interface, expected with empty paths)
+  and `ErrorEnvelope` Go model plus response type aliases
+- `frontend/package.json` — pins `openapi-typescript@~7.13.0`,
+  `typescript@^5.4.0`; generate script invokes `openapi-typescript`
+- `frontend/tsconfig.json` — minimal ES2022/ESNext/Bundler config
+- `frontend/.gitignore` — excludes `node_modules/`, `dist/`
+- `frontend/src/lib/api/types.gen.ts` — generated; exports `paths`,
+  `components` (with `ErrorEnvelope` schema + response types),
+  `operations` (all empty, well-typed)
+- `Makefile` — `.PHONY` targets: `generate`, `generate-db`,
+  `generate-api`, `generate-api-go`, `generate-api-ts`
+- `tools/tools.go` — `//go:build tools` file anchoring the
+  `oapi-codegen/v2/cmd/oapi-codegen` tool dependency so `go mod tidy`
+  does not remove it
+- `go.mod` / `go.sum` — added `github.com/oapi-codegen/runtime@v1.4.0`
+  and `github.com/oapi-codegen/oapi-codegen/v2@v2.7.0` (plus transitive
+  deps including `getkin/kin-openapi@v0.135.0`)
+
+### Dependency versions chosen
+
+- `oapi-codegen/oapi-codegen/v2`: v2.7.0 (latest as of 2026-05-16)
+- `oapi-codegen/runtime`: v1.4.0
+- `openapi-typescript`: 7.13.0 (resolved from `~7.13.0`)
+
+### Key discovery: skip-prune required
+
+With `paths: {}`, oapi-codegen's default pruning removes unused schemas
+including `ErrorEnvelope`. Adding `output-options.skip-prune: true` forces
+all `components.schemas` to be emitted regardless of path references.
+This is the correct approach for a bootstrap that pre-declares shared
+error types before any paths exist.
+
+### Verification results
+
+- `make generate-api-go` — clean (no output, no error)
+- `make generate-api-ts` — clean (openapi-typescript 7.13.0 emits
+  `types.gen.ts` in 15ms)
+- `make generate-api && git diff --exit-code` — green (exit 0)
+- `go build ./...` — clean
+- `npx @redocly/cli lint docs/openapi.yaml` — valid, 4 warnings (all
+  expected: missing `license` field, 3 unused components — components
+  will be used once paths are added by subsequent features)
