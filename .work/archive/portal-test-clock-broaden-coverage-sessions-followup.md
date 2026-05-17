@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage-sessions-followup
 kind: story
-stage: review
+stage: done
 tags: [testing, testability, portal]
 parent: null
 depends_on: []
@@ -124,3 +124,40 @@ into `internal/portal/sessions`.
   404).
 - Two new sessions tests pass (`TestHandler_CreateSessionUsesInjectedClock`,
   `TestHandler_NewVsNewWithClock_ProductionPathClean`).
+
+## Review
+
+**Verdict: Approve.** Implementation matches the v1 clock-injection
+pattern exactly. All 5 production `time.Now().UTC()` sites are wrapped
+through `h.clock.Now()`; test files retain real-time fixtures as
+expected. `clock.go` mirrors `finalize`/`comments` shape; `New(...)`
+delegates to `NewWithClock(..., realClock{})`. `cmd/portal/main.go`
+follows the established `if c := testClk.sessionsClock(); c != nil`
+branch with the deferral NOTE comment removed.
+
+### Shared-clock invariant
+
+The new `sessionsClock()` accessor in
+`cmd/portal/test_clock_advance.go` returns `p.clock` — same field as
+the existing 9 accessors (magicLink, tokens, accounts, comments,
+finalize, storage, events, automerger, mcp). Single process-global
+`*testclock.AdvanceableClock` — `POST /test/clock-advance` moves all
+10 wired clocks atomically. Production stub returns typed `nil
+sessions.Clock` — no typed-nil trap at the `c != nil` comparison.
+
+### Verification
+
+- `go build ./...` — clean.
+- `go build -tags e2etest ./...` — clean.
+- `go vet ./internal/portal/...` — clean.
+- `go test ./internal/portal/...` — all 24 packages pass.
+- `go test ./internal/portal/sessions/...` — pass (new tests included).
+- `TestProductionBuild_HasNoTestEndpoint` — pass.
+- Two new tests (`TestHandler_CreateSessionUsesInjectedClock`,
+  `TestHandler_NewVsNewWithClock_ProductionPathClean`) — pass.
+
+### Findings
+
+- Blockers: 0
+- Important: 0
+- Nits: 0
