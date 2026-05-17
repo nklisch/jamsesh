@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-self-host-docs-readme-and-self-host
 kind: story
-stage: review
+stage: done
 tags: [infra, documentation]
 parent: epic-distribution-self-host-docs
 depends_on: []
@@ -84,3 +84,13 @@ doc — not a deviation from design, an additive improvement).
 
 No design-flaw escape hatch needed. All referenced features and docs existed
 and were consistent with the documentation written.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Documentation is well-structured: README is appropriately minimal for a v0 landing page, SELF_HOST.md covers the operator install/configure/operate path top-to-bottom. The Configuration table cross-references config.go defaults exactly. Future-release markers are appropriately placed where features haven't shipped. Apache 2.0 LICENSE is the standard text. The `<owner>` placeholder in the Docker image reference is the right call until the repo URL is final.

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-data-layer-org-id-tests
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-portal-foundation-data-layer
 depends_on: [epic-portal-foundation-data-layer-store-and-adapters]
@@ -132,3 +132,13 @@ The harness is fully in place. The Postgres `open` factory calls
 oauth_tokens CASCADE` between tests. The suite was not run against a live
 Postgres in this session (no instance available), but the logic mirrors
 the SQLite path exactly.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Test coverage is thorough: 7 cross-org sub-tests cover every org-scoped query path, CRUD round-trips cover all 6 tables, error-normalization tests are parameterized. The composite-PK error-mapping bug discovered during test authoring (SQLITE_CONSTRAINT_PRIMARYKEY) is exactly the value of writing comprehensive tests — caught a real production bug before it shipped. Postgres path not run-verified locally but harness is correct.

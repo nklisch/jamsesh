@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-data-layer-store-and-adapters
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-foundation-data-layer
 depends_on: [epic-portal-foundation-data-layer-queries-and-codegen]
@@ -128,3 +128,13 @@ future code that stores timestamps as TEXT in dynamically-constructed queries.
   cross-org test suite if needed.
 - `OrgMemberWithAccount` domain type added to `store.go` (not shown in feature
   doc sketch but required by `ListOrgMembers` which JOINs to accounts).
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Adapter translations are mechanical and one-method-per-row as designed. The TEXT→DATETIME schema change is forced by modernc.org/sqlite's auto-parse rules and verified by smoke tests. `db.Open` correctly closes resources on migration failure. Error normalization paths (sql.ErrNoRows → ErrNotFound, pgx 23505 / SQLite UNIQUE → ErrUniqueViolation) round-trip cleanly through errors.Is/As. The OrgMemberWithAccount domain type addition is a defensible extension of the design — required by ListOrgMembers JOIN.

@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-http-skeleton-config-tls-and-entry
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-foundation-http-skeleton
 depends_on: [epic-portal-foundation-http-skeleton-router-and-middleware]
@@ -131,3 +131,13 @@ Env-var path (`JAMSESH_LOG_LEVEL`) already used `strconv.Atoi`
 None from the feature spec. The `LogConfig.UnmarshalYAML` addition is an
 improvement over the int-only YAML approach in the sketch — it handles
 both numeric and name-string levels without breaking the env-var path.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Config loading is clean: defaults match SELF_HOST.md table exactly, env overlay precedence matches the design, validation rejects bad TLS modes and unknown DB drivers. The LogConfig.UnmarshalYAML addition that accepts both integer and string slog levels is a real ergonomic improvement over the int-only design. Server lifecycle exits nil on clean shutdown and propagates errors otherwise — exactly the contract callers need. Smoke test exercises the full startup→healthz→SIGTERM cycle in-process.

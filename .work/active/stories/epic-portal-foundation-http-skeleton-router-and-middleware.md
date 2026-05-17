@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-http-skeleton-router-and-middleware
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-foundation-http-skeleton
 depends_on: []
@@ -92,3 +92,13 @@ go test ./internal/portal/... — 27/27 PASS (httperr: 11, logging: 5, router: 1
 go vet ./...                  — clean
 go build ./...                — clean
 ```
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Middleware order matches design (RequestID → RealIP-gated → AccessLog → Recoverer → routes). The Deps struct's nilable mount hooks are exactly the right late-binding shape — sibling features plug in independently. 27 tests cover the contract. The statusRecorder pattern is clean.

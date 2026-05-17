@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-http-skeleton-openapi-bootstrap
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-portal-foundation-http-skeleton
 depends_on: []
@@ -135,3 +135,13 @@ error types before any paths exist.
 - `npx @redocly/cli lint docs/openapi.yaml` — valid, 4 warnings (all
   expected: missing `license` field, 3 unused components — components
   will be used once paths are added by subsequent features)
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Generator wiring is correct and reproducible (`make generate && git diff --exit-code` green). The `skip-prune: true` discovery is exactly the right call for a bootstrap with no paths — preserves ErrorEnvelope for downstream features. The mid-wave fix on `output:` path resolution is fixed and committed. Tools-package anchor for oapi-codegen CLI dep is idiomatic.

@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-build-pipeline-release-workflow
 kind: story
-stage: review
+stage: done
 tags: [infra, security]
 parent: epic-distribution-build-pipeline
 depends_on: []
@@ -124,3 +124,13 @@ until the following sibling stories land:
 
 Until both land, `workflow_dispatch` runs will show 10 failing build jobs.
 This is expected and does not indicate a workflow defect.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Workflow is correct and auditable: per-job permissions, matrix expansion verified, cosign installer pinned (v4.1.0 with cosign-release v3.0.6 — the modern bundle format, not the legacy split sig/pem). SLSA provenance subject-path scoped to binaries explicitly. Expected sequencing gap (cmd/jamsesh doesn't exist yet) is well-documented. The buildinfo package is the minimal correct surface.

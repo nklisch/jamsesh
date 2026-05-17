@@ -1,7 +1,7 @@
 ---
 id: epic-distribution-self-host-docs-quickstart-ci
 kind: story
-stage: review
+stage: done
 tags: [infra]
 parent: epic-distribution-self-host-docs
 depends_on:
@@ -87,3 +87,13 @@ $ kill $!; wait
 # Process exited cleanly (no orphan)
 ```
 All acceptance criteria satisfied locally. `actionlint` passes clean.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Workflow is correct: `go-version-file: go.mod` keeps CI synchronized with the toolchain directive automatically. SIGTERM via `kill` exercises the graceful-shutdown path. `wait $pid || true` correctly suppresses the signal-killed exit code. The `if: failure()` log dump step is a thoughtful UX touch for future debugging. Local simulation confirmed end-to-end.
