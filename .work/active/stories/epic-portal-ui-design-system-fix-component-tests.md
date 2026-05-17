@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-design-system-fix-component-tests
 kind: story
-stage: review
+stage: done
 tags: [ui, bug]
 parent: epic-portal-ui-design-system
 depends_on: [epic-portal-ui-foundation-vite-svelte-routing]
@@ -112,3 +112,13 @@ createRawSnippet(() => ({ render: () => `<span>${text}</span>` }))
 **Verification:**
 - `cd frontend && npx svelte-check` → 0 errors, 0 warnings (350 files)
 - `cd frontend && npm run test` → 119/119 passed
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Bug fixed cleanly with createRawSnippet. 119/119 tests green. Production components unchanged. Note: diff landed under router-state-mcp commit due to shared working tree.

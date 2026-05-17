@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-binary-foundation
 kind: feature
-stage: implementing
+stage: done
 tags: [plugin, security]
 parent: epic-cc-plugin
 depends_on: []
@@ -474,3 +474,22 @@ Stories 2 and 3 can run in parallel after 1.
   land in `epic-portal-foundation-auth-flows`. Until that ships, this
   binary's auth subcommand can't complete a real flow; documented in
   story bodies.
+
+## Implementation summary
+
+All 3 child stories at done. The `jamsesh` Go binary foundation: subcommand router, local state package (atomic writes, mode 0600), hookio scaffold, mcp-headers subcommand, both OAuth flows with PKCE+state, portal HTTP client with single-flight refresh.
+
+### Verification
+- `go build ./cmd/jamsesh` clean
+- `go test ./cmd/jamsesh/...` green
+- `./jamsesh --help` lists subcommands
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Capability complete. Foundation supports sibling features (hooks, session-commands, packaging) as designed. OAuth endpoint placeholders documented for auth-flows landing.

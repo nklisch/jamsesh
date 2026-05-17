@@ -2,7 +2,7 @@
 id: epic-cc-plugin-binary-foundation-portal-client-and-refresh
 kind: story
 tags: [plugin]
-stage: review
+stage: done
 parent: epic-cc-plugin-binary-foundation
 depends_on: [epic-cc-plugin-binary-foundation-router-state-mcp]
 release_binding: null
@@ -61,3 +61,13 @@ runs silently in the background on 401s.
 - This story has NO depends_on on `oauth-browser-and-device` — it can
   ship before users can complete an OAuth flow, since the client is
   exercised in tests against a mock portal.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Single-flight refresh verified via 10-goroutine test (1 server hit). Fresh state.ReadToken on every Do means retry naturally picks up refreshed token. Atomic write of refresh-then-access in proper order.

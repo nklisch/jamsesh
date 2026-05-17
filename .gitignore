@@ -6,3 +6,7 @@ portal
 internal/portal/assets/dist/*
 !internal/portal/assets/dist/.gitignore
 !internal/portal/assets/dist/.gitkeep
+
+# Test artifacts
+jamsesh
+jamsesh.db

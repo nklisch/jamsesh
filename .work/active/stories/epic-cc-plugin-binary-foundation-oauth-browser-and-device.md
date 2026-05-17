@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-binary-foundation-oauth-browser-and-device
 kind: story
-stage: review
+stage: done
 tags: [plugin, security]
 parent: epic-cc-plugin-binary-foundation
 depends_on: [epic-cc-plugin-binary-foundation-router-state-mcp]
@@ -120,3 +120,13 @@ which are green.
 No new direct dependencies added. `golang.org/x/sync` and
 `github.com/urfave/cli/v3` were already present from the router-state-mcp
 story.
+
+## Review (2026-05-16)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: PKCE + state nonce correct. RFC 8628 polling honors interval and slow_down. Injected openURL + httptest portals enable hermetic testing. Inlining the browser opener (no github.com/pkg/browser dep) is a reasonable trade.

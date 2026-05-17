@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-design-system
 kind: feature
-stage: review
+stage: done
 tags: [ui]
 parent: epic-portal-ui
 depends_on: []
@@ -527,3 +527,12 @@ the Vitest config. Document this in the story body.
 - `go build ./...` clean
 - `go test ./...` green (Go side)
 - `go vet ./...` clean
+
+## Final review (2026-05-16, post-fix)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+
+**Notes**: Both child stories now at done. fix-component-tests resolved Snippet API misuse. Design tokens + 9 components shipped; 119 frontend tests green.
