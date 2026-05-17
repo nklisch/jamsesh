@@ -39,6 +39,7 @@ type TxStore interface {
 	ConflictEventStore
 	CommentStore
 	FinalizeLockStore
+	LeaseStore
 }
 
 // Store is the unified data-access interface for the portal. All handler and
@@ -62,6 +63,7 @@ type Store interface {
 	ConflictEventStore
 	CommentStore
 	FinalizeLockStore
+	LeaseStore
 
 	// WithTx opens a dialect-appropriate transaction, calls fn with a TxStore
 	// backed by that transaction, and commits on success or rolls back on any
@@ -916,6 +918,26 @@ type SupersedeFinalizeLockParams struct {
 	SupersededByLockID string
 }
 
+// Lease is a distributed lease row. One row per session; the session_id is the
+// primary key. The fencing_token is a monotonically increasing integer issued
+// by the jamsesh_lease_fencing_tokens Postgres sequence; it is used to detect
+// stale writers after a crash/restart.
+type Lease struct {
+	SessionID    string
+	PodID        string
+	FencingToken int64
+	AcquiredAt   time.Time
+	ReleasedAt   *time.Time // nil when lease is active
+	HeartbeatAt  time.Time
+}
+
+// InsertLeaseParams are the parameters for InsertLease (upsert).
+type InsertLeaseParams struct {
+	SessionID    string
+	PodID        string
+	FencingToken int64
+}
+
 // FinalizeLockStore covers writes and reads on the finalize_locks table.
 type FinalizeLockStore interface {
 	// InsertFinalizeLock inserts a new lock row.
@@ -935,4 +957,27 @@ type FinalizeLockStore interface {
 	ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error
 	// SupersedeFinalizeLock points superseded_by_lock_id at a replacement lock.
 	SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error
+}
+
+// LeaseStore covers the distributed lease table used by multi-instance
+// deployments for leader election and fencing.
+type LeaseStore interface {
+	// IssueLeaseFencingToken atomically returns the next value from the
+	// jamsesh_lease_fencing_tokens Postgres sequence. Gaps are acceptable;
+	// the guarantee is monotone increase across all callers.
+	// This operation is Postgres-only; the SQLite adapter returns an error.
+	IssueLeaseFencingToken(ctx context.Context) (int64, error)
+	// InsertLease upserts a lease row keyed on session_id. On conflict the
+	// pod_id, fencing_token, acquired_at, and heartbeat_at are overwritten
+	// and released_at is reset to NULL.
+	InsertLease(ctx context.Context, p InsertLeaseParams) (Lease, error)
+	// MarkLeaseReleased sets released_at = now() for the given session.
+	// Idempotent; a no-op if the row does not exist.
+	MarkLeaseReleased(ctx context.Context, sessionID string) error
+	// UpdateLeaseHeartbeat sets heartbeat_at = now() for the given session.
+	UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error
+	// DeleteReleasedLeasesOlderThan removes released lease rows whose
+	// released_at is before the given threshold. Used for retention cleanup.
+	// This operation is Postgres-only; the SQLite adapter returns an error.
+	DeleteReleasedLeasesOlderThan(ctx context.Context, before time.Time) error
 }

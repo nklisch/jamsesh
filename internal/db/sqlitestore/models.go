@@ -157,6 +157,15 @@ type Presence struct {
 	LastActiveAt time.Time `json:"last_active_at"`
 }
 
+type Lease struct {
+	SessionID    string       `json:"session_id"`
+	PodID        string       `json:"pod_id"`
+	FencingToken int64        `json:"fencing_token"`
+	AcquiredAt   time.Time    `json:"acquired_at"`
+	ReleasedAt   sql.NullTime `json:"released_at"`
+	HeartbeatAt  time.Time    `json:"heartbeat_at"`
+}
+
 type RefMode struct {
 	SessionID string `json:"session_id"`
 	Ref       string `json:"ref"`

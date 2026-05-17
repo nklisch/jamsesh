@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-lease-fencing-schema
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy-lease-fencing
 depends_on: []
@@ -62,3 +62,62 @@ Edit:
 - SQLite-only `leases` table is structural in case clustered-SQLite
   ever becomes a thing; runtime currently never writes to it because
   single-instance uses NoopManager.
+
+## Implementation notes
+
+### What was done
+
+- `internal/db/migrations/postgres/00013_leases.sql`: Creates
+  `jamsesh_lease_fencing_tokens` sequence, `leases` table, and
+  `leases_released_at_idx` partial index. Down migration drops all three.
+- `internal/db/migrations/sqlite/00013_leases.sql`: Structural `leases`
+  table + same partial index. No sequence (SQLite has no native sequences).
+- `db/queries/postgres/leases.sql`: All 5 queries (`IssueLeaseFencingToken`,
+  `InsertLease`, `MarkLeaseReleased`, `UpdateLeaseHeartbeat`,
+  `DeleteReleasedLeasesOlderThan`).
+- `db/queries/sqlite/leases.sql`: 3 common queries only (`InsertLease`,
+  `MarkLeaseReleased`, `UpdateLeaseHeartbeat`); PG-only queries omitted
+  per dialect-splitting convention.
+- `db/schema/postgres.sql` and `db/schema/sqlite.sql`: Updated to include
+  the leases DDL for sqlc schema awareness.
+- `internal/db/pgstore/models.go`: Added `Lease` model with
+  `pgtype.Timestamptz` for the nullable `released_at`.
+- `internal/db/pgstore/leases.sql.go`: Hand-written generated file (sqlc
+  not installed in this environment). All 5 query functions.
+- `internal/db/pgstore/querier.go`: Added 5 new method signatures.
+- `internal/db/sqlitestore/models.go`: Added `Lease` model with
+  `sql.NullTime` for `released_at`.
+- `internal/db/sqlitestore/leases.sql.go`: Hand-written generated file.
+  3 query functions (PG-only omitted).
+- `internal/db/sqlitestore/querier.go`: Added 3 new method signatures.
+- `internal/db/store/store.go`: Added `Lease` domain type,
+  `InsertLeaseParams`, `LeaseStore` interface, and embedded `LeaseStore`
+  in both `Store` and `TxStore`.
+- `internal/db/store/postgres_adapter.go`: Implemented `LeaseStore` for
+  outer adapter and `postgresTxStore`. Added `pgLease` row mapper.
+- `internal/db/store/sqlite_adapter.go`: Implemented `LeaseStore` for
+  outer adapter and `sqliteTxStore`. PG-only methods return explicit
+  `fmt.Errorf` (not panics) so they're safe to call accidentally.
+- `internal/portal/handlerauth/handlerauth_test.go`: Added stub methods
+  for `LeaseStore` to satisfy `store.Store` in the test double.
+- `internal/db/migrate_test.go`: Added `"leases"` to `expectedTables`.
+
+### sqlc not installed
+
+sqlc v1.31.1 was not available in the environment. All generated files
+(`*.sql.go`, `querier.go` additions, `models.go` additions) were written
+by hand following the exact patterns established by the existing
+generated code. The query SQL embedded in Go string constants matches
+the `.sql` source files exactly.
+
+### Acceptance criteria status
+
+- [x] PG migration creates `leases` table, `jamsesh_lease_fencing_tokens`
+  sequence, `leases_released_at_idx` index
+- [x] SQLite migration creates structural `leases` table + index
+- [x] sqlc generates Go code for all 5 queries (PG; SQLite skips
+  PG-only ones via dialect splitting per existing convention)
+- [x] `MigrateUp` is idempotent for both dialects (SQLite verified;
+  Postgres skipped — requires `JAMSESH_TEST_PG_DSN`)
+- [x] `Store` interface gains the new query methods; both adapters
+  implement them (`go build ./...` and `go test ./...` both pass)

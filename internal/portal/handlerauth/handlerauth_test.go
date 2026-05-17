@@ -320,6 +320,16 @@ func (s *stubStore) SupersedeFinalizeLock(_ context.Context, _ store.SupersedeFi
 	panic("not implemented")
 }
 
+// --- LeaseStore ---
+
+func (s *stubStore) IssueLeaseFencingToken(_ context.Context) (int64, error)             { panic("not implemented") }
+func (s *stubStore) InsertLease(_ context.Context, _ store.InsertLeaseParams) (store.Lease, error) {
+	panic("not implemented")
+}
+func (s *stubStore) MarkLeaseReleased(_ context.Context, _ string) error                 { panic("not implemented") }
+func (s *stubStore) UpdateLeaseHeartbeat(_ context.Context, _ string) error              { panic("not implemented") }
+func (s *stubStore) DeleteReleasedLeasesOlderThan(_ context.Context, _ time.Time) error  { panic("not implemented") }
+
 // --- Store-level methods ---
 
 func (s *stubStore) WithTx(_ context.Context, _ func(store.TxStore) error) error {

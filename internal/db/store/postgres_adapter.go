@@ -1943,3 +1943,81 @@ func pgFinalizeLock(r pgstore.FinalizeLock) FinalizeLock {
 		ReleasedAt:          pgTimestamptzToPtr(r.ReleasedAt),
 	}
 }
+
+// ---------------------------------------------------------------------------
+// LeaseStore (outer adapter)
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) IssueLeaseFencingToken(ctx context.Context) (int64, error) {
+	token, err := a.q.IssueLeaseFencingToken(ctx)
+	return token, mapPostgresErr(err)
+}
+
+func (a *postgresAdapter) InsertLease(ctx context.Context, p InsertLeaseParams) (Lease, error) {
+	row, err := a.q.InsertLease(ctx, pgstore.InsertLeaseParams{
+		SessionID:    p.SessionID,
+		PodID:        p.PodID,
+		FencingToken: p.FencingToken,
+	})
+	if err != nil {
+		return Lease{}, mapPostgresErr(err)
+	}
+	return pgLease(row), nil
+}
+
+func (a *postgresAdapter) MarkLeaseReleased(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(a.q.MarkLeaseReleased(ctx, sessionID))
+}
+
+func (a *postgresAdapter) UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(a.q.UpdateLeaseHeartbeat(ctx, sessionID))
+}
+
+func (a *postgresAdapter) DeleteReleasedLeasesOlderThan(ctx context.Context, before time.Time) error {
+	return mapPostgresErr(a.q.DeleteReleasedLeasesOlderThan(ctx, before))
+}
+
+// ---------------------------------------------------------------------------
+// LeaseStore (TxStore)
+// ---------------------------------------------------------------------------
+
+func (s *postgresTxStore) IssueLeaseFencingToken(ctx context.Context) (int64, error) {
+	token, err := s.q.IssueLeaseFencingToken(ctx)
+	return token, mapPostgresErr(err)
+}
+
+func (s *postgresTxStore) InsertLease(ctx context.Context, p InsertLeaseParams) (Lease, error) {
+	row, err := s.q.InsertLease(ctx, pgstore.InsertLeaseParams{
+		SessionID:    p.SessionID,
+		PodID:        p.PodID,
+		FencingToken: p.FencingToken,
+	})
+	if err != nil {
+		return Lease{}, mapPostgresErr(err)
+	}
+	return pgLease(row), nil
+}
+
+func (s *postgresTxStore) MarkLeaseReleased(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(s.q.MarkLeaseReleased(ctx, sessionID))
+}
+
+func (s *postgresTxStore) UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(s.q.UpdateLeaseHeartbeat(ctx, sessionID))
+}
+
+func (s *postgresTxStore) DeleteReleasedLeasesOlderThan(ctx context.Context, before time.Time) error {
+	return mapPostgresErr(s.q.DeleteReleasedLeasesOlderThan(ctx, before))
+}
+
+// pgLease converts a pgstore.Lease to a domain Lease.
+func pgLease(r pgstore.Lease) Lease {
+	return Lease{
+		SessionID:    r.SessionID,
+		PodID:        r.PodID,
+		FencingToken: r.FencingToken,
+		AcquiredAt:   r.AcquiredAt,
+		ReleasedAt:   pgTimestamptzToPtr(r.ReleasedAt),
+		HeartbeatAt:  r.HeartbeatAt,
+	}
+}

@@ -21,6 +21,7 @@ var expectedTables = []string{
 	"session_members",
 	"oauth_tokens",
 	"magic_link_tokens",
+	"leases",
 }
 
 // TestMigrateUpSQLite_Idempotent verifies that:
