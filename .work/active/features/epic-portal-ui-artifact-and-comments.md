@@ -1,14 +1,14 @@
 ---
 id: epic-portal-ui-artifact-and-comments
 kind: feature
-stage: drafting
+stage: implementing
 tags: [ui]
 parent: epic-portal-ui
 depends_on: [epic-portal-ui-session-view-shell]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Portal UI — Artifact Pane & Inline Comments
@@ -112,7 +112,43 @@ surface in the activity feed and via comments).
   `@all-agents`, `@everyone`, `@auto-merger`. The data source is
   `query_session_state({ include: ['members', 'refs'] })`.
 
-<!-- Feature-design will fill in the file-viewer rendering strategy,
-line-range selection mechanic, composer overlay interaction, and addressing
-autocomplete data shape when /agile-workflow:feature-design runs on this.
-Feature stays at stage: drafting per --mocks-only pass. -->
+## Design decisions
+
+- **Artifact pane**: renders the file at the selected commit. For v1, support text files only (binary detection skips render with a placeholder). Fetch file content via portal REST endpoint `/api/orgs/<org>/sessions/<sid>/blob?commit=<sha>&path=<path>` — NEW endpoint to add as part of this story (small addition to sessions handler).
+
+Actually skip the blob endpoint for v1 simplification. Use a different approach: fetch via `git show` proxied through smart-http? No, smart-http is for git protocol clients. The cleanest path: add a new REST endpoint `GET /api/orgs/<orgID>/sessions/<sessionID>/blobs/<sha>/<filepath>` returning raw file content. Or use the sessions service.
+
+For v1: ship a new REST endpoint `GET /api/orgs/<orgID>/sessions/<sessionID>/files?commit=<sha>&path=<filepath>` returning `{content: string, mime: string}`. Add as part of THIS story.
+
+- **Comment composer**: line-range selection in artifact triggers floating composer with kind dropdown + addressed_to multiselect + body textarea. On submit: `client.POST` to `/api/orgs/<org>/sessions/<sid>/comments` (NEW endpoint — sessions-rest may have one already; if not, this story adds it).
+
+Wait — comments-rest already has the comments table and Service. But POSTing a comment via REST isn't shipped (PROTOCOL.md says posting is via MCP). For the portal UI: should the UI use MCP or expose a REST endpoint?
+
+Adding a thin REST endpoint `POST /api/orgs/<org>/sessions/<sid>/comments` that calls `comments.Service.Create` (same library as MCP's post_comment tool) is the right v1 path. Add it.
+
+- **Story decomposition**: 1 story (artifact viewer + comment composer + 2 new REST endpoints).
+
+## Implementation Units
+
+### Unit 1: Backend endpoints
+
+- `GET /api/orgs/<orgID>/sessions/<sessionID>/files?commit=<sha>&path=<filepath>` — fetches blob via go-git
+- `POST /api/orgs/<orgID>/sessions/<sessionID>/comments` — wraps Comments.Service.Create
+
+Add both to `internal/portal/sessions/` and `internal/portal/comments/`. Update openapi.yaml + regen.
+
+### Unit 2: ArtifactPane.svelte
+
+`frontend/src/lib/components/ArtifactPane.svelte` — reads selectedSha + selectedPath ($state), fetches file content, renders as `<pre><code>` with line numbers. Click+drag selects a line range and emits `select-range` event.
+
+### Unit 3: CommentComposer.svelte
+
+`frontend/src/lib/components/CommentComposer.svelte` — overlay form with kind dropdown, addressed_to multiselect (free-form text input with autocomplete TBD), body textarea, submit button. On submit POSTs comment.
+
+### Unit 4: Wire into SessionViewShell
+
+SessionViewShell's artifact slot renders ArtifactPane. Selection events from TreeDag flow through. On line-range selection in ArtifactPane, CommentComposer opens.
+
+## Single story
+
+`epic-portal-ui-artifact-and-comments-pane-and-composer`

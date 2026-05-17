@@ -1,14 +1,14 @@
 ---
 id: epic-portal-ui-ref-actions
 kind: feature
-stage: drafting
+stage: implementing
 tags: [ui]
 parent: epic-portal-ui
 depends_on: [epic-portal-ui-session-view-shell]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Portal UI — Ref Actions (Mode Switch & Fork)
@@ -94,7 +94,35 @@ No standalone screens to mock — the affordances live entirely inside
 already-locked surfaces (the tree pane, the action menu popover patterns
 will reuse `Card` + `Button` from `epic-portal-ui-design-system`).
 
-<!-- Feature-design will fill in the dialog flow for fork target naming,
-the mode-switch confirmation pattern, and the MCP call wiring when
-/agile-workflow:feature-design runs on this. Feature stays at
-stage: drafting per --mocks-only pass. -->
+## Design decisions
+
+- **Action surface**: right-click context menu on TreeDag ref nodes + an inline "actions" button when a ref is selected. Actions: Fork (from this commit), Switch Mode (sync ↔ isolated), View Ref Details.
+- **Fork dialog**: Card-based modal with target_ref input + mode toggle. On submit: calls MCP `fork` tool via portal's `/mcp` endpoint (already shipped). On success: TreeDag refetches refs and the new ref appears.
+- **Mode switch**: confirmation modal. v1 calls the new portal endpoint `POST /api/orgs/<org>/sessions/<sid>/ref-modes` with body `{ref, mode}` — ship the endpoint as part of this story (small addition to sessions-rest). Emits `mode.changed` event from the handler.
+- **Single story** — `epic-portal-ui-ref-actions-menu-and-dialogs`.
+
+## Implementation Units
+
+### Unit 1: Backend ref-modes endpoint
+
+`POST /api/orgs/<orgID>/sessions/<sessionID>/ref-modes` with body `{ref: string, mode: "sync"|"isolated"}`. Validates membership + ref exists; UpsertRefMode; emits mode.changed event with ModeChangedPayload. Add to `internal/portal/sessions/`. openapi + regen.
+
+### Unit 2: RefActionsMenu.svelte
+
+`frontend/src/lib/components/RefActionsMenu.svelte` — right-click + button-triggered menu. Items: Fork…, Switch to sync/isolated, Copy ref name.
+
+### Unit 3: ForkDialog.svelte
+
+`frontend/src/lib/components/ForkDialog.svelte` — modal with target_ref input + mode toggle. POSTs MCP fork tool.
+
+### Unit 4: ModeSwitchDialog.svelte
+
+`frontend/src/lib/components/ModeSwitchDialog.svelte` — confirmation modal. POSTs ref-modes endpoint.
+
+### Unit 5: Wire into TreeDag
+
+TreeDag fires `onref-action(ref, action)` event. SessionViewShell catches and opens the matching dialog.
+
+## Single story
+
+`epic-portal-ui-ref-actions-menu-and-dialogs`
