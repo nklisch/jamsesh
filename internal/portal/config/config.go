@@ -28,6 +28,15 @@
 //	JAMSESH_OAUTH_GITHUB_BASE_URL,
 //	JAMSESH_GIT_MAX_PACK_BYTES
 //
+// Secret env vars with _FILE variants (file contents take precedence):
+//
+//	JAMSESH_DB_DSN_FILE,
+//	JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE,
+//	JAMSESH_EMAIL_SMTP_PASS_FILE,
+//	JAMSESH_EMAIL_SENDGRID_API_KEY_FILE,
+//	JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN_FILE,
+//	JAMSESH_EMAIL_RESEND_API_KEY_FILE
+//
 // log.level is an integer matching slog.Level values:
 //
 //	-4=DEBUG, 0=INFO, 4=WARN, 8=ERROR
@@ -186,7 +195,9 @@ func Load(path string) (Config, error) {
 			return cfg, fmt.Errorf("config: parse %s: %w", path, err)
 		}
 	}
-	applyEnv(&cfg)
+	if err := applyEnv(&cfg); err != nil {
+		return cfg, err
+	}
 	if err := cfg.validate(); err != nil {
 		return cfg, err
 	}
@@ -241,14 +252,19 @@ func (c Config) validate() error {
 
 // applyEnv overlays environment variables onto cfg. Only non-empty env
 // values take effect; missing vars leave the existing value unchanged.
-func applyEnv(c *Config) {
+// Returns an error if a _FILE secret variable is set but unreadable.
+func applyEnv(c *Config) error {
 	if v := os.Getenv("JAMSESH_BIND"); v != "" {
 		c.Bind = v
 	}
 	if v := os.Getenv("JAMSESH_DB_DRIVER"); v != "" {
 		c.DBDriver = v
 	}
-	if v := os.Getenv("JAMSESH_DB_DSN"); v != "" {
+	v, err := readEnvOrFile("JAMSESH_DB_DSN")
+	if err != nil {
+		return err
+	}
+	if v != "" {
 		c.DBDSN = v
 	}
 	if v := os.Getenv("JAMSESH_TLS_MODE"); v != "" {
@@ -274,9 +290,14 @@ func applyEnv(c *Config) {
 	if v := os.Getenv("JAMSESH_PORTAL_URL"); v != "" {
 		c.PortalURL = v
 	}
-	applyEmailEnv(&c.Email)
-	applyOAuthEnv(&c.OAuth)
+	if err := applyEmailEnv(&c.Email); err != nil {
+		return err
+	}
+	if err := applyOAuthEnv(&c.OAuth); err != nil {
+		return err
+	}
 	applyGitEnv(&c.Git)
+	return nil
 }
 
 // applyGitEnv overlays git-policy environment variables.
@@ -289,20 +310,27 @@ func applyGitEnv(g *GitConfig) {
 }
 
 // applyOAuthEnv overlays OAuth-related environment variables.
-func applyOAuthEnv(o *OAuthConfig) {
+// Returns an error if a _FILE secret variable is set but unreadable.
+func applyOAuthEnv(o *OAuthConfig) error {
 	if v := os.Getenv("JAMSESH_OAUTH_GITHUB_CLIENT_ID"); v != "" {
 		o.GitHub.ClientID = v
 	}
-	if v := os.Getenv("JAMSESH_OAUTH_GITHUB_CLIENT_SECRET"); v != "" {
+	v, err := readEnvOrFile("JAMSESH_OAUTH_GITHUB_CLIENT_SECRET")
+	if err != nil {
+		return err
+	}
+	if v != "" {
 		o.GitHub.ClientSecret = v
 	}
 	if v := os.Getenv("JAMSESH_OAUTH_GITHUB_BASE_URL"); v != "" {
 		o.GitHub.BaseURL = v
 	}
+	return nil
 }
 
 // applyEmailEnv overlays email-related environment variables.
-func applyEmailEnv(e *EmailConfig) {
+// Returns an error if a _FILE secret variable is set but unreadable.
+func applyEmailEnv(e *EmailConfig) error {
 	if v := os.Getenv("JAMSESH_EMAIL_PROVIDER"); v != "" {
 		e.Provider = v
 	}
@@ -320,22 +348,39 @@ func applyEmailEnv(e *EmailConfig) {
 	if v := os.Getenv("JAMSESH_EMAIL_SMTP_USER"); v != "" {
 		e.SMTP.User = v
 	}
-	if v := os.Getenv("JAMSESH_EMAIL_SMTP_PASS"); v != "" {
-		e.SMTP.Pass = v
+	smtpPass, err := readEnvOrFile("JAMSESH_EMAIL_SMTP_PASS")
+	if err != nil {
+		return err
+	}
+	if smtpPass != "" {
+		e.SMTP.Pass = smtpPass
 	}
 	if v := os.Getenv("JAMSESH_EMAIL_SMTP_TLS"); v != "" {
 		e.SMTP.TLSMode = v
 	}
-	if v := os.Getenv("JAMSESH_EMAIL_SENDGRID_API_KEY"); v != "" {
-		e.SendGrid.APIKey = v
+	sendgridKey, err := readEnvOrFile("JAMSESH_EMAIL_SENDGRID_API_KEY")
+	if err != nil {
+		return err
 	}
-	if v := os.Getenv("JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN"); v != "" {
-		e.Postmark.ServerToken = v
+	if sendgridKey != "" {
+		e.SendGrid.APIKey = sendgridKey
+	}
+	postmarkToken, err := readEnvOrFile("JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN")
+	if err != nil {
+		return err
+	}
+	if postmarkToken != "" {
+		e.Postmark.ServerToken = postmarkToken
 	}
 	if v := os.Getenv("JAMSESH_EMAIL_POSTMARK_MESSAGE_STREAM"); v != "" {
 		e.Postmark.MessageStream = v
 	}
-	if v := os.Getenv("JAMSESH_EMAIL_RESEND_API_KEY"); v != "" {
-		e.Resend.APIKey = v
+	resendKey, err := readEnvOrFile("JAMSESH_EMAIL_RESEND_API_KEY")
+	if err != nil {
+		return err
 	}
+	if resendKey != "" {
+		e.Resend.APIKey = resendKey
+	}
+	return nil
 }
