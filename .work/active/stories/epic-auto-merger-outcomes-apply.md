@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger-outcomes-apply
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-auto-merger-outcomes
 depends_on: []
@@ -69,3 +69,9 @@ Single story: ship the `conflict_events` schema + Store extension + `Apply` entr
 - `tryResolveConflict` errors are non-fatal (logged) so a DB race on the conflict event doesn't prevent the merge commit from being returned.
 - `ExportedComputeAddressedTo` is a thin exported shim; it's only for white-box testing from `automerger_test` package.
 - `nullTimeToPtr` / `ptrToNullTime` added to sqlite_adapter.go; `pgTimestamptzToPtr` / `ptrToPgTimestamptz` added to postgres_adapter.go — both helpers will be reused by future tables with nullable timestamps.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Non-fatal computeAddressedTo and tryResolveConflict errors prevent secondary failures from blocking the merge commit return — defensible. Schema + Store extension + Apply entrypoint all clean. 8 tests cover the matrix.

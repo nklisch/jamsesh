@@ -1,7 +1,7 @@
 ---
 id: epic-auto-merger-outcomes
 kind: feature
-stage: implementing
+stage: done
 tags: [portal]
 parent: epic-auto-merger
 depends_on: [epic-auto-merger-merge-engine, epic-portal-api-events-log, epic-portal-git-storage]
@@ -199,3 +199,11 @@ For v1, scan up to 100 commits back from draftTip. Match each conflicted file pa
 
 - **Bounded history walk for addressing**: a slow-moving conflict against a 500-commit-old change won't find the original author. Mitigation: 100-commit window for v1; revisit if reports come in.
 - **Auto-merger commit identity**: the synthetic email contains `portalHost`. For self-host, this is a reasonable namespacing. Document the format.
+
+## Implementation summary
+
+Single story done. The side-effecting half of the auto-merger is operational: merge commit composition, draft-ref advance, event emission, conflict_events insertion, addressed_to computation, Resolves-Conflict auto-closure.
+
+## Review
+
+**Verdict**: Approve. Worker can now consume merge-engine + outcomes end-to-end.
