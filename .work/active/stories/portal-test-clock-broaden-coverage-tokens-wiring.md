@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage-tokens-wiring
 kind: story
-stage: review
+stage: done
 tags: [testing, testability, portal]
 parent: portal-test-clock-broaden-coverage
 depends_on: []
@@ -234,3 +234,68 @@ End-to-end:
 `1 * time.Hour` (the locked-by-SECURITY.md value of
 `tokens.AccessTokenTTL`). Advance amount was `AccessTokenTTL + 1
 minute = 1h1m` for ms-drift headroom.
+
+## Review (2026-05-17) — Approve
+
+### Verdict
+
+**Approve.** Implementation matches spec; all build/test gates green;
+production safety preserved.
+
+### Verification re-run
+
+- `go build ./...` — clean.
+- `go build -tags e2etest ./...` — clean.
+- `go test -count=1 ./internal/portal/tokens/... ./cmd/portal/...` — pass.
+- `go test -count=1 -tags e2etest ./cmd/portal/...` — pass.
+- `TestProductionBuild_HasNoTestEndpoint` — pass (404 on
+  `POST /test/clock-advance` in non-tagged build).
+- `git grep -- 'testclock' cmd/portal/ internal/portal/` — only the
+  e2etest-tagged file and the testclock package itself; production stub
+  doesn't reference it. Invariant preserved.
+- `make test-portal-image` — rebuilt `jamsesh/portal:e2e`.
+- `cd tests/e2e && go test -count=1 -run
+  'TestRuntimeAndClock/clock_skew_token_expiry' -v ./chaos/...` — **PASS**
+  in 10.3s. Portal logged `advanced by 1h1m0s, new offset=3660s`.
+
+### Cross-checks
+
+- `tokensClock()` on `*testClockProvider` (e2etest) returns the SAME
+  `p.clock` field as `magicLinkClock()` — single shared
+  `*testclock.AdvanceableClock`. Confirmed by inspection: both methods
+  return the unmodified pointer; no copy, no derivation.
+- `tokensClock()` (prod stub) returns typed-nil `tokens.Clock`. Safe
+  against typed-nil trap because the return type is the interface, so
+  `c != nil` in main.go evaluates correctly.
+- `main.go` branches `tokens.NewWithClock(dbStore, c)` vs
+  `tokens.New(dbStore)` on `testClk.tokensClock() != nil`. Mirrors the
+  magic-link wiring exactly.
+- Chaos test asserts on typed `auth.expired_token` envelope code, not
+  on the human-readable message. Baseline `GET /me` precedes advance to
+  rule out pre-existing misconfiguration (anti-tautology).
+
+### TTL constant duplication
+
+**Acceptable.** `tests/e2e/` is a separate Go module
+(`module jamsesh/tests/e2e`) with no `replace` directive into the
+parent, so `jamsesh/internal/portal/tokens.AccessTokenTTL` is not
+importable. Three sharing mechanisms were possible: (a) a
+`replace ../../ => ../../` in `tests/e2e/go.mod` to pull the parent
+module in, (b) a copy-paste constant with a comment, (c) reading the
+TTL from an admin endpoint at test setup. The story chose (b). For a
+1-hour constant that is locked by SECURITY.md and unlikely to change,
+the duplication cost is minimal and the comment naming the source of
+truth is honest. (a) would expand the e2e module's dependency surface
+unnecessarily, and (c) introduces a runtime dependency that defeats
+the test's own invariant. The chosen approach is the right trade-off,
+though a follow-up improvement could be to expose TTLs via a
+`/test/config` endpoint in e2etest builds — parked here as a note,
+not filed because the risk is small.
+
+### Findings
+
+- Blockers: 0
+- Important: 0
+- Nits: 0
+
+No follow-up items filed.
