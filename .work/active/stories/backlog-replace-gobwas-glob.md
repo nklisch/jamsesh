@@ -1,7 +1,7 @@
 ---
 id: backlog-replace-gobwas-glob
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal, prereceive, dependency]
 parent: null
 depends_on: []
@@ -47,11 +47,55 @@ panic-triggering inputs.
 
 ## Acceptance criteria
 
-- [ ] Replace `gobwas/glob` import with the chosen library in
+- [x] Replace `gobwas/glob` import with the chosen library in
       `internal/portal/prereceive/scope.go`
-- [ ] Remove `probeGlob` (no longer needed if the replacement validates at
+- [x] Remove `probeGlob` (no longer needed if the replacement validates at
       compile time)
-- [ ] All existing tests in `scope_test.go` pass
-- [ ] Fuzz harness `FuzzPathScopeValidate` passes with the new library
-- [ ] `go.mod` / `go.sum` updated; no residual `gobwas/glob` dependency
+- [x] All existing tests in `scope_test.go` pass
+- [x] Fuzz harness `FuzzPathScopeValidate` passes with the new library
+- [x] `go.mod` / `go.sum` updated; no residual `gobwas/glob` dependency
 - [ ] Update `docs-scope-glob-validation-rules` backlog if glob syntax changes
+
+## Implementation notes
+
+**Chosen library:** `github.com/bmatcuk/doublestar/v4@v4.10.0`
+
+Well-maintained (active commits as of 2026), supports `**` recursive matching
+with `/` as the separator, and validates patterns at parse time — returning
+`ErrBadPattern` for malformed input rather than panicking.
+
+**What changed in `scope.go`:**
+
+- `probeGlob` removed entirely. The deferred-recover workaround is no longer
+  needed: `doublestar.ValidatePattern` catches all malformed patterns at
+  compile time, including the `"0{"` / `"a{"` / `"src/{"` variants that
+  triggered the original gobwas panic.
+- `ScopeMatcher` struct changed from `{globs []glob.Glob, raw []string}` to
+  `{patterns []string}`. doublestar does not offer a compiled-pattern object;
+  pattern strings are stored normalized and matched via `doublestar.Match` on
+  each `Match` call.
+- Added `normalizeForDoublestar` helper: doublestar treats `**` as a
+  recursive wildcard only when surrounded by `/`. A mid-pattern `**` not
+  followed by `/` behaves like a single-segment `*` (bash globstar semantics).
+  gobwas/glob made `**` universally recursive regardless of context. To
+  preserve the existing behavioral contract (`**.md` matches `src/x.md`,
+  `src/**.go` matches `src/sub/pkg.go`), the helper rewrites any `**` followed
+  by a non-`/` character to `**/*` so the suffix becomes its own path segment.
+  This is a pure normalization applied transparently at compile time; callers
+  use the same patterns they always have.
+- `commits.go:94` updated: field reference `scope.globs` → `scope.patterns`.
+
+**Existing tests:** all 17 `TestScopeMatcher_Match` cases and all
+`TestCompileScope` cases (including the three malformed-pattern regression
+cases) passed without modification.
+
+**Fuzz harness result:** `FuzzPathScopeValidate` ran for 30 s, executed
+~2.06 million iterations across 16 workers, found no failures. All known-bad
+seed files (traversal payloads, the original `fc37b996` panic trigger) passed.
+
+**`go.mod` cleanup:** `go mod tidy` completed cleanly. `gobwas/glob` is absent
+from both `go.mod` and `go.sum`. `doublestar/v4@v4.10.0` added as a direct
+dependency (zero transitive dependencies of its own).
+
+**`docs-scope-glob-validation-rules` backlog:** no glob syntax changes visible
+to users — patterns are normalized transparently. No doc update needed.

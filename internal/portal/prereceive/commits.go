@@ -91,7 +91,7 @@ func validateCommit(_ context.Context, repo *git.Repository, c *object.Commit, s
 	}
 
 	// 2. Scope check — skip if scope has no patterns (everything allowed).
-	if scope != nil && len(scope.globs) > 0 {
+	if scope != nil && len(scope.patterns) > 0 {
 		violations := scopeViolations(repo, c, scope)
 		if len(violations) > 0 {
 			rejections = append(rejections, Rejection{

@@ -2,87 +2,74 @@ package prereceive
 
 import (
 	"fmt"
+	"strings"
 
-	"github.com/gobwas/glob"
+	"github.com/bmatcuk/doublestar/v4"
 )
 
-// probeGlob tries a series of short strings against g with a deferred recover,
-// returning an error if any Match call panics. This is a workaround for
-// gobwas/glob@v0.2.3 silently compiling malformed patterns (e.g. unclosed "{")
-// without returning an error, then panicking on the first Match call.
+// normalizeForDoublestar rewrites gobwas/glob-style patterns to their
+// doublestar equivalents. In gobwas/glob (with '/' separator), "**" always
+// spans directory boundaries regardless of surrounding context. In doublestar,
+// "**" must be surrounded by '/' to act as a recursive wildcard; a "**" that
+// is immediately followed by a non-'/' character is treated as a single-segment
+// "*" by doublestar (matching bash globstar behavior).
 //
-// The probe inputs cover the known-bad trigger: a string that equals the
-// literal prefix before an unclosed "{", causing the internal Row.matchAll to
-// access a slice out of bounds. We also probe with the raw pattern text itself
-// and common short strings to catch other variants.
-//
-// See upstream issue: gobwas/glob silently accepts "X{" patterns.
-// Filed in jamsesh as: bug-gobwas-glob-panic-on-malformed-pattern.
-func probeGlob(pattern string, g glob.Glob) (probeErr error) {
-	probe := func(s string) (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				err = fmt.Errorf("glob pattern %q panicked on Match(%q): %v", pattern, s, r)
+// To preserve the gobwas semantics expected by callers, any "**" followed by a
+// non-'/' character is rewritten so that the non-'/' suffix becomes its own
+// segment: "**.ext" → "**/*.ext", "src/**.go" → "src/**/*.go".
+// Patterns where "**" is already at end-of-string or followed by '/' are left
+// unchanged ("docs/**", "**").
+func normalizeForDoublestar(p string) string {
+	if !strings.Contains(p, "**") {
+		return p
+	}
+	var b strings.Builder
+	i := 0
+	for i < len(p) {
+		if i+1 < len(p) && p[i] == '*' && p[i+1] == '*' {
+			b.WriteString("**")
+			i += 2
+			// Insert "/*" so the suffix becomes a new path segment.
+			if i < len(p) && p[i] != '/' {
+				b.WriteString("/*")
 			}
-		}()
-		g.Match(s)
-		return nil
-	}
-
-	// Probe inputs: empty string, the raw pattern text, each byte-prefix of the
-	// pattern (up to the first 8 bytes), and a few common path strings.
-	//
-	// We iterate by byte (not rune) so we never slice the string at an invalid
-	// UTF-8 boundary — even if the pattern contains arbitrary bytes the fuzzer
-	// generated.
-	candidates := []string{"", pattern}
-	for i := 1; i <= len(pattern) && i <= 8; i++ {
-		candidates = append(candidates, pattern[:i])
-	}
-	candidates = append(candidates, "a", "z", "/", "0", ".")
-
-	for _, s := range candidates {
-		if err := probe(s); err != nil {
-			return err
+		} else {
+			b.WriteByte(p[i])
+			i++
 		}
 	}
-	return nil
+	return b.String()
 }
 
-// ScopeMatcher holds compiled glob patterns that define the writable scope for
-// a session. Globs use "/" as the path separator, so "**" matches across
-// directory boundaries (e.g. "docs/**" matches "docs/foo/bar.md").
+// ScopeMatcher holds validated, normalized glob patterns that define the
+// writable scope for a session. Patterns use '/' as the path separator, so
+// "**" matches across directory boundaries (e.g. "docs/**" matches
+// "docs/foo/bar.md").
 //
-// gobwas/glob is used instead of path/filepath.Match because the stdlib does
-// not support "**" recursive matching.
+// github.com/bmatcuk/doublestar is used instead of path/filepath.Match because
+// the stdlib does not support "**" recursive matching. Unlike the former
+// gobwas/glob dependency, doublestar validates patterns at parse time and
+// never panics on malformed input.
 type ScopeMatcher struct {
-	globs []glob.Glob
-	raw   []string // kept for error messages
+	patterns []string // normalized, validated doublestar patterns
 }
 
 // CompileScope compiles a list of glob patterns into a ScopeMatcher. Each
-// pattern is compiled with "/" as the separator, so "**" spans directories
-// while "*" matches within a single path segment.
+// pattern is normalized (see normalizeForDoublestar) and validated at compile
+// time; malformed patterns (e.g. unclosed "{") cause an immediate error rather
+// than a deferred panic.
 //
-// Returns an error if any pattern fails to compile.
+// Returns an error if any pattern fails validation.
 func CompileScope(patterns []string) (*ScopeMatcher, error) {
-	compiled := make([]glob.Glob, 0, len(patterns))
+	normalized := make([]string, 0, len(patterns))
 	for _, p := range patterns {
-		g, err := glob.Compile(p, '/')
-		if err != nil {
-			return nil, fmt.Errorf("prereceive: invalid scope glob %q: %w", p, err)
+		n := normalizeForDoublestar(p)
+		if !doublestar.ValidatePattern(n) {
+			return nil, fmt.Errorf("prereceive: invalid scope glob %q: bad pattern syntax", p)
 		}
-		// gobwas/glob@v0.2.3 silently compiles some malformed patterns (e.g.
-		// unclosed "{") without error, then panics on Match. Probe immediately
-		// to surface such patterns as compile-time errors.
-		if probeErr := probeGlob(p, g); probeErr != nil {
-			return nil, fmt.Errorf("prereceive: invalid scope glob %q: %w", p, probeErr)
-		}
-		compiled = append(compiled, g)
+		normalized = append(normalized, n)
 	}
-	raw := make([]string, len(patterns))
-	copy(raw, patterns)
-	return &ScopeMatcher{globs: compiled, raw: raw}, nil
+	return &ScopeMatcher{patterns: normalized}, nil
 }
 
 // Match reports whether path is covered by at least one glob in the scope.
@@ -91,8 +78,9 @@ func CompileScope(patterns []string) (*ScopeMatcher, error) {
 //
 // If the ScopeMatcher has no patterns, Match returns false (deny-by-default).
 func (m *ScopeMatcher) Match(path string) bool {
-	for _, g := range m.globs {
-		if g.Match(path) {
+	for _, p := range m.patterns {
+		matched, err := doublestar.Match(p, path)
+		if err == nil && matched {
 			return true
 		}
 	}
