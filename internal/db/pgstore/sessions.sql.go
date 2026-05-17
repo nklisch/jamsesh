@@ -58,6 +58,21 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
+const deleteSession = `-- name: DeleteSession :exec
+DELETE FROM sessions
+WHERE org_id = $1 AND id = $2
+`
+
+type DeleteSessionParams struct {
+	OrgID string `json:"org_id"`
+	ID    string `json:"id"`
+}
+
+func (q *Queries) DeleteSession(ctx context.Context, arg DeleteSessionParams) error {
+	_, err := q.db.Exec(ctx, deleteSession, arg.OrgID, arg.ID)
+	return err
+}
+
 const getSession = `-- name: GetSession :one
 SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at
 FROM sessions

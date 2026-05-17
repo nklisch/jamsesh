@@ -29,6 +29,7 @@ type Store interface {
 	SessionMemberStore
 	OAuthTokenStore
 	MagicLinkTokenStore
+	ArchivedSessionStore
 
 	// Close releases pool resources.
 	Close() error
@@ -135,6 +136,20 @@ type MagicLinkToken struct {
 	IssuedAt  time.Time
 	ExpiresAt time.Time
 	UsedAt    *time.Time
+}
+
+// ArchivedSession is a record of a session that has been archived. The bare
+// repo has been deleted; this row provides the stub response for 410 Gone.
+type ArchivedSession struct {
+	SessionID        string
+	OrgID            string
+	Name             string
+	GoalText         string
+	MemberAccountIDs []string // decoded from JSON TEXT column
+	EndedAt          time.Time
+	ArchivedAt       time.Time
+	EndReason        string  // "finalize" | "abandon" | "timeout"
+	FinalBranchName  *string // nil when absent
 }
 
 // ---------------------------------------------------------------------------
@@ -273,6 +288,28 @@ type ConsumeMagicLinkTokenParams struct {
 	UsedAt *time.Time
 }
 
+type InsertArchivedSessionParams struct {
+	SessionID        string
+	OrgID            string
+	Name             string
+	GoalText         string
+	MemberAccountIDs string // JSON-encoded []string
+	EndedAt          time.Time
+	ArchivedAt       time.Time
+	EndReason        string  // "finalize" | "abandon" | "timeout"
+	FinalBranchName  *string // nil → NULL
+}
+
+type GetArchivedSessionParams struct {
+	OrgID     string
+	SessionID string
+}
+
+type DeleteSessionParams struct {
+	OrgID string
+	ID    string
+}
+
 // ---------------------------------------------------------------------------
 // Sub-interfaces
 // ---------------------------------------------------------------------------
@@ -311,6 +348,8 @@ type SessionStore interface {
 	ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error)
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	SetSessionBaseSHA(ctx context.Context, arg SetSessionBaseSHAParams) error
+	// DeleteSession removes a session row and cascades to session_members via FK.
+	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
 }
 
 // SessionMemberStore covers session membership.
@@ -323,6 +362,12 @@ type SessionMemberStore interface {
 	// account across all orgs. This is the intentional cross-org exception —
 	// the caller receives org_id on each row for further scoped queries.
 	ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]SessionMembership, error)
+}
+
+// ArchivedSessionStore covers archived-session reads and writes.
+type ArchivedSessionStore interface {
+	InsertArchivedSession(ctx context.Context, arg InsertArchivedSessionParams) error
+	GetArchivedSession(ctx context.Context, arg GetArchivedSessionParams) (ArchivedSession, error)
 }
 
 // OAuthTokenStore covers OAuth token lifecycle.

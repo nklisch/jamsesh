@@ -23,3 +23,7 @@ WHERE org_id = ? AND id = ?;
 UPDATE sessions
 SET base_sha = ?
 WHERE org_id = ? AND id = ?;
+
+-- name: DeleteSession :exec
+DELETE FROM sessions
+WHERE org_id = ? AND id = ?;

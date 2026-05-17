@@ -67,3 +67,16 @@ CREATE TABLE magic_link_tokens (
     expires_at TIMESTAMPTZ NOT NULL,
     used_at TIMESTAMPTZ
 );
+
+CREATE TABLE archived_sessions (
+    session_id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    goal_text TEXT NOT NULL,
+    member_account_ids TEXT NOT NULL,
+    ended_at TIMESTAMPTZ NOT NULL,
+    archived_at TIMESTAMPTZ NOT NULL,
+    end_reason TEXT NOT NULL CHECK (end_reason IN ('finalize','abandon','timeout')),
+    final_branch_name TEXT
+);
+CREATE INDEX archived_sessions_org_idx ON archived_sessions(org_id);

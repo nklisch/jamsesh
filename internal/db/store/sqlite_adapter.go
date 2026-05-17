@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"time"
 
 	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -175,6 +177,31 @@ func sqliteMagicLinkToken(row sqlitestore.MagicLinkToken) MagicLinkToken {
 		IssuedAt:  row.IssuedAt,
 		ExpiresAt: row.ExpiresAt,
 		UsedAt:    row.UsedAt,
+	}
+}
+
+func sqliteArchivedSession(row sqlitestore.ArchivedSession) ArchivedSession {
+	var ids []string
+	_ = json.Unmarshal([]byte(row.MemberAccountIds), &ids)
+	if ids == nil {
+		ids = []string{}
+	}
+	// row.EndedAt is *time.Time due to the global *.ended_at sqlc override, but
+	// the schema marks it NOT NULL — it will never be nil in practice.
+	var endedAt time.Time
+	if row.EndedAt != nil {
+		endedAt = *row.EndedAt
+	}
+	return ArchivedSession{
+		SessionID:        row.SessionID,
+		OrgID:            row.OrgID,
+		Name:             row.Name,
+		GoalText:         row.GoalText,
+		MemberAccountIDs: ids,
+		EndedAt:          endedAt,
+		ArchivedAt:       row.ArchivedAt,
+		EndReason:        row.EndReason,
+		FinalBranchName:  nullStringToPtr(row.FinalBranchName),
 	}
 }
 
@@ -378,6 +405,13 @@ func (a *sqliteAdapter) SetSessionBaseSHA(ctx context.Context, p SetSessionBaseS
 	}))
 }
 
+func (a *sqliteAdapter) DeleteSession(ctx context.Context, p DeleteSessionParams) error {
+	return mapSQLiteErr(a.q.DeleteSession(ctx, sqlitestore.DeleteSessionParams{
+		OrgID: p.OrgID,
+		ID:    p.ID,
+	}))
+}
+
 // ---------------------------------------------------------------------------
 // SessionMemberStore
 // ---------------------------------------------------------------------------
@@ -533,4 +567,34 @@ func (a *sqliteAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagi
 		ID:     p.ID,
 		UsedAt: p.UsedAt,
 	}))
+}
+
+// ---------------------------------------------------------------------------
+// ArchivedSessionStore
+// ---------------------------------------------------------------------------
+
+func (a *sqliteAdapter) InsertArchivedSession(ctx context.Context, p InsertArchivedSessionParams) error {
+	endedAt := p.EndedAt // time.Time → *time.Time for sqlc-generated param
+	return mapSQLiteErr(a.q.InsertArchivedSession(ctx, sqlitestore.InsertArchivedSessionParams{
+		SessionID:        p.SessionID,
+		OrgID:            p.OrgID,
+		Name:             p.Name,
+		GoalText:         p.GoalText,
+		MemberAccountIds: p.MemberAccountIDs,
+		EndedAt:          &endedAt,
+		ArchivedAt:       p.ArchivedAt,
+		EndReason:        p.EndReason,
+		FinalBranchName:  ptrToNullString(p.FinalBranchName),
+	}))
+}
+
+func (a *sqliteAdapter) GetArchivedSession(ctx context.Context, p GetArchivedSessionParams) (ArchivedSession, error) {
+	row, err := a.q.GetArchivedSession(ctx, sqlitestore.GetArchivedSessionParams{
+		OrgID:     p.OrgID,
+		SessionID: p.SessionID,
+	})
+	if err != nil {
+		return ArchivedSession{}, mapSQLiteErr(err)
+	}
+	return sqliteArchivedSession(row), nil
 }

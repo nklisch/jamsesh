@@ -17,6 +17,18 @@ type Account struct {
 	CreatedAt    time.Time      `json:"created_at"`
 }
 
+type ArchivedSession struct {
+	SessionID        string         `json:"session_id"`
+	OrgID            string         `json:"org_id"`
+	Name             string         `json:"name"`
+	GoalText         string         `json:"goal_text"`
+	MemberAccountIds string         `json:"member_account_ids"`
+	EndedAt          *time.Time     `json:"ended_at"`
+	ArchivedAt       time.Time      `json:"archived_at"`
+	EndReason        string         `json:"end_reason"`
+	FinalBranchName  sql.NullString `json:"final_branch_name"`
+}
+
 type MagicLinkToken struct {
 	ID        string     `json:"id"`
 	TokenHash string     `json:"token_hash"`

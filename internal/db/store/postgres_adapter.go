@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -176,6 +178,35 @@ func pgMagicLinkToken(row pgstore.MagicLinkToken) MagicLinkToken {
 		IssuedAt:  row.IssuedAt,
 		ExpiresAt: row.ExpiresAt,
 		UsedAt:    row.UsedAt,
+	}
+}
+
+func pgArchivedSession(row pgstore.ArchivedSession) ArchivedSession {
+	var ids []string
+	_ = json.Unmarshal([]byte(row.MemberAccountIds), &ids)
+	if ids == nil {
+		ids = []string{}
+	}
+	// row.EndedAt is *time.Time (global *.ended_at override); NOT NULL in schema.
+	var endedAt time.Time
+	if row.EndedAt != nil {
+		endedAt = *row.EndedAt
+	}
+	// row.ArchivedAt is pgtype.Timestamptz; extract the Go time.Time.
+	var archivedAt time.Time
+	if row.ArchivedAt.Valid {
+		archivedAt = row.ArchivedAt.Time
+	}
+	return ArchivedSession{
+		SessionID:        row.SessionID,
+		OrgID:            row.OrgID,
+		Name:             row.Name,
+		GoalText:         row.GoalText,
+		MemberAccountIDs: ids,
+		EndedAt:          endedAt,
+		ArchivedAt:       archivedAt,
+		EndReason:        row.EndReason,
+		FinalBranchName:  pgTextToPtr(row.FinalBranchName),
 	}
 }
 
@@ -378,6 +409,13 @@ func (a *postgresAdapter) SetSessionBaseSHA(ctx context.Context, p SetSessionBas
 	}))
 }
 
+func (a *postgresAdapter) DeleteSession(ctx context.Context, p DeleteSessionParams) error {
+	return mapPostgresErr(a.q.DeleteSession(ctx, pgstore.DeleteSessionParams{
+		OrgID: p.OrgID,
+		ID:    p.ID,
+	}))
+}
+
 // ---------------------------------------------------------------------------
 // SessionMemberStore
 // ---------------------------------------------------------------------------
@@ -533,4 +571,34 @@ func (a *postgresAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMa
 		ID:     p.ID,
 		UsedAt: p.UsedAt,
 	}))
+}
+
+// ---------------------------------------------------------------------------
+// ArchivedSessionStore
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) InsertArchivedSession(ctx context.Context, p InsertArchivedSessionParams) error {
+	endedAt := p.EndedAt // time.Time → *time.Time for sqlc-generated param
+	return mapPostgresErr(a.q.InsertArchivedSession(ctx, pgstore.InsertArchivedSessionParams{
+		SessionID:        p.SessionID,
+		OrgID:            p.OrgID,
+		Name:             p.Name,
+		GoalText:         p.GoalText,
+		MemberAccountIds: p.MemberAccountIDs,
+		EndedAt:          &endedAt,
+		ArchivedAt:       pgtype.Timestamptz{Time: p.ArchivedAt, Valid: true},
+		EndReason:        p.EndReason,
+		FinalBranchName:  ptrToPgText(p.FinalBranchName),
+	}))
+}
+
+func (a *postgresAdapter) GetArchivedSession(ctx context.Context, p GetArchivedSessionParams) (ArchivedSession, error) {
+	row, err := a.q.GetArchivedSession(ctx, pgstore.GetArchivedSessionParams{
+		OrgID:     p.OrgID,
+		SessionID: p.SessionID,
+	})
+	if err != nil {
+		return ArchivedSession{}, mapPostgresErr(err)
+	}
+	return pgArchivedSession(row), nil
 }

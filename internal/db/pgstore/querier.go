@@ -19,9 +19,11 @@ type Querier interface {
 	CreateOAuthToken(ctx context.Context, arg CreateOAuthTokenParams) (OauthToken, error)
 	CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
+	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
 	GetAccountByEmail(ctx context.Context, email string) (Account, error)
 	GetAccountByGitHubUserID(ctx context.Context, githubUserID pgtype.Text) (Account, error)
 	GetAccountByID(ctx context.Context, id string) (Account, error)
+	GetArchivedSession(ctx context.Context, arg GetArchivedSessionParams) (ArchivedSession, error)
 	GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error)
 	GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OauthToken, error)
 	GetOrgByID(ctx context.Context, id string) (Org, error)
@@ -29,6 +31,7 @@ type Querier interface {
 	GetOrgMember(ctx context.Context, arg GetOrgMemberParams) (OrgMember, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	GetSessionMember(ctx context.Context, arg GetSessionMemberParams) (SessionMember, error)
+	InsertArchivedSession(ctx context.Context, arg InsertArchivedSessionParams) error
 	ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OauthToken, error)
 	ListOrgMembers(ctx context.Context, orgID string) ([]ListOrgMembersRow, error)
 	ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error)

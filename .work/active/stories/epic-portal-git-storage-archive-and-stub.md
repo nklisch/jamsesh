@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-storage-archive-and-stub
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-git-storage
 depends_on: [epic-portal-git-storage-bare-repo-helpers]
@@ -74,3 +74,36 @@ stub-response formatter used by both REST and git smart-HTTP for
 - The stub formatter's `final_branch_name` field uses
   `omitempty` JSON tag — when nil, the field is absent from the
   serialized response.
+
+## Implementation notes
+
+- New files: `db/queries/sqlite/archived_sessions.sql`,
+  `db/queries/postgres/archived_sessions.sql`,
+  `internal/db/migrations/sqlite/00002_archived_sessions.sql`,
+  `internal/db/migrations/postgres/00002_archived_sessions.sql`.
+- Edited schema files: `db/schema/sqlite.sql`, `db/schema/postgres.sql`
+  (appended `archived_sessions` table + index).
+- Added `DeleteSession :exec` to both sessions.sql query files.
+- `sqlc generate` regenerated: `internal/db/sqlitestore/archived_sessions.sql.go`,
+  `internal/db/pgstore/archived_sessions.sql.go`, plus updated models.go,
+  querier.go, sessions.sql.go in both stores.
+- `internal/db/store/store.go`: added `ArchivedSession` domain type,
+  `InsertArchivedSessionParams`, `GetArchivedSessionParams`,
+  `DeleteSessionParams`, `ArchivedSessionStore` sub-interface, `DeleteSession`
+  on `SessionStore`, embedded `ArchivedSessionStore` in master `Store`.
+- `internal/db/store/sqlite_adapter.go` and `postgres_adapter.go`: implemented
+  all new methods. SQLite adapter JSON-decodes `member_account_ids` on read,
+  stores encoded on write. Postgres adapter converts `pgtype.Timestamptz` ↔
+  `time.Time` for `archived_at`.
+- sqlc global `*.ended_at` override makes `EndedAt` a `*time.Time` even for
+  NOT NULL `archived_sessions.ended_at`; adapters dereference the pointer
+  (will always be non-nil in practice).
+- `internal/portal/storage/service.go`: rewrote with proper types (removed
+  `interface{}` stubs from previous story).
+- `internal/portal/storage/archive.go`: `ArchiveSession` + `LookupArchived`.
+  Archive order: INSERT archived row (idempotent on unique violation) → RemoveRepo
+  → DeleteSession.
+- `internal/portal/storage/stub.go`: `StubResponse` formatter.
+- `internal/portal/storage/archive_test.go`: end-to-end tests covering
+  full archive lifecycle, re-archive no-op, ErrNotFound paths, StubResponse
+  table tests (with/without final_branch_name). All pass.
