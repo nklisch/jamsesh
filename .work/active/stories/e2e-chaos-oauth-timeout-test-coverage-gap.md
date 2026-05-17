@@ -1,7 +1,7 @@
 ---
 id: e2e-chaos-oauth-timeout-test-coverage-gap
 kind: story
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing, oauth]
 parent: null
 depends_on: []
