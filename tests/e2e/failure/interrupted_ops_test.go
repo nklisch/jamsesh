@@ -253,14 +253,38 @@ func TestInterruptedOps(t *testing.T) {
 		// Invariant: exchanging a magic-link token after its 15-minute TTL
 		// has elapsed returns 401 auth.expired_token.
 		//
-		// This subtest is skipped because testing the TTL path end-to-end
-		// requires advancing the portal's clock by 15+ minutes. Adding a
-		// 15-minute time.Sleep would make CI unacceptably slow.
+		// We advance the portal's clock via the build-tag-gated
+		// /test/clock-advance endpoint rather than sleeping for real. The
+		// portal image must be built with `make test-portal-image` (which
+		// passes -tags e2etest). The fixture helper Portal.AdvanceClock
+		// fails loudly with an actionable message if the endpoint returns
+		// 404, so a stale image surfaces an obvious error rather than a
+		// silent skip.
 		//
-		// The correct fix is a test-only /test/clock-advance endpoint
-		// in the portal (build-tag-gated, never compiled into production
-		// builds). See backlog item: portal-test-clock-advance-endpoint.
-		t.Skip("requires portal-side clock injection; see backlog item portal-test-clock-advance-endpoint")
+		// Ordering invariant: this subtest mutates the portal's process-
+		// global clock; advances are forward-only and cumulative. Any
+		// later subtest sharing this TestInterruptedOps portal instance
+		// will see the +16m offset. The only later subtest at inspection
+		// time is `ws_reconnect_after_drop`, which is clock-insensitive
+		// and currently skipped. If a future subtest is added here that
+		// depends on real wall-clock time, either reorder so this subtest
+		// runs last, or spin up a fresh portal for it.
+		email := "ttl-expiry@example.com"
+
+		// Step 1: request a magic-link and extract the raw token from
+		// MailHog (without exchanging — we want to control the gap).
+		authflow.RequestMagicLink(ctx, t, p, email)
+		token := authflow.ExtractMagicLinkToken(ctx, t, mh, email)
+
+		// Step 2: advance the portal's clock past the 15-minute TTL.
+		// One minute of headroom avoids edge cases around millisecond
+		// drift between issue time and the advance call.
+		p.AdvanceClock(ctx, t, 16*time.Minute)
+
+		// Step 3: attempt exchange — must fail with auth.expired_token.
+		url := fmt.Sprintf("%s/api/auth/magic-link/exchange", p.URL)
+		body := []byte(fmt.Sprintf(`{"token":%q}`, token))
+		rawPostExpect(ctx, t, url, body, "", http.StatusUnauthorized, "auth.expired_token")
 	})
 
 	// ---------------------------------------------------------------------------

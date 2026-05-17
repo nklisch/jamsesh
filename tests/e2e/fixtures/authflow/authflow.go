@@ -94,27 +94,49 @@ func DecodeEmailBody(body string) string {
 	return string(decoded)
 }
 
-// SignInViaMagicLink performs the full magic-link sign-in flow:
-// POST /api/auth/magic-link/request, polls MailHog for the email, extracts
-// the token, and POSTs /api/auth/magic-link/exchange. Returns the issued token
-// pair.
-func SignInViaMagicLink(ctx context.Context, t *testing.T, p *portal.Portal, mh *mailhog.MailHog, email string) TokenPair {
+// RequestMagicLink POSTs to /api/auth/magic-link/request and asserts the
+// portal responds 204 No Content. Use this when you need to control the
+// gap between request and exchange — e.g. for TTL-expiry tests that
+// advance the clock between the two calls via Portal.AdvanceClock.
+// For the common case use SignInViaMagicLink instead.
+func RequestMagicLink(ctx context.Context, t *testing.T, p *portal.Portal, email string) {
 	t.Helper()
-
-	// Request the magic link.
 	PostJSON(ctx, t, p.URL+"/api/auth/magic-link/request",
 		map[string]string{"email": email}, "", http.StatusNoContent)
+}
 
-	// Fetch the email from MailHog and extract the raw token. Decode
-	// quoted-printable first so soft-line-breaks inside the token are
-	// removed before the regex runs.
+// ExtractMagicLinkToken polls MailHog for the latest magic-link email
+// addressed to email and returns the raw token from the URL. Decodes
+// quoted-printable first so soft-line-breaks inside the token are
+// removed before the regex runs.
+//
+// Exported so failure-mode specs can extract the token without exchanging
+// it — necessary when a test wants to mutate state (e.g., advance the
+// portal clock) between request and exchange.
+func ExtractMagicLinkToken(ctx context.Context, t *testing.T, mh *mailhog.MailHog, email string) string {
+	t.Helper()
 	msg := mh.LatestMessageTo(ctx, t, email, 5*time.Second)
 	body := DecodeEmailBody(msg.Body)
 	matches := MagicLinkTokenRE.FindStringSubmatch(body)
 	if len(matches) < 2 {
-		t.Fatalf("SignInViaMagicLink(%s): could not find token in email body:\n%s", email, body)
+		t.Fatalf("ExtractMagicLinkToken(%s): could not find token in email body:\n%s", email, body)
 	}
-	rawToken := matches[1]
+	return matches[1]
+}
+
+// SignInViaMagicLink performs the full magic-link sign-in flow:
+// POST /api/auth/magic-link/request, polls MailHog for the email, extracts
+// the token, and POSTs /api/auth/magic-link/exchange. Returns the issued token
+// pair.
+//
+// Implemented as a thin wrapper over RequestMagicLink + ExtractMagicLinkToken
+// + the exchange POST so failure-mode specs can reuse the constituent steps
+// without duplicating the email-extraction regex.
+func SignInViaMagicLink(ctx context.Context, t *testing.T, p *portal.Portal, mh *mailhog.MailHog, email string) TokenPair {
+	t.Helper()
+
+	RequestMagicLink(ctx, t, p, email)
+	rawToken := ExtractMagicLinkToken(ctx, t, mh, email)
 
 	// Exchange the token for a portal token pair.
 	var pair TokenPair

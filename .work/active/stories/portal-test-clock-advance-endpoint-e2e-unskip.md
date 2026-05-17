@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-advance-endpoint-e2e-unskip
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test]
 parent: portal-test-clock-advance-endpoint
 depends_on: [portal-test-clock-advance-endpoint-test-endpoint]
@@ -211,3 +211,73 @@ Verification:
   At inspection time the only later subtest is `ws_reconnect_after_drop`
   (currently skipped), which is not clock-sensitive — but document the
   ordering invariant in a comment so future additions don't get bitten.
+
+## Implementation notes
+
+### Files touched
+
+- `tests/e2e/fixtures/portal/clockadvance.go` (NEW) — `Portal.AdvanceClock`
+  method. POSTs `{"advance_seconds": <int>}` to `/test/clock-advance`,
+  fails with an actionable message naming `make test-portal-image` on
+  404, decodes the response and asserts the `now` field shape.
+- `tests/e2e/fixtures/authflow/authflow.go` — factored
+  `SignInViaMagicLink` into two new exported helpers:
+  - `RequestMagicLink(ctx, t, p, email)` — POSTs the request endpoint,
+    asserts 204.
+  - `ExtractMagicLinkToken(ctx, t, mh, email)` — polls MailHog, decodes
+    quoted-printable, runs `MagicLinkTokenRE` and returns the raw token.
+  `SignInViaMagicLink` is now a thin wrapper over the two plus the
+  exchange POST. All existing golden-path callers (onboarding, sessions,
+  finalize, auto-merge, fork-and-comment, chaos suites) continue to
+  work unchanged — verified by running the authflow fixture's own
+  `TestAuthflow_SignInAndCreateOrg` test.
+- `tests/e2e/failure/interrupted_ops_test.go` — un-skipped
+  `magic_link_ttl_expiry`. The subtest now requests a magic link,
+  extracts the raw token, advances the portal clock by 16 minutes,
+  attempts exchange, and asserts 401 + `auth.expired_token` envelope
+  via the existing `rawPostExpect` helper. Added an ordering-invariant
+  comment documenting that the clock advance is process-global and
+  forward-only.
+
+### Helper-split decision
+
+The story spec gave the implementor latitude on where the new helpers
+live — separate file vs. inline in `authflow.go`. Chose inline because
+the existing `ExtractInviteToken` helper lives in `authflow.go`
+alongside `SignInViaMagicLink`, and the new helpers share the same
+`MagicLinkTokenRE` regex and `DecodeEmailBody` decode step. Splitting
+them across a new file would have orphaned the regex from its only
+two consumers.
+
+### Test invocation result
+
+- `make test-portal-image` — rebuilt `jamsesh/portal:e2e` with
+  `-tags e2etest` (the Makefile flag landed in
+  `portal-test-clock-advance-endpoint-test-endpoint`).
+- `cd tests/e2e && go test -count=1 -v -run TestInterruptedOps ./failure/...` —
+  all four subtests pass. `magic_link_ttl_expiry` advances the clock
+  by 16m and exchanges, the portal returns 401 `auth.expired_token`
+  as designed. `ws_reconnect_after_drop` remains skipped per its
+  own story.
+
+```
+--- PASS: TestInterruptedOps (6.34s)
+    --- PASS: TestInterruptedOps/push_interrupted_mid_pack (0.02s)
+    --- PASS: TestInterruptedOps/finalize_lock_release_and_reacquire (0.02s)
+    --- PASS: TestInterruptedOps/magic_link_ttl_expiry (0.00s)
+    --- SKIP: TestInterruptedOps/ws_reconnect_after_drop (0.00s)
+```
+
+- `cd tests/e2e && go test -count=1 -v -run TestAuthflow ./fixtures/authflow/...` —
+  golden-path sign-in still works via the refactored wrapper.
+
+### Acceptance criteria verification
+
+- [x] `magic_link_ttl_expiry` is no longer `t.Skip`'d.
+- [x] Running the subtest after `make test-portal-image` is green.
+- [x] Asserts on the `auth.expired_token` error code, not the message.
+- [x] `Portal.AdvanceClock` fails with a clear message naming
+      `make test-portal-image` if the endpoint returns 404.
+- [x] `authflow.RequestMagicLink` and `authflow.ExtractMagicLinkToken`
+      are exported.
+- [x] Existing `SignInViaMagicLink` still works.
