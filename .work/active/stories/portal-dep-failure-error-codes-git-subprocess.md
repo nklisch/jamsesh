@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-git-subprocess
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: [portal-dep-failure-error-codes-envelope-helper]
@@ -206,3 +206,39 @@ new one). `go build ./...` passes cleanly.
 - `internal/portal/githttp/upload_pack.go`
 - `internal/portal/githttp/receive_pack.go`
 - `internal/portal/githttp/upload_pack_test.go`
+
+## Review
+
+**Verdict:** Approve.
+
+Reviewed commit `a77fe22`. All six subprocess-failure sites
+(`info_refs.go` cmd.Output, `upload_pack.go` StdoutPipe + Start,
+`receive_pack.go` StdinPipe + StdoutPipe + Start) wrap with
+`deperr.WrapGitSubprocess` and emit via
+`httperr.Write(..., httperr.ErrGitSubprocessFailed(...))` — exactly the
+contract specified. Non-subprocess in-process failures
+(`buildValidationRepo`, `Validator.Validate`) correctly use
+`httperr.ErrInternal`. The DB call (`Store.GetSession`) correctly uses
+`deperr.WrapDBIfTransient` routed through `httperr.WriteFromError` so
+known business sentinels (ErrNotFound, ErrUniqueViolation) pass through
+while unknown errors classify as `dep.db_unavailable` — the call-site
+delta authorised in the story body.
+
+Pre-receive rejection (`writeReportStatusRejection`), 400-class
+client-input responses (bad content-type, malformed push, 413
+oversize), and the 401 auth fallback all remain as `http.Error` —
+appropriate per the smart-HTTP protocol contract and the story's
+acceptance criteria. Post-WriteHeader streaming errors remain log-only
+— also correct since headers are already on the wire.
+
+`TestInfoRefs_SubprocessFailure_ReturnsDepGitSubprocessFailed` asserts
+the full envelope: HTTP 500, `Content-Type: application/json;
+charset=utf-8`, no `Retry-After` header, and JSON body
+`{"error":"dep.git_subprocess_failed", "message": "..."}`. Test passes
+against the live handler chain (auth + archive middleware traversed,
+subprocess forced to exit 128 via missing repo path).
+
+`go test ./internal/portal/githttp/...` passes (cached + verified
+re-run for the new test). `go build ./...` clean.
+
+**Findings:** blockers 0, important 0, nits 0. No items parked.
