@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-envelope-helper
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: portal-dep-failure-error-codes
 depends_on: []
@@ -313,3 +313,39 @@ the new wrappers in subsequent stories.
   call sites outside `httperr/` are migrated by this story; the typed
   envelope only fires for new code emitting `deperr.Wrap*` (which the
   per-surface follow-on stories will introduce).
+
+## Review
+
+**Verdict**: Approve.
+
+Spec adherence is tight. Every acceptance criterion is met and the
+implementation matches the design body verbatim.
+
+- `internal/portal/deperr/deperr.go` declares the four sentinels and
+  five wrap helpers; `WrapDBIfTransient` correctly preserves
+  `store.ErrNotFound` / `store.ErrUniqueViolation` via `errors.Is`, so
+  transitively-wrapped business sentinels also flow through unchanged.
+- `internal/portal/httperr/httperr.go` adds the four typed
+  constructors (`ErrSMTPUnavailable`, `ErrDBUnavailable`,
+  `ErrOAuthProviderUnavailable` at 503 with `Retry-After`;
+  `ErrGitSubprocessFailed` at 500 with no header). The `Headers` field
+  is `json:"-"` so it does not leak into the response body. `Write`
+  applies `Headers` before `WriteHeader` and skips empty values, which
+  matches the spec.
+- `internal/portal/httperr/translate.go` orders the switch correctly
+  — `errors.As(*Error)` first, then `errors.Is` against each `deperr`
+  sentinel, then fallthrough to `ErrInternal`. Preserves today's typed-
+  error path for middleware-emitted envelopes.
+- `cmd/portal/main.go` swaps in `NewStrictHandlerWithOptions` with both
+  `ResponseErrorHandlerFunc: httperr.WriteFromError` and
+  `RequestErrorHandlerFunc: httperr.WriteBadRequest`, and routes the
+  `ServerInterfaceWrapper`'s `ErrorHandlerFunc` through
+  `WriteBadRequest` for path/query binding failures.
+- Tests cover nil passthrough, every sentinel match, the
+  `errors.Join` cases for both `*Error` and `store.ErrNotFound`, the
+  default fallthrough, and the new `WriteBadRequest` 400 envelope.
+
+`go test ./internal/portal/deperr/... ./internal/portal/httperr/...`
+and `go build ./...` both clean locally on review.
+
+Findings: 0 blockers, 0 important, 0 nits. No items parked.

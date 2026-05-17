@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-advance-endpoint-clock-abstraction
 kind: story
-stage: review
+stage: done
 tags: [testing, testability]
 parent: portal-test-clock-advance-endpoint
 depends_on: []
@@ -252,3 +252,33 @@ tags.
 - `go vet ./internal/portal/auth/...` — clean.
 
 **Discrepancies**: none.
+
+## Review
+
+**Verdict**: Approve.
+
+**Summary**: Pure refactor landed exactly as spec'd. The `Clock` interface
+and `realClock` definitions in `internal/portal/auth/magic_link.go` mirror
+`internal/portal/tokens` byte-for-byte (same comment, same method signature,
+same `realClock` shape returning `time.Now().UTC()`). The
+`NewMagicLinkHandler` signature is preserved, so the production fallback
+path in `cmd/portal/main.go:267` compiles unchanged; the e2etest-tagged
+branch at `cmd/portal/main.go:265` already uses the new
+`NewMagicLinkHandlerWithClock` constructor (landed in a sibling story). Both
+`time.Now().UTC()` reads in `RequestMagicLink` and `ExchangeMagicLink` now
+go through `h.clock.Now()`.
+
+**Verification**:
+- `go build ./...` — green
+- `go test ./internal/portal/auth/...` — PASS (cached)
+- `go vet ./internal/portal/auth/...` — clean
+
+**Findings**:
+- Blockers: 0
+- Important: 0
+- Nits: 0
+
+The local `fakeClock` duplication and `extractTokenFromBody` helper are
+both justified in the implementation notes — test packages can't share
+unexported types from `tokens`, and not building a full `magicLinkTestEnv`
+keeps the new test self-contained with the injected clock.
