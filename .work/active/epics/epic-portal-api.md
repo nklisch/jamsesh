@@ -51,6 +51,50 @@ cross-component slice).
   error contract
 - `docs/SECURITY.md` — MCP and REST API authorization
 
+## Design decisions
+
+- **WebSocket library**: `nhooyr.io/websocket`. Modern, context-aware API
+  designed around Go's `context.Context` cancellation; simpler surface
+  than `gorilla/websocket`; smaller dependency footprint. Mature; the
+  gorilla project recommends nhooyr for new code.
+
+- **MCP server library**: `github.com/modelcontextprotocol/go-sdk` v1.x
+  (official Anthropic/Google SDK, v1.6.0+ as of May 2026). Drop-in chi
+  mount:
+  ```go
+  handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+      if !validBearer(r.Header.Get("Authorization")) { return nil }
+      s := mcp.NewServer(&mcp.Implementation{Name: "jamsesh", Version: "0.1"}, nil)
+      mcp.AddTool(s, &mcp.Tool{Name: "post_comment", ...}, postComment)
+      // ... 3 more tools
+      return s
+  }, nil)
+  mux.Mount("/mcp", handler)
+  ```
+  Reasons over alternatives: (1) `getServer(*http.Request)` callback is the
+  cleanest fit for "inspect Bearer token, then dispatch" — no middleware
+  gymnastics; (2) v1.x stable API (mark3labs/mcp-go is still 0.x); (3)
+  typed-struct tool registration via generics gives less boilerplate for
+  our 4 tools; (4) first-party so spec changes land fast. Tracks MCP spec
+  2025-06-18 (the November 2025 release line). Fallback only on a v1.6 bug:
+  `mark3labs/mcp-go` is a safe second choice.
+
+- **WebSocket event-envelope schema versioning**: bake `version: 1` into
+  every envelope from day one. Envelope shape: `{seq, version, type,
+  payload, timestamp, session_id}`. Clients can branch on version when
+  we evolve. Cheap forward-compat for a long-lived event stream.
+
+- **Pagination model**: cursor-based for all list endpoints. Response
+  shape: `{items: [...], next_cursor: "<opaque>"}`. Stable under inserts
+  (the event log gets entries added constantly; offset pagination
+  would drift). Cursor is opaque server-side state (typically a base64
+  of `last_seen_id + filter_hash`). Applies to digest endpoint, comments
+  list, sessions list, refs list.
+
+<!-- Feature-design will fill in interfaces, signatures, and implementation
+units when /agile-workflow:feature-design runs on this. -->
+
+
 ## Anticipated child features
 
 Provisional — actual decomposition lands when this epic is designed.
