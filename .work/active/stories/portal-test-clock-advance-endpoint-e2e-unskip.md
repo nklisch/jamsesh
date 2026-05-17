@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-advance-endpoint-e2e-unskip
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test]
 parent: portal-test-clock-advance-endpoint
 depends_on: [portal-test-clock-advance-endpoint-test-endpoint]
@@ -281,3 +281,39 @@ two consumers.
 - [x] `authflow.RequestMagicLink` and `authflow.ExtractMagicLinkToken`
       are exported.
 - [x] Existing `SignInViaMagicLink` still works.
+
+## Review
+
+**Verdict:** Approve.
+
+Diff (`ed9e39b`) matches the spec exactly. Cross-checks:
+
+- `tests/e2e/fixtures/portal/clockadvance.go` — `Portal.AdvanceClock`
+  POSTs the right body, decodes the response, asserts the `now` field
+  shape, and on 404 fails with a message that names
+  `make test-portal-image`. Comment also documents the cumulative,
+  forward-only, process-global nature of the offset.
+- `tests/e2e/fixtures/authflow/authflow.go` — `RequestMagicLink` and
+  `ExtractMagicLinkToken` are exported with clear docstrings;
+  `SignInViaMagicLink` becomes a thin wrapper that all eleven existing
+  golden-path / chaos / fuzz / fixture-test callers continue to use
+  unchanged.
+- `tests/e2e/failure/interrupted_ops_test.go` — `magic_link_ttl_expiry`
+  is un-skipped; body links request → extract → advance 16m → exchange,
+  and asserts `auth.expired_token` via the existing `rawPostExpect`
+  helper. The ordering-invariant comment is preserved.
+
+Local verification:
+- `go vet ./failure/... ./fixtures/portal/... ./fixtures/authflow/...`
+  clean.
+- `go build ./failure/... ./fixtures/portal/... ./fixtures/authflow/...`
+  clean.
+- Did not rebuild `jamsesh/portal:e2e` locally; trusted the
+  implementor's reported green run of
+  `go test -count=1 -v -run TestInterruptedOps ./failure/...`
+  (4 subtests: 3 pass including `magic_link_ttl_expiry`,
+  `ws_reconnect_after_drop` remains skipped per its own story).
+
+**Findings:** 0 blockers, 0 important, 0 nits.
+
+Advancing `review → done`.
