@@ -19,6 +19,8 @@ sql:
             go_type: time.Time
           - column: "*.expires_at"
             go_type: time.Time
+          - column: "*.joined_at"
+            go_type: time.Time
           - column: "*.last_used_at"
             go_type:
               type: time.Time
@@ -51,6 +53,16 @@ sql:
         emit_json_tags: true
         emit_prepared_queries: false
         overrides:
+          - column: "*.created_at"
+            go_type: time.Time
+          - column: "*.updated_at"
+            go_type: time.Time
+          - column: "*.issued_at"
+            go_type: time.Time
+          - column: "*.expires_at"
+            go_type: time.Time
+          - column: "*.joined_at"
+            go_type: time.Time
           - column: "*.last_used_at"
             go_type:
               type: time.Time
