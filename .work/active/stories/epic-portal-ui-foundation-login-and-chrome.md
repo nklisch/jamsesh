@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui-foundation-login-and-chrome
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-portal-ui-foundation
 depends_on:
@@ -71,3 +71,54 @@ the chrome wraps.
 - The "Not Found" route handler should render a simple "Page not
   found" message with a link back to the appropriate landing — keep
   it tiny; full UX comes later.
+
+## Implementation notes
+
+### Files created
+
+- `frontend/src/lib/screens/Login.svelte` — matches
+  `.mockups/flows/onboarding/02-sign-in.html` pixel-faithfully.
+  Centered card; `method-block` sections for OAuth (GitHub button with
+  SVG) and magic-link (inline form); "or" divider using flexbox
+  pseudo-elements; resume-strip callout when `?resume=<name>` query
+  param is present. Three states: `choose`, `magic-link-sent`,
+  `magic-link-error`. Uses raw `fetch` for magic-link POST (defer
+  comment to `epic-portal-foundation-auth-flows`).
+- `frontend/src/lib/components/Chrome.svelte` — top-bar layout from
+  option-5 mock. Wordmark with accent dot, breadcrumb chip(s) with
+  "/" separator, ThemeToggle always, AuthorDot conditional on
+  `auth.currentUser`. Body rendered via `{@render children()}`.
+  `ChromeTestHarness.svelte` companion provides the snippet for tests.
+- `frontend/src/lib/screens/SessionsLanding.svelte` — wraps Chrome
+  with `orgChip="default-org"`, placeholder text, and a sign-out Button.
+- `frontend/src/lib/screens/NotFound.svelte` — centered 404 card with
+  link to `/login` using the router's `navigate()`.
+- `frontend/src/App.svelte` (edited) — full route→screen mapping,
+  auth gate via `$effect` redirecting unauthenticated non-login routes
+  to `/login`.
+
+### Tests
+
+- All 28 new tests green (`vitest run`).
+- Snippet tests use `ChromeTestHarness.svelte` companion pattern —
+  NOT the `children: () => 'string'` sibling bug (those are pre-existing
+  failures in Badge, Card, Button, InlineCode tests, filed as finding for
+  design-system story review).
+- `svelte-check` clean on new files (0 warnings, 0 errors from our code).
+- `npm run build` green — dist built in ~1s.
+
+### Deferred
+
+- `/api/auth/magic-link/request` typed client call (raw fetch for now).
+  Activates when `epic-portal-foundation-auth-flows` adds the endpoint
+  to `openapi.yaml`.
+- `?resume=<name>` query-param extraction in Login: works at load time;
+  reactive routing support for in-flight invite links lands in
+  `epic-portal-ui-session-view-shell`.
+
+### Pre-existing failures (not introduced here)
+
+21 `svelte-check` type errors and corresponding test failures in
+`Badge.test.ts`, `Button.test.ts`, `Card.test.ts`, `InlineCode.test.ts`
+— all use `children: () => 'string'` (incompatible with Svelte 5
+Snippet type). Filed as a finding for the design-system story's review.
