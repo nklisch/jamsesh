@@ -30,11 +30,16 @@ import (
 	"jamsesh/internal/portal/assets"
 	"jamsesh/internal/portal/auth"
 	"jamsesh/internal/portal/config"
+	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/githttp"
 	"jamsesh/internal/portal/logging"
 	portaloauth "jamsesh/internal/portal/oauth"
+	"jamsesh/internal/portal/postreceive"
+	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/server"
+	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -163,6 +168,19 @@ func main() {
 		},
 	}
 
+	// Build the storage service and git HTTP handler.
+	storageSvc := storage.New(cfg.Storage, dbStore)
+	eventLog := events.New(dbStore)
+	gitHandler := &githttp.Handler{
+		Store:   dbStore,
+		Tokens:  tokenSvc,
+		Storage: storageSvc,
+		Validator: &prereceive.Validator{
+			MaxPackBytes: cfg.Git.MaxPackBytes,
+		},
+		Emitter: &postreceive.Emitter{Log: eventLog},
+	}
+
 	// Wire the embedded SPA handler. assets.Handler() returns a handler that
 	// serves the compiled Svelte bundle from frontend/dist/ with a History-API
 	// fallback to index.html. If the build hasn't run yet (dist/ only has
@@ -181,6 +199,7 @@ func main() {
 	handler := router.New(router.Deps{
 		TrustProxyHeaders: cfg.TLS.Mode == "behind_proxy",
 		MountUI:           uiHandler,
+		MountGit:          gitHandler.Mount,
 		MountAPI: func(r chi.Router) {
 			// Public auth endpoints — no Bearer middleware.
 			r.Group(func(r chi.Router) {
