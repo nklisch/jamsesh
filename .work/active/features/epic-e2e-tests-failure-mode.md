@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-failure-mode
 kind: feature
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing]
 parent: epic-e2e-tests
 depends_on: [epic-e2e-tests-infrastructure]
@@ -69,3 +69,110 @@ redirect).
       comment on the `t.Run` block
 - [ ] Permission-failure subtests are explicitly cross-org / cross-user
       where applicable (matches the org_id invariant)
+
+## Design decisions
+
+Locked under autopilot (2026-05-17):
+
+- **4 stories instead of 6**. The brief listed 6 categories with one
+  Go spec per category. Consolidated into 3 Go specs +
+  1 Playwright spec by grouping closely-related categories
+  (invalid-input + boundary-values + permissions →
+  `rest-validation`; missing-config + unavailable-dep →
+  `config-and-deps`; interrupted-ops stays standalone). Subtest
+  count per Go spec stays in the 8-15 range — coverage preserved,
+  fewer files to maintain.
+
+- **Auth-helpers extraction bundled into `rest-validation`** (the
+  first failure-mode story). The helpers
+  (`signInViaMagicLink`, `createOrg`, `inviteToOrg`, `acceptInvite`,
+  `requireOrgMembership`, `postJSON*`) currently live in
+  `tests/e2e/golden/onboarding_test.go > package golden_test` and
+  can't be reused from `tests/e2e/failure/`. The refactor moves them
+  to `tests/e2e/fixtures/authflow/` (exported package) and migrates
+  golden's spec to import from there. Subsequent failure-mode
+  stories use the extracted helpers without duplication.
+
+- **Postgres everywhere** for failure-mode, matching golden-path's
+  choice.
+
+- **No new shared infrastructure beyond `authflow`**. Reuses the
+  fixtures landed in infrastructure (postgres, mailhog, wiremock,
+  toxiproxy, portal, binary). The `wsclient` fixture from
+  `session-lifecycle` is needed by one subtest in `interrupted-ops` —
+  if `session-lifecycle` hasn't landed when `interrupted-ops` is
+  implemented, the WS subtest is deferred to a follow-on.
+
+- **Granular error-code assertions**. Subtests assert on the `code`
+  field of the error envelope (e.g., `auth.invalid_token`,
+  `validation.required_field`) — NOT on the human-readable
+  `message`. The code is a contract; the message is not. See
+  `docs/PROTOCOL.md > Error response`.
+
+- **Promote `e2e-portal-fixture-oauth-base-url-default` from backlog
+  when implementing `config-and-deps`**. The "OAuth provider 5xx"
+  subtest exercises a WireMock-served OAuth endpoint with injected
+  5xx; that requires the portal fixture to default
+  `JAMSESH_OAUTH_GITHUB_BASE_URL` to a safe sentinel value (or to
+  WireMock). The backlog item should be promoted to active and
+  satisfied before `config-and-deps` runs the OAuth subtest.
+
+## Story decomposition
+
+Four stories:
+
+1. `epic-e2e-tests-failure-mode-rest-validation` — auth-helpers
+   extraction + REST validation spec (invalid input + boundary
+   values + permissions). No deps beyond infrastructure (already
+   done).
+
+2. `epic-e2e-tests-failure-mode-config-and-deps` — missing config +
+   unavailable dependency spec. Depends on
+   `rest-validation` (uses the extracted authflow fixture).
+
+3. `epic-e2e-tests-failure-mode-interrupted-ops` — interrupted
+   operations spec (pushes, locks, magic-link TTL, WS drop).
+   Depends on `rest-validation`. May need a follow-on for the WS
+   subtest if `session-lifecycle` hasn't landed.
+
+4. `epic-e2e-tests-failure-mode-spa-error-states` — Playwright
+   spec covering user-visible error states. Independent of the Go
+   stories.
+
+## Implementation Order
+
+Wave 1 (parallel — no overlap):
+- `rest-validation` (the refactor + 12-15 subtests)
+- `spa-error-states` (Playwright; no Go-fixture dep)
+
+Wave 2 (parallel — both depend on rest-validation):
+- `config-and-deps`
+- `interrupted-ops`
+
+## Pre-mortem
+
+- **Auth-helpers refactor risk**: moving helpers from
+  `golden_test` to `authflow` package while keeping the existing
+  golden spec green requires careful migration. Implementor should
+  run `go test ./golden/ -v` after the migration before adding the
+  new failure-mode subtests.
+- **The "git missing" failure-mode subtest** is hard to test
+  from outside the portal container — the binary's PATH is set at
+  container build time. Skip or file a follow-on.
+- **Clock-skew tests in `interrupted-ops`** require either
+  libfaketime (heavy) or a test-only `/test/clock-advance` endpoint
+  (portal change). The story body recommends skipping under
+  `-short` for now and filing a follow-on for the clock endpoint.
+- **Error-code assertion stability**: the assertions assume
+  `docs/PROTOCOL.md > Error response` codes are stable. If the
+  portal ever renames a code (e.g., `auth.invalid_token` →
+  `auth.token_invalid`), all permission subtests fail at once.
+  That's a feature — it's exactly the kind of breaking change
+  e2e is meant to catch.
+- **OAuth-default safety**: the OAuth subtest in `config-and-deps`
+  depends on the portal fixture defaulting `OAuthBaseURL` to a
+  safe value. If that doesn't land first, the test could
+  inadvertently call real github.com. Mitigation noted in the
+  story body.
+
+Risks documented; no spike unit needed.
