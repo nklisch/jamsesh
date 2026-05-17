@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-golden-path-onboarding-auth
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-golden-path
 depends_on: [epic-e2e-tests-golden-path-ccdriver-env-fix]
@@ -86,3 +86,48 @@ they're a member of.
 - Each spec gets its own fresh portal container (no shared state)
 - Use the existing `mailhog.Start(ctx, t)` and exercise the new
   `LatestMessageTo` helper inside the spec
+
+## Implementation notes
+
+### Files created
+
+- `tests/e2e/fixtures/binary/jamsesh.go` — `Build(t) string` using `sync.Once`
+  to compile `./cmd/jamsesh` once per test binary invocation; walks upward from
+  cwd to find the repo root via `go.mod` module line.
+- `tests/e2e/fixtures/mailhog/messages.go` — adds `(*MailHog).LatestMessageTo`
+  and private `fetchLatestTo` to the existing `mailhog` package. Polls
+  `GET /api/v2/messages`, filters by `Mailbox@Domain` case-insensitively, and
+  returns the first (newest) match. Includes `Message` struct with `Body` field.
+- `tests/e2e/golden/onboarding_test.go` — seven-step golden-path test:
+  Alice magic-link signin → create org → invite Bob → capture Bob's invite
+  token → Bob magic-link signin → Bob accept invite → verify membership via
+  `GET /me`.
+- `tests/e2e/playwright/login.spec.ts` — three Playwright tests: form
+  transitions to "Check your inbox" after submission, confirmation state
+  displays the submitted email, and "Try a different email" button returns to
+  the form.
+
+### Design discovery: invite token ordering
+
+MailHog's `LatestMessageTo` returns the newest message addressed to a
+recipient. In the golden test, both the org-invite email and Bob's magic-link
+email land in Bob's inbox. To avoid the magic-link email shadowing the invite
+token, the invite token is captured from MailHog immediately after Alice sends
+the invite (before Bob requests his magic link). This ensures `LatestMessageTo`
+reliably returns the invite email at that point.
+
+### AcceptInviteBody token source
+
+The `AcceptOrgInvite` endpoint requires a `token` body field (the raw invite
+token from the accept URL). The invite email body format from `orgs.go` is:
+
+```
+{portalURL}/orgs/{orgID}/invites/{inviteID}/accept?token={raw}
+```
+
+The same `token=([A-Za-z0-9]+)` regex used for magic-link tokens extracts it.
+
+### No new dependencies
+
+`go.mod` and `go.sum` for both `jamsesh` root and `jamsesh/tests/e2e` are
+unchanged. All helpers use stdlib only.
