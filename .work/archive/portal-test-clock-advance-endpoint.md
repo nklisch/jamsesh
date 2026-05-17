@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-advance-endpoint
 kind: feature
-stage: review
+stage: done
 tags: [testing, e2e-test, testability]
 parent: null
 depends_on: []
@@ -559,11 +559,62 @@ t.Run("magic_link_ttl_expiry", func(t *testing.T) {
 
 ## Acceptance criteria
 
-- [ ] `POST /test/clock-advance` advances the portal's clock by the
+- [x] `POST /test/clock-advance` advances the portal's clock by the
       requested number of seconds (build-tag-gated, never compiled in
       production builds)
-- [ ] `magic_link_ttl_expiry` subtest in
+- [x] `magic_link_ttl_expiry` subtest in
       `tests/e2e/failure/interrupted_ops_test.go` is un-skipped and
       green
-- [ ] No clock-injection code appears in production build output
+- [x] No clock-injection code appears in production build output
       (`go build -tags ''` must not include the test endpoint)
+
+## Review
+
+**Verdict**: Approve.
+
+**Summary**: All three child stories landed exactly as designed. The
+feature ships a build-tag-gated `POST /test/clock-advance` endpoint
+backed by a process-global `AdvanceableClock`, with three independent
+production-safety layers (compilation gate, wiring gate, CI guardrail
+test) all intact and verified end-to-end.
+
+**Production-safety verification**:
+- `go build ./...` (no tags) — clean. The production binary contains
+  no `testclock` references; the only non-tagged mention is a doc
+  comment in `internal/portal/auth/magic_link.go`.
+- `go build -tags e2etest ./...` — clean.
+- `TestProductionBuild_HasNoTestEndpoint` (no tags) — PASS. The
+  production-build router 404s `POST /test/clock-advance`.
+- `TestE2EBuild_TestEndpointMounted` (-tags e2etest) — PASS. The
+  e2etest-tagged router exposes the endpoint with the documented
+  `{"now", "offset_seconds"}` shape.
+- All four files in `internal/portal/testclock/` carry
+  `//go:build e2etest`. `grep -rn 'testclock' cmd/ internal/` shows
+  the only non-tagged reference is a doc comment.
+- `cmd/portal/test_clock_advance.go` carries `//go:build e2etest`;
+  `cmd/portal/test_clock_advance_prod.go` carries `//go:build !e2etest`.
+  Exactly one compiles per build.
+- `Makefile` `test-portal-image` target passes `-tags e2etest`; the
+  release `Dockerfile` and CI workflow stay on `-tags ''`.
+
+**Test verification**:
+- `go test ./internal/portal/auth/...` — green. The new
+  `TestExchangeMagicLink_ExpiredToken_Returns401WithExpiredCode`
+  exercises the injected-clock path.
+- `go test -tags e2etest -race ./internal/portal/testclock/...` —
+  green. Cumulative, zero-noop, negative-rejected, and
+  concurrent-safe paths all covered.
+- e2e: trusting the e2e-unskip story's reported run of
+  `TestInterruptedOps/magic_link_ttl_expiry` as PASS after
+  `make test-portal-image`.
+
+**Acceptance criteria**: all three boxes checked.
+
+**Design fidelity**: one well-justified deviation in
+`portal-test-clock-advance-endpoint-test-endpoint` — `RouteMount`
+became path-agnostic (chi doesn't rewrite `r.URL.Path` before
+delegating to a stdlib `ServeMux`, so the nested-mux design would
+have 404'd). The cleaner fix registers the route at the chi layer
+and is documented in the story's implementation notes.
+
+**Findings**: 0 blockers, 0 important, 0 nits. Parked: none.
