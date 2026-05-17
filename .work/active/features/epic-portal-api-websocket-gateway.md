@@ -1,14 +1,14 @@
 ---
 id: epic-portal-api-websocket-gateway
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-api-events-log, epic-portal-foundation-http-skeleton, epic-portal-foundation-tokens]
 release_binding: null
 gate_origin: null
 created: 2026-05-16
-updated: 2026-05-16
+updated: 2026-05-17
 ---
 
 # Portal API — WebSocket Gateway
@@ -110,5 +110,143 @@ WebSocket events all share the same typed shapes across both runtimes.
   backpressure under slow consumers are subtle. Design pass produces an
   explicit lifecycle diagram and a replay/backpressure test plan.
 
-<!-- Feature-design will fill in interfaces, signatures, and implementation
-units when /agile-workflow:feature-design runs on this. -->
+## Design decisions
+
+- **Library**: `github.com/coder/websocket` (the maintained fork of nhooyr; locked per research doc + auto-loaded `coder-websocket` skill). The feature body's mention of `nhooyr.io/websocket` is stale; this is the rolling-foundation update.
+- **events.Log Subscribe**: already shipped by the auto-merger worker story. Reuse it — the WS gateway is a sibling subscriber.
+- **Per-session subscription set**: `gateway` struct with `map[sessionID]map[*conn]bool` guarded by RWMutex. On each subscribed event, fan out to all matching conns.
+- **Replay-from-cursor**: client's first frame after upgrade MAY be `{"replay_from": <int>}` JSON. Server reads events via `Log.ListSince(sessionID, replayFrom, limit=1000)` and streams them, then transitions to live mode.
+- **Heartbeat**: 30s ping interval via `conn.Ping(ctx)`; on Ping error → close.
+- **Slow-consumer protection**: per-conn send buffer of 64 events; on full → close with status 1008.
+- **Package**: `internal/portal/wsgateway/`.
+- **Single story**: cohesive feature.
+
+## Implementation Units
+
+### Unit 1: Gateway struct + upgrade handler
+
+**File**: `internal/portal/wsgateway/gateway.go`
+**Story**: `epic-portal-api-websocket-gateway-handler-and-fanout`
+
+```go
+package wsgateway
+
+import (
+    "context"
+    "net/http"
+    "sync"
+
+    "github.com/coder/websocket"
+    "github.com/coder/websocket/wsjson"
+    "github.com/go-chi/chi/v5"
+
+    "jamsesh/internal/db/store"
+    "jamsesh/internal/portal/events"
+    "jamsesh/internal/portal/tokens"
+)
+
+type Gateway struct {
+    Store        store.Store
+    Tokens       tokens.Service
+    Log          *events.Log
+    AllowOrigins []string
+    
+    mu   sync.RWMutex
+    subs map[string]map[*conn]struct{}  // sessionID -> set of conns
+}
+
+func (g *Gateway) Handler() http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        sessionID := chi.URLParam(r, "sessionID")
+        
+        // Auth: read Sec-WebSocket-Protocol
+        proto := r.Header.Get("Sec-WebSocket-Protocol")
+        token, ok := strings.CutPrefix(proto, "jamsesh.bearer.")
+        if !ok { http.Error(w, "unauthorized", 401); return }
+        
+        account, err := g.Tokens.Validate(r.Context(), token)
+        if err != nil { http.Error(w, "unauthorized", 401); return }
+        
+        // Verify membership — need session's org_id; look up session by orgID+sessionID requires the org id. Add an alternate query? Or scan all account orgs.
+        // Simplest: walk account's session memberships via ListSessionMembershipsForAccount and check sessionID is in the set.
+        memberships, err := g.Store.ListSessionMembershipsForAccount(r.Context(), account.ID)
+        if err != nil { http.Error(w, "server error", 500); return }
+        ok = false
+        var orgID string
+        for _, m := range memberships {
+            if m.SessionID == sessionID { ok = true; orgID = m.OrgID; break }
+        }
+        if !ok { http.Error(w, "forbidden", 403); return }
+        
+        ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+            Subprotocols: []string{proto},
+            OriginPatterns: g.AllowOrigins,
+        })
+        if err != nil { return }
+        defer ws.CloseNow()
+        
+        c := &conn{ws: ws, sessionID: sessionID, orgID: orgID, account: account, send: make(chan events.Event, 64)}
+        g.register(c)
+        defer g.unregister(c)
+        
+        // Optional replay-from: read first frame with 5s deadline
+        replayCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+        var hdr struct{ ReplayFrom int64 `json:"replay_from"` }
+        if err := wsjson.Read(replayCtx, ws, &hdr); err == nil && hdr.ReplayFrom > 0 {
+            // Stream replay
+            events, _ := g.Log.ListSince(r.Context(), sessionID, hdr.ReplayFrom, 1000)
+            for _, e := range events {
+                wsjson.Write(r.Context(), ws, envelopeOf(e))
+            }
+        }
+        cancel()
+        
+        // Heartbeat ticker
+        go g.heartbeat(r.Context(), c)
+        
+        // Fanout loop: read from send chan, write to ws
+        for {
+            select {
+            case <-r.Context().Done():
+                return
+            case e, ok := <-c.send:
+                if !ok { return }
+                if err := wsjson.Write(r.Context(), ws, envelopeOf(e)); err != nil {
+                    return
+                }
+            }
+        }
+    }
+}
+```
+
+### Unit 2: Event subscription wire-up
+
+`Start(ctx)`: subscribes to `Log.Subscribe("")` for all event types; on each event, looks up the per-session subscription set and non-blocking-sends to each conn's `send` channel; on full send → close conn with 1008.
+
+### Unit 3: Route registration
+
+In `cmd/portal/main.go`: construct Gateway with allowed origins from config. Register `r.Get("/ws/sessions/{sessionID}", gateway.Handler())` via `router.Deps.MountWS`.
+
+## Implementation Order
+
+Single story.
+
+## go.mod additions
+
+- `github.com/coder/websocket@v1.8.14` (per research doc pin)
+
+## Testing
+
+- httptest server + `websocket.Dial` from test
+- Successful upgrade + membership check
+- 401 on bad token
+- 403 on non-member
+- Live event fan-out: emit event → connected client receives envelope
+- Replay-from-cursor: emit N events, connect with replay_from=K, verify K+1..N delivered + live events follow
+- Slow-consumer: don't read from client; emit > 64 events; conn closed with 1008
+
+## Risks
+
+- **Origin enforcement**: production deployment must set `AllowedOrigins` from config. Default to empty (deny all) in v1 to surface misconfiguration loudly. SELF_HOST.md operator note.
+- **Subscribe filter all-events**: the gateway gets all event types and filters by session. Alternative: per-session subscriptions in events.Log. v1 picks the simpler global subscribe path; revisit at scale.
