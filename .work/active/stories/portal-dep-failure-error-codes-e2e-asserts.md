@@ -1,7 +1,7 @@
 ---
 id: portal-dep-failure-error-codes-e2e-asserts
 kind: story
-stage: implementing
+stage: review
 tags: [portal, testing]
 parent: portal-dep-failure-error-codes
 depends_on:
@@ -172,3 +172,95 @@ than the contract; tightening it cannot regress production behavior.
 new contract is a strict refinement (every 503 with
 `dep.smtp_unavailable` is also a non-2xx response that the old test
 treated as acceptable).
+
+## Implementation notes
+
+### Files touched
+
+- `tests/e2e/failure/config_and_deps_test.go` — tightened all three
+  Category-2 sub-tests to assert on the typed envelope; refactored
+  the package doc comment to describe the NOW contract; added a
+  header-aware `oauthCallbackWithHeaders` helper (the existing
+  `oauthCallback` was preserved as a thin shim around it).
+- `.work/backlog/portal-bearer-middleware-dep-translate.md` — parked
+  a real production gap surfaced while writing this test (see
+  "BearerMiddleware DB-dep gap" below).
+
+### Dep classes covered
+
+- **SMTP** (`dep.smtp_unavailable`, 503, Retry-After: 5) — asserted on
+  `POST /api/auth/magic-link/request` while MailHog is `mh.Stop`'d.
+  Loose network-error fallback preserved (TCP-connect timeout path).
+- **DB** (`dep.db_unavailable`, 503, Retry-After: 2) — asserted on
+  `POST /api/auth/magic-link/request` while Postgres is disrupted via
+  Toxiproxy `reset_peer`. This is a public endpoint that flows
+  through the strict-handler `ResponseErrorHandlerFunc` (where the
+  dep translator lives). See note below on why GET /me was not used.
+- **OAuth provider** (`dep.oauth_provider_unavailable`, 503,
+  Retry-After: 10) — asserted on `POST /api/auth/oauth/callback`
+  while WireMock returns 503 on the GitHub token endpoint.
+- **git-subprocess** — explicitly out of scope per the story; the
+  failure-mode test file has no git-subprocess scenario. Natural
+  coverage opportunities exist in the smart-HTTP e2e suite — calling
+  `git fetch` against a corrupted bare repo or unsetting `PATH`
+  inside the portal container — but those belong to a separate
+  follow-up.
+
+### Envelope assertions per sub-test
+
+Each sub-test now asserts:
+
+- HTTP status (503)
+- `Content-Type: application/json` (prefix match to tolerate the
+  `; charset=utf-8` suffix `httperr.Write` emits)
+- Decoded `{error, message}` envelope with the expected code and a
+  non-empty message
+- `Retry-After` header matches the taxonomy
+
+### BearerMiddleware DB-dep gap (parked)
+
+The initial draft of the db sub-test exercised `GET /api/me` with a
+fake bearer (the original test's pattern, since it provoked a DB
+lookup via `tokens.Service.Validate`). On a tightened envelope check
+the response came back as `{"error":"internal","message":"internal
+server error"}` (plain 500), not the documented `dep.db_unavailable`
+(503).
+
+Root cause: `internal/portal/tokens/middleware.go` `BearerMiddleware`
+falls through to `httperr.Write(w, r, httperr.ErrInternal(err))` on
+any non-sentinel error from `svc.Validate`. That bypasses the strict
+handler's `ResponseErrorHandlerFunc` and therefore the deperr
+translator. So the dep-failure feature's claim of end-to-end coverage
+is incomplete on auth-gated endpoints.
+
+Parked as `.work/backlog/portal-bearer-middleware-dep-translate.md`
+with a proposed fix (route through `httperr.WriteFromError` with
+`deperr.WrapDBIfTransient`). To keep this story's scope honest
+(test-only changes; sibling production code untouched per the
+constraint), the db sub-test switched to
+`POST /api/auth/magic-link/request`, which goes through the strict
+handler and correctly emits the typed 503 envelope today. The
+"didn't silently succeed" loose check was also updated to reject 204
+in addition to 200 (the magic-link happy path is 204).
+
+### Test invocation result
+
+```
+$ make test-portal-image    # rebuild image from current source
+$ cd tests/e2e && go build ./...
+$ cd tests/e2e && go test ./failure/... -run "TestConfigAndDeps" -v -timeout 600s
+
+--- PASS: TestConfigAndDeps (21.97s)
+    --- PASS: TestConfigAndDeps/missing_config (2.70s)
+        --- PASS: TestConfigAndDeps/missing_config/missing_email_from
+        --- PASS: TestConfigAndDeps/missing_config/invalid_tls_mode
+        --- PASS: TestConfigAndDeps/missing_config/postgres_driver_invalid_dsn
+    --- PASS: TestConfigAndDeps/unavailable_dep (19.22s)
+        --- PASS: TestConfigAndDeps/unavailable_dep/smtp_unavailable
+        --- PASS: TestConfigAndDeps/unavailable_dep/db_unavailable_via_toxiproxy
+        --- PASS: TestConfigAndDeps/unavailable_dep/oauth_provider_5xx
+PASS
+ok    jamsesh/tests/e2e/failure    21.967s
+```
+
+Confirmed stable across `-count=2`.

@@ -9,16 +9,14 @@
 //     env; asserts exit non-zero and the expected error class in container logs.
 //
 //  2. Unavailable dependency — full stack started, then a dependency is
-//     disrupted mid-test; asserts the portal returns 500 with a plain-text
-//     error body (the oapi-codegen strict handler's ResponseErrorHandlerFunc
-//     path), or the documented error envelope where one is defined.
+//     disrupted mid-test; asserts the portal returns 503 with a typed
+//     dep.* error envelope (dep.smtp_unavailable, dep.db_unavailable,
+//     dep.oauth_provider_unavailable). Status code and the envelope
+//     `error` field are both asserted.
 //
 // Error envelope shape (docs/PROTOCOL.md > HTTP error contract):
 //
 //	{"error": "<machine-readable code>", "message": "<human-readable>"}
-//
-// Note: unhandled handler errors are surfaced as plain-text 500 via
-// http.Error — these tests assert only the status code, not the body.
 package failure_test
 
 import (
@@ -169,6 +167,14 @@ func oauthStartOAuth(ctx context.Context, t *testing.T, client *http.Client, bas
 // oauthCallback calls POST /api/auth/oauth/callback and returns (statusCode, bodyBytes).
 func oauthCallback(ctx context.Context, t *testing.T, client *http.Client, baseURL, provider, state, code string) (int, []byte) {
 	t.Helper()
+	status, body, _ := oauthCallbackWithHeaders(ctx, t, client, baseURL, provider, state, code)
+	return status, body
+}
+
+// oauthCallbackWithHeaders is the header-aware variant; needed for asserting
+// on Content-Type and Retry-After in dep-failure envelope checks.
+func oauthCallbackWithHeaders(ctx context.Context, t *testing.T, client *http.Client, baseURL, provider, state, code string) (int, []byte, http.Header) {
+	t.Helper()
 	body, _ := json.Marshal(map[string]string{
 		"provider": provider,
 		"state":    state,
@@ -185,7 +191,7 @@ func oauthCallback(ctx context.Context, t *testing.T, client *http.Client, baseU
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, respBody
+	return resp.StatusCode, respBody, resp.Header
 }
 
 // toxiproxyCreateProxy creates a Toxiproxy proxy via the admin API.
@@ -486,9 +492,29 @@ func TestConfigAndDeps(t *testing.T) {
 			defer resp.Body.Close()
 			respBody, _ := io.ReadAll(resp.Body)
 
-			if resp.StatusCode != http.StatusInternalServerError {
-				t.Errorf("smtp_unavailable: expected 500 when SMTP is down, got %d\nbody: %s",
+			if resp.StatusCode != http.StatusServiceUnavailable {
+				t.Errorf("smtp_unavailable: expected 503 when SMTP is down, got %d\nbody: %s",
 					resp.StatusCode, respBody)
+			}
+			if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+				t.Errorf("smtp_unavailable: expected Content-Type application/json, got %q", ct)
+			}
+			var env struct {
+				Error   string `json:"error"`
+				Message string `json:"message"`
+			}
+			if err := json.Unmarshal(respBody, &env); err != nil {
+				t.Errorf("smtp_unavailable: decode envelope: %v\nbody: %s", err, respBody)
+			}
+			if env.Error != "dep.smtp_unavailable" {
+				t.Errorf("smtp_unavailable: expected error=dep.smtp_unavailable, got %q\nbody: %s",
+					env.Error, respBody)
+			}
+			if env.Message == "" {
+				t.Errorf("smtp_unavailable: expected non-empty message, got empty\nbody: %s", respBody)
+			}
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "5" {
+				t.Errorf("smtp_unavailable: expected Retry-After=5, got %q", retryAfter)
 			}
 		})
 
@@ -558,30 +584,85 @@ func TestConfigAndDeps(t *testing.T) {
 			toxiproxyAddToxic(ctx, t, tp.AdminURL, proxyName, toxicName, "reset_peer",
 				map[string]any{"timeout": 0})
 
-			// Issue a GET /api/me with a fake bearer. The portal looks up the
-			// token in the DB; pgxpool fails fast with connection reset.
-			// Use a generous timeout on the HTTP request to allow pgxpool to
-			// surface the error, but short enough not to block the test suite.
+			// Exercise a public endpoint that routes through the strict
+			// handler's ResponseErrorHandlerFunc (httperr.WriteFromError) on
+			// DB failure: POST /api/auth/magic-link/request. The handler's
+			// first DB call (CreateMagicLinkToken) is wrapped with
+			// deperr.WrapDBIfTransient, so a transient pgxpool failure
+			// surfaces as the typed dep.db_unavailable 503 envelope.
+			//
+			// Note: an authenticated endpoint like GET /api/me ALSO touches
+			// the DB (via tokens.BearerMiddleware → svc.Validate), but the
+			// middleware currently writes httperr.ErrInternal directly on
+			// non-sentinel validate errors, bypassing the dep translator.
+			// That gap is tracked separately as backlog item
+			// portal-bearer-middleware-dep-translate. Asserting on the
+			// strict-handler path here keeps this test focused on the
+			// dep-translation contract while the middleware fix lands.
 			dbErrClient := httpClientWithTimeout(15 * time.Second)
-			var dbErrStatus int
+			var (
+				dbErrStatus      int
+				dbErrBody        []byte
+				dbErrContentType string
+				dbErrRetryAfter  string
+			)
 			{
-				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.URL+"/api/me", nil)
-				req.Header.Set("Authorization", "Bearer fake-token-db-down")
+				body, _ := json.Marshal(map[string]string{"email": "db-down@example.com"})
+				req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+					p.URL+"/api/auth/magic-link/request", bytes.NewReader(body))
+				req.Header.Set("Content-Type", "application/json")
 				resp, err := dbErrClient.Do(req)
 				if err != nil {
-					// Connection error from the client side also indicates the portal
-					// did not return a success — acceptable here.
-					t.Logf("db_unavailable: GET /me while DB disrupted: network error: %v", err)
+					// Connection error from the client side also indicates the
+					// portal did not return a success — acceptable here. The
+					// loose path covers the case where the toxic lands
+					// mid-request and the client sees a network-level reset
+					// rather than a clean HTTP response.
+					t.Logf("db_unavailable: POST magic-link/request while DB disrupted: network error: %v", err)
 					dbErrStatus = 0
 				} else {
 					defer resp.Body.Close()
-					io.Copy(io.Discard, resp.Body)
+					dbErrBody, _ = io.ReadAll(resp.Body)
 					dbErrStatus = resp.StatusCode
+					dbErrContentType = resp.Header.Get("Content-Type")
+					dbErrRetryAfter = resp.Header.Get("Retry-After")
 				}
 			}
 
-			if dbErrStatus == http.StatusOK {
-				t.Errorf("db_unavailable: portal returned 200 while DB is disrupted — expected 4xx or 5xx")
+			// The portal must NOT silently succeed while the DB is disrupted
+			// (a 204/200 here would mean a magic-link row was claimed without
+			// being persisted, which is the bug this test guards against).
+			if dbErrStatus == http.StatusOK || dbErrStatus == http.StatusNoContent {
+				t.Errorf("db_unavailable: portal returned %d while DB is disrupted — expected 503 or network error",
+					dbErrStatus)
+			}
+			if dbErrStatus != 0 && dbErrStatus != http.StatusServiceUnavailable {
+				t.Errorf("db_unavailable: expected 503 when DB is disrupted, got %d\nbody: %s",
+					dbErrStatus, dbErrBody)
+			}
+			if dbErrStatus == http.StatusServiceUnavailable {
+				// Clean response received; assert the typed envelope.
+				if !strings.HasPrefix(dbErrContentType, "application/json") {
+					t.Errorf("db_unavailable: expected Content-Type application/json, got %q",
+						dbErrContentType)
+				}
+				var env struct {
+					Error   string `json:"error"`
+					Message string `json:"message"`
+				}
+				if err := json.Unmarshal(dbErrBody, &env); err != nil {
+					t.Errorf("db_unavailable: decode envelope: %v\nbody: %s", err, dbErrBody)
+				}
+				if env.Error != "dep.db_unavailable" {
+					t.Errorf("db_unavailable: expected error=dep.db_unavailable, got %q\nbody: %s",
+						env.Error, dbErrBody)
+				}
+				if env.Message == "" {
+					t.Errorf("db_unavailable: expected non-empty message, got empty\nbody: %s", dbErrBody)
+				}
+				if dbErrRetryAfter != "2" {
+					t.Errorf("db_unavailable: expected Retry-After=2, got %q", dbErrRetryAfter)
+				}
 			}
 
 			// Remove the toxic — DB connections become normal again.
@@ -653,12 +734,33 @@ func TestConfigAndDeps(t *testing.T) {
 			}
 
 			// Step 2: call the callback — WireMock returns 503 on the token
-			// endpoint. The portal's Exchange fails and the strict handler
-			// returns 500.
-			status, body := oauthCallback(ctx, t, client, p.URL, "github", stateNonce, "any-code")
-			if status != http.StatusInternalServerError {
-				t.Errorf("oauth_provider_5xx: expected 500 when OAuth provider returns 5xx, got %d\nbody: %s",
+			// endpoint. The portal's Exchange fails; the strict handler's
+			// WriteFromError translator produces a typed
+			// dep.oauth_provider_unavailable 503 envelope.
+			status, body, headers := oauthCallbackWithHeaders(ctx, t, client, p.URL, "github", stateNonce, "any-code")
+			if status != http.StatusServiceUnavailable {
+				t.Errorf("oauth_provider_5xx: expected 503 when OAuth provider returns 5xx, got %d\nbody: %s",
 					status, body)
+			}
+			if ct := headers.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+				t.Errorf("oauth_provider_5xx: expected Content-Type application/json, got %q", ct)
+			}
+			var env struct {
+				Error   string `json:"error"`
+				Message string `json:"message"`
+			}
+			if err := json.Unmarshal(body, &env); err != nil {
+				t.Errorf("oauth_provider_5xx: decode envelope: %v\nbody: %s", err, body)
+			}
+			if env.Error != "dep.oauth_provider_unavailable" {
+				t.Errorf("oauth_provider_5xx: expected error=dep.oauth_provider_unavailable, got %q\nbody: %s",
+					env.Error, body)
+			}
+			if env.Message == "" {
+				t.Errorf("oauth_provider_5xx: expected non-empty message, got empty\nbody: %s", body)
+			}
+			if retryAfter := headers.Get("Retry-After"); retryAfter != "10" {
+				t.Errorf("oauth_provider_5xx: expected Retry-After=10, got %q", retryAfter)
 			}
 		})
 	})
