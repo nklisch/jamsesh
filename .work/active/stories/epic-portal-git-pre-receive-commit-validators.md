@@ -1,7 +1,7 @@
 ---
 id: epic-portal-git-pre-receive-commit-validators
 kind: story
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: epic-portal-git-pre-receive
 depends_on: []
@@ -44,6 +44,35 @@ applies them.
 - Trailer parser is intentionally simple (last paragraph, `Key:
   value` lines). Document the simplification.
 - gobwas/glob with separator `/` provides `**` matching.
+
+## Implementation notes
+
+- `go.mod`: added `github.com/gobwas/glob v0.2.3` (latest as of 2026-05-16).
+- `types.go`: defines all five `Code*` constants, `Rejection`, `RefUpdate`,
+  `ValidateInput`, and `ValidateResult`. `ValidateInput` references
+  `*git.Repository`, `*store.Session`, `*store.Account` directly — no
+  abstraction layer needed for this story.
+- `trailers.go`: strict last-paragraph-only parser using a regexp
+  `^([A-Za-z][A-Za-z0-9_-]*):\s+(.+)$`. Any non-trailer line or mid-block
+  blank in the final paragraph disqualifies the block. Folded continuations
+  (lines starting with whitespace) are appended to the previous entry value.
+  Duplicate keys: first occurrence wins. This matches the simplification
+  documented in `docs/PROTOCOL.md` and the go-git skill's trailers reference.
+- `scope.go`: `gobwas/glob` compiled with `'/'` as separator so `**` spans
+  directories while `*` stays within a single segment. Empty scope denies all
+  paths (deny-by-default). `raw` slice retained on `ScopeMatcher` for future
+  error messages.
+- `commits.go`: uses `repo.Log` starting from `NewSHA`, stops when it reaches
+  `OldSHA` (or walks entire ancestry for root-commit case when OldSHA is "").
+  Per-commit validation: trailer check first, then scope check (skipped if
+  scope is nil or has no patterns). Tree diff via `object.DiffTreeWithOptions`
+  with `DefaultDiffTreeOptions` (rename-aware, score 60). Both `From` and `To`
+  paths checked; nil `parentTree` (root commit) produces a full-tree diff
+  against empty baseline.
+- Tests use `git init` + `go-git Worktree.Commit` for a real synthetic repo
+  (no testdata corpus). Covers: root commit, 3-commit chain, mid-chain missing
+  trailer, out-of-scope path, both violations simultaneously, no-op update,
+  nil scope.
 
 ## Sequencing note
 
