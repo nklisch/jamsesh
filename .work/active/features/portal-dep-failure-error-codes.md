@@ -1,6 +1,6 @@
 ---
 id: portal-dep-failure-error-codes
-kind: story
+kind: feature
 stage: drafting
 tags: [portal, documentation]
 parent: null
@@ -45,17 +45,18 @@ production hardening it's a real gap — operators debugging an outage
 benefit from `dep.smtp_unavailable` vs. `dep.db_unavailable` instead
 of opaque 500s.
 
-## Suggested resolutions (pick one)
+## Direction (chosen)
 
-1. **Implement the codes** — wrap the strict-handler default error path
-   to translate dep-failure errors into typed envelopes with
-   `code: "dep.<service>_unavailable"`. Small portal change in
-   `cmd/portal/main.go` and the affected handlers.
-2. **Update docs** — remove `dep.*` codes from `docs/PROTOCOL.md` and
-   document the actual behavior (plain-text 500 on dep failures with
-   structured logs at the portal for operator debugging).
-3. **Both** — implement the typed codes for the auth + magic-link
-   surfaces (the most user-visible), document the rest as plain 500.
+**Implement typed `dep.*` codes for every dep failure path.** Full
+implementation across auth, DB, sessions, comments, events, finalize,
+automerger outcomes, oauth state, mcpendpoint, storage archive,
+session invites, and auth provision. The contract holds end-to-end —
+SPA and plugin can distinguish dep failures from other 500s.
+
+Promoted from story → feature on 2026-05-17 because the audit + wiring
+spans multiple handler families. Feature-design will decompose into
+child stories per dep-failure surface (auth/magic-link, DB, sessions,
+etc.) with a shared `dep.*` envelope helper.
 
 ## Acceptance criteria
 
