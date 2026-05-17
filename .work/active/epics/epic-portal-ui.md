@@ -1,7 +1,7 @@
 ---
 id: epic-portal-ui
 kind: epic
-stage: implementing
+stage: done
 tags: [ui]
 parent: null
 depends_on: [epic-portal-api]
@@ -164,3 +164,23 @@ fire at feature-design time for surfaces that warrant exploration.
 <!-- Design pass on each child feature will fill in interfaces,
 component APIs, signatures, and test approach. -->
 
+
+## Children complete (2026-05-17)
+
+All 6 child features are at `stage: done`:
+- epic-portal-ui-foundation (Vite + Svelte 5 skeleton, openapi-fetch client, WS client + auth)
+- epic-portal-ui-design-system (palette, typography, 7 base components)
+- epic-portal-ui-session-list (SessionList screen + NewSessionDrawer + Chrome)
+- epic-portal-ui-session-view-shell (3-pane shell + TreeDag + ActivityFeed + breadcrumb)
+- epic-portal-ui-artifact-and-comments (ArtifactPane + CommentComposer + 2 backend endpoints)
+- epic-portal-ui-ref-actions (RefActionsMenu + ForkDialog + ModeSwitchDialog + ref-modes endpoint)
+
+Final state: 226 frontend tests pass; all Go packages green; svelte-check clean; build clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+Epic delivered as briefed. Portal UI surface complete: sessions list with live WS updates, three-pane session view (tree + artifact + activity), inline comment composer, ref actions (fork + mode switch). All capability demos end-to-end against the portal API stack. Capability completeness: a user can land in the portal, see their sessions, click into one, browse refs in the tree, view files at any commit, post comments, fork from a peer's tip, and switch a ref's mode — every interaction round-trips through the API and emits the corresponding WS events.
+
+No cross-cutting concerns surfaced across the 6 children. Advancing to done.
