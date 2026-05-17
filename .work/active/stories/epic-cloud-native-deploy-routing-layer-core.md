@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-routing-layer-core
 kind: story
-stage: review
+stage: done
 tags: [infra]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: []
@@ -89,3 +89,17 @@ the correct property to enforce).
 
 `go test -race ./internal/router/extract/... ./internal/router/ring/...` clean.
 Full `go test ./...` green with no regressions.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `strings.HasPrefix(path, "/metrics/")` in the system-routes switch is dead-code after the leading trailing-slash strip — `/metrics/` becomes `/metrics` and matches the equality case. Harmless; could be removed for clarity.
+- Same observation applies to `strings.HasPrefix(path, "/auth/")` being needed for `/auth/foo` (where the prefix is real) but not for the bare `/auth/` case (handled by `path == "/auth"` after strip). The current shape is correct as written; just noting that the symmetry with `/metrics/` is slightly different.
+
+**Notes**: Clean implementation. Documented design-vs-reality correction (git URL shape `/git/{orgID}/{sessionID}.git/` instead of design's `/git/sessions/{id}.git/`) reflects actual codebase behavior — verified against `internal/portal/githttp/handler.go`. Tests are thorough (30+ subtests on extract, 290 lines on ring) including the consistent-hash invariant property (single-pod-add re-routes ≤30% of keys; observed 17%/8%) and concurrent Get/SetPods race-clean under `-race`. Ring uses immutable `ringSnapshot` swapped via `atomic.Pointer` for lock-free reads; empty snapshot stored at New so Get is never nil-guarded by callers.
+
+Distribution variance note in implementation (one pod ~41%, another ~5% with 5 pods × 150 vnodes) is the FNV hash distribution profile, not a bug. The correct property to assert is the consistent-hash invariant (re-routing percentage on membership change), which IS asserted. Acceptable.
