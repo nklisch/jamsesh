@@ -1,7 +1,7 @@
 ---
 id: epic-portal-foundation-http-skeleton-router-and-middleware
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-portal-foundation-http-skeleton
 depends_on: []
@@ -63,3 +63,32 @@ initializes `go.mod` (`module jamsesh`, `go 1.22`).
   is true. Direct-listening mode must not trust forwarded headers.
 - Keep this story scoped to the chassis. Do NOT add config loading or
   `main.go` — those belong to the `config-tls-and-entry` story.
+
+## Implementation notes
+
+### Landed files
+
+- `internal/portal/httperr/httperr.go` — `Error` struct + `Write` + 5 canonical constructors
+- `internal/portal/httperr/httperr_test.go` — JSON shape, field presence, constructors, errors.Is/As
+- `internal/portal/httperr/middleware.go` — `Recoverer`, `NotFoundHandler`, `MethodNotAllowedHandler`
+- `internal/portal/httperr/middleware_test.go` — panic recovery, passthrough, not-found, method-not-allowed
+- `internal/portal/logging/logging.go` — `Setup` (json/text formats) + `Access` middleware with `statusRecorder`
+- `internal/portal/logging/logging_test.go` — JSON handler setup, access-log field capture (method, path, status, duration_ms, bytes)
+- `internal/portal/router/router.go` — `Deps` struct + `New(Deps) http.Handler` + `/healthz`
+- `internal/portal/router/router_test.go` — healthz, nil-hook 404s, mounted-hook reach, panic-in-handler, trust-proxy flag, content-type
+- `go.mod` / `go.sum` — added `github.com/go-chi/chi/v5 v5.2.5`
+
+### Deviations from design sketches
+
+None material. Minor style improvements:
+- Used explicit `opts` variable for `slog.HandlerOptions` rather than inline struct literal in `logging.Setup`.
+- Added `http.StatusOK` named constant in `statusRecorder` default init rather than bare `200` for clarity.
+- `Access` comment expanded to mention that `slog.InfoContext` carries chi's request ID automatically when it is present in the context.
+
+### Verification
+
+```
+go test ./internal/portal/... — 27/27 PASS (httperr: 11, logging: 5, router: 11)
+go vet ./...                  — clean
+go build ./...                — clean
+```
