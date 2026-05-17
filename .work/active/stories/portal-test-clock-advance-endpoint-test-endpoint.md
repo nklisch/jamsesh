@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-advance-endpoint-test-endpoint
 kind: story
-stage: implementing
+stage: review
 tags: [testing, testability]
 parent: portal-test-clock-advance-endpoint
 depends_on: [portal-test-clock-advance-endpoint-clock-abstraction]
@@ -383,9 +383,100 @@ This is the load-bearing story for production safety. Three layers:
    against build-tag drift.
 
 Additionally, the existing release Dockerfile (`Dockerfile`, used by
-the GitHub Actions release workflow) builds with no tags. Only
-`Dockerfile.e2e` (used by `make test-portal-image` for Testcontainers
-fixtures) gets the `-tags e2etest` binary.
+the GitHub Actions release workflow) builds with no tags. The unify
+story removed `Dockerfile.e2e`; `make test-portal-image` now builds
+against the root `Dockerfile` but passes `-tags e2etest` to `go build`
+so the e2e container's binary carries the test endpoint.
+
+## Implementation notes
+
+Landed exactly the design above with two small deviations called out
+below; production and e2etest builds, vet, and tests all green.
+
+**Files added**:
+
+- `internal/portal/testclock/clock.go` (`//go:build e2etest`) —
+  `AdvanceableClock` with `sync.Mutex`, forward-only `Advance`,
+  `Now() time.Time` returning UTC.
+- `internal/portal/testclock/handler.go` (`//go:build e2etest`) —
+  `RouteMount(*AdvanceableClock) http.Handler`. Validates JSON,
+  `DisallowUnknownFields`, rejects negatives, accepts zero / missing
+  field as no-op read.
+- `internal/portal/testclock/clock_test.go` and
+  `handler_test.go` (`//go:build e2etest`) — unit tests for the
+  clock semantics (cumulative, zero no-op, negative rejected,
+  concurrent advance/now under `-race`) and the HTTP shapes (happy,
+  cumulative, zero, negative 400, invalid JSON 400, non-integer 400,
+  unknown field 400, missing field defaults to zero).
+- `cmd/portal/test_clock_advance.go` (`//go:build e2etest`) —
+  `testClockProvider` holding the clock, `magicLinkClock() auth.Clock`,
+  `mountTestEndpoints(chi.Router)`, and `mountTestEndpointsHook()`
+  returning the chi mount function.
+- `cmd/portal/test_clock_advance_prod.go` (`//go:build !e2etest`) —
+  stub `testClockProvider` whose `magicLinkClock()` and
+  `mountTestEndpointsHook()` both return `nil`.
+- `cmd/portal/test_clock_advance_e2e_test.go` (`//go:build e2etest`) —
+  integration test through the full `router.New` happy/sad paths.
+- `cmd/portal/test_clock_advance_prod_test.go` (`//go:build !e2etest`) —
+  production-safety guardrail: `mountTestEndpointsHook()` and
+  `magicLinkClock()` are nil; a router built with the production
+  provider's hook responds 404 to `POST /test/clock-advance`.
+
+**Files modified**:
+
+- `internal/portal/router/router.go` — added `MountTest func(chi.Router)`
+  to `Deps` (documented as test-only / build-tag-gated), and a guarded
+  `r.Route("/test", d.MountTest)` block mounted between `/mcp` and
+  `/ws` (before the SPA catch-all, satisfying the precedence note in
+  the design).
+- `cmd/portal/main.go` — constructs `testClk := newTestClockProvider()`,
+  branches between `auth.NewMagicLinkHandlerWithClock` and
+  `auth.NewMagicLinkHandler` on the clock being nil, and passes
+  `MountTest: testClk.mountTestEndpointsHook()` to `router.Deps`.
+  Production builds get the nil-hook path; e2etest builds get the
+  real clock + mount.
+- `Makefile` — `test-portal-image` target now passes `-tags e2etest`
+  to `go build`. The `Dockerfile.e2e` `-f` flag had already been
+  dropped by the unify story.
+
+**Deviations from the literal spec**:
+
+1. **`testclock.RouteMount` is path-agnostic.** The design specced a
+   nested `http.NewServeMux()` registered at `/clock-advance`. That
+   pattern caused 404s when chi delegated to it inside
+   `r.Route("/test", ...)`: chi does not rewrite `r.URL.Path` before
+   handing off to a stdlib `ServeMux`, so the servemux saw
+   `/test/clock-advance` and missed its `/clock-advance` registration.
+   Fixed by returning a path-agnostic `http.HandlerFunc` from
+   `RouteMount` and registering the chi route at the `cmd/portal`
+   wiring layer via `r.Method("POST", "/clock-advance", ...)`. Method
+   matching now lives in chi (clean 405 instead of an in-handler
+   check). Documented in the package's RouteMount doc comment.
+
+2. **No GET-rejection unit test inside `testclock`.** Because the
+   handler is intentionally method-agnostic at the package boundary
+   (chi enforces POST-only at the route), the GET-rejection assertion
+   moved up to the integration test in `cmd/portal/...`. The package
+   tests cover all body shapes; method matching is the router's job.
+
+**Verification matrix**:
+
+- `go build ./...` (production): clean.
+- `go build -tags e2etest ./...`: clean.
+- `go vet ./...` / `go vet -tags e2etest ./...`: clean.
+- `go test ./...`: full repo green; the
+  `TestProductionBuild_HasNoTestEndpoint` guardrail asserts the
+  production router 404s `POST /test/clock-advance`.
+- `go test -tags e2etest ./...`: full repo green; the
+  `TestE2EBuild_TestEndpointMounted` integration test verifies the
+  full router exposes the endpoint with the correct shape, and the
+  `testclock` package unit tests pass under `-race`.
+
+The two `//go:build e2etest` files in `cmd/portal/` plus the four
+files under `internal/portal/testclock/` carry the production-safety
+invariant. The guardrail test runs on every production build; if a
+contributor accidentally drops the build tag from any file in
+`testclock/`, the production-build test fires.
 
 ## Notes for the implementer
 

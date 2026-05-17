@@ -33,6 +33,13 @@ type Deps struct {
 	// other routes. Owned by epic-portal-ui-foundation (assets package).
 	// Must be registered last so API/git/mcp/ws routes take precedence.
 	MountUI http.Handler // owned by epic-portal-ui-foundation
+
+	// MountTest is a nilable hook for test-only routes under /test/*.
+	// Populated only by the e2etest-tagged binary (see
+	// cmd/portal/test_clock_advance.go); production builds leave it nil
+	// and the /test subtree is never registered. The build-tag gate in
+	// cmd/portal is the trust boundary for this hook.
+	MountTest func(chi.Router)
 }
 
 // New returns the root http.Handler for the portal. Middleware order is
@@ -79,6 +86,14 @@ func New(d Deps) http.Handler {
 	// /mcp — MCP SDK handler, bearer auth per-request inside the SDK.
 	if d.MountMCP != nil {
 		r.Mount("/mcp", d.MountMCP)
+	}
+
+	// /test — test-only mutators (e.g. POST /test/clock-advance) registered
+	// exclusively by the e2etest-tagged portal binary. Mounted BEFORE the
+	// SPA catch-all so the /test/* paths take precedence; production builds
+	// pass nil and the subtree is never registered.
+	if d.MountTest != nil {
+		r.Route("/test", d.MountTest)
 	}
 
 	// /ws — WebSocket upgrade; auth happens at upgrade time inside the handler.

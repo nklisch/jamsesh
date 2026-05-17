@@ -80,7 +80,7 @@ test-fuzz-mcp:
 # The portal binary is built CGO_ENABLED=0 for a fully static executable
 # compatible with Alpine's musl libc.
 test-portal-image: frontend-build
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o portal-linux-amd64 ./cmd/portal
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags e2etest -o portal-linux-amd64 ./cmd/portal
 	docker build --build-arg BINARY=portal --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 -t jamsesh/portal:e2e .
 	@rm -f portal-linux-amd64
 

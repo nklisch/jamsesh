@@ -249,8 +249,23 @@ func main() {
 	tokenSvc := tokens.New(dbStore)
 	tokenHandler := tokens.NewHandler(tokenSvc)
 
-	// Build the magic-link handler.
-	magicLinkHandler := auth.NewMagicLinkHandler(dbStore, tokenSvc, emailSender, cfg.PortalURL)
+	// Build the test-clock provider. In e2etest builds this returns a
+	// provider holding an AdvanceableClock that's injected into handlers
+	// requiring time.Now indirection (v1: magic-link only). In production
+	// builds (no -tags e2etest) this returns a no-op stub: magicLinkClock()
+	// is nil and mountTestEndpointsHook() is nil, so the /test subtree
+	// is never registered.
+	testClk := newTestClockProvider()
+
+	// Build the magic-link handler. In e2etest builds, inject the
+	// advanceable clock; in production builds, the provider's
+	// magicLinkClock() returns nil and the real-clock constructor is used.
+	var magicLinkHandler *auth.MagicLinkHandler
+	if c := testClk.magicLinkClock(); c != nil {
+		magicLinkHandler = auth.NewMagicLinkHandlerWithClock(dbStore, tokenSvc, emailSender, cfg.PortalURL, c)
+	} else {
+		magicLinkHandler = auth.NewMagicLinkHandler(dbStore, tokenSvc, emailSender, cfg.PortalURL)
+	}
 
 	// Build the OAuth provider map. GitHub is configured when both ClientID
 	// and ClientSecret are non-empty; otherwise the entry is nil and the
@@ -392,6 +407,7 @@ func main() {
 		MountGit:          gitHandler.Mount,
 		MountMCP:          mcpEndpoint.Handler(),
 		MountWS:           wsGateway.Handler(),
+		MountTest:         testClk.mountTestEndpointsHook(),
 		MountAPI: func(r chi.Router) {
 			// Public auth endpoints — no Bearer middleware.
 			r.Group(func(r chi.Router) {
