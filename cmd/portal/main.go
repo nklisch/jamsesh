@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -320,14 +319,7 @@ func main() {
 	// AllowOrigins is parsed from JAMSESH_WS_ALLOW_ORIGINS (comma-separated
 	// origins). Defaults to empty (deny all cross-origin upgrades) when unset.
 	// See docs/SELF_HOST.md for the configuration table.
-	var wsAllowOrigins []string
-	if v := os.Getenv("JAMSESH_WS_ALLOW_ORIGINS"); v != "" {
-		for _, o := range strings.Split(v, ",") {
-			if o = strings.TrimSpace(o); o != "" {
-				wsAllowOrigins = append(wsAllowOrigins, o)
-			}
-		}
-	}
+	wsAllowOrigins := parseAllowOrigins(os.Getenv("JAMSESH_WS_ALLOW_ORIGINS"))
 	wsGateway := &wsgateway.Gateway{
 		Store:        dbStore,
 		Tokens:       tokenSvc,
