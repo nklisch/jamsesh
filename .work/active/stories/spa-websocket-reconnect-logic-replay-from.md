@@ -1,7 +1,7 @@
 ---
 id: spa-websocket-reconnect-logic-replay-from
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: spa-websocket-reconnect-logic
 depends_on: [spa-websocket-reconnect-logic-backoff]
@@ -182,3 +182,42 @@ Landed per the design with no deviations.
 Per the assignment, this story did not touch
 `frontend/src/lib/components/`, `SessionViewShell.svelte`, or the
 Playwright spec — those belong to the `-status-ui` sibling.
+
+## Review (2026-05-17)
+
+**Verdict: Approve.**
+
+Implementation at `ad61c2a` matches the spec exactly. Cross-checked
+against the substrate body and verified directly:
+
+- `ConnectionRecord.lastSeenSeq: number` is a plain field (D2),
+  initialized to `0` in `open()`.
+- The `'message'` handler advances the cursor only when the parsed
+  envelope's `seq` is a finite number greater than the current value
+  — `typeof === 'number'` + `Number.isFinite` + `>` guards. Out-of-
+  order / duplicate / missing / NaN / Infinity / string `seq` are all
+  no-ops.
+- The `'open'` handler emits `JSON.stringify({ replay_from: <seq> })`
+  via `ws.send()` synchronously after `status = 'open'`, gated on
+  `lastSeenSeq > 0`. Reconnect path runs through `reopen()` →
+  `attachListeners()` so the first-frame ordering invariant holds.
+- `close()` was left untouched — drops the record, which discards
+  the cursor; a subsequent `subscribe()` opens with `lastSeenSeq = 0`
+  and sends no frame.
+
+Tests: `npm test -- --run src/lib/ws.test.ts` → **33/33 passing**.
+The new suite covers fresh-subscribe (no frame), reconnect-after-
+events (`{"replay_from":3}`), forward-only cursor, malformed `seq`
+handling, explicit-close cursor invalidation, and chained reconnects
+(advancing through two backoffs).
+
+All six acceptance criteria from the substrate spec are demonstrably
+satisfied by the test suite.
+
+**Findings**
+
+- Blockers: 0
+- Important: 0
+- Nits: 0
+
+No parked items.
