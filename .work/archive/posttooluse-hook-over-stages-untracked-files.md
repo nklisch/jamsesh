@@ -1,7 +1,7 @@
 ---
 id: posttooluse-hook-over-stages-untracked-files
 kind: story
-stage: review
+stage: done
 tags: [infra, bug]
 parent: null
 depends_on: []
@@ -144,3 +144,38 @@ If the broad-staging recurs after this documentation is in place, the right
 next step is to file a PR upstream in the agile-workflow plugin to add an
 explicit `git add <changed-files>` instruction to the implement-orchestrator's
 Phase 5 commit prompt template.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Implement commit `7bf4687` also captured a pre-existing untracked
+  CLAUDE.md edit (the test/backlog paragraph at lines 59-60) alongside the
+  new `## Commit discipline` section. Both pieces of content are
+  legitimate project conventions; the commingling is harmless and slightly
+  ironic given the topic. Not worth a follow-up — flagging only for
+  awareness.
+
+**Notes**:
+- Investigation was thorough and the conclusion is sound: no PostToolUse
+  hook does broad `git add`; the cause was sub-agent staging discretion in
+  the implement-orchestrator's Phase 10 commit instruction. The remedy
+  (CLAUDE.md `## Commit discipline` section) is the highest-leverage fix
+  available within this repo.
+- This very autopilot run's orchestrator prompts already included explicit
+  `git add <paths>` instructions to wave-1 and wave-2 sub-agents — the
+  convention was applied in real time. Wave 1 commits (`969480b`, `3d50b2a`,
+  `0031fe3`) and wave 2 commit (`7bf4687`) all used explicit paths.
+- The upstream-fix follow-up (PR to the agile-workflow plugin's
+  implement-orchestrator SKILL.md to add the explicit-paths instruction)
+  remains a reasonable nice-to-have but is out of scope here.
+
+## What's now possible
+
+Agents in this repo have a clear, project-level commit convention to lean
+on. Future commits will be cleaner; review diffs will be tighter. If broad
+staging recurs, the convention gives reviewers concrete grounds to push
+back.
