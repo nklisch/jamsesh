@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync-pipeline
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy-object-storage-sync
 depends_on: [epic-cloud-native-deploy-object-storage-sync-backend, epic-cloud-native-deploy-object-storage-sync-manifest]
@@ -129,3 +129,25 @@ Retry-After header. The counter is incremented before backpressure check
 All metric increments are guarded by `if s.Metrics != nil`. The `Registry`
 struct is not nil-safe itself, so the nil check must live at the call site.
 This matches the pattern used by `PostgresManager` and the router metrics.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The acquire-per-sync lease pattern is correct for v1 but increases lease-table churn (each push creates a fresh lease row). When hydration-handoff lands and switches to long-held leases, this story's `SyncPushPath` flow becomes simpler — internal acquire becomes a "use existing handle" lookup. Worth noting as a known eventual refactor.
+- `SyncPushPath` is the public method name (not `SyncPush` per parent design). The explicit `repoPath` parameter is well-justified in the impl notes — caller has it; passing it dodges orgID-embedding inside Syncer. Reasonable adaptation.
+
+**Notes**: This is the durability layer landing — RPO=0 contract honored. The post-receive integration in `Emitter.EmitForUpdates` is correctly placed AFTER event emission (so internal event log is consistent before external storage is sync'd; on failure both surface together for the caller to 503).
+
+10 tests covering all critical paths: first-push-uploads-all, subsequent-only-new, ref-change, pack-detection, fenced-lease (custom test Manager), concurrent-different-sessions, backpressure (blockingBackend test double), metrics emission, nil-metrics-no-op, empty-repo. Test-double design (memBackend + blockingBackend) is clean — no S3 dependency for the sync flow.
+
+`gc.auto 0` in `CreateRepo` is the right defensive call — sidesteps the pack-rewrite-mid-push race entirely. Operators can still run scheduled `git gc` if disk usage becomes a concern. Documented.
+
+Lazy pack deletion goroutine is best-effort with slog.Warn on failure — appropriate for non-critical cleanup. Push ack isn't blocked.
+
+4 new metric handles added to `Registry` and registered in `New()`. Nil-safe via `if s.Metrics != nil` guards at call sites — matches the established pattern from PostgresManager and router metrics.
+
+Backpressure semantics are documented (QueueSize=1 → exactly 1 concurrent call). Counter using `sync.Map` of `*int64` atomics is the right primitive for high-frequency per-session counting.
