@@ -228,7 +228,7 @@ func (e *Endpoint) fork(
 		ParentSHA: in.TargetCommitSHA,
 		NewRef:    refName.String(),
 		Mode:      mode,
-		ForkedAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		ForkedAt:  e.now().Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return nil, ForkOutput{}, fmt.Errorf("fork: marshal event payload: %w", err)

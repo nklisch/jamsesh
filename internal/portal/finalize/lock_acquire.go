@@ -95,7 +95,7 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: get session: %w", err))
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 
 	// Look up the current active lock (if any).
 	existing, err := h.store.GetActiveFinalizeLockForSession(ctx, sessionID)

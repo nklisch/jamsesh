@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -111,7 +110,7 @@ func (h *Handler) GetFinalizePlan(ctx context.Context, req openapi.GetFinalizePl
 		}), nil
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	if IsLockExpired(lock.LastActivityAt, now) {
 		return openapi.GetFinalizePlan409JSONResponse(openapi.ErrorEnvelope{
 			Error:   "finalize.lock_expired",

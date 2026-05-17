@@ -19,6 +19,18 @@ import (
 	"jamsesh/internal/portal/prereceive"
 )
 
+// Clock is an injectable time source. Mirrors auth.Clock and tokens.Clock so a
+// single *testclock.AdvanceableClock satisfies all of them. Per-package types
+// avoid cross-package import coupling — structural typing carries the
+// "advance once, move everywhere" property.
+type Clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now().UTC() }
+
 // Applier is the side-effecting counterpart to the pure merge engine. It
 // takes a [MergeResult] and either creates a merge commit + advances the draft
 // ref, or inserts a conflict_events row and emits the appropriate events.
@@ -27,11 +39,29 @@ import (
 type Applier struct {
 	Store store.Store
 	Log   *events.Log
+	Clock Clock
 }
 
-// NewApplier returns an Applier backed by the given store and event log.
+// NewApplier returns an Applier backed by the given store and event log,
+// using the real system clock.
 func NewApplier(s store.Store, log *events.Log) *Applier {
-	return &Applier{Store: s, Log: log}
+	return NewApplierWithClock(s, log, realClock{})
+}
+
+// NewApplierWithClock returns an Applier backed by the given store and event
+// log, using the supplied clock. Used by unit tests (fakeClock) and the
+// e2etest-tagged binary (testclock.AdvanceableClock).
+func NewApplierWithClock(s store.Store, log *events.Log, clock Clock) *Applier {
+	return &Applier{Store: s, Log: log, Clock: clock}
+}
+
+// now returns the Applier's current time. Falls back to realClock when
+// Clock is nil so test code that constructs Applier literals continues to work.
+func (a *Applier) now() time.Time {
+	if a.Clock == nil {
+		return time.Now().UTC()
+	}
+	return a.Clock.Now()
 }
 
 // ApplyInput contains all the inputs required for Apply.
@@ -91,7 +121,7 @@ func (a *Applier) applySuccess(ctx context.Context, in ApplyInput) (ApplyOutput,
 	mergerSig := object.Signature{
 		Name:  "jamsesh auto-merger",
 		Email: "auto-merger@" + in.PortalHost,
-		When:  time.Now().UTC(),
+		When:  a.now(),
 	}
 
 	msg := composeMergeMessage(sourceCommit, in, mergerSig.When)
@@ -215,7 +245,7 @@ func (a *Applier) tryResolveConflict(ctx context.Context, in ApplyInput, eventID
 	}
 
 	// Mark resolved.
-	now := time.Now().UTC()
+	now := a.now()
 	if err := a.Store.MarkConflictEventResolved(ctx, store.MarkConflictEventResolvedParams{
 		ID:                 eventID,
 		SessionID:          in.Session.ID,
@@ -268,7 +298,7 @@ func (a *Applier) applyConflict(ctx context.Context, in ApplyInput) (ApplyOutput
 		return ApplyOutput{}, fmt.Errorf("automerger apply: marshal addressed_to: %w", err)
 	}
 
-	now := time.Now().UTC()
+	now := a.now()
 	eventID := ulid.Make().String()
 
 	if err := a.Store.InsertConflictEvent(ctx, store.InsertConflictEventParams{

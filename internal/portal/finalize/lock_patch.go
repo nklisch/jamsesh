@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
@@ -128,7 +127,7 @@ func (h *Handler) PatchFinalizeLock(ctx context.Context, req openapi.PatchFinali
 		}), nil
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 
 	// Idle check — releases the row on expiry and returns 409.
 	if IsLockExpired(lock.LastActivityAt, now) {

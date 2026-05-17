@@ -7,6 +7,12 @@ import (
 
 	"jamsesh/internal/portal/accounts"
 	"jamsesh/internal/portal/auth"
+	"jamsesh/internal/portal/automerger"
+	"jamsesh/internal/portal/comments"
+	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/finalize"
+	"jamsesh/internal/portal/mcpendpoint"
+	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/testclock"
 	"jamsesh/internal/portal/tokens"
 )
@@ -40,6 +46,38 @@ func (p *testClockProvider) tokensClock() tokens.Clock { return p.clock }
 // Implements accounts.Clock. Same underlying AdvanceableClock as
 // magicLinkClock / tokensClock — advancing once moves all forward.
 func (p *testClockProvider) accountsClock() accounts.Clock { return p.clock }
+
+// commentsClock returns the clock to inject into the comments.Service.
+// Implements comments.Clock. Same shared AdvanceableClock as every other
+// accessor.
+func (p *testClockProvider) commentsClock() comments.Clock { return p.clock }
+
+// finalizeClock returns the clock to inject into the finalize.Handler.
+// Implements finalize.Clock. Same shared AdvanceableClock as every other
+// accessor — so /test/clock-advance moves the 30-minute idle-lock window.
+func (p *testClockProvider) finalizeClock() finalize.Clock { return p.clock }
+
+// storageClock returns the clock to inject into the storage.Service.
+// Implements storage.Clock. Same shared AdvanceableClock as every other
+// accessor.
+func (p *testClockProvider) storageClock() storage.Clock { return p.clock }
+
+// eventsClock returns the clock to inject into the events.Log.
+// Implements events.Clock. Same shared AdvanceableClock as every other
+// accessor.
+func (p *testClockProvider) eventsClock() events.Clock { return p.clock }
+
+// automergerClock returns the clock to inject into the automerger.Applier.
+// Implements automerger.Clock. Same shared AdvanceableClock — advancing
+// affects the merger signature timestamp and conflict event/resolve
+// timestamps for background-merge readers.
+func (p *testClockProvider) automergerClock() automerger.Clock { return p.clock }
+
+// mcpClock returns the clock to inject into the mcpendpoint.Endpoint.
+// Implements mcpendpoint.Clock. Same shared AdvanceableClock — affects
+// the sentinel TokenInfo.Expiration stamp and the fork tool's ForkedAt
+// payload.
+func (p *testClockProvider) mcpClock() mcpendpoint.Clock { return p.clock }
 
 // mountTestEndpoints registers POST /clock-advance on r. The portal
 // router invokes this inside r.Route("/test", ...), so the public

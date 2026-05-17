@@ -42,6 +42,18 @@ type subscriberRec struct {
 	filter string // empty = receive all events
 }
 
+// Clock is an injectable time source. Mirrors auth.Clock and tokens.Clock so a
+// single *testclock.AdvanceableClock satisfies all of them. Per-package types
+// avoid cross-package import coupling — structural typing carries the
+// "advance once, move everywhere" property.
+type Clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now().UTC() }
+
 // Log is the write-side and read-side entry point for the event log.
 // Construct it once per server lifetime via New and share it across
 // components.
@@ -49,12 +61,21 @@ type Log struct {
 	s      store.Store
 	muSubs sync.RWMutex
 	subs   []*subscriberRec
+	clock  Clock
 }
 
-// New constructs a Log backed by the given store. The store must implement
-// EventLogStore and PresenceStore (satisfied by both dialect adapters).
+// New constructs a Log backed by the given store using the real system clock.
+// The store must implement EventLogStore and PresenceStore (satisfied by both
+// dialect adapters).
 func New(s store.Store) *Log {
-	return &Log{s: s}
+	return NewWithClock(s, realClock{})
+}
+
+// NewWithClock constructs a Log backed by the given store and the supplied
+// clock. Used by unit tests (fakeClock) and the e2etest-tagged binary
+// (testclock.AdvanceableClock).
+func NewWithClock(s store.Store, clock Clock) *Log {
+	return &Log{s: s, clock: clock}
 }
 
 // Subscribe returns a receive-only channel that will receive events emitted
@@ -135,7 +156,7 @@ func (l *Log) Emit(ctx context.Context, orgID, sessionID, eventType string, payl
 		}
 		seq = allocated
 		id = ulid.Make().String()
-		emittedAt = time.Now().UTC()
+		emittedAt = l.clock.Now()
 		return tx.InsertEvent(ctx, store.InsertEventParams{
 			ID:        id,
 			OrgID:     orgID,
@@ -172,7 +193,7 @@ func (l *Log) EmitBatch(ctx context.Context, orgID, sessionID string, drafts []D
 	}
 	n := int64(len(drafts))
 	var firstSeq int64
-	now := time.Now().UTC()
+	now := l.clock.Now()
 
 	// ids holds the generated IDs in order so we can fan out after commit.
 	ids := make([]string, len(drafts))
@@ -240,7 +261,7 @@ func (l *Log) UpdatePresence(ctx context.Context, orgID, sessionID, accountID, r
 		return fmt.Errorf("marshal presence payload: %w", err)
 	}
 
-	now := time.Now().UTC()
+	now := l.clock.Now()
 	var seq int64
 	var id string
 	err = l.s.WithTx(ctx, func(tx store.TxStore) error {

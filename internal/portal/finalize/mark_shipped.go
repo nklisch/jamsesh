@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
@@ -127,7 +126,7 @@ func (h *Handler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessio
 		}), nil
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	endReason := "shipped"
 
 	if err := h.store.UpdateSessionStatus(ctx, store.UpdateSessionStatusParams{

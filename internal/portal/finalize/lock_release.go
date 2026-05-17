@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
@@ -100,7 +99,7 @@ func (h *Handler) ReleaseFinalizeLock(ctx context.Context, req openapi.ReleaseFi
 		return openapi.ReleaseFinalizeLock204Response{}, nil
 	}
 
-	now := time.Now().UTC()
+	now := h.clock.Now()
 	if err := h.store.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
 		ID:         lock.ID,
 		ReleasedAt: now,

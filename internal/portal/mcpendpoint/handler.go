@@ -22,14 +22,42 @@ import (
 	"jamsesh/internal/portal/tokens"
 )
 
+// Clock is an injectable time source. Mirrors auth.Clock and tokens.Clock so a
+// single *testclock.AdvanceableClock satisfies all of them. Per-package types
+// avoid cross-package import coupling — structural typing carries the
+// "advance once, move everywhere" property.
+type Clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now().UTC() }
+
 // Endpoint is the MCP endpoint for the jamsesh portal. Construct it once and
 // call Handler to get the http.Handler ready for mounting.
+//
+// Endpoint is struct-literal-initialized in cmd/portal/main.go. The Clock field
+// is optional: a nil Clock falls back to the real wall clock via the now()
+// helper. This preserves backwards compatibility with tests that construct
+// Endpoint directly without setting Clock.
 type Endpoint struct {
 	Store    store.Store
 	Tokens   tokens.Service
 	Storage  storage.Service
 	Log      *events.Log
 	Comments *comments.Service
+	Clock    Clock
+}
+
+// now returns the Endpoint's current time. Falls back to realClock when
+// Clock is nil so test code can construct Endpoint literals without
+// initializing the field.
+func (e *Endpoint) now() time.Time {
+	if e.Clock == nil {
+		return time.Now().UTC()
+	}
+	return e.Clock.Now()
 }
 
 // Handler constructs a streamable-HTTP MCP handler with Bearer auth middleware.
@@ -77,7 +105,7 @@ func (e *Endpoint) verifyToken(ctx context.Context, rawToken string, _ *http.Req
 	return &auth.TokenInfo{
 		UserID:     account.ID,
 		Scopes:     []string{"mcp"},
-		Expiration: time.Now().Add(24 * time.Hour),
+		Expiration: e.now().Add(24 * time.Hour),
 	}, nil
 }
 

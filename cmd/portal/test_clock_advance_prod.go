@@ -7,6 +7,12 @@ import (
 
 	"jamsesh/internal/portal/accounts"
 	"jamsesh/internal/portal/auth"
+	"jamsesh/internal/portal/automerger"
+	"jamsesh/internal/portal/comments"
+	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/finalize"
+	"jamsesh/internal/portal/mcpendpoint"
+	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -34,6 +40,44 @@ func (p *testClockProvider) tokensClock() tokens.Clock { return nil }
 // accounts.Clock interface so the comparison against nil in main.go is
 // well-defined (no typed-nil trap).
 func (p *testClockProvider) accountsClock() accounts.Clock { return nil }
+
+// commentsClock returns nil. main.go assigns the nil into the Clock
+// field on the comments.Service struct literal; the service's now()
+// helper falls back to the real wall clock when Clock is nil. The
+// return type is the concrete comments.Clock interface so the field
+// assignment is well-typed.
+func (p *testClockProvider) commentsClock() comments.Clock { return nil }
+
+// finalizeClock returns nil. main.go interprets nil as "use the real
+// clock" and falls back to finalize.New. The return type is the
+// concrete finalize.Clock interface so the comparison against nil in
+// main.go is well-defined (no typed-nil trap).
+func (p *testClockProvider) finalizeClock() finalize.Clock { return nil }
+
+// storageClock returns nil. main.go interprets nil as "use the real
+// clock" and falls back to storage.New. The return type is the concrete
+// storage.Clock interface so the comparison against nil in main.go is
+// well-defined (no typed-nil trap).
+func (p *testClockProvider) storageClock() storage.Clock { return nil }
+
+// eventsClock returns nil. main.go interprets nil as "use the real
+// clock" and falls back to events.New. The return type is the concrete
+// events.Clock interface so the comparison against nil in main.go is
+// well-defined (no typed-nil trap).
+func (p *testClockProvider) eventsClock() events.Clock { return nil }
+
+// automergerClock returns nil. main.go interprets nil as "use the real
+// clock" and falls back to automerger.NewApplier. The return type is
+// the concrete automerger.Clock interface so the comparison against
+// nil in main.go is well-defined (no typed-nil trap).
+func (p *testClockProvider) automergerClock() automerger.Clock { return nil }
+
+// mcpClock returns nil. main.go assigns the nil into the Clock field
+// on the mcpendpoint.Endpoint struct literal; the endpoint's now()
+// helper falls back to the real wall clock when Clock is nil. The
+// return type is the concrete mcpendpoint.Clock interface so the
+// field assignment is well-typed.
+func (p *testClockProvider) mcpClock() mcpendpoint.Clock { return nil }
 
 // mountTestEndpointsHook returns nil in production builds. router.New
 // skips the /test r.Route call when MountTest is nil, so the /test

@@ -1,7 +1,7 @@
 ---
 id: portal-test-clock-broaden-coverage-handlers-workers-mcp
 kind: story
-stage: implementing
+stage: review
 tags: [testing, testability, portal]
 parent: portal-test-clock-broaden-coverage
 depends_on: []
@@ -356,3 +356,134 @@ Same checks as the v1 and tokens-wiring stories:
    it and POSTing to `/test/clock-advance` advances every wired clock
    simultaneously (the same `*AdvanceableClock` is shared across all
    handlers).
+
+## Implementation notes
+
+### Files touched
+
+Production (modified):
+- `internal/portal/comments/service.go` — Clock interface, realClock,
+  Clock field on Service (struct-literal-friendly with nil-safe now()
+  helper), 3 `time.Now()` reads now go through `s.now()`.
+- `internal/portal/finalize/handler.go` — Clock interface, realClock,
+  clock field on Handler, `New` delegates to `NewWithClock`.
+- `internal/portal/finalize/lock_acquire.go`,
+  `internal/portal/finalize/lock_release.go`,
+  `internal/portal/finalize/lock_patch.go`,
+  `internal/portal/finalize/plan.go`,
+  `internal/portal/finalize/mark_shipped.go` — each replaced its
+  `time.Now().UTC()` with `h.clock.Now()`; unused `time` imports
+  pruned where applicable.
+- `internal/portal/storage/service.go` — Clock interface, realClock,
+  clock field on service, `New` delegates to `NewWithClock`.
+- `internal/portal/storage/archive.go` — `ArchivedAt` now uses
+  `s.clock.Now()`; unused `time` import pruned.
+- `internal/portal/events/log.go` — Clock interface, realClock, clock
+  field on Log, `New` delegates to `NewWithClock`; 3 reads (Emit,
+  EmitBatch, UpdatePresence) replaced.
+- `internal/portal/automerger/outcomes.go` — Clock interface, realClock,
+  Clock field on Applier (exported, struct-literal-friendly with
+  nil-safe `now()` helper); `NewApplier` delegates to
+  `NewApplierWithClock`; 3 reads (merger signature `When`, conflict
+  event `CreatedAt`, resolve `ResolvedAt`) replaced.
+- `internal/portal/mcpendpoint/handler.go` — Clock interface, realClock,
+  Clock field on Endpoint (exported, struct-literal-friendly with
+  nil-safe `now()` helper); `verifyToken` Expiration uses `e.now()`.
+- `internal/portal/mcpendpoint/tools.go` — `fork` tool's `ForkedAt`
+  uses `e.now().Format(time.RFC3339Nano)`.
+
+Wiring:
+- `cmd/portal/main.go` — additive: storage, events, finalize, comments,
+  mcpendpoint, automerger all gated on per-package `testClk.fooClock()`
+  accessors with the established `if c := ...; c != nil` /
+  `NewWithClock` pattern (struct-literal callers assign the accessor
+  result directly, exploiting the nil-safe fallback). Coexists with
+  sibling-story additions for tokens + accounts on the same file.
+- `cmd/portal/test_clock_advance.go` — added accessors
+  `commentsClock()`, `finalizeClock()`, `storageClock()`,
+  `eventsClock()`, `automergerClock()`, `mcpClock()`, all returning
+  the shared `*testclock.AdvanceableClock` typed as the per-package
+  `Clock` interface.
+- `cmd/portal/test_clock_advance_prod.go` — added matching no-op
+  stubs returning `nil` typed as the per-package `Clock` interface.
+
+Tests (new):
+- `internal/portal/events/clock_test.go` — `TestLog_EmitUsesInjectedClock`,
+  `TestLog_EmitBatchUsesInjectedClock`.
+- `internal/portal/finalize/clock_test.go` —
+  `TestHandler_AcquireLockUsesInjectedClock`,
+  `TestHandler_NewVsNewWithClock_ProductionPathClean`. Local fake
+  clock named `handlerFakeClock` to avoid collision with the existing
+  `fakeClock` in `fetch_token_test.go`.
+- `internal/portal/storage/clock_test.go` —
+  `TestArchiveSession_UsesInjectedClock`.
+- `internal/portal/automerger/clock_test.go` —
+  `TestApply_CleanMerge_UsesInjectedClockForMergerSignature`
+  (verifies the merge-commit Committer.When field).
+- `internal/portal/comments/clock_test.go` —
+  `TestService_Create_UsesInjectedClock`,
+  `TestService_NilClockFallsBackToReal`.
+- `internal/portal/mcpendpoint/clock_test.go` —
+  `TestEndpoint_NilClockFallsBackToReal`,
+  `TestEndpoint_InjectedClock_StructFieldRoundtrip`.
+
+### Call sites wrapped per package
+
+| Package | Sites wrapped | Constructor variant added |
+|---|---|---|
+| comments/service.go | 3 (Create, Resolve, List cursor) | struct-literal Clock field + nil-safe `s.now()` |
+| finalize/{lock_acquire, lock_release, lock_patch, plan, mark_shipped}.go | 5 | `NewWithClock` (default `New` delegates) |
+| storage/archive.go | 1 (ArchivedAt) | `NewWithClock` |
+| events/log.go | 3 (Emit, EmitBatch, UpdatePresence) | `NewWithClock` |
+| automerger/outcomes.go | 3 (merger signature When, conflict event, conflict resolve) | `NewApplierWithClock` + struct-literal Clock field + nil-safe `a.now()` |
+| mcpendpoint/{handler, tools}.go | 2 (verifyToken Expiration, fork ForkedAt) | struct-literal Clock field + nil-safe `e.now()` |
+| **Total** | **17** | |
+
+### Deferred sites (rationale)
+
+Per the parent feature design and the explicit story constraint, the
+sessions package is held back in this story:
+
+- `internal/portal/sessions/handler.go` lines 73, 349
+  (`CreateSession` `created_at` and `AbandonSession` `ended_at`) —
+  deferred because `handler.go` is owned by
+  `portal-validate-writable-scope-at-create-time` and adding the
+  `Handler.clock` field requires editing that file. The story body's
+  workaround (a `clock.go` exposing `WithClock(c Clock) *Handler`)
+  is structurally infeasible without first adding the `clock` field
+  to `Handler`, which lives in `handler.go`.
+- `internal/portal/sessions/invites.go` lines 94, 175
+  (`InviteToSession` `CreatedAt`/`ExpiresAt` and
+  `AcceptSessionInvite` `AcceptedAt`/`JoinedAt`) — deferred for the
+  same reason: these read `h.clock` which doesn't exist on `*Handler`
+  yet.
+- `internal/portal/sessions/listing.go` line 68 (pagination
+  `before` cursor) — same.
+
+**Total deferred from this story: 3 reads (5 sites if counting both
+write stamps + 2 read stamps + cursor).** A follow-on story will pick
+these up alongside the locked `handler.go` once the scope-validation
+feature unlocks the file.
+
+### Coordination notes
+
+- `cmd/portal/main.go` was concurrently edited by the sibling
+  `provisioning-and-state` story (added `accountsClock()` block). My
+  additions are strictly additive — separate variable declarations
+  per package, no shared lines — and merged cleanly.
+- `cmd/portal/test_clock_advance.go` /
+  `cmd/portal/test_clock_advance_prod.go` — same coordination: the
+  sibling added `accountsClock()`; I added the remaining six
+  accessors below it. All accessors share a single
+  `*testclock.AdvanceableClock` so a single
+  `POST /test/clock-advance` moves every wired clock forward.
+
+### Verification
+
+- `go build ./...` — clean.
+- `go build -tags e2etest ./...` — clean.
+- `go vet ./internal/portal/...` — clean.
+- `go test -count=1 ./internal/portal/...` — all packages green.
+- `go test -count=1 ./...` — full repo green.
+- `TestProductionBuild_HasNoTestEndpoint` (in `cmd/portal/`) — green,
+  the production binary still returns 404 on `POST /test/clock-advance`.

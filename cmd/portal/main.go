@@ -307,34 +307,81 @@ func main() {
 	}
 
 	// Build the storage service and git HTTP handler (needed before sessions).
-	storageSvc := storage.New(cfg.Storage, dbStore)
-	eventLog := events.New(dbStore)
+	// In e2etest builds, inject the advanceable clock so archive timestamps
+	// reflect /test/clock-advance offsets; in production builds the
+	// provider's storageClock() returns nil and the real-clock constructor
+	// is used.
+	var storageSvc storage.Service
+	if c := testClk.storageClock(); c != nil {
+		storageSvc = storage.NewWithClock(cfg.Storage, dbStore, c)
+	} else {
+		storageSvc = storage.New(cfg.Storage, dbStore)
+	}
+
+	// Build the event log. In e2etest builds, inject the advanceable clock
+	// so event CreatedAt timestamps reflect the advanced offset; in
+	// production builds the provider's eventsClock() returns nil and the
+	// real-clock constructor is used.
+	var eventLog *events.Log
+	if c := testClk.eventsClock(); c != nil {
+		eventLog = events.NewWithClock(dbStore, c)
+	} else {
+		eventLog = events.New(dbStore)
+	}
 
 	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
+	//
+	// NOTE: clock injection for sessions is intentionally deferred — the
+	// `clock` field cannot land on the Handler struct without touching
+	// internal/portal/sessions/handler.go, which is held for a coordinated
+	// follow-on with the scope-validation work. See
+	// portal-test-clock-broaden-coverage feature body.
 	sessionsHandler := sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
 
-	// Build the comments service and handler.
-	commentsSvc := &comments.Service{Store: dbStore, Log: eventLog}
+	// Build the comments service and handler. In e2etest builds, the
+	// Clock field is set to the advanceable clock via the struct-literal;
+	// in production builds commentsClock() returns nil and the now()
+	// helper falls back to the real wall clock.
+	commentsSvc := &comments.Service{Store: dbStore, Log: eventLog, Clock: testClk.commentsClock()}
 	commentsHandler := comments.NewHandler(commentsSvc)
 
 	// Build the finalize handler (lock-CRUD endpoints; plan/fetch-token/
 	// mark-shipped land in subsequent stories of epic-finalize-flow).
-	finalizeHandler := finalize.New(dbStore, storageSvc, eventLog, tokenSvc, cfg.PortalURL)
+	// In e2etest builds, inject the advanceable clock so /test/clock-advance
+	// affects the 30-minute idle-lock check and write timestamps.
+	var finalizeHandler *finalize.Handler
+	if c := testClk.finalizeClock(); c != nil {
+		finalizeHandler = finalize.NewWithClock(dbStore, storageSvc, eventLog, tokenSvc, cfg.PortalURL, c)
+	} else {
+		finalizeHandler = finalize.New(dbStore, storageSvc, eventLog, tokenSvc, cfg.PortalURL)
+	}
 
 	// Build the MCP endpoint. Auth is handled by the SDK's
-	// auth.RequireBearerToken middleware wired inside Handler().
+	// auth.RequireBearerToken middleware wired inside Handler(). In e2etest
+	// builds, the Clock field is set to the advanceable clock via the
+	// struct-literal; in production builds mcpClock() returns nil and the
+	// endpoint's now() helper falls back to the real wall clock.
 	mcpEndpoint := &mcpendpoint.Endpoint{
 		Store:    dbStore,
 		Tokens:   tokenSvc,
 		Storage:  storageSvc,
 		Log:      eventLog,
 		Comments: commentsSvc,
+		Clock:    testClk.mcpClock(),
 	}
 
 	// Build and start the auto-merger worker. It subscribes to commit.arrived
 	// events and runs merge + apply in per-session goroutines.
+	// In e2etest builds, inject the advanceable clock so the merger
+	// signature timestamp and conflict event/resolve timestamps reflect
+	// /test/clock-advance offsets.
 	portalHost := cfg.PortalURL
-	mergerApplier := automerger.NewApplier(dbStore, eventLog)
+	var mergerApplier *automerger.Applier
+	if c := testClk.automergerClock(); c != nil {
+		mergerApplier = automerger.NewApplierWithClock(dbStore, eventLog, c)
+	} else {
+		mergerApplier = automerger.NewApplier(dbStore, eventLog)
+	}
 	mergerWorker := &automerger.Worker{
 		Store:      dbStore,
 		Storage:    storageSvc,

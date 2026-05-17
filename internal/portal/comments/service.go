@@ -20,10 +20,38 @@ import (
 // ErrAlreadyResolved is returned by Resolve when the comment is already resolved.
 var ErrAlreadyResolved = errors.New("comments: comment already resolved")
 
+// Clock is an injectable time source. Mirrors auth.Clock and tokens.Clock so a
+// single *testclock.AdvanceableClock satisfies all of them. Per-package types
+// avoid cross-package import coupling — structural typing carries the
+// "advance once, move everywhere" property.
+type Clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now().UTC() }
+
 // Service is the business-logic layer for comments.
+//
+// Service is struct-literal-initialized in cmd/portal/main.go. The Clock field
+// is optional: a nil Clock falls back to the real wall clock via the now()
+// helper. This preserves backwards compatibility with tests that construct
+// Service directly without setting Clock.
 type Service struct {
 	Store store.Store
 	Log   *events.Log
+	Clock Clock
+}
+
+// now returns the Service's current time. Falls back to realClock when
+// Clock is nil so test code can construct Service literals without
+// initializing the field.
+func (s *Service) now() time.Time {
+	if s.Clock == nil {
+		return time.Now().UTC()
+	}
+	return s.Clock.Now()
 }
 
 // CreateParams holds the parameters for creating a comment.
@@ -88,7 +116,7 @@ type commentResolvedPayload struct {
 
 // Create inserts a comment row and emits a comment.added event in one transaction.
 func (s *Service) Create(ctx context.Context, p CreateParams) (store.Comment, error) {
-	now := time.Now().UTC()
+	now := s.now()
 	id := ulid.Make().String()
 
 	var comment store.Comment
@@ -199,7 +227,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (store.Comment, er
 // Resolve marks a comment resolved and emits a comment.resolved event.
 // Returns ErrAlreadyResolved if the comment is already resolved.
 func (s *Service) Resolve(ctx context.Context, p ResolveParams) (store.Comment, error) {
-	now := time.Now().UTC()
+	now := s.now()
 
 	// Load the comment to check current state and retrieve org_id.
 	existing, err := s.Store.GetCommentByID(ctx, p.CommentID)
@@ -295,7 +323,7 @@ func (s *Service) List(ctx context.Context, p ListParams) ([]store.Comment, stri
 	filter := listFilterMap(p)
 
 	// Decode cursor if provided.
-	before := time.Now().Add(time.Second).UTC()
+	before := s.now().Add(time.Second)
 	if p.Cursor != "" {
 		cur, err := pagination.Decode(p.Cursor, filter)
 		if err != nil {

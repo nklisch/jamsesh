@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"jamsesh/internal/db/store"
 )
@@ -31,7 +30,7 @@ func (s *service) ArchiveSession(ctx context.Context, orgID, sessionID string, i
 		GoalText:         info.GoalText,
 		MemberAccountIDs: string(memberJSON),
 		EndedAt:          info.EndedAt,
-		ArchivedAt:       time.Now().UTC(),
+		ArchivedAt:       s.clock.Now(),
 		EndReason:        info.EndReason,
 		FinalBranchName:  info.FinalBranchName,
 	})
