@@ -11,6 +11,7 @@ import (
 
 	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/logging"
+	"jamsesh/internal/portal/probes"
 )
 
 // Deps is the dependency surface for the portal router. Concrete handler
@@ -33,6 +34,12 @@ type Deps struct {
 	// other routes. Owned by epic-portal-ui-foundation (assets package).
 	// Must be registered last so API/git/mcp/ws routes take precedence.
 	MountUI http.Handler // owned by epic-portal-ui-foundation
+
+	// ReadyzChecks is the list of readiness probes mounted at /readyz.
+	// When nil or empty, the /readyz route is not registered and the path
+	// falls through to the 404 handler. Populated in main.go with DB ping
+	// and storage stat checks.
+	ReadyzChecks []probes.Check
 }
 
 // New returns the root http.Handler for the portal. Middleware order is
@@ -62,6 +69,11 @@ func New(d Deps) http.Handler {
 
 	// Public liveness probe — no auth.
 	r.Get("/healthz", healthz)
+
+	// Public readiness probe — only registered when checks are configured.
+	if len(d.ReadyzChecks) > 0 {
+		r.Get("/readyz", probes.Handler(d.ReadyzChecks).ServeHTTP)
+	}
 
 	// /api — REST API, Bearer auth. Hook is responsible for attaching
 	// auth middleware and mounting oapi-codegen handlers.

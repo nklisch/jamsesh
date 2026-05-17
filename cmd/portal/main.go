@@ -41,6 +41,7 @@ import (
 	portaloauth "jamsesh/internal/portal/oauth"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
+	"jamsesh/internal/portal/probes"
 	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/server"
@@ -382,6 +383,19 @@ func main() {
 		MountGit:          gitHandler.Mount,
 		MountMCP:          mcpEndpoint.Handler(),
 		MountWS:           wsGateway.Handler(),
+		ReadyzChecks: []probes.Check{
+			{
+				Name: "db",
+				Fn:   dbStore.Ping,
+			},
+			{
+				Name: "storage",
+				Fn: func(ctx context.Context) error {
+					_, err := os.Stat(cfg.Storage)
+					return err
+				},
+			},
+		},
 		MountAPI: func(r chi.Router) {
 			// Public auth endpoints — no Bearer middleware.
 			r.Group(func(r chi.Router) {

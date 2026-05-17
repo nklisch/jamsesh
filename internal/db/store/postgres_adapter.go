@@ -36,6 +36,11 @@ func (a *postgresAdapter) Close() error {
 	return nil
 }
 
+// Ping verifies the postgres connection pool is alive.
+func (a *postgresAdapter) Ping(ctx context.Context) error {
+	return a.pool.Ping(ctx)
+}
+
 // ---------------------------------------------------------------------------
 // mapPostgresErr normalises dialect-specific errors to store sentinels.
 // ---------------------------------------------------------------------------

@@ -69,6 +69,9 @@ type Store interface {
 	// the TxStore outside fn.
 	WithTx(ctx context.Context, fn func(TxStore) error) error
 
+	// Ping verifies the database connection is alive. Used by the /readyz probe.
+	Ping(ctx context.Context) error
+
 	// Close releases pool resources.
 	Close() error
 	// Dialect reports the underlying engine ("sqlite" or "postgres").

@@ -325,8 +325,9 @@ func (s *stubStore) SupersedeFinalizeLock(_ context.Context, _ store.SupersedeFi
 func (s *stubStore) WithTx(_ context.Context, _ func(store.TxStore) error) error {
 	panic("not implemented")
 }
-func (s *stubStore) Close() error    { return nil }
-func (s *stubStore) Dialect() string { return "stub" }
+func (s *stubStore) Ping(_ context.Context) error { panic("not implemented") }
+func (s *stubStore) Close() error                  { return nil }
+func (s *stubStore) Dialect() string               { return "stub" }
 
 // Compile-time interface check.
 var _ store.Store = (*stubStore)(nil)

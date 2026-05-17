@@ -30,6 +30,7 @@ type sqliteAdapter struct {
 
 func (a *sqliteAdapter) Dialect() string { return "sqlite" }
 func (a *sqliteAdapter) Close() error    { return a.db.Close() }
+func (a *sqliteAdapter) Ping(ctx context.Context) error { return a.db.PingContext(ctx) }
 
 // RawDB returns the underlying *sql.DB. This is provided for tests that need
 // to configure connection-pool settings (e.g. SetMaxOpenConns) on a freshly

@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-operational-polish-readyz
 kind: story
-stage: implementing
+stage: review
 tags: [infra, portal]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: []
@@ -65,14 +65,41 @@ failed check carries `"error": "<message>"`.
 
 ## Acceptance criteria
 
-- [ ] `GET /readyz` returns 200 + `{"status":"ready",...}` when DB
+- [x] `GET /readyz` returns 200 + `{"status":"ready",...}` when DB
   ping and storage stat both succeed.
-- [ ] `GET /readyz` returns 503 + `{"status":"not_ready",...}` when
+- [x] `GET /readyz` returns 503 + `{"status":"not_ready",...}` when
   any check fails, with per-check `ok` and `error` fields.
-- [ ] Checks run in parallel — N checks each taking T total no more
+- [x] Checks run in parallel — N checks each taking T total no more
   than ~T+overhead, not N*T.
-- [ ] Each check has a 2-second timeout; exceeded checks report
+- [x] Each check has a 2-second timeout; exceeded checks report
   `"error": "timeout"`.
-- [ ] `/healthz` continues to return its existing 200 response unchanged.
-- [ ] Unit tests for `probes.Handler` cover: all-ok, one-fail,
+- [x] `/healthz` continues to return its existing 200 response unchanged.
+- [x] Unit tests for `probes.Handler` cover: all-ok, one-fail,
   all-fail, timeout, parallel timing.
+
+## Implementation notes
+
+Fresh implementation. All acceptance criteria verified by automated tests.
+
+**New package** `internal/portal/probes`:
+- `Check` struct + `Handler([]Check) http.Handler` as designed
+- Checks run in parallel via goroutines + `sync.WaitGroup`; each gets a
+  `context.WithTimeout` derived from the request context (2s ceiling)
+- Timeout detection: `ctx.Err() != nil` after the check returns — the
+  error message is replaced with `"timeout"` in that case
+- `"error"` field is `omitempty` so passing checks produce clean JSON
+- 6 unit tests: all-ok, one-fail, all-fail, timeout, parallel timing, empty
+
+**Router** (`internal/portal/router/router.go`):
+- Added `ReadyzChecks []probes.Check` to `Deps`
+- `/readyz` is registered only when `len(d.ReadyzChecks) > 0`; empty
+  `Deps{}` (used in existing tests) still 404s on `/readyz`
+
+**Store interface** (`internal/db/store/store.go`):
+- Added `Ping(ctx context.Context) error` to `Store`
+- `sqliteAdapter.Ping` wraps `*sql.DB.PingContext`
+- `postgresAdapter.Ping` wraps `pgxpool.Pool.Ping`
+- Updated `handlerauth_test.go` `stubStore` to satisfy the extended interface
+
+**main.go wiring**: `ReadyzChecks` slice with `db` (store.Ping) and
+`storage` (os.Stat on cfg.Storage) probes.
