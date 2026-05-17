@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>invite-accept — Option 1: Centered card minimal</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117;
+      color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .mock-meta button:hover { background: #161b22; }
+    .mock-meta button.on { background: #1f6b70; border-color: #1f6b70; color: #fff; }
+
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--font-sans);
+      color: var(--color-text-primary);
+      background: var(--color-bg-primary);
+      min-height: 100vh;
+    }
+
+    .chrome {
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 32px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark {
+      font-weight: 600; letter-spacing: -0.02em;
+      font-size: var(--font-size-lg);
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .chrome-spacer { margin-left: auto; }
+    .user-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--author-4); color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600;
+    }
+
+    .stage {
+      display: flex; align-items: center; justify-content: center;
+      min-height: calc(100vh - 110px);
+      padding: 32px;
+    }
+
+    .card {
+      width: 100%; max-width: 440px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 28px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+    .card.error-state { border-color: var(--color-danger); }
+    .card.rejection-state { border-color: var(--color-warning); }
+
+    .eyebrow {
+      font-size: var(--font-size-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-tertiary);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .eyebrow.danger { color: var(--color-danger); }
+    .eyebrow.warning { color: var(--color-warning); }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: var(--font-size-xl);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
+    }
+    .body p {
+      margin: 0 0 12px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+    .body strong { color: var(--color-text-primary); }
+    .body code {
+      font-family: var(--font-mono);
+      background: var(--color-bg-tertiary);
+      padding: 1px 5px;
+      border-radius: var(--radius-xs);
+      font-size: 0.9em;
+    }
+
+    .actions {
+      display: flex; gap: 8px; align-items: center;
+      margin-top: 24px;
+    }
+    .btn {
+      border-radius: var(--radius-md);
+      padding: 8px 16px;
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-family: var(--font-sans);
+    }
+    .btn.primary {
+      background: var(--color-accent);
+      color: #fff;
+      border-color: var(--color-accent);
+    }
+    .btn.primary:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
+    .btn.ghost {
+      background: transparent;
+      color: var(--color-text-primary);
+      border-color: var(--color-border-strong);
+    }
+    .btn.link {
+      background: transparent;
+      border: none;
+      padding: 8px 4px;
+      color: var(--color-text-link);
+      cursor: pointer;
+      font-size: var(--font-size-sm);
+    }
+    .btn.link:hover { color: var(--color-text-link-hover); text-decoration: underline; }
+
+    .state-section { display: none; }
+    .state-section.on { display: block; }
+
+    .loading-bar {
+      height: 3px;
+      background: var(--color-bg-tertiary);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 16px;
+    }
+    .loading-bar::after {
+      content: '';
+      display: block; height: 100%; width: 40%;
+      background: var(--color-accent);
+      animation: progress 1.2s ease-in-out infinite;
+    }
+    @keyframes progress {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 1 — Centered card minimal</strong>
+    <span>Single quiet card, no chrome. Click states to compare.</span>
+    <span class="controls">
+      <button class="state on" data-state="happy" type="button">Happy</button>
+      <button class="state" data-state="rejection" type="button">Rejection</button>
+      <button class="state" data-state="error" type="button">Error</button>
+    </span>
+  </header>
+
+  <header class="chrome">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <div class="chrome-spacer"></div>
+    <span class="user-dot" title="Ada Lovelace">A</span>
+  </header>
+
+  <div class="stage">
+
+    <!-- Happy state -->
+    <div class="card state-section happy on">
+      <div class="eyebrow">Pending invite</div>
+      <h1>Join <strong>spec refinement</strong> in Acme Corp?</h1>
+      <div class="body">
+        <p>You've been invited by <strong>Marcus Chen</strong> to collaborate on the
+        <code>spec refinement</code> session.</p>
+        <p>You'll be added as a member and can start pushing right away.</p>
+      </div>
+      <div class="actions">
+        <button class="btn primary" type="button">Accept &amp; open session</button>
+        <button class="btn link" type="button">Decline</button>
+      </div>
+    </div>
+
+    <!-- Rejection state -->
+    <div class="card rejection-state state-section rejection">
+      <div class="eyebrow warning">Can't join · members only</div>
+      <h1>Acme Corp requires org membership first</h1>
+      <div class="body">
+        <p>This org's session invites are set to <strong>members only</strong>. You're
+        not yet a member of <strong>Acme Corp</strong>, so we can't add you to the
+        session.</p>
+        <p>Ask an org admin to add you to Acme Corp first. They can do that from
+        <code>/orgs/acme/settings</code> &gt; Members. After that, re-open this invite
+        link and we'll add you to the session.</p>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" type="button">Back to your sessions</button>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div class="card error-state state-section error">
+      <div class="eyebrow danger">Couldn't process invite</div>
+      <h1>This invite isn't valid</h1>
+      <div class="body">
+        <p>The invite link is expired, has already been accepted, or the token
+        doesn't match. The portal returned: <code>auth.invalid_token</code>.</p>
+        <p>If you think this is a mistake, ask whoever sent the invite to issue a
+        new one.</p>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" type="button">Back to your sessions</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const buttons = document.querySelectorAll('.mock-meta button.state');
+    const sections = document.querySelectorAll('.state-section');
+    buttons.forEach(b => {
+      b.addEventListener('click', () => {
+        buttons.forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        const target = b.dataset.state;
+        sections.forEach(s => s.classList.toggle('on', s.classList.contains(target)));
+      });
+    });
+  </script>
+</body>
+</html>

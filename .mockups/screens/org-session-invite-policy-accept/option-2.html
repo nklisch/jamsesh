@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>invite-accept — Option 2: Spec-sheet metadata</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      padding: 8px 16px;
+      background: #0d1117;
+      color: #c9d1d9;
+      display: flex; gap: 16px; align-items: baseline;
+      font: 13px/1.4 system-ui, sans-serif;
+      border-bottom: 1px solid #30363d;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b949e; }
+    .mock-meta .controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .mock-meta button {
+      background: transparent; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .mock-meta button:hover { background: #161b22; }
+    .mock-meta button.on { background: #1f6b70; border-color: #1f6b70; color: #fff; }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      color: var(--color-text-primary);
+      background: var(--color-bg-primary);
+      min-height: 100vh;
+    }
+
+    .chrome {
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 32px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark {
+      font-weight: 600; letter-spacing: -0.02em;
+      font-size: var(--font-size-lg);
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .chrome-spacer { margin-left: auto; }
+    .user-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--author-4); color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600;
+    }
+
+    main { max-width: 580px; margin: 48px auto; padding: 0 32px; }
+
+    .page-head { margin-bottom: 24px; }
+    .page-head .eyebrow {
+      font-size: var(--font-size-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-tertiary);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .page-head h1 {
+      margin: 0;
+      font-size: var(--font-size-2xl);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .banner {
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      margin-bottom: 16px;
+      font-size: var(--font-size-sm);
+      line-height: 1.5;
+      display: flex; gap: 12px;
+      align-items: flex-start;
+    }
+    .banner.warning {
+      background: var(--color-warning-muted);
+      border-left: 3px solid var(--color-warning);
+      color: var(--color-text-primary);
+    }
+    .banner.danger {
+      background: var(--color-danger-muted);
+      border-left: 3px solid var(--color-danger);
+      color: var(--color-text-primary);
+    }
+    .banner .icon { font-size: 18px; line-height: 1; margin-top: 1px; }
+    .banner .body strong { display: block; margin-bottom: 4px; }
+    .banner .body p { margin: 0; color: var(--color-text-secondary); }
+    .banner .body code {
+      font-family: var(--font-mono);
+      background: rgba(0,0,0,0.05);
+      padding: 1px 5px;
+      border-radius: var(--radius-xs);
+      font-size: 0.9em;
+    }
+
+    .specs {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--color-bg-secondary);
+    }
+    .specs .row {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 16px;
+      padding: 14px 20px;
+      align-items: baseline;
+    }
+    .specs .row + .row { border-top: 1px solid var(--color-border); }
+    .specs .row .key {
+      color: var(--color-text-tertiary);
+      font-size: var(--font-size-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+    .specs .row .val {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-primary);
+    }
+    .specs .row .val .mono {
+      font-family: var(--font-mono);
+      font-size: 0.9em;
+      color: var(--color-text-secondary);
+    }
+    .specs .row .val strong { font-weight: 600; }
+
+    .actions {
+      display: flex; gap: 8px; align-items: center;
+      margin-top: 24px;
+      justify-content: flex-end;
+    }
+    .btn {
+      border-radius: var(--radius-md);
+      padding: 8px 16px;
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-family: var(--font-sans);
+    }
+    .btn.primary {
+      background: var(--color-accent);
+      color: #fff;
+      border-color: var(--color-accent);
+    }
+    .btn.primary:hover { background: var(--color-accent-hover); }
+    .btn.ghost {
+      background: transparent;
+      color: var(--color-text-primary);
+      border-color: var(--color-border-strong);
+    }
+    .btn.link {
+      background: transparent;
+      border: none;
+      color: var(--color-text-link);
+      padding: 8px 4px;
+      cursor: pointer;
+      font-size: var(--font-size-sm);
+    }
+    .btn.link:hover { text-decoration: underline; }
+
+    .actions-area { display: block; }
+    .actions-area.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 2 — Spec-sheet metadata</strong>
+    <span>Structured label/value layout. Click states to compare.</span>
+    <span class="controls">
+      <button class="state on" data-state="happy" type="button">Happy</button>
+      <button class="state" data-state="rejection" type="button">Rejection</button>
+      <button class="state" data-state="error" type="button">Error</button>
+    </span>
+  </header>
+
+  <header class="chrome">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <div class="chrome-spacer"></div>
+    <span class="user-dot" title="Ada Lovelace">A</span>
+  </header>
+
+  <main>
+    <div class="page-head">
+      <div class="eyebrow">Session invite</div>
+      <h1 id="title">Review and accept</h1>
+    </div>
+
+    <div id="banner-rejection" class="banner warning" hidden>
+      <span class="icon">⚠</span>
+      <div class="body">
+        <strong>Can't join — Acme Corp is members only.</strong>
+        <p>This org requires you to be an org member before joining sessions. Ask an
+          admin to add you via <code>/orgs/acme/settings</code> &gt; Members.</p>
+      </div>
+    </div>
+
+    <div id="banner-error" class="banner danger" hidden>
+      <span class="icon">✕</span>
+      <div class="body">
+        <strong>This invite is no longer valid.</strong>
+        <p>The portal returned <code>auth.invalid_token</code>. The link may be
+          expired or already accepted.</p>
+      </div>
+    </div>
+
+    <div class="specs">
+      <div class="row">
+        <div class="key">Org</div>
+        <div class="val"><strong>Acme Corp</strong></div>
+      </div>
+      <div class="row">
+        <div class="key">Session</div>
+        <div class="val"><strong>spec refinement</strong> <span class="mono">· 6c8a40e</span></div>
+      </div>
+      <div class="row">
+        <div class="key">Invited by</div>
+        <div class="val">Marcus Chen <span class="mono">&lt;marcus@acme.example&gt;</span></div>
+      </div>
+      <div class="row">
+        <div class="key">Expires</div>
+        <div class="val">Mar 21, 2026 · 4:00pm UTC</div>
+      </div>
+      <div class="row">
+        <div class="key">Your role</div>
+        <div class="val"><span class="mono">member</span> — push commits, comment, finalize alongside others</div>
+      </div>
+    </div>
+
+    <div class="actions actions-area" id="actions-happy">
+      <button class="btn link" type="button">Decline</button>
+      <button class="btn primary" type="button">Accept invite</button>
+    </div>
+
+    <div class="actions actions-area hidden" id="actions-reject">
+      <button class="btn ghost" type="button">Back to your sessions</button>
+    </div>
+
+    <div class="actions actions-area hidden" id="actions-error">
+      <button class="btn ghost" type="button">Back to your sessions</button>
+    </div>
+  </main>
+
+  <script>
+    const buttons = document.querySelectorAll('.mock-meta button.state');
+    const bannerRej = document.getElementById('banner-rejection');
+    const bannerErr = document.getElementById('banner-error');
+    const aHappy = document.getElementById('actions-happy');
+    const aRej = document.getElementById('actions-reject');
+    const aErr = document.getElementById('actions-error');
+    const title = document.getElementById('title');
+    buttons.forEach(b => {
+      b.addEventListener('click', () => {
+        buttons.forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        const state = b.dataset.state;
+        bannerRej.hidden = state !== 'rejection';
+        bannerErr.hidden = state !== 'error';
+        aHappy.classList.toggle('hidden', state !== 'happy');
+        aRej.classList.toggle('hidden', state !== 'rejection');
+        aErr.classList.toggle('hidden', state !== 'error');
+        title.textContent = state === 'happy' ? 'Review and accept'
+          : state === 'rejection' ? 'Invite blocked by org policy'
+          : 'Invite no longer valid';
+      });
+    });
+  </script>
+</body>
+</html>

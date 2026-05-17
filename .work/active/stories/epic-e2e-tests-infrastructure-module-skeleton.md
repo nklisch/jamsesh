@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-tests-infrastructure-module-skeleton
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-infrastructure
 depends_on: []
@@ -72,3 +72,15 @@ Verification:
 - `make test-e2e-go` → passes
 - `make test-e2e` → Go tests pass, playwright no-ops with "playwright not bootstrapped yet, skipping"
 - `git diff go.mod` → empty (root module untouched)
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The original Makefile target used `@test -d X && (cd X && npm test) || echo skip` — in shell, `(A && B) || C` would have silenced npm test failures and triggered the skip-echo. Wave 4 (`playwright-bootstrap`) replaced it with proper `if [ -d ]; then ...; else ...; fi` semantics, so this is corrected in the live tree.
+- The original `tests/e2e/README.md` referenced "Dex OIDC" — the parent feature's mock plan uses WireMock, not Dex. Wave 3 rewrote the README with the correct fixture table.
+
+**Notes**: Both nits self-corrected via later waves in the same feature. Verified by inspecting the current `Makefile` and `tests/e2e/README.md` — neither retains the issues from the original commit.
