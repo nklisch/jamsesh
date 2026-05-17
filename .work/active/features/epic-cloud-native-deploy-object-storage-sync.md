@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-object-storage-sync
 kind: feature
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy
 depends_on: [epic-cloud-native-deploy-lease-fencing]
@@ -550,3 +550,22 @@ All 5 child stories landed and reviewed:
 Verification: `go build ./...` clean; `go test ./...` green across all packages.
 
 Feature advanced `implementing → review`. Object storage is now the system-of-record in clustered mode; single-instance mode is unchanged.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes** (aggregate concerns; per-line lenses exercised at story level):
+
+- **Capability completeness**: ✓ Object storage as system of record in clustered mode shipped. Backend abstraction supports AWS S3, Cloudflare R2, Backblaze B2, MinIO, self-hosted Ceph (via S3-compat) + GCS (workload identity via native SDK) + Azure Blob (managed identity via native SDK). Sync pipeline hooked into post-receive with RPO=0 contract. Pack manifest + fencing token validation prevents split-brain corruption. Backpressure caps per-session in-flight uploads.
+- **Foundation-doc alignment**: ✓ SELF_HOST §14 updated with object-storage subsection + per-provider deploy examples + cost model. SPEC.md gains dual-layer description. SECURITY.md gains object-storage IAM operator-responsibility row. ARCHITECTURE.md "Horizontal scaling" updated with dual-layer storage section. Preview framing accurately positions hydration-handoff as the last gap (not "everything is preview" anymore).
+- **Cross-cutting changes**: 4 new metric handles in `internal/portal/metrics/metrics.go` (object-storage uploads, bytes, duration, backpressure). `internal/portal/storage/repo.go` now disables `gc.auto` on CreateRepo. `postreceive.Emitter` gained `Syncer *objectstore.Syncer` + `Storage storage.Service` fields. Config gained 5 object-storage env vars + validation rules.
+- **New dependencies**: `aws-sdk-go-v2` subpackages (~12MB), `cloud.google.com/go/storage` (~20MB w/ gRPC), `azure-sdk-for-go/sdk/storage/azblob` + `azidentity` (~7MB). Total ~40MB binary growth for clustered-mode deployments. Single-instance mode unaffected (clustered deps only loaded when configured).
+- **Acquire-per-sync lease pattern (v1)**: documented as deliberate. Long-held lease pattern is hydration-handoff scope.
+
+The "preview" status now means specifically: router + leases + durability working; lease migration between pods (hydration) is the remaining gap. Operators can deploy clustered mode TODAY and get safe-but-pinned-to-pod sessions; full pod-failover requires hydration-handoff.
+
