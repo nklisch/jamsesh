@@ -1,7 +1,7 @@
 ---
 id: docs-scope-glob-validation-rules
 kind: story
-stage: review
+stage: done
 tags: [documentation, portal]
 parent: null
 depends_on: []
@@ -99,3 +99,17 @@ story adds `CompileScope` to the create/patch handlers and registers a
 `session.invalid_writable_scope` error code in `docs/PROTOCOL.md`. When
 it lands, the "currently does not pre-validate" caveat in SPEC.md gets
 removed.
+
+## Review findings — nits
+
+- The SPEC's `**` description matches doublestar's documented behavior
+  ("matches across directory boundaries"), but the implementation in
+  `internal/portal/prereceive/scope.go` includes a `normalizeForDoublestar`
+  helper that rewrites gobwas-style patterns like `**.go` into
+  `**/*.go` before handing them to doublestar. This is a deliberate
+  back-compat affordance for callers still emitting gobwas-style scopes.
+  Not a bug — the user-facing contract documented in SPEC.md is the
+  doublestar shape — but a future SPEC pass could either (a) document
+  the normalization affordance, or (b) drop it and require doublestar-
+  shaped scopes everywhere. No action taken — leaving the SPEC as the
+  forward-facing contract is the right call.
