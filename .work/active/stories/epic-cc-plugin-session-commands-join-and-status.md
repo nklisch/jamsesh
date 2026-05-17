@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-session-commands-join-and-status
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: epic-cc-plugin-session-commands
 depends_on: []
@@ -57,3 +57,9 @@ updated: 2026-05-17
 - [x] `jamsesh join <invite-url>`: extracts session-id + invite-id + token; accepts invite first
 - [x] `jamsesh status`: prints text summary by default; `--json` outputs structured JSON
 - [x] Tests use mocked portal (httptest) and stubbed `runGit` injection
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: URL parser handles 3 forms (bare id, org/sid, full invite URL). org_id persisted to avoid org-scan per status call. runGit injection via package vars makes tests hermetic. /api/me handler workaround for openapi_types.Email zero-value marshal is a thoughtful test detail.

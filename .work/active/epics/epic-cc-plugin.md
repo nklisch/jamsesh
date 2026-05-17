@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin
 kind: epic
-stage: implementing
+stage: done
 tags: [plugin]
 parent: null
 depends_on: [epic-portal-api]
@@ -173,3 +173,9 @@ Critical path: `binary-foundation → {session-commands || hooks}`.
   with stale Authorization until reconnect. CC's MCP client spec is
   the source of truth on 401-retry behavior; design pass documents the
   assumption.
+
+## Final review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: All 4 child features at done: binary-foundation (subcommand router + OAuth + state + portal client + refresh), packaging (manifest + hooks.json + .mcp.json + skills + teaching skill), hooks (6 CC lifecycle hooks with retry queue + push gate), session-commands (join/status/fork/mode). The CC plugin is complete and integrates end-to-end with the portal.

@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-hooks
 kind: feature
-stage: implementing
+stage: done
 tags: [plugin]
 parent: epic-cc-plugin
 depends_on: [epic-cc-plugin-binary-foundation]
@@ -285,3 +285,11 @@ Steps:
 ## Risks
 
 - **Hook output JSON format**: each hook returns CC-specific JSON (additionalContext / permissionDecision). The `cmd/jamsesh/hookio` scaffold from binary-foundation handles the IO; hooks return typed output structs.
+
+## Implementation summary
+
+All child stories at done.
+
+## Review
+
+**Verdict**: Approve. Capability complete.

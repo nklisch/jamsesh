@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-hooks-fetch-push-and-stop-hooks
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: epic-cc-plugin-hooks
 depends_on: [epic-cc-plugin-hooks-retry-queue-and-simple-hooks]
@@ -80,3 +80,9 @@ Implement the 4 substantive hooks: session-start, user-prompt-submit, post-tool-
 - Transient push failure → enqueue.
 - Queue > 10 → `os.Exit(1)` with stderr message "session is wedged".
 - POST turn.ended → v1 skip (documented in code).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: resolveHookSession inlined to break import cycle is reasonable. extractJSONBody handles git smart-http's 'error: N phrase' stderr prefix cleanly. v1 turn.ended skip documented. 38 tests passing in hooks package.

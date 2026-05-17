@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-hooks-retry-queue-and-simple-hooks
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: epic-cc-plugin-hooks
 depends_on: []
@@ -64,3 +64,9 @@ The sibling `sessioncmd` package (in-progress untracked work) had a `runGit` red
 
 `go test ./cmd/jamsesh/retryqueue/... ./cmd/jamsesh/pusherr/... ./cmd/jamsesh/hooks/...` — 26/26 PASS.
 `go build ./cmd/jamsesh/` — clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Atomic queue writes with 0600 mode. Classifier table is exhaustive (push.* + auth.* as permanent, 5xx + status 0 as transient). pre-tool-use deny patterns correctly handle leading whitespace and the git config regex.

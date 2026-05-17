@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-session-commands-fork-and-mode
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: epic-cc-plugin-session-commands
 depends_on: []
@@ -47,3 +47,9 @@ All files were already committed by the hooks sibling story (`epic-cc-plugin-hoo
 - `cmd/jamsesh/main.go` — `ForkCommand()` and `ModeCommand()` registered (alongside `JoinCommand()`, `StatusCommand()` added by sibling).
 
 Pre-existing test failures in `join_test.go` (TestJoinAction_happy, TestJoinAction_inviteURL) and `status_test.go` are from the join-and-status sibling story and not related to this story's scope.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Notes**: Tiny JSON-RPC mcpclient with StructuredContent unwrapping is the right minimal surface. Mode v1 local-only with clear print message about server-side follow-up is honest about scope.

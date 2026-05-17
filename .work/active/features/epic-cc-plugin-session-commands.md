@@ -1,7 +1,7 @@
 ---
 id: epic-cc-plugin-session-commands
 kind: feature
-stage: implementing
+stage: done
 tags: [plugin]
 parent: epic-cc-plugin
 depends_on: [epic-cc-plugin-binary-foundation]
@@ -192,3 +192,11 @@ OK revising: `mode` is local-only for v1. The portal-side mode-change endpoint i
 
 - **Mode v1 local-only**: a peer's UI won't reflect the mode change until a real server-side endpoint exists. Documented limitation. Operator can call MCP directly to set mode server-side as workaround.
 - **MCP client in Go binary**: implementing raw JSON-RPC for one tool call is fine; if we add more tools later, extract a small client. v1 keeps it inline.
+
+## Implementation summary
+
+All child stories at done.
+
+## Review
+
+**Verdict**: Approve. Capability complete.
