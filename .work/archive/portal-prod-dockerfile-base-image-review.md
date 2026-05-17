@@ -1,7 +1,7 @@
 ---
 id: portal-prod-dockerfile-base-image-review
 kind: story
-stage: review
+stage: done
 tags: [infra, security, documentation]
 parent: null
 depends_on: []
@@ -120,3 +120,41 @@ This finding surfaced during e2e implementation of
 `epic-e2e-tests-golden-path-session-lifecycle`. The implementer
 correctly fixed the latent production bug (distroless lacking git);
 the ops-review-needed dimension is a separate concern.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The decision notes state "release.yml signs the portal binary, not
+  the Docker image." That's incomplete — `release.yml` has a `docker`
+  job that runs `cosign sign --yes ghcr.io/.../jamsesh@<digest>`,
+  signing the published image too. The base-image switch is still a
+  no-op for both signing operations (sign-blob is content-hashed over
+  the binary; image signing is keyed on the built-image digest), so
+  the conclusion holds. Worth tightening the wording on the next
+  edit if anyone touches this story.
+
+**Notes**:
+- Alpine 3.21 choice is well-justified: ~5× smaller than the rejected
+  debian path, matches the prior `Dockerfile.e2e` base (proven by
+  weeks of e2e runs), avoids adding a new registry trust dependency
+  (chainguard).
+- musl/glibc compatibility is correctly dismissed: the binary is
+  `CGO_ENABLED=0` per release.yml; fully static.
+- UID/GID 65534 claim verified — both alpine 3.21 (`nobody:x:65534:
+  65534:nobody:/:/sbin/nologin`) and debian:bookworm-slim
+  (`nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin`)
+  ship the same numeric `nobody` user. No volume-permission
+  migration burden — accurate.
+- Dockerfile-level diff matches spec: alpine:3.21, git +
+  ca-certificates via apk, USER nobody, ENTRYPOINT unchanged. The
+  comment block on the Dockerfile correctly enumerates why git is
+  required (`git init --bare`, smart-HTTP receive/upload-pack).
+- AC 3 (release.yml verified end-to-end) left unchecked with explicit
+  rationale: cosign signs binary by content hash and image by digest,
+  both mechanically unaffected by base-image swap — confirmation
+  requires the next tag push. Reasonable framing; not a blocker.
+- ACs 1, 2, 4 complete with reasoning recorded inline.
