@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-chaos-partition
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture, epic-e2e-cnd-coverage-object-storage-sync-golden-rpo0]
@@ -136,3 +136,23 @@ Key design decisions:
   scenario where the toxic is intentionally left in place during the test but
   must be cleaned up on teardown.
 - `go build ./chaos/... && go vet ./chaos/...` pass with no errors.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All three scenarios meet the bar.
+- `latency_5s_writes_succeed`: baseline assertion (< 10s) validates chaos effect is real;
+  direct bucket inspection (`mn.ListObjects`) is the RPO=0 assertion target; `t.Fatalf` on
+  2xx+empty-bucket (no silent acceptance).
+- `transient_reset_peer_rpo0_holds`: full 4-way `switch` enumerates all `(pushErr, keys)`
+  combinations explicitly; forbidden case `(nil, 0)` triggers `t.Fatalf` with a directive
+  to park; the anomaly case `(err, keys>0)` is correctly classified as non-RPO-violation
+  with clear rationale.
+- `permanent_disconnect_fails_loudly`: push must fail; bucket must be empty; both
+  conditions asserted with specific `t.Fatalf` messages naming the invariant.
+- No in-process mocks; Toxiproxy + MinIO are real containers. No tautologies.
