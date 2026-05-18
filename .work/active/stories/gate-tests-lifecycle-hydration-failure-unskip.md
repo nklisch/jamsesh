@@ -1,7 +1,7 @@
 ---
 id: gate-tests-lifecycle-hydration-failure-unskip
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, infra]
 parent: null
 depends_on: []

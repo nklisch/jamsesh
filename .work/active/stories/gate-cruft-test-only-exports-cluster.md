@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-test-only-exports-cluster
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup, portal, refactor]
 parent: null
 depends_on: []

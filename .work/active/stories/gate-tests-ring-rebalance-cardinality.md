@@ -1,7 +1,7 @@
 ---
 id: gate-tests-ring-rebalance-cardinality
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, infra]
 parent: null
 depends_on: []

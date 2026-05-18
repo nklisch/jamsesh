@@ -1,7 +1,7 @@
 ---
 id: gate-security-metrics-endpoint-auth
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal]
 parent: null
 depends_on: []

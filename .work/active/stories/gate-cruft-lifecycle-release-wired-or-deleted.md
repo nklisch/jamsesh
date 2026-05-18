@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-lifecycle-release-wired-or-deleted
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup, portal, infra]
 parent: null
 depends_on: []

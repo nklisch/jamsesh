@@ -1,7 +1,7 @@
 ---
 id: gate-tests-mcp-fuzz-seed-corpus
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, security, portal]
 parent: null
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: gate-security-ws-bearer-token-leakage
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, documentation]
 parent: null
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: gate-security-finalize-script-shell-escape
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, plugin]
 parent: null
 depends_on: []

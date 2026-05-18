@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wsclient-cursor-replay-fixture
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal]
 parent: null
 depends_on: []

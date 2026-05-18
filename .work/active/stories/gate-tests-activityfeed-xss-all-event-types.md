@@ -1,7 +1,7 @@
 ---
 id: gate-tests-activityfeed-xss-all-event-types
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, security, ui]
 parent: null
 depends_on: [gate-security-xss-html-render-ws-events]

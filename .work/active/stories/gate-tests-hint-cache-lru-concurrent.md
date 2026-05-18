@@ -1,7 +1,7 @@
 ---
 id: gate-tests-hint-cache-lru-concurrent
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, infra]
 parent: null
 depends_on: []

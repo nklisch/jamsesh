@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-oauth-callback-url
 kind: story
-stage: drafting
+stage: implementing
 tags: [documentation]
 parent: null
 depends_on: []

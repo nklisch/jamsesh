@@ -1,7 +1,7 @@
 ---
 id: gate-tests-postgres-lease-ci-wiring
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, infra, portal]
 parent: null
 depends_on: []
