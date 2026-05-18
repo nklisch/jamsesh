@@ -151,4 +151,8 @@ describe('ActivityFeed', () => {
       expect(items.length).toBeLessThanOrEqual(100);
     });
   });
+
+  // XSS payload assertions (e.g. <img onerror=...> in comment body must not execute)
+  // are covered by the companion story: gate-tests-xss-activityfeed-component
+  it.todo('component XSS coverage — landed in gate-tests-xss-activityfeed-component');
 });

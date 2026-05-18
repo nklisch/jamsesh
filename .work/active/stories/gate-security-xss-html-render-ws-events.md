@@ -1,7 +1,7 @@
 ---
 id: gate-security-xss-html-render-ws-events
 kind: story
-stage: implementing
+stage: review
 tags: [security, ui, portal]
 parent: null
 depends_on: []
@@ -49,3 +49,60 @@ rather than HTML strings. Apply across every branch of `formatEvent`
 (commit subjects, ref names, author IDs, comment bodies all flow through
 here). Consider moving access tokens out of localStorage to an httpOnly
 cookie or memory-only storage as a defense-in-depth follow-up.
+
+## Implementation notes
+
+### New component shape
+
+`formatEvent` now returns `FormattedEvent` instead of `{ icon, html, isConflict }`:
+
+```ts
+type Fragment =
+  | { kind: 'text';     value: string }
+  | { kind: 'emphasis'; value: string }  // renders as <span class="who">
+  | { kind: 'sha';      value: string }  // renders as <span class="sha"> (pre-sliced to 7 chars)
+
+type FormattedEvent = {
+  icon: string;
+  fragments: Fragment[];
+  isConflict: boolean;
+};
+```
+
+All 12 event-type branches plus the `default` branch were converted. No branch
+constructs an HTML string. Helper functions `txt()`, `who()`, `sha()` keep
+the branch bodies terse.
+
+### Template change
+
+`{@html fmt.html}` replaced with:
+
+```svelte
+<span class="text">
+  {#each fmt.fragments as frag}
+    {#if frag.kind === 'text'}
+      {frag.value}
+    {:else if frag.kind === 'emphasis'}
+      <span class="who">{frag.value}</span>
+    {:else if frag.kind === 'sha'}
+      <span class="sha">{frag.value}</span>
+    {/if}
+  {/each}
+</span>
+```
+
+Svelte auto-escapes all `{frag.value}` interpolations — XSS payload in any
+field (author_id, body, ref, sha, summary, etc.) renders as inert text.
+
+### CSS adjustment
+
+`.feed-item :global(.who)` and `.feed-item :global(.sha)` selectors were
+changed to `.feed-item .who` and `.feed-item .sha` (scoped, no `:global`)
+since the spans are now emitted directly in the same component's template.
+
+### Test integrity
+
+Existing 8 tests pass unchanged — they assert on text content and DOM
+selectors that remain valid. Added `it.todo` to mark that XSS payload
+assertions are owned by the companion story
+`gate-tests-xss-activityfeed-component`.

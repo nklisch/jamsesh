@@ -14,85 +14,138 @@
 
   let events = $state<EventEnvelope[]>([]);
 
-  function formatEvent(env: EventEnvelope): { icon: string; html: string; isConflict: boolean } {
+  // Fragment-based structured representation — no HTML strings, no XSS sinks.
+  type Fragment =
+    | { kind: 'text'; value: string }
+    | { kind: 'emphasis'; value: string } // rendered as <span class="who">
+    | { kind: 'sha'; value: string }       // rendered as <span class="sha">
+
+  type FormattedEvent = {
+    icon: string;
+    fragments: Fragment[];
+    isConflict: boolean;
+  };
+
+  function txt(value: string): Fragment { return { kind: 'text', value }; }
+  function who(value: string): Fragment { return { kind: 'emphasis', value }; }
+  function sha(value: string): Fragment { return { kind: 'sha', value: String(value).slice(0, 7) }; }
+
+  function formatEvent(env: EventEnvelope): FormattedEvent {
     const p = env.payload as Record<string, unknown>;
     switch (env.type) {
       case 'commit.arrived':
         return {
           icon: '●',
-          html: `<span class="who">${p.author_id}</span> pushed <span class="sha">${String(p.sha).slice(0, 7)}</span> to ${p.ref}: ${p.summary}`,
+          fragments: [
+            who(String(p.author_id)),
+            txt(' pushed '),
+            sha(String(p.sha)),
+            txt(` to ${String(p.ref)}: ${String(p.summary)}`),
+          ],
           isConflict: false,
         };
       case 'merge.succeeded':
         return {
           icon: '⇈',
-          html: `auto-merger merged <em>${String(p.source_sha).slice(0, 7)}</em> into draft`,
+          fragments: [
+            txt('auto-merger merged '),
+            sha(String(p.source_sha)),
+            txt(' into draft'),
+          ],
           isConflict: false,
         };
       case 'conflict.detected':
         return {
           icon: '⚡',
-          html: `<span class="who">${p.source_ref}</span> conflict vs draft`,
+          fragments: [
+            who(String(p.source_ref)),
+            txt(' conflict vs draft'),
+          ],
           isConflict: true,
         };
       case 'conflict.resolved':
         return {
           icon: '✓',
-          html: `conflict resolved via <span class="sha">${String(p.resolving_commit_sha).slice(0, 7)}</span>`,
+          fragments: [
+            txt('conflict resolved via '),
+            sha(String(p.resolving_commit_sha)),
+          ],
           isConflict: false,
         };
       case 'comment.added':
         return {
           icon: '💬',
-          html: `<span class="who">${p.author_id}</span> commented: ${p.body}`,
+          fragments: [
+            who(String(p.author_id)),
+            txt(' commented: '),
+            txt(String(p.body)),
+          ],
           isConflict: false,
         };
       case 'comment.resolved':
         return {
           icon: '✓',
-          html: `<span class="who">${p.resolved_by}</span> resolved a comment`,
+          fragments: [
+            who(String(p.resolved_by)),
+            txt(' resolved a comment'),
+          ],
           isConflict: false,
         };
       case 'ref.forked':
         return {
           icon: '⤴',
-          html: `ref forked: <span class="sha">${p.ref}</span> from <span class="sha">${String(p.parent_sha).slice(0, 7)}</span>`,
+          fragments: [
+            txt('ref forked: '),
+            sha(String(p.ref)),
+            txt(' from '),
+            sha(String(p.parent_sha)),
+          ],
           isConflict: false,
         };
       case 'mode.changed':
         return {
           icon: '⟳',
-          html: `mode changed on <span class="sha">${p.ref}</span>: ${p.old_mode} → ${p.new_mode}`,
+          fragments: [
+            txt('mode changed on '),
+            sha(String(p.ref)),
+            txt(`: ${String(p.old_mode)} → ${String(p.new_mode)}`),
+          ],
           isConflict: false,
         };
       case 'turn.ended':
         return {
           icon: '◉',
-          html: `<span class="who">${p.user_id}</span> turn ended on ${p.ref}`,
+          fragments: [
+            who(String(p.user_id)),
+            txt(` turn ended on ${String(p.ref)}`),
+          ],
           isConflict: false,
         };
       case 'presence.updated':
         return {
           icon: '◌',
-          html: `<span class="who">${p.user_id}</span> active on ${p.ref}`,
+          fragments: [
+            who(String(p.user_id)),
+            txt(` active on ${String(p.ref)}`),
+          ],
           isConflict: false,
         };
       case 'session.finalizing':
         return {
           icon: '⏳',
-          html: `session is finalizing`,
+          fragments: [txt('session is finalizing')],
           isConflict: false,
         };
       case 'session.ended':
         return {
           icon: '■',
-          html: `session ended`,
+          fragments: [txt('session ended')],
           isConflict: false,
         };
       default:
         return {
           icon: '·',
-          html: env.type,
+          fragments: [txt(env.type)],
           isConflict: false,
         };
     }
@@ -147,8 +200,17 @@
         {@const fmt = formatEvent(env)}
         <li class="feed-item" class:conflict={fmt.isConflict}>
           <span class="icon" aria-hidden="true">{fmt.icon}</span>
-          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-          <span class="text">{@html fmt.html}</span>
+          <span class="text">
+            {#each fmt.fragments as frag}
+              {#if frag.kind === 'text'}
+                {frag.value}
+              {:else if frag.kind === 'emphasis'}
+                <span class="who">{frag.value}</span>
+              {:else if frag.kind === 'sha'}
+                <span class="sha">{frag.value}</span>
+              {/if}
+            {/each}
+          </span>
           <span class="when">{timeAgo(env.timestamp)}</span>
         </li>
       {/each}
@@ -197,16 +259,16 @@
     color: var(--color-danger);
   }
 
-  .feed-item :global(.who) {
+  .feed-item .who {
     color: var(--color-text-primary);
     font-weight: var(--font-weight-medium);
   }
 
-  .feed-item.conflict :global(.who) {
+  .feed-item.conflict .who {
     color: var(--color-danger);
   }
 
-  .feed-item :global(.sha) {
+  .feed-item .sha {
     font-family: var(--font-mono);
     font-size: 11px;
   }
