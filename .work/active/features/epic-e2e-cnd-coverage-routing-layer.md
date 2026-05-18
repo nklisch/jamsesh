@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer
 kind: feature
-stage: review
+stage: done
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -525,3 +525,26 @@ Verification: `go build ./...` + `go vet ./...` clean.
 **Critical bug surfaced**: `bug-router-static-discoverer-not-started` (Important severity). The discovery infrastructure exists and works (`internal/router/discovery/static.go` with 5s default probe), but the wiring in `cmd/jamsesh-router/main.go` has placeholder `_ = publishWithMetrics` / `_ = probe` assignments that were never replaced with `discovery.Static(...).Run(ctx, ring.SetPods)`. Fix is a 1-goroutine addition.
 
 Ready for review. The k8s-discovery deferral is documented in the design and now lives in `.work/backlog/`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All 6 child stories reviewed and approved in this session. The
+feature delivers the promised routing-layer e2e coverage arc: 3 golden tests
+(consistent-hash, MCP header pinning, hint-cache), 2 failure tests (503
+re-dispatch + bounded retry, dead backend eviction), and 1 chaos test (network
+disconnect + latency). The critical production bug
+(`bug-router-static-discoverer-not-started`) was correctly surfaced, documented,
+and parked — the affected tests are skipped with references rather than
+removed or weakened. Foundation-doc alignment: `ARCHITECTURE.md` describes the
+static discoverer probing on a configurable interval (correct design); the
+wiring gap in `main.go` is a bug, not a doc drift — the doc is aspirational
+and the bug is tracked. K8s discovery deferral is appropriate given the
+envtest/WireMock setup cost vs. coverage value. The feature is complete per
+its acceptance criteria (modulo the skipped dead-pod test blocked by the
+parked bug).
