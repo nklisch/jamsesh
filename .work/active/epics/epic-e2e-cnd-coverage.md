@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage
 kind: epic
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing, infra, portal]
 parent: null
 depends_on: []
@@ -215,6 +215,16 @@ check would actively mislead operators about the durability contract.
   SLO", not "does it stay healthy for 24h". Soak is a separate concern.
 - **Performance benchmarks.** Coverage is invariant-focused; perf
   characterization belongs in `/agile-workflow:perf-design`.
+
+## Autopilot decision log
+
+- 2026-05-17 — Advanced `drafting → implementing` directly without invoking
+  `/agile-workflow:epic-design`. The decomposition was already produced by
+  the upstream `e2e-test-design --audit` pass (6 child features with
+  declared `depends_on` chains and acceptance criteria recorded in this
+  body). Re-running `epic-design` would either no-op or risk duplicating
+  children. The children are the work targets from here on. Mirrors the
+  precedent set in `epic-e2e-tests` for the same situation.
 
 ## Next
 
