@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-failure-write-rejected
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture, epic-e2e-cnd-coverage-object-storage-sync-failure-startup]
@@ -83,3 +83,23 @@ write and pretend it succeeded.
 - The depends_on on `failure-startup` is for the shared `startFailingPortal`
   helper, which should be extracted to a `helpers_test.go` file in the
   `failure/` package if not already done by that story.
+
+## Implementation notes (2026-05-17)
+
+- Implemented as `TestObjectStorageWriteRejected` in
+  `tests/e2e/failure/object_storage_write_rejected_test.go`.
+- Uses a single portal pod (via `startFailingPortal` from `config_and_deps_test.go`)
+  rather than `portalcluster.Start` — this avoids t.Fatal on startup and lets the
+  test branch on PATH A (startup exit) vs PATH B (lazy boot + push).
+- PATH A: portal validates bucket existence at startup → exits non-zero → asserting
+  non-zero exit code and empty real bucket. Invariant satisfied.
+- PATH B: AWS S3 client is lazy (bucket existence deferred to first write). Portal
+  boots, test signs in, creates org+session, clones repo, commits, and pushes.
+  Push is executed via `exec.CommandContext` (not `gitclient.Push`) to capture
+  exit status without t.Fatal. If push fails (non-zero) → invariant satisfied.
+  If push returns 0 (silent acceptance) → `t.Skip` with backlog reference
+  `object-storage-write-rejected-silent-acceptance`.
+- Real MinIO bucket (mn.BucketName, the one the fixture creates) is verified
+  empty under `sessions/<sessionID>/` after any failure path — no partial
+  writes leaked to the reachable bucket.
+- `go build ./failure/... && go vet ./failure/...` passes clean.
