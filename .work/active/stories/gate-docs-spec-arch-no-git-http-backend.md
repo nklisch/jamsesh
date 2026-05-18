@@ -1,7 +1,7 @@
 ---
 id: gate-docs-spec-arch-no-git-http-backend
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -43,3 +43,9 @@ Replace both passages with a single, unambiguous statement: smart-HTTP
 is served by spawning `git-upload-pack` and `git-receive-pack` as
 subprocesses with `--stateless-rpc`; pre-receive validates in-process
 before spawn. Drop the `git http-backend` mention.
+
+## Implementation notes
+
+- `docs/SPEC.md` line 20-21: replaced "via subprocess or `git http-backend` CGI" with "`git-upload-pack` and `git-receive-pack` spawned as subprocesses with `--stateless-rpc`".
+- `docs/ARCHITECTURE.md` lines 64-71: replaced the "Wraps the canonical `git http-backend` CGI..." passage with text describing direct subprocess spawning with `--stateless-rpc`, in-process pre-receive validation, and chi-router auth enforcement — consistent with `internal/portal/githttp/` code.
+- Final grep confirms zero remaining `http-backend` or `CGI` references in both files.

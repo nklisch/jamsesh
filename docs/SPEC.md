@@ -17,8 +17,8 @@ Technical boundaries and decisions for jamsesh. Present truth, not roadmap.
 - WebSockets for portal UI real-time updates via `github.com/coder/websocket`
   (the active fork of `nhooyr.io/websocket`; stewardship moved to Coder
   in 2024). Pin v1.8.x.
-- System `git` binary for smart-HTTP serving (via subprocess or
-  `git http-backend` CGI).
+- System `git` binary for smart-HTTP serving — `git-upload-pack` and
+  `git-receive-pack` spawned as subprocesses with `--stateless-rpc`.
 - `go-git` library for in-process git operations (auto-merger three-way merges,
   ref inspection, commit-trailer parsing).
 - Pre/post-receive hooks implemented as Go functions invoked by the smart-HTTP

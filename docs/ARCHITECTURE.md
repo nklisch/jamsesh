@@ -61,11 +61,14 @@ checks.
 
 **Git smart-HTTP** — serves `git-upload-pack` (fetch) and `git-receive-pack`
 (push) for the session bare repos hosted on disk under
-`<storage>/orgs/<org-id>/sessions/<session-id>.git`. Wraps the canonical
-`git http-backend` CGI (or invokes `git-upload-pack` / `git-receive-pack` as
-subprocesses) with Go-implemented HTTP Basic auth using the user OAuth token
-as password. Pre-receive validates pushed ref names against the authenticated
-user's namespace, the writable scope, and required commit trailers.
+`<storage>/orgs/<org-id>/sessions/<session-id>.git`. Spawns `git-upload-pack`
+and `git-receive-pack` as subprocesses with `--stateless-rpc` to serve
+smart-HTTP. Pre-receive validation runs in-process (Go) before the
+receive-pack spawn — see `internal/portal/githttp/`. HTTP Basic auth is
+enforced at the chi router before the git subprocess runs, using the user
+OAuth token as password. Pre-receive validates pushed ref names against the
+authenticated user's namespace, the writable scope, and required commit
+trailers.
 
 **Auto-merger workers** — background goroutines triggered by `post-receive`
 events. Use `go-git` in-process to attempt three-way merges of incoming
