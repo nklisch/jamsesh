@@ -215,6 +215,8 @@ func TestAcceptSessionInvite_HappyPath(t *testing.T) {
 	invitee := seedAccount(t, env.s, "invitee@example.com")
 	org := seedOrg(t, env.s, "Org", "org-accept")
 	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	// Invitee must be an org member; default policy is members_only.
+	seedOrgMember(t, env.s, org.ID, invitee.ID, "member")
 	sess := seedSession(t, env.s, org.ID)
 	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
 
@@ -355,6 +357,142 @@ func TestAcceptSessionInvite_AlreadyAccepted_Returns409(t *testing.T) {
 		inviteeToken, body)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("expected 409, got %d", resp.StatusCode)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AcceptSessionInvite — per-org session_invite_policy cross-product tests
+// ---------------------------------------------------------------------------
+
+// TestAcceptSessionInvite_MembersOnlyPolicy_NonMember verifies that a
+// non-org-member is rejected with 403 auth.org_membership_required when the
+// org's session_invite_policy is "members_only" (the default).
+func TestAcceptSessionInvite_MembersOnlyPolicy_NonMember(t *testing.T) {
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee-nonmember@example.com")
+	org := seedOrg(t, env.s, "Org", "pol-mo-nonmember")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	// Invitee is NOT added to org_members — policy should block them.
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	rawToken := "polmononmemberpolmononmemberpolmononmemberpolmononmemberpolmo"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	body := map[string]any{"token": rawToken}
+
+	resp := postJSON(t, env.srv,
+		"/api/orgs/"+org.ID+"/sessions/"+sess.ID+"/invites/"+invite.ID+"/accept",
+		inviteeToken, body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("members_only + non-member: expected 403, got %d", resp.StatusCode)
+	}
+
+	var errEnv openapi.ErrorEnvelope
+	decodeBody(t, resp, &errEnv)
+	if errEnv.Error != "auth.org_membership_required" {
+		t.Errorf("error code: want auth.org_membership_required, got %q", errEnv.Error)
+	}
+}
+
+// TestAcceptSessionInvite_MembersOnlyPolicy_Member verifies that an existing
+// org member can accept an invite when the org's policy is "members_only".
+// This covers the happy-path under the restrictive policy explicitly.
+func TestAcceptSessionInvite_MembersOnlyPolicy_Member(t *testing.T) {
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee-member@example.com")
+	org := seedOrg(t, env.s, "Org", "pol-mo-member")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	seedOrgMember(t, env.s, org.ID, invitee.ID, "member") // is an org member
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	rawToken := "polmomemberpolmomemberpolmomemberpolmomemberpolmomemberpolmome"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	body := map[string]any{"token": rawToken}
+
+	resp := postJSON(t, env.srv,
+		"/api/orgs/"+org.ID+"/sessions/"+sess.ID+"/invites/"+invite.ID+"/accept",
+		inviteeToken, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("members_only + org member: expected 200, got %d", resp.StatusCode)
+	}
+}
+
+// TestAcceptSessionInvite_OpenPolicy_NonMember verifies that a non-org-member
+// can accept an invite when the org's policy is flipped to "open".
+func TestAcceptSessionInvite_OpenPolicy_NonMember(t *testing.T) {
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee-open-nonmember@example.com")
+	org := seedOrg(t, env.s, "Org", "pol-open-nonmember")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	// Invitee is NOT an org member — open policy should allow them anyway.
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	// Flip policy to "open".
+	if err := env.s.UpdateOrgSessionInvitePolicy(context.Background(), store.UpdateOrgSessionInvitePolicyParams{
+		ID:                  org.ID,
+		SessionInvitePolicy: "open",
+	}); err != nil {
+		t.Fatalf("update org policy: %v", err)
+	}
+
+	rawToken := "polopennonmemberpolopennonmemberpolopennonmemberpolopennonmember"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	body := map[string]any{"token": rawToken}
+
+	resp := postJSON(t, env.srv,
+		"/api/orgs/"+org.ID+"/sessions/"+sess.ID+"/invites/"+invite.ID+"/accept",
+		inviteeToken, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("open policy + non-member: expected 200, got %d", resp.StatusCode)
+	}
+}
+
+// TestAcceptSessionInvite_OpenPolicy_Member verifies that an org member can
+// also accept an invite under the "open" policy (belt-and-suspenders).
+func TestAcceptSessionInvite_OpenPolicy_Member(t *testing.T) {
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee-open-member@example.com")
+	org := seedOrg(t, env.s, "Org", "pol-open-member")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	seedOrgMember(t, env.s, org.ID, invitee.ID, "member") // is an org member
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	// Flip policy to "open".
+	if err := env.s.UpdateOrgSessionInvitePolicy(context.Background(), store.UpdateOrgSessionInvitePolicyParams{
+		ID:                  org.ID,
+		SessionInvitePolicy: "open",
+	}); err != nil {
+		t.Fatalf("update org policy: %v", err)
+	}
+
+	rawToken := "polopenmemberpolopenmemberpolopenmemberpolopenmemberpolopenmember"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	body := map[string]any{"token": rawToken}
+
+	resp := postJSON(t, env.srv,
+		"/api/orgs/"+org.ID+"/sessions/"+sess.ID+"/invites/"+invite.ID+"/accept",
+		inviteeToken, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("open policy + org member: expected 200, got %d", resp.StatusCode)
 	}
 }
 
@@ -589,6 +727,8 @@ func TestGetSessionInvite_NoMutation(t *testing.T) {
 	invitee := seedAccount(t, env.s, "invitee@example.com")
 	org := seedOrg(t, env.s, "Org", "org-get-invite-nomut")
 	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	// Invitee must be an org member so POST accept succeeds under members_only policy.
+	seedOrgMember(t, env.s, org.ID, invitee.ID, "member")
 	sess := seedSession(t, env.s, org.ID)
 	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
 

@@ -299,6 +299,30 @@ func (h *Handler) AcceptSessionInvite(ctx context.Context, req openapi.AcceptSes
 		}, nil
 	}
 
+	// Per-org policy: members_only requires the accepting account to already
+	// be an org member. Check is intentionally after email-match so that a
+	// wrong-email request never learns about the org's policy.
+	org, err := h.store.GetOrgByID(ctx, orgID)
+	if err != nil {
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: accept invite: get org: %w", err))
+	}
+	if org.SessionInvitePolicy == "members_only" {
+		if _, mErr := h.store.GetOrgMember(ctx, store.GetOrgMemberParams{
+			OrgID:     orgID,
+			AccountID: acc.ID,
+		}); mErr != nil {
+			if errors.Is(mErr, store.ErrNotFound) {
+				return openapi.AcceptSessionInvite403JSONResponse{
+					ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
+						Error:   "auth.org_membership_required",
+						Message: "this org requires you to be a member before joining sessions; ask an org admin to add you first",
+					},
+				}, nil
+			}
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: accept invite: get org member: %w", mErr))
+		}
+	}
+
 	// Tx: mark invite accepted + add session member.
 	txErr := h.store.WithTx(ctx, func(tx store.TxStore) error {
 		if err := tx.MarkSessionInviteAccepted(ctx, store.MarkSessionInviteAcceptedParams{

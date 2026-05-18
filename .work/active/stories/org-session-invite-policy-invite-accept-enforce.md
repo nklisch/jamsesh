@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-invite-accept-enforce
 kind: story
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: org-session-invite-policy
 depends_on: [org-session-invite-policy-schema]
@@ -100,3 +100,31 @@ in when the org policy forbids it. Mitigations:
 
 `git revert` the commit. Behavior reverts to "session-membership only
 required" (the post-refactor pre-feature behavior).
+
+## Implementation notes
+
+**Handler change** (`internal/portal/sessions/invites.go`):
+- Inserted the policy gate in `AcceptSessionInvite` after the email-match
+  check (line ~300) and before the `WithTx` block.
+- Uses `h.store.GetOrgByID` (confirmed present in store interface as of the
+  schema story) and `h.store.GetOrgMember` with `GetOrgMemberParams`.
+- Returns `AcceptSessionInvite403JSONResponse` with `Error: "auth.org_membership_required"`
+  when policy is `members_only` and `ErrNotFound` on the member lookup.
+- Wrapped non-found errors with `deperr.WrapDBIfTransient` for consistency.
+
+**OpenAPI spec**: skipped — no other operation in `docs/openapi.yaml`
+documents specific error codes on their 403 responses; a one-off pattern
+would be worse than no doc.
+
+**Test fixes** (`internal/portal/sessions/invites_test.go`):
+- `TestAcceptSessionInvite_HappyPath`: added invitee as org member (stale
+  fixture — the default policy is `members_only`).
+- `TestGetSessionInvite_NoMutation`: same fix for the POST accept leg.
+
+**New cross-product tests added**:
+- `TestAcceptSessionInvite_MembersOnlyPolicy_NonMember` — 403 `auth.org_membership_required`
+- `TestAcceptSessionInvite_MembersOnlyPolicy_Member` — 200
+- `TestAcceptSessionInvite_OpenPolicy_NonMember` — 200 (policy flipped via `UpdateOrgSessionInvitePolicy`)
+- `TestAcceptSessionInvite_OpenPolicy_Member` — 200 (belt-and-suspenders)
+
+**Verification**: `go build ./...` clean; `go test ./internal/portal/sessions/... -count=1` — 62 tests, all PASS.
