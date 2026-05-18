@@ -333,14 +333,58 @@ No manual migration step is required.
 
 ## 6. Email (magic-link delivery)
 
-> **NOTE:** Email provider configuration lands with
-> `epic-portal-foundation-auth-flows` in a future release. This section
-> describes the expected provider options.
+The portal delivers magic-link authentication tokens via email. Set
+`JAMSESH_EMAIL_PROVIDER` to select a backend and `JAMSESH_EMAIL_FROM` to
+set the envelope sender address. Both are required when magic-link auth is
+in use.
 
-The portal supports magic-link email auth as an alternative to OAuth for
-headless or browser-free environments. Provider options will include SMTP
-(self-host default), SendGrid, Postmark, and Resend. Per-provider env var
-configuration will be documented in the auth-flows release notes.
+### Common variables
+
+| Env var | YAML key | Default | Description |
+|---|---|---|---|
+| `JAMSESH_EMAIL_PROVIDER` | `email.provider` | `smtp` | Delivery backend: `smtp`, `sendgrid`, `postmark`, or `resend` |
+| `JAMSESH_EMAIL_FROM` | `email.from` | _(none)_ | Envelope sender address, e.g. `jamsesh <noreply@example.com>` |
+
+### SMTP (default)
+
+SMTP is the default provider and the right choice for self-hosted setups
+with an existing mail relay or a local MTA.
+
+| Env var | YAML key | Default | Description |
+|---|---|---|---|
+| `JAMSESH_EMAIL_SMTP_HOST` | `email.smtp.host` | `localhost` | SMTP server hostname |
+| `JAMSESH_EMAIL_SMTP_PORT` | `email.smtp.port` | `587` | SMTP server port |
+| `JAMSESH_EMAIL_SMTP_USER` | `email.smtp.user` | _(none)_ | SMTP auth username; omit for unauthenticated relays |
+| `JAMSESH_EMAIL_SMTP_PASS` | `email.smtp.pass` | _(none)_ | SMTP auth password; use `JAMSESH_EMAIL_SMTP_PASS_FILE` to supply from a file |
+| `JAMSESH_EMAIL_SMTP_TLS` | `email.smtp.tls` | `mandatory` | TLS policy: `mandatory`, `opportunistic`, or `none` |
+
+### SendGrid
+
+Set `JAMSESH_EMAIL_PROVIDER=sendgrid` and supply an API key:
+
+| Env var | YAML key | Default | Description |
+|---|---|---|---|
+| `JAMSESH_EMAIL_SENDGRID_API_KEY` | `email.sendgrid.api_key` | _(none)_ | SendGrid API key; use `JAMSESH_EMAIL_SENDGRID_API_KEY_FILE` to supply from a file |
+
+### Postmark
+
+Set `JAMSESH_EMAIL_PROVIDER=postmark` and supply a server token:
+
+| Env var | YAML key | Default | Description |
+|---|---|---|---|
+| `JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN` | `email.postmark.server_token` | _(none)_ | Postmark server token; use `JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN_FILE` to supply from a file |
+| `JAMSESH_EMAIL_POSTMARK_MESSAGE_STREAM` | `email.postmark.message_stream` | `outbound` | Postmark message stream name |
+
+### Resend
+
+Set `JAMSESH_EMAIL_PROVIDER=resend` and supply an API key:
+
+| Env var | YAML key | Default | Description |
+|---|---|---|---|
+| `JAMSESH_EMAIL_RESEND_API_KEY` | `email.resend.api_key` | _(none)_ | Resend API key; use `JAMSESH_EMAIL_RESEND_API_KEY_FILE` to supply from a file |
+
+Credential env vars that accept a `_FILE` companion are listed in the §2
+[`_FILE` convention table](#_file-convention-for-secret-env-vars).
 
 ---
 

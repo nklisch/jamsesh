@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-email-future-release
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -44,3 +44,22 @@ Remove the "future release" NOTE. Document the primary email env vars
 (`JAMSESH_EMAIL_PROVIDER` with values, `JAMSESH_EMAIL_FROM`,
 per-provider host/port/credential variables) in §6 to match what §2
 already references for the `_FILE` companions.
+
+## Implementation notes
+
+Removed the "future release" NOTE block and replaced the placeholder prose with
+a full §6 rewrite. The new section documents:
+
+- Common variables: `JAMSESH_EMAIL_PROVIDER` (values: `smtp`, `sendgrid`,
+  `postmark`, `resend`; default `smtp`) and `JAMSESH_EMAIL_FROM`.
+- SMTP sub-section: host, port, user, pass (with `_FILE` note), TLS mode;
+  defaults match `config.go` (`localhost:587`, `mandatory`).
+- SendGrid sub-section: API key with `_FILE` companion.
+- Postmark sub-section: server token with `_FILE` companion, message stream
+  (default `outbound` per `senders/postmark.go`).
+- Resend sub-section: API key with `_FILE` companion.
+- Cross-reference to the §2 `_FILE` convention table.
+
+No other sections were touched. All env var names, YAML keys, and defaults
+were verified directly from `internal/portal/config/config.go` and
+`internal/portal/senders/`.
