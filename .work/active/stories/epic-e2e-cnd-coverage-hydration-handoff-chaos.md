@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff-chaos
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-hydration-handoff
 depends_on: [epic-e2e-cnd-coverage-hydration-handoff-golden]
@@ -9,6 +9,7 @@ release_binding: null
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17
+implemented: 2026-05-17
 ---
 
 # Hydration-Handoff Chaos — Pod Kill + Object-Storage Latency
@@ -180,3 +181,44 @@ time — conservative but not infinite.
   If 45s is reliably insufficient for the hydration under 4s latency,
   investigate the hydration worker count or parallel download behavior —
   do not simply raise the timeout.
+
+## Implementation Notes (2026-05-17)
+
+Both test files implemented and verified clean with `go build ./chaos/...` and
+`go vet ./chaos/...`.
+
+### `tests/e2e/chaos/handoff_under_pod_kill_test.go`
+
+- `TestHandoffUnderPodKill`: 2-pod cluster + router, short heartbeat (2s).
+- Pushes 5 commits via router, captures all 5 SHAs from `gitclient.Commit`.
+- `c.Kill(holderPod)` → `c.WaitForHydration(survivorIdx, 30s)` → push commit 6
+  directly on the survivor (bypass router for bug-router-static-discoverer).
+- State assertion: `podKillRequireAncestor` clones from the survivor, fetches,
+  and runs `git merge-base --is-ancestor <ackedSHA> <currentTip>` for
+  `draftTipBefore` and all 5 individually acked SHAs. Non-tautological: actual
+  commit ancestry, not just HTTP status.
+- Design-boundary comment in file header and in test body.
+- No fencing-token assertions.
+
+### `tests/e2e/chaos/handoff_under_object_storage_chaos_test.go`
+
+- `TestHandoffUnderObjectStorageChaos`: Toxiproxy (port 9101) in front of
+  MinIO; 2-pod cluster wired through proxy (Router: false). Startup order:
+  MinIO → Toxiproxy → portal cluster.
+- Pushes 5 commits via pod 0 (no toxic yet — baseline RPO=0 holds).
+- Injects 4 000ms Toxiproxy latency on `portal-minio`; drains pod 0 (up to
+  45s for slow flush); waits for pod 1 hydration with 45s SLO.
+- Removes toxic; pushes commit 6 via pod 1; asserts all 5 pre-chaos SHAs
+  are ancestors of pod 1's current tip via `git merge-base --is-ancestor`.
+- Defensive `t.Cleanup` removes the toxic on any early exit.
+- `stosStripScheme` strips `http://` from `mn.ContainerEndpoint` to give
+  Toxiproxy its required bare `host:port` upstream address.
+
+### Design decisions
+- `gitMergeBaseIsAncestor` is defined in `handoff_under_pod_kill_test.go` and
+  used by both tests (both in `package chaos_test` so same package scope).
+- `stosStripScheme` mirrors `partitionStripScheme` in
+  `object_storage_partition_test.go` — kept local rather than extracted to
+  avoid cross-test coupling.
+- Proxy port 9101 used (not 9001) to avoid collision with the existing
+  `object_storage_partition_test.go` proxy on 9001.
