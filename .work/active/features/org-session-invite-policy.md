@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, ui, security]
 parent: null
 depends_on: []
@@ -356,6 +356,59 @@ during implementation, not pre-locked at scope time).
 - [ ] `docs/ARCHITECTURE.md` (or `docs/SECURITY.md`) updated with a short
       membership-model section
 - [ ] Mockups committed under `.mockups/screens/org-session-invite-policy/`
+
+## Implementation summary
+
+All 6 child stories implemented in three waves via implement-orchestrator,
+then advanced to `stage: review`. Commit chain:
+
+- `9f668a6` — schema (+ sqlc regen + ARCHITECTURE.md membership-model section)
+- `ef09ad0` — get-invite-details (GET endpoint + 8 tests)
+- `eaa0295` — invite-accept-enforce (policy gate + cross-product tests)
+- `81e89bd` — patch-endpoint (PATCH /api/orgs/{orgID} + 6 tests)
+- `422b077` — org-settings-ui (also added GET /api/orgs/{orgID} that the
+  design assumed existed; 10 component tests + 4 handler tests)
+- (next commit) — invite-accept-ui (5-state hero screen + 14 tests + login
+  return-to round-trip)
+- `4681f53` — integration fix: GetOrg test-double stubs across 5 portal
+  packages that Wave 3a's interface addition missed
+
+### Cross-cutting notes
+- **Bonus endpoint**: Wave 3a added `GET /api/orgs/{orgID}` as a sibling of
+  PATCH. The design assumed it existed; the agent caught the gap and added
+  it inline rather than blocking. Handler in `accounts/orgs.go`, route in
+  `cmd/portal/main.go`.
+- **Login return-to**: implemented client-side in `Login.svelte` via an
+  `$effect` that runs when `auth.isAuthenticated` becomes true. The
+  existing OAuth flow is server-side redirect, so the client-side hook
+  catches magic-link + subsequent flows. Documented limitation: pure
+  OAuth round-trip needs a follow-up backend change for full return-to.
+- **Wave 1 collateral**: schema agent updated `sqlc.yaml` overrides for
+  lease/finalize-lock timestamp columns to keep regeneration consistent
+  across sqlc versions. get-invite-details agent fixed type mismatches
+  in the adapter converters left by sibling story
+  `lease-fencing-schema-verify-sqlc-regen`.
+- **Test-stub integration**: 5 `*OnlyStrict` test doubles needed GetOrg
+  panic stubs after Wave 3a; orchestrator added them in 4681f53.
+
+### Verification
+- `go build ./...` — clean
+- `go test ./internal/portal/... -count=1` — 27/27 packages pass
+- `go test ./internal/db/... -count=1` — all pass
+- `cd frontend && npm test` — 357/357 tests pass
+- `cd frontend && npm run check` — 0 errors (2 pre-existing warnings unchanged)
+
+### Acceptance criteria status
+
+- [x] Existing orgs migrated to `members_only` policy via schema default
+- [x] `AcceptSessionInvite` rejects non-org-members under `members_only`
+- [x] `AcceptSessionInvite` succeeds for non-org-members under `open`
+- [x] `PATCH /api/orgs/{orgID}` accepts `session_invite_policy`; admin-role gated
+- [x] `OrgSettings.svelte` renders current policy + lets admins save
+- [x] `InviteAccept.svelte` renders happy-path + members-only rejection states
+- [x] All tests pass; new tests cover both policy paths
+- [x] `docs/ARCHITECTURE.md` updated with membership-model section
+- [x] Mockups committed under `.mockups/screens/org-session-invite-policy-{settings,accept}/`
 
 ## History
 
