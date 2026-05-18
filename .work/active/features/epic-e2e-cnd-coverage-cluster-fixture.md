@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage
 depends_on: []
@@ -589,6 +589,39 @@ standalone.
   existing chaos pattern). If Pumba isn't already a CI dependency,
   document the install step. Confirm at impl time by reading
   `tests/e2e/chaos/runtime_and_clock_test.go:134-267`.
+
+## Implementation summary (2026-05-17)
+
+All 4 child stories landed at `stage: review` in a single orchestrator
+run (3-wave schedule: minio + router-image + portalcluster + smoke).
+
+| Story | Status | Notes |
+|---|---|---|
+| `cluster-fixture-minio` | review | per-test bucket, hex8-hyphenated naming (S3 rules), self-test passes (PUT+GET round-trip) |
+| `cluster-fixture-router-image` | review | Dockerfile.router + Makefile + CI step + fixture; nginx-stub self-test passes |
+| `cluster-fixture-portalcluster` | review | parallel pod start via errgroup; AWS_ACCESS_KEY_ID/SECRET (no JAMSESH_OBJECT_STORAGE_ACCESS_KEY in config); docker kill (not Pumba) for Kill helper; LeaseHolder via `hashtext($1)::bigint` (hashtext-portability risk documented inline) |
+| `cluster-fixture-smoke` | review | full-scope 7-step keystone; magic-link auth via MailHog; bucket prefix `sessions/<sessionID>/`; fresh-clone fetch on the post-drain assertion |
+
+Cross-cutting deviations from original design:
+- **Fixture extensions to `portal.Options` / `*Portal`**: `ContainerFiles`,
+  `Logs(ctx)`, `SendSignal(ctx, sig)`, `ContainerIP(ctx)`, `State(ctx)`.
+  All backward-compatible additions. These now exist as shared
+  infrastructure for downstream cnd-coverage features.
+- **`/test/lease-debug` follow-on**: documented as a future fixture
+  extension if `hashtext` portability bites during downstream tests.
+  Not blocking on the smoke test (test landed full-scope without it).
+- **`gc.auto=0` on bare repos**: not explicitly verified in the smoke
+  test; relies on the production code in `internal/portal/storage` to
+  have set it correctly (per object-storage-sync's design).
+
+Verification: `go build ./...` + `go vet ./...` clean across both the
+root module and `tests/e2e/` module. No product bugs surfaced during
+implementation — all assertions land genuinely against real product
+behavior.
+
+The clustered-mode e2e foundation is in place. Downstream cnd-coverage
+features (lease-fencing, object-storage-sync, routing-layer,
+hydration-handoff) are unblocked to enter their own design passes.
 
 ## Acceptance criteria
 
