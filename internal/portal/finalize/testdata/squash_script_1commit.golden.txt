@@ -3,7 +3,7 @@ set -euo pipefail
 echo "==> Fetching session refs"
 git fetch "$JAMSESH_FETCH_REMOTE"
 echo "==> Creating target branch ship/comments at fedcba987654"
-git checkout -b "ship/comments" fedcba9876543210fedcba9876543210fedcba98
+git checkout -b 'ship/comments' 'fedcba9876543210fedcba9876543210fedcba98'
 echo "==> Staging 1 curated commit"
 git cherry-pick --no-commit 1111111111111111111111111111111111111111
 echo "==> Composing squash commit"
@@ -17,4 +17,4 @@ Ship the comments feature
 Co-authored-by: Alice Smith <alice@example.com>
 Co-authored-by: Bob Tan <bob@example.com>
 JAMSESH_MSG
-echo "==> Done. Push when ready: git push origin ship/comments"
+echo "==> Done. Push when ready: git push origin 'ship/comments'"

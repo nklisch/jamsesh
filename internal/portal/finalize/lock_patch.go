@@ -153,6 +153,23 @@ func (h *Handler) PatchFinalizeLock(ctx context.Context, req openapi.PatchFinali
 		}), nil
 	}
 
+	// Validate target_branch: must be non-empty, match ^[A-Za-z0-9._/-]+$,
+	// and must not start with '-' (which git treats as a flag).
+	if !ValidateTargetBranch(req.Body.TargetBranch) {
+		return openapi.PatchFinalizeLock400JSONResponse(openapi.ErrorEnvelope{
+			Error:   "session.invalid_target_branch",
+			Message: "target_branch must be non-empty, contain only [A-Za-z0-9._/-], and must not start with '-'",
+		}), nil
+	}
+
+	// Validate base_sha: must be a full 40-hex-character SHA-1.
+	if !ValidateBaseSHA(req.Body.BaseSha) {
+		return openapi.PatchFinalizeLock400JSONResponse(openapi.ErrorEnvelope{
+			Error:   "session.invalid_base_sha",
+			Message: "base_sha must be a 40-character lowercase hex SHA-1",
+		}), nil
+	}
+
 	selected := req.Body.SelectedCommitShas
 	if selected == nil {
 		selected = []string{}

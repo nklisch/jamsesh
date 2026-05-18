@@ -3,7 +3,7 @@ set -euo pipefail
 echo "==> Fetching session refs"
 git fetch "$JAMSESH_FETCH_REMOTE"
 echo "==> Creating target branch ship/comments at fedcba987654"
-git checkout -b "ship/comments" fedcba9876543210fedcba9876543210fedcba98
+git checkout -b 'ship/comments' 'fedcba9876543210fedcba9876543210fedcba98'
 echo "==> Cherry-picking commit 1 of 1: 1111111111111111111111111111111111111111"
 git cherry-pick 1111111111111111111111111111111111111111
-echo "==> Done. Push when ready: git push origin ship/comments"
+echo "==> Done. Push when ready: git push origin 'ship/comments'"

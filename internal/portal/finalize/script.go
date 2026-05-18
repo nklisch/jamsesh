@@ -103,7 +103,7 @@ func buildSquashScript(in ScriptInput) string {
 	}
 	b.WriteString("JAMSESH_MSG\n")
 
-	b.WriteString(fmt.Sprintf("echo \"==> Done. Push when ready: git push origin %s\"\n", in.TargetBranch))
+	b.WriteString(fmt.Sprintf("echo \"==> Done. Push when ready: git push origin %s\"\n", shellquote(in.TargetBranch)))
 	return b.String()
 }
 
@@ -139,7 +139,7 @@ func buildPreserveScript(in ScriptInput) string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(fmt.Sprintf("echo \"==> Done. Push when ready: git push origin %s\"\n", in.TargetBranch))
+	b.WriteString(fmt.Sprintf("echo \"==> Done. Push when ready: git push origin %s\"\n", shellquote(in.TargetBranch)))
 	return b.String()
 }
 
@@ -157,13 +157,18 @@ func writeFetchStep(b *strings.Builder) {
 }
 
 // writeCheckoutStep writes the branch-creation step.
+//
+// Both targetBranch and baseSHA are shell-quoted via shellquote as
+// defense-in-depth: even if an attacker-controlled value slips past the
+// PatchFinalizeLock validator, the single-quote wrapping prevents bash from
+// interpreting any special characters in the generated script.
 func writeCheckoutStep(b *strings.Builder, targetBranch, baseSHA string) {
 	short := baseSHA
 	if len(short) > 12 {
 		short = short[:12]
 	}
 	b.WriteString(fmt.Sprintf("echo \"==> Creating target branch %s at %s\"\n", targetBranch, short))
-	b.WriteString(fmt.Sprintf("git checkout -b \"%s\" %s\n", targetBranch, baseSHA))
+	b.WriteString(fmt.Sprintf("git checkout -b %s %s\n", shellquote(targetBranch), shellquote(baseSHA)))
 }
 
 // FirstParentLeafCommits walks the first-parent chain from draftTipSHA and

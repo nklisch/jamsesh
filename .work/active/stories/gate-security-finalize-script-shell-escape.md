@@ -1,7 +1,7 @@
 ---
 id: gate-security-finalize-script-shell-escape
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal, plugin]
 parent: null
 depends_on: []
@@ -47,3 +47,44 @@ Validate `target_branch` (and reject `base_sha` that isn't a hex SHA) at
 doesn't start with `-`. Also shell-escape both fields inside
 `writeCheckoutStep` / `buildPreserveScript` / `buildSquashScript` via a
 `shellquote` helper for defense-in-depth.
+
+## Implementation notes
+
+### New file: `internal/portal/finalize/escape.go`
+
+Contains three exported symbols for use by the companion test story
+(`gate-tests-finalize-shell-escape`):
+
+- **`Shellquote(s string) string`** — wraps `s` in single quotes, escaping
+  any internal single quotes via the `'\''` trick. Safe to splice into any
+  position in a bash command. File-private alias `shellquote` is used
+  throughout `script.go`.
+
+- **`ValidateTargetBranch(branch string) bool`** — returns true when
+  `branch` is non-empty, matches `^[A-Za-z0-9._/][A-Za-z0-9._/-]*$`, and
+  does not start with `-`.
+
+- **`ValidateBaseSHA(sha string) bool`** — returns true when `sha` matches
+  `^[a-f0-9]{40}$` (full SHA-1).
+
+### Changes to `internal/portal/finalize/script.go`
+
+`writeCheckoutStep` now wraps both `targetBranch` and `baseSHA` with
+`shellquote(...)`, switching from double-quoted to single-quoted bash
+arguments. The "Done. Push when ready" echo at the end of both
+`buildSquashScript` and `buildPreserveScript` also wraps the branch name
+with `shellquote`. All six golden files in `testdata/` were updated to
+reflect the new quoting.
+
+### Changes to `internal/portal/finalize/lock_patch.go`
+
+`PatchFinalizeLock` now validates both fields before writing to the store:
+- Invalid `target_branch` → 400 `session.invalid_target_branch`
+- Invalid `base_sha` (not a full 40-hex SHA-1) → 400 `session.invalid_base_sha`
+
+### Test updates
+
+Existing tests in `lock_patch_test.go` used stub values (`"base"`,
+`"base123"`) that are not valid 40-hex SHAs. These were replaced with
+`validBaseSHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"` so they
+continue exercising the happy path through the new validator.

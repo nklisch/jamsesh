@@ -32,6 +32,9 @@ func seedCallerLock(t *testing.T, env *finalizeEnv) string {
 	return id
 }
 
+// validBaseSHA is a well-formed 40-hex-char SHA used in happy-path tests.
+const validBaseSHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
 func TestPatchFinalizeLock_HappyUpdate(t *testing.T) {
 	env := newFinalizeEnv(t)
 	lockID := seedCallerLock(t, env)
@@ -44,7 +47,7 @@ func TestPatchFinalizeLock_HappyUpdate(t *testing.T) {
 		Body: &openapi.PatchFinalizeLockJSONRequestBody{
 			SelectedCommitShas: []string{"abc", "def"},
 			TargetBranch:       "main",
-			BaseSha:            "base123",
+			BaseSha:            validBaseSHA,
 			Mode:               openapi.PlanMode("squash"),
 			CommitMessage:      cm,
 		},
@@ -56,8 +59,8 @@ func TestPatchFinalizeLock_HappyUpdate(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200, got %T", resp)
 	}
-	if r.BaseSha != "base123" {
-		t.Errorf("BaseSha = %q, want base123", r.BaseSha)
+	if r.BaseSha != validBaseSHA {
+		t.Errorf("BaseSha = %q, want %s", r.BaseSha, validBaseSHA)
 	}
 	if r.TargetBranch != "main" {
 		t.Errorf("TargetBranch = %q, want main", r.TargetBranch)
@@ -106,7 +109,7 @@ func TestPatchFinalizeLock_IdleExpired_409AndReleases(t *testing.T) {
 		Body: &openapi.PatchFinalizeLockJSONRequestBody{
 			SelectedCommitShas: []string{},
 			TargetBranch:       "main",
-			BaseSha:            "base",
+			BaseSha:            validBaseSHA,
 			Mode:               "squash",
 		},
 	})
@@ -139,7 +142,7 @@ func TestPatchFinalizeLock_NonCaller_403(t *testing.T) {
 		Body: &openapi.PatchFinalizeLockJSONRequestBody{
 			SelectedCommitShas: []string{},
 			TargetBranch:       "main",
-			BaseSha:            "base",
+			BaseSha:            validBaseSHA,
 			Mode:               "squash",
 		},
 	})
@@ -183,7 +186,7 @@ func TestPatchFinalizeLock_Superseded_409(t *testing.T) {
 		Body: &openapi.PatchFinalizeLockJSONRequestBody{
 			SelectedCommitShas: []string{},
 			TargetBranch:       "main",
-			BaseSha:            "base",
+			BaseSha:            validBaseSHA,
 			Mode:               "squash",
 		},
 	})
@@ -212,7 +215,7 @@ func TestPatchFinalizeLock_NotFound_404(t *testing.T) {
 		Body: &openapi.PatchFinalizeLockJSONRequestBody{
 			SelectedCommitShas: []string{},
 			TargetBranch:       "main",
-			BaseSha:            "base",
+			BaseSha:            validBaseSHA,
 			Mode:               "squash",
 		},
 	})
@@ -235,7 +238,7 @@ func TestPatchFinalizeLock_InvalidMode_400(t *testing.T) {
 		Body: &openapi.PatchFinalizeLockJSONRequestBody{
 			SelectedCommitShas: []string{},
 			TargetBranch:       "main",
-			BaseSha:            "base",
+			BaseSha:            validBaseSHA,
 			Mode:               "bogus",
 		},
 	})
