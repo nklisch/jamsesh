@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing
 kind: feature
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -210,6 +210,261 @@ This is the feature where lying tests would do the most damage.
   instance e2e test; no need for explicit feature-level coverage)
 - Performance characterization of lease acquisition (perf-design territory)
 
+## Design decisions (autopilot pass, 2026-05-17)
+
+- **Stale-token forging mechanism:** direct Postgres manipulation from the
+  test process (`ReleaseLeaseForcibly` + manifest injection via MinIO fixture)
+  rather than a new build-tag endpoint. The cluster fixture already has a
+  direct Postgres DSN and the MinIO fixture exposes `PutObject`. Simpler,
+  no new production surface, consistent with how `LeaseHolder` works.
+  Follow-on story if manifest format is too opaque: add a build-tag-gated
+  `/test/inject-stale-manifest` endpoint.
+
+- **Fencing token format confirmed as `int64`:** from `IssueLeaseFencingToken`
+  (`nextval('jamsesh_lease_fencing_tokens')::bigint`). Fuzz corpus uses
+  int64 boundary values. Stored in object metadata as decimal string under
+  key `jamsesh-fencing-token`.
+
+- **Advisory-lock holder query stability:** uses `hashtext($1)::oid` matching
+  the production code. The portability risk (hashtext not guaranteed stable
+  across PG major versions) is documented in `lifecycle.go` and flagged in
+  `## Risks`. The e2e suite targets postgres:16-alpine; if the fixture PG
+  version changes, re-validate.
+
+- **Clock-skew test target:** the heartbeat goroutine (`runHeartbeat`) uses
+  `time.NewTicker` — a local-clock construct. Advancing the container clock
+  accelerates the ticker interval, which shrinks the `PingContext` timeout
+  window. This is the testable bug path. If the test fails consistently,
+  it is a real split-brain risk. Park + skip rather than soften.
+
+- **Lease "TTL" / SLO:** the advisory lock releases on TCP connection drop
+  (pod kill), which is near-instantaneous at the Postgres level. The SLO of
+  30s for `WaitForLeaseMigration` is conservative (3× the 10s default
+  heartbeat). Tests set `JAMSESH_LEASE_HEARTBEAT_INTERVAL_S=2` to reduce
+  wall-clock waiting in CI.
+
+- **`lease.held_elsewhere` error code:** not yet defined in `httperr`
+  package or PROTOCOL.md. The golden + failure tests assert on HTTP 503
+  status (the safety-critical assertion) and log whatever error code
+  appears. A follow-on story should add the code to PROTOCOL.md and the
+  `httperr` package if it's missing.
+
+- **Coordination with `hydration-handoff`:** `lease_holder_killed_test.go`
+  owns the lease-ownership invariants (lock release, monotonic token). The
+  hydration-handoff feature owns hydration and client-continuity invariants.
+  No hydration assertions in this feature's chaos tests.
+
+- **NoopManager:** not explicitly tested in this feature. Token 0 (the
+  NoopManager sentinel) is exercised by every existing single-instance e2e
+  test. The clustered-mode tests explicitly assert `token > 0` to confirm
+  they are not accidentally using NoopManager.
+
+---
+
+## Mock-boundary plan
+
+| External dependency          | Service-level mock                            | Notes |
+|------------------------------|-----------------------------------------------|-------|
+| Postgres advisory locks      | Real Postgres (existing fixture)              | The lock semantics ARE the spec; in-process mock would test the mock, not the system |
+| Pod kill / SIGKILL           | `c.Kill(podIndex)` → `docker kill --signal SIGKILL` | Implemented in `lifecycle.go`; no Pumba needed for SIGKILL-only scenarios |
+| Clock skew per-pod           | `p.AdvanceClock()` via libfaketime LD_PRELOAD | Existing chaos-suite pattern in `clockadvance.go` |
+| Object storage (MinIO)       | MinIO `RELEASE.2024-12-18T13-15-44Z` (existing fixture) | AWS creds via `AWS_ACCESS_KEY_ID=minioadmin` / `AWS_SECRET_ACCESS_KEY=minioadmin` |
+| Fencing token injection      | Direct Postgres + MinIO fixture manipulation  | No new production endpoint; follow-on story if manifest format is opaque |
+
+**No in-process mocks.** The `NoopManager` is implicitly exercised by
+every existing single-instance test. All clustered-mode tests use real
+`PostgresManager` via the cluster fixture.
+
+---
+
+## Taxonomy plan
+
+- **Golden:** 3 subtests in `lease_acquire_and_fence_test.go` — single-pod
+  acquisition, two-pod race (only one wins), monotonic tokens across
+  acquisitions. All assert on Postgres state and HTTP responses.
+- **Failure:** 2 test files — `lease_already_held_test.go` (503 + Retry-After
+  when second pod receives session already held), `stale_fencing_token_rejected_test.go`
+  (write with stale token is rejected, not silently accepted).
+- **Chaos:** 2 test files — `lease_holder_killed_test.go` (F13: pod-kill,
+  lease migration within 30s SLO, monotonic token), `cross_pod_clock_skew_test.go`
+  (F14: clock skew either passes cleanly or parks a real bug).
+- **Fuzz:** 1 harness — `fencing_token_test.go` (F11: property-based fuzz
+  on token format boundary; seed corpus of 17 edge cases; correctness
+  sub-test for explicit rejection).
+
+---
+
+## Implementation units
+
+### Unit 1: Infrastructure helpers
+**File:** `tests/e2e/fixtures/portalcluster/lease_inspect.go`
+**Story:** `epic-e2e-cnd-coverage-lease-fencing-infra`
+**Invariant:** all downstream test helpers compile and behave correctly
+against the e2e Postgres fixture.
+
+Adds `RequireLeaseHolder`, `FencingTokenForSession`, `ReleaseLeaseForcibly`
+to the `portalcluster` package. (`LeaseHolder` and `WaitForLeaseMigration`
+already exist in `lifecycle.go`.)
+
+```go
+// RequireLeaseHolder polls LeaseHolder until a holder is found or timeout.
+func (c *Cluster) RequireLeaseHolder(ctx, t, sessionID, timeout) int
+
+// FencingTokenForSession queries the leases table for the most recent token.
+func (c *Cluster) FencingTokenForSession(ctx, t, sessionID) int64
+
+// ReleaseLeaseForcibly marks the most recent lease row as released in PG.
+// Used by stale-token tests to simulate re-acquisition.
+func (c *Cluster) ReleaseLeaseForcibly(ctx, t, sessionID)
+```
+
+**Acceptance criteria:**
+- [ ] All three helpers compile.
+- [ ] `RequireLeaseHolder` calls `t.Fatal` on timeout (not `t.Log`).
+- [ ] `FencingTokenForSession` returns -1 for unknown sessions (not 0).
+
+---
+
+### Unit 2: Golden tests
+**File:** `tests/e2e/golden/lease_acquire_and_fence_test.go`
+**Story:** `epic-e2e-cnd-coverage-lease-fencing-golden`
+**Invariant:** in a 2-pod cluster, per-session advisory lock acquisition
+is exclusive, fencing tokens are monotonically increasing, and the lease
+record in Postgres is accurate.
+
+**Subtests:**
+- `single_pod_acquires_lease_for_session` — one pod holds the lock; token > 0.
+- `two_pods_race_acquire_only_one_wins` — direct request to non-holder pod
+  returns 503.
+- `monotonic_fencing_tokens_across_acquisitions` — T2 > T1 after pod kill
+  and re-acquisition.
+
+**Setup:** 2-pod cluster, `Router: true`, `JAMSESH_LEASE_HEARTBEAT_INTERVAL_S=2`.
+
+```go
+func TestLeaseAcquireAndFence(t *testing.T) {
+    t.Run("single_pod_acquires_lease_for_session", testSinglePodAcquiresLease)
+    t.Run("two_pods_race_acquire_only_one_wins", testTwoPodsRaceAcquire)
+    t.Run("monotonic_fencing_tokens_across_acquisitions", testMonotonicFencingTokens)
+}
+```
+
+**Assertion targets:** `c.RequireLeaseHolder` return value, `c.FencingTokenForSession`
+return value, HTTP status on direct-to-pod-B request.
+
+---
+
+### Unit 3: Failure-mode tests
+**File:** `tests/e2e/failure/lease_already_held_test.go`
+**Story:** `epic-e2e-cnd-coverage-lease-fencing-failure`
+**Invariant:** pod B returns 503 + Retry-After when pod A holds the session lease.
+
+```go
+func TestLeaseAlreadyHeld(t *testing.T) { ... }
+```
+
+**File:** `tests/e2e/failure/stale_fencing_token_rejected_test.go`
+**Story:** `epic-e2e-cnd-coverage-lease-fencing-failure`
+**Invariant:** a write with a stale fencing token is explicitly rejected;
+the manifest in MinIO is NOT overwritten.
+
+```go
+func TestStaleFencingTokenRejected(t *testing.T) { ... }
+```
+
+**Assertion targets:** HTTP status 503, `Retry-After` header presence,
+non-empty error code, MinIO manifest token unchanged after rejection.
+
+---
+
+### Unit 4: Chaos tests
+**File:** `tests/e2e/chaos/lease_holder_killed_test.go`
+**Story:** `epic-e2e-cnd-coverage-lease-fencing-chaos`
+**Invariant:** after SIGKILL of the lease-holder pod, the advisory lock
+auto-releases, a second pod acquires the lease with T2 > T1, and subsequent
+pushes succeed within 30s SLO.
+
+```go
+func TestLeaseHolderKilled(t *testing.T) { ... }
+```
+
+**File:** `tests/e2e/chaos/cross_pod_clock_skew_test.go`
+**Story:** `epic-e2e-cnd-coverage-lease-fencing-chaos`
+**Invariant:** clock skew on one pod does not destabilize lease ownership.
+If it does: park the bug, `t.Skip` with backlog id.
+
+```go
+func TestCrossPodClockSkew(t *testing.T) { ... }
+```
+
+**Chaos mechanism:** `c.Kill(0)` for pod-kill; `p.AdvanceClock()` for skew.
+
+---
+
+### Unit 5: Fuzz harness
+**File:** `tests/e2e/fuzz/fencing_token_test.go`
+**Story:** `epic-e2e-cnd-coverage-lease-fencing-fuzz`
+**Invariant:** no input at the fencing-token boundary causes a 5xx. A token
+lower than the stored value is explicitly rejected, not silently accepted.
+
+```go
+func TestFencingTokenFuzz(t *testing.T) { ... }          // property: no 5xx
+func TestFencingTokenRejectionIsExplicit(t *testing.T) { ... } // correctness
+```
+
+**Corpus file:** `tests/e2e/fuzz/testdata/fencing-token-corpus.json`
+(17 seed cases covering int64 boundaries, non-numeric, oversized, special chars).
+
+---
+
+## Implementation order
+
+1. `epic-e2e-cnd-coverage-lease-fencing-infra` (helpers; unblocks golden + fuzz)
+2. `epic-e2e-cnd-coverage-lease-fencing-golden` (golden; unblocks failure + chaos)
+3. `epic-e2e-cnd-coverage-lease-fencing-failure` (parallel with chaos after golden)
+4. `epic-e2e-cnd-coverage-lease-fencing-chaos` (parallel with failure after golden)
+5. `epic-e2e-cnd-coverage-lease-fencing-fuzz` (parallel with golden after infra)
+
+---
+
+## Risks
+
+- **hashtext portability:** `hashtext()` is implementation-defined in
+  Postgres and may not be stable across major versions. The `LeaseHolder`
+  helper notes this risk. If the e2e suite ever targets a different PG
+  major version than the production advisory-lock key was tuned for,
+  `LeaseHolder` will silently return -1. Mitigation: pin the e2e Postgres
+  image to postgres:16-alpine and document that the lock key is version-sensitive.
+
+- **Manifest format opacity:** the stale-token tests rely on injecting a
+  known token value into the MinIO manifest. If the manifest's JSON schema
+  or ETag-conditional-write protocol is not stable enough to inject from
+  test code, the stale-token tests must be `t.Skip`'d and a follow-on story
+  filed for a test-side injection helper. This is the weakest point in the
+  failure-mode test design.
+
+- **`lease.held_elsewhere` error code undefined:** the `httperr` package
+  has no lease-specific error constructor. The golden and failure tests
+  assert on 503 status (correct behavior) and log the actual error code
+  (informational). If the error code is `internal` or `dep.db_unavailable`
+  rather than a lease-specific code, that is a usability gap (not a
+  correctness bug) — file a follow-on story to add the code to PROTOCOL.md.
+
+- **Clock-skew test may reliably fail:** `runHeartbeat` uses `time.NewTicker`
+  with interval = `PingContext` timeout. A clock advance that accelerates
+  the ticker shrinks the effective timeout window, causing spurious heartbeat
+  failure. This IS the bug — the test is designed to surface it. Park
+  rather than skip without a bug item.
+
+- **Sibling feature coordination (hydration-handoff):** the chaos test's
+  `lease_holder_killed_test.go` tests lease-migration. The hydration-handoff
+  feature (`epic-e2e-cnd-coverage-hydration-handoff`) tests the same scenario
+  from the client-continuity angle. These are designed to be complementary,
+  not duplicate — if both end up testing the same assertion, the review pass
+  on hydration-handoff should prune the duplicate.
+
+---
+
 ## Next
 
-`/agile-workflow:e2e-test-design epic-e2e-cnd-coverage-lease-fencing`
+`/agile-workflow:implement-orchestrator epic-e2e-cnd-coverage-lease-fencing`

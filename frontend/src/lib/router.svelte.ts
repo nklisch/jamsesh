@@ -6,10 +6,11 @@ type Route = { pattern: RegExp; name: string; params: string[] };
 const routes: Route[] = [
   { pattern: /^\/login$/,                                              name: 'login',        params: [] },
   { pattern: /^\/orgs\/([^/]+)\/sessions$/,                            name: 'sessions',     params: ['orgId'] },
-  // `finalize` must come BEFORE `session-view` so the more specific
-  // pattern wins under first-match semantics.
-  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/finalize$/,         name: 'finalize',     params: ['orgId', 'sessionId'] },
-  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)$/,                   name: 'session-view', params: ['orgId', 'sessionId'] },
+  // `finalize` and `invite-accept` must come BEFORE `session-view` so the
+  // more specific patterns win under first-match semantics.
+  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/finalize$/,                         name: 'finalize',      params: ['orgId', 'sessionId'] },
+  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/invites\/([^/]+)\/accept$/,         name: 'invite-accept', params: ['orgId', 'sessionId', 'inviteId'] },
+  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)$/,                                   name: 'session-view',  params: ['orgId', 'sessionId'] },
   { pattern: /^\/orgs\/([^/]+)\/settings$/,                             name: 'org-settings', params: ['orgId'] },
 ];
 

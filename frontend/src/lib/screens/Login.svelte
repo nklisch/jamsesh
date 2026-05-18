@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { navigate } from '$lib/router.svelte';
+  import { auth } from '$lib/auth.svelte';
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Card from '$lib/components/Card.svelte';
@@ -12,14 +14,42 @@
   let mode = $state<Mode>('choose');
   let errorMsg = $state<string | null>(null);
 
+  // Query params read once at mount.
+  const _searchParams =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+
   // Optional session name surfaced when arriving via an invite link.
   // Consumed by the "resume strip" — callers pass via query param; routing
   // support lands in epic-portal-ui-session-view-shell.
-  let resumeSession = $state<string | null>(
-    typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('resume')
-      : null,
-  );
+  let resumeSession = $state<string | null>(_searchParams.get('resume'));
+
+  // `return_to` — set by the App.svelte auth gate when an unauthenticated
+  // user lands on a protected route that benefits from post-login resumption
+  // (currently only invite-accept).  After the user authenticates via any
+  // client-side path (magic-link verify, future token exchange, etc.),
+  // redirect them back to the original URL instead of the generic landing.
+  //
+  // LIMITATION: GitHub OAuth is a full-page server-side redirect chain.
+  // The backend callback issues tokens and returns a JSON body; the browser
+  // never executes JavaScript between GitHub → /api/auth/oauth/callback →
+  // the client.  The `?return_to=` param is therefore NOT propagated through
+  // the OAuth round-trip without a backend change (the server would need to
+  // embed it in the OAuth state nonce and reattach it on the callback
+  // redirect).  That change is tracked in the story body as a follow-up.
+  const _returnTo = _searchParams.get('return_to');
+  const returnTo: string | null =
+    _returnTo && _returnTo.startsWith('/') && !_returnTo.startsWith('//')
+      ? _returnTo
+      : null;
+
+  // When authentication state flips to true (e.g. a future client-side token
+  // exchange completes), redirect to return_to if present.  The $effect re-runs
+  // whenever `auth.isAuthenticated` changes so it's safe to leave in place.
+  $effect(() => {
+    if (auth.isAuthenticated && returnTo) {
+      navigate(returnTo);
+    }
+  });
 
   function signInWithGitHub() {
     window.location.assign('/api/auth/oauth/github/start');

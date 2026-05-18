@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-invite-accept-ui
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: org-session-invite-policy
 depends_on: [org-session-invite-policy-invite-accept-enforce, org-session-invite-policy-get-invite-details]
@@ -117,18 +117,18 @@ state at a time based on actual API responses.
 
 ## Acceptance criteria
 
-- [ ] Route renders for each state correctly
-- [ ] On mount, GET is called with org/session/invite IDs and the token
+- [x] Route renders for each state correctly
+- [x] On mount, GET is called with org/session/invite IDs and the token
       from the query string
-- [ ] Accept click POSTs with the same token in the body, then navigates
+- [x] Accept click POSTs with the same token in the body, then navigates
       to the session on success
-- [ ] Decline navigates back to the user's session list
-- [ ] Rejection state surfaces when the POST returns 403 with
+- [x] Decline navigates back to the user's session list
+- [x] Rejection state surfaces when the POST returns 403 with
       `auth.org_membership_required`
-- [ ] Error state surfaces on 401, 409, and network failures
-- [ ] `npm test -- --run InviteAccept` passes
-- [ ] `npm run check` clean
-- [ ] Full suite passes (no regressions)
+- [x] Error state surfaces on 401, 409, and network failures
+- [x] `npm test -- --run InviteAccept` passes (14/14)
+- [x] `npm run check` clean (0 errors, 2 pre-existing warnings)
+- [x] Full suite passes (357/357, no regressions)
 
 ## Risk
 
@@ -140,6 +140,40 @@ existing login screen wasn't built for it. Mitigations:
 - The login-return-to enhancement is isolated to one screen + one router
   helper
 - Tests pin each state
+
+## Implementation discovery
+
+### Files modified
+- **New**: `frontend/src/lib/screens/InviteAccept.svelte` — Option 3 hero layout with 5-state machine (loading / ready / accepting / rejection / error)
+- **New**: `frontend/src/lib/screens/InviteAccept.test.ts` — 14 tests covering all states and API paths
+- **Modified**: `frontend/src/lib/router.svelte.ts` — added `invite-accept` route before `session-view`
+- **Modified**: `frontend/src/App.svelte` — added `InviteAccept` import, route branch, and return_to auth-gate enhancement
+- **Modified**: `frontend/src/lib/screens/Login.svelte` — added `?return_to=` handling via `$effect` for client-side auth flows
+
+### Login return_to limitation
+
+GitHub OAuth is a **fully server-side redirect chain**:
+`signInWithGitHub()` → `window.location.assign('/api/auth/oauth/github/start')` → GitHub → `POST /api/auth/oauth/callback` (server-side, returns JSON) → the client app is reloaded from the callback result.
+
+There is no client-side navigation hook in the OAuth round-trip. The `?return_to=` param attached by the App.svelte auth gate is **not propagated** through the OAuth flow.
+
+What works client-side:
+- App.svelte gate: unauthenticated invite-accept → `/login?return_to=<invite-url>`
+- Login.svelte `$effect`: if `auth.isAuthenticated` becomes true while Login is mounted (e.g. future magic-link token exchange), navigate to `return_to`
+
+What requires a backend follow-up to work with OAuth:
+- Embed `return_to` in the OAuth state nonce on `/api/auth/oauth/start`
+- On callback success, redirect the browser to `return_to` (from the nonce) instead of the default SPA root
+
+This follow-up is a small backend change; tracked here as a known limitation.
+
+### Decline navigation choice
+
+If authenticated: navigate to `/orgs/${orgId}/sessions` (the org from the invite URL — even if the user isn't an org member, the session list shows them a useful landing point). If unauthenticated: navigate to `/login`. Documented in code comment.
+
+### Token missing edge case
+
+If `?token=` is absent from the query string, the component transitions immediately to the error state with code `missing_token` without making any network requests.
 
 ## Rollback
 
