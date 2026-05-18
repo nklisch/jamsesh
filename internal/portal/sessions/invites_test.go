@@ -359,6 +359,273 @@ func TestAcceptSessionInvite_AlreadyAccepted_Returns409(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID} tests
+// ---------------------------------------------------------------------------
+
+func inviteDetailsPath(orgID, sessID, inviteID, rawToken string) string {
+	path := "/api/orgs/" + orgID + "/sessions/" + sessID + "/invites/" + inviteID
+	if rawToken != "" {
+		path += "?token=" + rawToken
+	}
+	return path
+}
+
+func TestGetSessionInvite_HappyPath(t *testing.T) {
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee@example.com")
+	org := seedOrg(t, env.s, "My Org", "org-get-invite")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	rawToken := "happypathtokenhappypathtokenhappypathtokenhappypathtokenhappypa"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	resp := getRequest(t, env.srv, inviteDetailsPath(org.ID, sess.ID, invite.ID, rawToken), inviteeToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var details openapi.SessionInviteDetails
+	decodeBody(t, resp, &details)
+
+	if details.InviteId != invite.ID {
+		t.Errorf("invite_id: want %q, got %q", invite.ID, details.InviteId)
+	}
+	if details.OrgName != org.Name {
+		t.Errorf("org_name: want %q, got %q", org.Name, details.OrgName)
+	}
+	if details.SessionId != sess.ID {
+		t.Errorf("session_id: want %q, got %q", sess.ID, details.SessionId)
+	}
+	if details.SessionName != sess.Name {
+		t.Errorf("session_name: want %q, got %q", sess.Name, details.SessionName)
+	}
+	if details.InvitedByName != creator.DisplayName {
+		t.Errorf("invited_by_name: want %q, got %q", creator.DisplayName, details.InvitedByName)
+	}
+	if string(details.YourRoleOnAccept) != "member" {
+		t.Errorf("your_role_on_accept: want %q, got %q", "member", details.YourRoleOnAccept)
+	}
+}
+
+func TestGetSessionInvite_InvalidToken_Returns401(t *testing.T) {
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee@example.com")
+	org := seedOrg(t, env.s, "Org", "org-get-invite-bad-token")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	rawToken := "correcttokencorrecttokencorrecttokencorrecttokencorrecttokencor"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	wrongToken := "wrongtokenwrongtokenwrongtokenwrongtokenwrongtokenwrongtokenwron"
+	resp := getRequest(t, env.srv, inviteDetailsPath(org.ID, sess.ID, invite.ID, wrongToken), inviteeToken)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for wrong token, got %d", resp.StatusCode)
+	}
+
+	var errEnv openapi.ErrorEnvelope
+	decodeBody(t, resp, &errEnv)
+	if errEnv.Error != "auth.invalid_token" {
+		t.Errorf("error code: want auth.invalid_token, got %q", errEnv.Error)
+	}
+}
+
+func TestGetSessionInvite_MissingToken_Returns400(t *testing.T) {
+	// oapi-codegen validates required query params before the handler is
+	// reached; missing ?token= yields a 400 Bad Request from the framework.
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee@example.com")
+	org := seedOrg(t, env.s, "Org", "org-get-invite-missing-token")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	rawToken := "anytokenanytokenanytokenanytokenanytokenanytokenanytokenanytoken"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	// inviteDetailsPath with empty token omits the ?token= param entirely.
+	resp := getRequest(t, env.srv, inviteDetailsPath(org.ID, sess.ID, invite.ID, ""), inviteeToken)
+	// oapi-codegen rejects missing required query param before handler runs.
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing token, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetSessionInvite_UnknownInvite_Returns401(t *testing.T) {
+	// Unknown invite-id must return 401 (not 404) to prevent invite-id enumeration.
+	env := newTestEnv(t)
+	invitee := seedAccount(t, env.s, "invitee@example.com")
+	org := seedOrg(t, env.s, "Org", "org-get-invite-unknown")
+	sess := seedSession(t, env.s, org.ID)
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	rawToken := "sometokensometokensometokensometokensometokensometokensometokenso"
+	resp := getRequest(t, env.srv,
+		inviteDetailsPath(org.ID, sess.ID, "nonexistent-invite-id", rawToken),
+		inviteeToken)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unknown invite id, got %d", resp.StatusCode)
+	}
+
+	var errEnv openapi.ErrorEnvelope
+	decodeBody(t, resp, &errEnv)
+	if errEnv.Error != "auth.invalid_token" {
+		t.Errorf("error code: want auth.invalid_token, got %q", errEnv.Error)
+	}
+}
+
+func TestGetSessionInvite_WrongEmail_Returns401(t *testing.T) {
+	// On GET, email mismatch returns 401 (not 403) to avoid leaking that the
+	// invite exists for a different email address.
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee@example.com")
+	stranger := seedAccount(t, env.s, "stranger@example.com")
+	org := seedOrg(t, env.s, "Org", "org-get-invite-wrong-email")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	rawToken := "wrongemailtokenwrongemailtokenwrongemailtokenwrongemailtokenw"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	// Stranger tries to read an invite meant for invitee.
+	strangerToken := env.bearerToken(t, stranger.ID)
+	resp := getRequest(t, env.srv, inviteDetailsPath(org.ID, sess.ID, invite.ID, rawToken), strangerToken)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for wrong email (not 403), got %d", resp.StatusCode)
+	}
+
+	var errEnv openapi.ErrorEnvelope
+	decodeBody(t, resp, &errEnv)
+	if errEnv.Error != "auth.invalid_token" {
+		t.Errorf("error code: want auth.invalid_token, got %q", errEnv.Error)
+	}
+}
+
+func TestGetSessionInvite_Expired_Returns401(t *testing.T) {
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee@example.com")
+	org := seedOrg(t, env.s, "Org", "org-get-invite-expired")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	rawToken := "expiredtokenexpiredtokenexpiredtokenexpiredtokenexpiredtokenex"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(-1*time.Hour)) // already expired
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	resp := getRequest(t, env.srv, inviteDetailsPath(org.ID, sess.ID, invite.ID, rawToken), inviteeToken)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for expired invite, got %d", resp.StatusCode)
+	}
+
+	var errEnv openapi.ErrorEnvelope
+	decodeBody(t, resp, &errEnv)
+	if errEnv.Error != "auth.invalid_token" {
+		t.Errorf("error code: want auth.invalid_token, got %q", errEnv.Error)
+	}
+	if errEnv.Message != "invite expired" {
+		t.Errorf("message: want %q, got %q", "invite expired", errEnv.Message)
+	}
+}
+
+func TestGetSessionInvite_AlreadyAccepted_Returns409(t *testing.T) {
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee@example.com")
+	org := seedOrg(t, env.s, "Org", "org-get-invite-accepted")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	rawToken := "acceptedtokenacceptedtokenacceptedtokenacceptedtokenacceptedto"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	// Mark already accepted at the store level.
+	now := time.Now().UTC()
+	if err := env.s.MarkSessionInviteAccepted(context.Background(), store.MarkSessionInviteAcceptedParams{
+		ID:                  invite.ID,
+		AcceptedAt:          now,
+		AcceptedByAccountID: invitee.ID,
+	}); err != nil {
+		t.Fatalf("mark accepted: %v", err)
+	}
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	resp := getRequest(t, env.srv, inviteDetailsPath(org.ID, sess.ID, invite.ID, rawToken), inviteeToken)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 for already-accepted invite, got %d", resp.StatusCode)
+	}
+
+	var errEnv openapi.ErrorEnvelope
+	decodeBody(t, resp, &errEnv)
+	if errEnv.Error != "invite.already_accepted" {
+		t.Errorf("error code: want invite.already_accepted, got %q", errEnv.Error)
+	}
+}
+
+func TestGetSessionInvite_NoMutation(t *testing.T) {
+	// GET must not mutate state: calling GET twice should succeed both times,
+	// and then POST accept should still work (the invite was not consumed by GET).
+	env := newTestEnv(t)
+	creator := seedAccount(t, env.s, "creator@example.com")
+	invitee := seedAccount(t, env.s, "invitee@example.com")
+	org := seedOrg(t, env.s, "Org", "org-get-invite-nomut")
+	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+	sess := seedSession(t, env.s, org.ID)
+	seedSessionMember(t, env.s, org.ID, sess.ID, creator.ID, "creator")
+
+	rawToken := "nomuttokennomuttokennomuttokennomuttokennomuttokennomuttokennomut"
+	invite := insertRawInvite(t, env.s, org.ID, sess.ID, creator.ID, invitee.Email, rawToken,
+		time.Now().UTC().Add(7*24*time.Hour))
+
+	inviteeToken := env.bearerToken(t, invitee.ID)
+	detailsPath := inviteDetailsPath(org.ID, sess.ID, invite.ID, rawToken)
+
+	// First GET — must return 200.
+	resp1 := getRequest(t, env.srv, detailsPath, inviteeToken)
+	if resp1.StatusCode != http.StatusOK {
+		t.Fatalf("first GET: expected 200, got %d", resp1.StatusCode)
+	}
+
+	// Second GET — must still return 200 (no state was consumed).
+	resp2 := getRequest(t, env.srv, detailsPath, inviteeToken)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("second GET: expected 200, got %d", resp2.StatusCode)
+	}
+
+	// POST accept — must still work (invite not consumed by GET).
+	acceptPath := "/api/orgs/" + org.ID + "/sessions/" + sess.ID + "/invites/" + invite.ID + "/accept"
+	resp3 := postJSON(t, env.srv, acceptPath, inviteeToken, map[string]any{"token": rawToken})
+	if resp3.StatusCode != http.StatusOK {
+		t.Fatalf("POST accept after GET: expected 200, got %d", resp3.StatusCode)
+	}
+
+	// GET after accept — must return 409 (already accepted).
+	resp4 := getRequest(t, env.srv, detailsPath, inviteeToken)
+	if resp4.StatusCode != http.StatusConflict {
+		t.Fatalf("GET after accept: expected 409, got %d", resp4.StatusCode)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove tests
 // ---------------------------------------------------------------------------
 

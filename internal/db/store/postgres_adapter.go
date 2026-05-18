@@ -103,10 +103,11 @@ func ptrToPgTimestamptz(t *time.Time) pgtype.Timestamptz {
 
 func pgOrg(row pgstore.Org) Org {
 	return Org{
-		ID:        row.ID,
-		Name:      row.Name,
-		Slug:      row.Slug,
-		CreatedAt: row.CreatedAt,
+		ID:                  row.ID,
+		Name:                row.Name,
+		Slug:                row.Slug,
+		CreatedAt:           row.CreatedAt,
+		SessionInvitePolicy: row.SessionInvitePolicy,
 	}
 }
 
@@ -274,6 +275,13 @@ func (a *postgresAdapter) GetOrgBySlug(ctx context.Context, slug string) (Org, e
 		return Org{}, mapPostgresErr(err)
 	}
 	return pgOrg(row), nil
+}
+
+func (a *postgresAdapter) UpdateOrgSessionInvitePolicy(ctx context.Context, p UpdateOrgSessionInvitePolicyParams) error {
+	return mapPostgresErr(a.q.UpdateOrgSessionInvitePolicy(ctx, pgstore.UpdateOrgSessionInvitePolicyParams{
+		SessionInvitePolicy: p.SessionInvitePolicy,
+		ID:                  p.ID,
+	}))
 }
 
 // ---------------------------------------------------------------------------
@@ -1102,6 +1110,12 @@ func (s *postgresTxStore) GetOrgBySlug(ctx context.Context, slug string) (Org, e
 	}
 	return pgOrg(row), nil
 }
+func (s *postgresTxStore) UpdateOrgSessionInvitePolicy(ctx context.Context, p UpdateOrgSessionInvitePolicyParams) error {
+	return mapPostgresErr(s.q.UpdateOrgSessionInvitePolicy(ctx, pgstore.UpdateOrgSessionInvitePolicyParams{
+		SessionInvitePolicy: p.SessionInvitePolicy,
+		ID:                  p.ID,
+	}))
+}
 
 // AccountStore
 func (s *postgresTxStore) CreateAccount(ctx context.Context, p CreateAccountParams) (Account, error) {
@@ -1836,21 +1850,21 @@ func (a *postgresAdapter) UpdateFinalizeLockCuration(ctx context.Context, p Upda
 		BaseSha:            &baseSHA,
 		Mode:               p.Mode,
 		CommitMessage:      ptrToPgText(p.CommitMessage),
-		LastActivityAt:     pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+		LastActivityAt:     p.LastActivityAt,
 	}))
 }
 
 func (a *postgresAdapter) TouchFinalizeLock(ctx context.Context, p TouchFinalizeLockParams) error {
 	return mapPostgresErr(a.q.TouchFinalizeLock(ctx, pgstore.TouchFinalizeLockParams{
 		ID:             p.ID,
-		LastActivityAt: pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+		LastActivityAt: p.LastActivityAt,
 	}))
 }
 
 func (a *postgresAdapter) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error {
 	return mapPostgresErr(a.q.ReleaseFinalizeLock(ctx, pgstore.ReleaseFinalizeLockParams{
 		ID:         p.ID,
-		ReleasedAt: pgtype.Timestamptz{Time: p.ReleasedAt, Valid: true},
+		ReleasedAt: &p.ReleasedAt,
 	}))
 }
 
@@ -1894,21 +1908,21 @@ func (s *postgresTxStore) UpdateFinalizeLockCuration(ctx context.Context, p Upda
 		BaseSha:            &baseSHA,
 		Mode:               p.Mode,
 		CommitMessage:      ptrToPgText(p.CommitMessage),
-		LastActivityAt:     pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+		LastActivityAt:     p.LastActivityAt,
 	}))
 }
 
 func (s *postgresTxStore) TouchFinalizeLock(ctx context.Context, p TouchFinalizeLockParams) error {
 	return mapPostgresErr(s.q.TouchFinalizeLock(ctx, pgstore.TouchFinalizeLockParams{
 		ID:             p.ID,
-		LastActivityAt: pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+		LastActivityAt: p.LastActivityAt,
 	}))
 }
 
 func (s *postgresTxStore) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error {
 	return mapPostgresErr(s.q.ReleaseFinalizeLock(ctx, pgstore.ReleaseFinalizeLockParams{
 		ID:         p.ID,
-		ReleasedAt: pgtype.Timestamptz{Time: p.ReleasedAt, Valid: true},
+		ReleasedAt: &p.ReleasedAt,
 	}))
 }
 
@@ -1927,15 +1941,15 @@ func pgInsertFinalizeLockParams(p InsertFinalizeLockParams) pgstore.InsertFinali
 		OrgID:               p.OrgID,
 		SessionID:           p.SessionID,
 		AcquiredByAccountID: p.AcquiredByAccountID,
-		AcquiredAt:          pgtype.Timestamptz{Time: p.AcquiredAt, Valid: true},
-		LastActivityAt:      pgtype.Timestamptz{Time: p.LastActivityAt, Valid: true},
+		AcquiredAt:          p.AcquiredAt,
+		LastActivityAt:      p.LastActivityAt,
 		SelectedCommitShas:  []byte(p.SelectedCommitSHAs),
 		TargetBranch:        p.TargetBranch,
 		BaseSha:             &baseSHA,
 		Mode:                p.Mode,
 		CommitMessage:       ptrToPgText(p.CommitMessage),
 		SupersededByLockID:  ptrToPgText(p.SupersededByLockID),
-		ReleasedAt:          ptrToPgTimestamptz(p.ReleasedAt),
+		ReleasedAt:          p.ReleasedAt,
 	}
 }
 
@@ -1950,15 +1964,15 @@ func pgFinalizeLock(r pgstore.FinalizeLock) FinalizeLock {
 		OrgID:               r.OrgID,
 		SessionID:           r.SessionID,
 		AcquiredByAccountID: r.AcquiredByAccountID,
-		AcquiredAt:          r.AcquiredAt.Time,
-		LastActivityAt:      r.LastActivityAt.Time,
+		AcquiredAt:          r.AcquiredAt,
+		LastActivityAt:      r.LastActivityAt,
 		SelectedCommitSHAs:  string(r.SelectedCommitShas),
 		TargetBranch:        r.TargetBranch,
 		BaseSHA:             baseSHA,
 		Mode:                r.Mode,
 		CommitMessage:       pgTextToPtr(r.CommitMessage),
 		SupersededByLockID:  pgTextToPtr(r.SupersededByLockID),
-		ReleasedAt:          pgTimestamptzToPtr(r.ReleasedAt),
+		ReleasedAt:          r.ReleasedAt,
 	}
 }
 
@@ -1992,7 +2006,7 @@ func (a *postgresAdapter) UpdateLeaseHeartbeat(ctx context.Context, sessionID st
 }
 
 func (a *postgresAdapter) DeleteReleasedLeasesOlderThan(ctx context.Context, before time.Time) error {
-	return mapPostgresErr(a.q.DeleteReleasedLeasesOlderThan(ctx, before))
+	return mapPostgresErr(a.q.DeleteReleasedLeasesOlderThan(ctx, &before))
 }
 
 // ---------------------------------------------------------------------------
@@ -2025,7 +2039,7 @@ func (s *postgresTxStore) UpdateLeaseHeartbeat(ctx context.Context, sessionID st
 }
 
 func (s *postgresTxStore) DeleteReleasedLeasesOlderThan(ctx context.Context, before time.Time) error {
-	return mapPostgresErr(s.q.DeleteReleasedLeasesOlderThan(ctx, before))
+	return mapPostgresErr(s.q.DeleteReleasedLeasesOlderThan(ctx, &before))
 }
 
 // pgLease converts a pgstore.Lease to a domain Lease.
@@ -2035,7 +2049,7 @@ func pgLease(r pgstore.Lease) Lease {
 		PodID:        r.PodID,
 		FencingToken: r.FencingToken,
 		AcquiredAt:   r.AcquiredAt,
-		ReleasedAt:   pgTimestamptzToPtr(r.ReleasedAt),
+		ReleasedAt:   r.ReleasedAt,
 		HeartbeatAt:  r.HeartbeatAt,
 	}
 }

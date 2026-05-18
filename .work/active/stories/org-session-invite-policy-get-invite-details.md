@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-get-invite-details
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: org-session-invite-policy
 depends_on: []
@@ -152,6 +152,22 @@ backstop against that.
 `git revert` the commit. The endpoint disappears; the frontend story falls
 back to a less rich invite-accept UX (which is fine for v1.x without this
 endpoint).
+
+## Implementation notes
+
+- Handler: `internal/portal/sessions/invites.go` — `GetSessionInvite` method added at line ~134.
+- Auth shape: mirrors `AcceptSessionInvite` exactly for bearer + token-hash + expiry + already-accepted checks. Email mismatch returns 401 (not 403) on GET to avoid leaking invite existence.
+- Store lookups used: `GetSessionInviteByID`, `GetOrgByID`, `GetSession`, `GetAccountByID`.
+- Token comes from query param `req.Params.Token` (not request body).
+- Route registered in bearer-auth group in `cmd/portal/main.go` and `handler_test.go`.
+- `combinedHandler.GetSessionInvite` delegation added to `cmd/portal/main.go`.
+- OpenAPI path `/api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}` (GET) added to `docs/openapi.yaml`.
+- `SessionInviteDetails` schema added with snake_case fields per project convention.
+- Go types regenerated via `make generate-api-go`, TS types via `make generate-api-ts`.
+- Build-blocking side-effects from sibling story `lease-fencing-schema-verify-sqlc-regen` were fixed: `postgres_adapter.go` `pgFinalizeLock` and `postgresTxStore` methods updated to use `time.Time` (matching regenerated pgstore), `sqlite_adapter.go` finalize lock adapter similarly updated.
+- 8 test cases added covering: HappyPath, InvalidToken, MissingToken (400 from oapi-codegen), UnknownInvite (401 not 404), WrongEmail (401 not 403), Expired, AlreadyAccepted, NoMutation.
+- All 8 new tests pass; full sessions suite (previous tests) remains green.
+- `go build ./...` clean; `npm run check` only has pre-existing `RefGroupList.test.ts` errors unrelated to this story.
 
 ## Note on shared validation
 

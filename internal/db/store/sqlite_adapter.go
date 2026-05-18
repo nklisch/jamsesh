@@ -104,10 +104,11 @@ func ptrToNullTime(t *time.Time) sql.NullTime {
 
 func sqliteOrg(row sqlitestore.Org) Org {
 	return Org{
-		ID:        row.ID,
-		Name:      row.Name,
-		Slug:      row.Slug,
-		CreatedAt: row.CreatedAt,
+		ID:                  row.ID,
+		Name:                row.Name,
+		Slug:                row.Slug,
+		CreatedAt:           row.CreatedAt,
+		SessionInvitePolicy: row.SessionInvitePolicy,
 	}
 }
 
@@ -270,6 +271,13 @@ func (a *sqliteAdapter) GetOrgBySlug(ctx context.Context, slug string) (Org, err
 		return Org{}, mapSQLiteErr(err)
 	}
 	return sqliteOrg(row), nil
+}
+
+func (a *sqliteAdapter) UpdateOrgSessionInvitePolicy(ctx context.Context, p UpdateOrgSessionInvitePolicyParams) error {
+	return mapSQLiteErr(a.q.UpdateOrgSessionInvitePolicy(ctx, sqlitestore.UpdateOrgSessionInvitePolicyParams{
+		SessionInvitePolicy: p.SessionInvitePolicy,
+		ID:                  p.ID,
+	}))
 }
 
 // ---------------------------------------------------------------------------
@@ -1098,6 +1106,12 @@ func (s *sqliteTxStore) GetOrgBySlug(ctx context.Context, slug string) (Org, err
 	}
 	return sqliteOrg(row), nil
 }
+func (s *sqliteTxStore) UpdateOrgSessionInvitePolicy(ctx context.Context, p UpdateOrgSessionInvitePolicyParams) error {
+	return mapSQLiteErr(s.q.UpdateOrgSessionInvitePolicy(ctx, sqlitestore.UpdateOrgSessionInvitePolicyParams{
+		SessionInvitePolicy: p.SessionInvitePolicy,
+		ID:                  p.ID,
+	}))
+}
 
 // AccountStore
 func (s *sqliteTxStore) CreateAccount(ctx context.Context, p CreateAccountParams) (Account, error) {
@@ -1843,7 +1857,7 @@ func (a *sqliteAdapter) TouchFinalizeLock(ctx context.Context, p TouchFinalizeLo
 func (a *sqliteAdapter) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error {
 	return mapSQLiteErr(a.q.ReleaseFinalizeLock(ctx, sqlitestore.ReleaseFinalizeLockParams{
 		ID:         p.ID,
-		ReleasedAt: sql.NullTime{Time: p.ReleasedAt, Valid: true},
+		ReleasedAt: &p.ReleasedAt,
 	}))
 }
 
@@ -1901,7 +1915,7 @@ func (s *sqliteTxStore) TouchFinalizeLock(ctx context.Context, p TouchFinalizeLo
 func (s *sqliteTxStore) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error {
 	return mapSQLiteErr(s.q.ReleaseFinalizeLock(ctx, sqlitestore.ReleaseFinalizeLockParams{
 		ID:         p.ID,
-		ReleasedAt: sql.NullTime{Time: p.ReleasedAt, Valid: true},
+		ReleasedAt: &p.ReleasedAt,
 	}))
 }
 
@@ -1928,7 +1942,7 @@ func sqliteInsertFinalizeLockParams(p InsertFinalizeLockParams) sqlitestore.Inse
 		Mode:                p.Mode,
 		CommitMessage:       ptrToNullString(p.CommitMessage),
 		SupersededByLockID:  ptrToNullString(p.SupersededByLockID),
-		ReleasedAt:          ptrToNullTime(p.ReleasedAt),
+		ReleasedAt:          p.ReleasedAt,
 	}
 }
 
@@ -1951,7 +1965,7 @@ func sqliteFinalizeLock(r sqlitestore.FinalizeLock) FinalizeLock {
 		Mode:                r.Mode,
 		CommitMessage:       nullStringToPtr(r.CommitMessage),
 		SupersededByLockID:  nullStringToPtr(r.SupersededByLockID),
-		ReleasedAt:          nullTimeToPtr(r.ReleasedAt),
+		ReleasedAt:          r.ReleasedAt,
 	}
 }
 
@@ -2030,7 +2044,7 @@ func sqliteLease(r sqlitestore.Lease) Lease {
 		PodID:        r.PodID,
 		FencingToken: r.FencingToken,
 		AcquiredAt:   r.AcquiredAt,
-		ReleasedAt:   nullTimeToPtr(r.ReleasedAt),
+		ReleasedAt:   r.ReleasedAt,
 		HeartbeatAt:  r.HeartbeatAt,
 	}
 }

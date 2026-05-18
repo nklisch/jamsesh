@@ -909,6 +909,39 @@ components:
           type: string
           description: Raw invite token from the email link query parameter
 
+    SessionInviteDetails:
+      type: object
+      required: [invite_id, org_name, session_id, session_name, invited_by_name, expires_at, your_role_on_accept]
+      description: Invite details returned before the user clicks Accept; used to render the InviteAccept onboarding-hero screen.
+      properties:
+        invite_id:
+          type: string
+          description: Invite ID
+        org_name:
+          type: string
+          description: Display name of the org the session belongs to
+        session_id:
+          type: string
+          description: Session ID
+        session_name:
+          type: string
+          description: Display name of the session
+        session_goal:
+          type: string
+          nullable: true
+          description: Optional session goal text
+        invited_by_name:
+          type: string
+          description: Display name of the account that issued the invite
+        expires_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the invite expires
+        your_role_on_accept:
+          type: string
+          enum: [member]
+          description: Role the invitee will receive when they accept
+
     # ---------------------------------------------------------------------------
     # Comments schemas
     # ---------------------------------------------------------------------------
@@ -2015,6 +2048,53 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}:
+    get:
+      summary: Fetch invite details for rendering the InviteAccept screen.
+      operationId: getSessionInvite
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: inviteID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Invite ID
+        - name: token
+          in: query
+          required: true
+          description: Raw invite token from the email link.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Invite details for rendering the InviteAccept screen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInviteDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Invite already accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept:
     post:

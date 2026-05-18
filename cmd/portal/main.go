@@ -139,6 +139,11 @@ func (c *combinedHandler) InviteToSession(ctx context.Context, req openapi.Invit
 	return c.SessionsHandler.InviteToSession(ctx, req)
 }
 
+// GetSessionInvite delegates to the sessions handler.
+func (c *combinedHandler) GetSessionInvite(ctx context.Context, req openapi.GetSessionInviteRequestObject) (openapi.GetSessionInviteResponseObject, error) {
+	return c.SessionsHandler.GetSessionInvite(ctx, req)
+}
+
 // AcceptSessionInvite delegates to the sessions handler.
 func (c *combinedHandler) AcceptSessionInvite(ctx context.Context, req openapi.AcceptSessionInviteRequestObject) (openapi.AcceptSessionInviteResponseObject, error) {
 	return c.SessionsHandler.AcceptSessionInvite(ctx, req)
@@ -696,6 +701,7 @@ func main() {
 				r.Get("/orgs/{orgID}/sessions/{sessionID}/refs", apiWrapper.ListSessionRefs)
 				r.Get("/orgs/{orgID}/sessions/{sessionID}/digest", apiWrapper.GetSessionDigest)
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/invites", apiWrapper.InviteToSession)
+				r.Get("/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}", apiWrapper.GetSessionInvite)
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", apiWrapper.AcceptSessionInvite)
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove", apiWrapper.RemoveSessionMember)
 

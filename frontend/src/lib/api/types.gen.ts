@@ -312,6 +312,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch invite details for rendering the InviteAccept screen. */
+        get: operations["getSessionInvite"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept": {
         parameters: {
             query?: never;
@@ -1176,6 +1193,31 @@ export interface components {
         AcceptInviteRequest: {
             /** @description Raw invite token from the email link query parameter */
             token: string;
+        };
+        /** @description Invite details returned before the user clicks Accept; used to render the InviteAccept onboarding-hero screen. */
+        SessionInviteDetails: {
+            /** @description Invite ID */
+            invite_id: string;
+            /** @description Display name of the org the session belongs to */
+            org_name: string;
+            /** @description Session ID */
+            session_id: string;
+            /** @description Display name of the session */
+            session_name: string;
+            /** @description Optional session goal text */
+            session_goal?: string | null;
+            /** @description Display name of the account that issued the invite */
+            invited_by_name: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the invite expires
+             */
+            expires_at: string;
+            /**
+             * @description Role the invitee will receive when they accept
+             * @enum {string}
+             */
+            your_role_on_accept: "member";
         };
         /**
          * @description Structured kind of comment
@@ -2146,6 +2188,46 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getSessionInvite: {
+        parameters: {
+            query: {
+                /** @description Raw invite token from the email link. */
+                token: string;
+            };
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+                /** @description Session ID */
+                sessionID: string;
+                /** @description Invite ID */
+                inviteID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invite details for rendering the InviteAccept screen */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionInviteDetails"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Invite already accepted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     acceptSessionInvite: {

@@ -125,6 +125,9 @@ func (h *sessionsOnlyStrict) CreateOrgInvite(_ context.Context, _ openapi.Create
 func (h *sessionsOnlyStrict) AcceptOrgInvite(_ context.Context, _ openapi.AcceptOrgInviteRequestObject) (openapi.AcceptOrgInviteResponseObject, error) {
 	panic("not wired")
 }
+func (h *sessionsOnlyStrict) GetSessionInvite(ctx context.Context, req openapi.GetSessionInviteRequestObject) (openapi.GetSessionInviteResponseObject, error) {
+	return h.Handler.GetSessionInvite(ctx, req)
+}
 func (h *sessionsOnlyStrict) ListComments(_ context.Context, _ openapi.ListCommentsRequestObject) (openapi.ListCommentsResponseObject, error) {
 	panic("not wired")
 }
@@ -246,6 +249,7 @@ func newTestEnvWithStore(t *testing.T, handlerStore, baseStore store.Store) *tes
 		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/refs", apiWrapper.ListSessionRefs)
 		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/digest", apiWrapper.GetSessionDigest)
 		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/invites", apiWrapper.InviteToSession)
+		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}", apiWrapper.GetSessionInvite)
 		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", apiWrapper.AcceptSessionInvite)
 		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove", apiWrapper.RemoveSessionMember)
 	})

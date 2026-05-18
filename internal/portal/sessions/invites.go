@@ -131,6 +131,105 @@ func (h *Handler) InviteToSession(ctx context.Context, req openapi.InviteToSessi
 	}, nil
 }
 
+// GetSessionInvite implements GET /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}.
+// Bearer-only: the invite token + email match IS the auth here, same shape as POST accept.
+// Returns invite details (org name, session name, inviter name, expiry) so the InviteAccept
+// screen can render its onboarding-hero state BEFORE the user clicks Accept.
+// No state mutation — re-running the GET returns the same body.
+func (h *Handler) GetSessionInvite(ctx context.Context, req openapi.GetSessionInviteRequestObject) (openapi.GetSessionInviteResponseObject, error) {
+	acc, ok := tokens.AccountFromContext(ctx)
+	if !ok {
+		return openapi.GetSessionInvite401JSONResponse{
+			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+				Error:   "auth.invalid_token",
+				Message: "invalid token",
+			},
+		}, nil
+	}
+
+	invite, err := h.store.GetSessionInviteByID(ctx, req.InviteID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// 401, not 404 — prevents invite-id enumeration.
+			return openapi.GetSessionInvite401JSONResponse{
+				UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+					Error:   "auth.invalid_token",
+					Message: "invalid token",
+				},
+			}, nil
+		}
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get invite: get invite by id: %w", err))
+	}
+
+	// Verify token hash.
+	tokenHash := hashSessionInviteToken(req.Params.Token)
+	if tokenHash != invite.TokenHash {
+		return openapi.GetSessionInvite401JSONResponse{
+			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+				Error:   "auth.invalid_token",
+				Message: "invalid token",
+			},
+		}, nil
+	}
+
+	// Verify not expired.
+	now := h.clock.Now()
+	if now.After(invite.ExpiresAt) {
+		return openapi.GetSessionInvite401JSONResponse{
+			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+				Error:   "auth.invalid_token",
+				Message: "invite expired",
+			},
+		}, nil
+	}
+
+	// Verify not already accepted (checked before email match — matches AcceptSessionInvite order).
+	if invite.AcceptedAt != nil {
+		return openapi.GetSessionInvite409JSONResponse(openapi.ErrorEnvelope{
+			Error:   "invite.already_accepted",
+			Message: "invite already accepted",
+		}), nil
+	}
+
+	// Verify invitee email matches authenticated account (case-insensitive).
+	// On GET we return 401 (not 403) to avoid leaking that the invite exists for a different email.
+	if !strings.EqualFold(invite.InviteeEmail, acc.Email) {
+		return openapi.GetSessionInvite401JSONResponse{
+			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+				Error:   "auth.invalid_token",
+				Message: "invalid token",
+			},
+		}, nil
+	}
+
+	// Fetch org, session, and inviter for the response.
+	org, err := h.store.GetOrgByID(ctx, req.OrgID)
+	if err != nil {
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get invite: get org: %w", err))
+	}
+
+	sess, err := h.store.GetSession(ctx, req.OrgID, req.SessionID)
+	if err != nil {
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get invite: get session: %w", err))
+	}
+
+	inviter, err := h.store.GetAccountByID(ctx, invite.InviterAccountID)
+	if err != nil {
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get invite: get inviter account: %w", err))
+	}
+
+	return openapi.GetSessionInvite200JSONResponse(openapi.SessionInviteDetails{
+		InviteId:         invite.ID,
+		OrgName:          org.Name,
+		SessionId:        sess.ID,
+		SessionName:      sess.Name,
+		SessionGoal:      sess.Goal,
+		InvitedByName:    inviter.DisplayName,
+		ExpiresAt:        invite.ExpiresAt,
+		YourRoleOnAccept: openapi.Member,
+	}), nil
+}
+
 // AcceptSessionInvite implements POST /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept.
 // Bearer-only: no org-role gate; the user is joining the session.
 func (h *Handler) AcceptSessionInvite(ctx context.Context, req openapi.AcceptSessionInviteRequestObject) (openapi.AcceptSessionInviteResponseObject, error) {
