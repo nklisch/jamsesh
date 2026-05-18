@@ -5,17 +5,11 @@
 //  1. No HTTP response (status 0) → Transient (network-level failure)
 //  2. 2xx → OK
 //  3. 5xx → Transient
-//  4. 4xx with a recognised permanent error code → Permanent
-//  5. Any other 4xx → Permanent (safer default for client errors)
-//
-// Permanent error codes are those prefixed with "push." or equal to
-// "auth.invalid_token", "auth.insufficient_permission", or
-// "auth.expired_token".
+//  4. Any 4xx → Permanent (client errors will not succeed on retry)
 package pusherr
 
 import (
 	"encoding/json"
-	"strings"
 )
 
 // Class is the severity class of a push error.
@@ -47,18 +41,6 @@ type errorEnvelope struct {
 	Error   string         `json:"error"`
 	Message string         `json:"message"`
 	Details map[string]any `json:"details"`
-}
-
-// isPermanentCode reports whether code identifies a permanent push rejection.
-func isPermanentCode(code string) bool {
-	if strings.HasPrefix(code, "push.") {
-		return true
-	}
-	switch code {
-	case "auth.invalid_token", "auth.insufficient_permission", "auth.expired_token":
-		return true
-	}
-	return false
 }
 
 // Classify returns a Result describing the error class for the given HTTP

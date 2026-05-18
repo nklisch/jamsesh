@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-isPermanentCode
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, plugin]
 parent: null
 depends_on: []
@@ -39,3 +39,11 @@ Delete `isPermanentCode`. `Classify` already buckets all 4xx as Permanent
 without consulting the code; the helper is unreachable and the
 surrounding doc comment explicitly notes the code-level check is
 unnecessary.
+
+## Implementation notes
+
+- Deleted `isPermanentCode` (lines 52-62) from `cmd/jamsesh/pusherr/classify.go`.
+- Removed the now-unused `strings` import (was only referenced by the deleted function).
+- Trimmed the package-level doc comment: removed the stale bullet about "4xx with a recognised permanent error code" and the paragraph listing permanent error code prefixes — both described logic that lived only in the dead helper.
+- Updated the package doc to accurately reflect the actual rule: "Any 4xx → Permanent".
+- Build and tests pass (`go build`, `go test` — 0.001s, ok).
