@@ -39,6 +39,12 @@ type Client struct {
 	mcpSessionID string
 }
 
+// MCPSessionID returns the Mcp-Session-Id received from the initialize
+// handshake. Empty until Init has completed successfully.
+func (c *Client) MCPSessionID() string {
+	return c.mcpSessionID
+}
+
 // New constructs a Client for use in e2e tests, performs the MCP initialize
 // handshake immediately, and registers t.Cleanup (stateless; nothing to close).
 // Callers may also initialise Client directly and call Init separately.

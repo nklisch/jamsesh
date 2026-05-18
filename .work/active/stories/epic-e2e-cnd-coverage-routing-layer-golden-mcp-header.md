@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-golden-mcp-header
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -86,6 +86,24 @@ c   := portalcluster.Start(ctx, t, portalcluster.Options{
 - [ ] Both `Jam-Session-Id` and `Mcp-Session-Id` headers set correctly in test
       HTTP calls so portal MCP session continuity is maintained.
 - [ ] No in-process router or portal mocks.
+
+## Implementation notes
+
+- **File**: `tests/e2e/golden/router_mcp_session_header_test.go`
+- **Accessor added**: `mcpclient.Client.MCPSessionID()` exported in
+  `tests/e2e/fixtures/mcpclient/mcpclient.go` to expose the wire-protocol
+  Mcp-Session-Id after the initialize handshake.
+- **Header strategy**: `routerMCPRequest` (file-local helper) sets both
+  `Mcp-Session-Id` (MCP SDK session continuity) and `Jam-Session-Id` (router
+  extraction key, verified in `internal/router/extract/extract.go`).
+- **Lease oracle**: `cluster.RequireLeaseHolder` (5 s timeout) waits for the
+  advisory lock after REST session creation; subsequent `cluster.LeaseHolder`
+  calls confirm every tool call lands on the same pod.
+- **Tool used**: `query_session_state` — read-only and idempotent, safe for
+  repeated calls without side-effects.
+- **No mocks**: cluster of 2 real portal containers + 1 real router container
+  via Testcontainers-Go. Docker image required; test skips automatically if
+  unavailable (propagated from portal.Start).
 
 ## Test-integrity rules
 
