@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture-portalcluster
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage-cluster-fixture
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture-minio, epic-e2e-cnd-coverage-cluster-fixture-router-image]
@@ -137,6 +137,26 @@ specifics; do not paper over with retries or loose assertions.
   uses the full fixture surface)
 - Eventually consumed by lease-fencing, object-storage-sync,
   routing-layer, and hydration-handoff feature test bodies
+
+## Review (2026-05-17)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**: `LeaseHolder` uses `::bigint` cast on `pg_locks.objid` but the portal's
+  own test code uses `::oid`. For negative `hashtext` values the casts diverge,
+  causing spurious -1 returns. Parked as `portalcluster-leaseholder-objid-cast`.
+  Self-test (`TestClusterStart`) does not call `LeaseHolder` so this doesn't block
+  the story's acceptance criteria; it will surface in downstream lease-fencing tests.
+**Nits**: `portal.Start` called via `errgroup` goroutines — safe in Go 1.21+ because
+  `t.Fatal` from non-test goroutine calls `runtime.Goexit()` on that goroutine
+  and the nil-pod check backstops it, but subtle. No action needed.
+
+**Notes**: Parallel pod boot via errgroup is clean. Router wiring (collect IPs then
+start) is correct sequence. `Kill` via `docker kill SIGKILL` is simpler than Pumba
+for this use case and deviation is documented. AWS SDK credential env-var names
+verified against config.go. All 11 acceptance criteria checked off with build+vet
+clean. `portal.ContainerIP` and `portal.State` additions are backward-compatible.
 
 ## Implementation notes
 
