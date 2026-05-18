@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing-chaos
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-lease-fencing
 depends_on: [epic-e2e-cnd-coverage-lease-fencing-golden]
@@ -258,3 +258,55 @@ wrapper — that is test infrastructure debt, not a production bug.
 **Never game an assertion.** The monotonic token check (`T2 > T1`) and the
 lease-present check (`holder >= 0`) must not be weakened. A weakened
 assertion produces a green test that lies about the system's safety.
+
+## Implementation notes (2026-05-17)
+
+Both tests implemented and verified with `go build ./chaos/... && go vet ./chaos/...`.
+
+### `lease_holder_killed_test.go`
+
+- 2-pod cluster + router, `JAMSESH_LEASE_HEARTBEAT_INTERVAL_S=2`.
+- Auth via pod 0 directly; pushes via router to trigger lease acquisition.
+- `c.RequireLeaseHolder` confirms the holder before kill, capturing T1.
+- `c.Kill(holderPod)` SIGKILLs the lease-holding pod (whichever pod the
+  router's consistent-hash chose — not assumed to be pod 0).
+- `c.WaitForLeaseMigration` asserts migration within 30s SLO.
+- Second push to the surviving pod's direct URL triggers re-acquisition.
+- `c.FencingTokenForSession` captures T2; asserts T2 > T1 with a
+  diagnostic Fatal that names the Critical bug if violated.
+- Final push via router asserts system recovery.
+- Defensive `t.Cleanup` best-effort-kills the container (ignores errors
+  on already-dead container).
+
+### `cross_pod_clock_skew_test.go`
+
+- 2-pod cluster + router, 2s heartbeat, skewSeconds = 8 (4× heartbeat).
+- Establishes leases on two sessions before injecting skew.
+- Calls `c.Pods[0].AdvanceClock(ctx, t, 8s)` — POSTs to
+  `/test/clock-advance` on pod 0 (requires `-tags e2etest` build).
+- Waits `skewSeconds + 2×heartbeat` real wall-clock seconds (not affected
+  by the portal-internal clock advance).
+- `c.LeaseHolder` checks both sessions. If either returns -1, the test
+  fatals with a Critical diagnostic message and park instructions.
+- If both holders are >= 0: logs success (implementation is clock-robust).
+- Includes detailed escape-hatch comment for the park+skip pattern if the
+  clock-dependence bug fires consistently.
+
+### Design decisions
+
+- **Holder pod not pinned to index 0.** The router's consistent-hash
+  chooses the holder. `RequireLeaseHolder` returns the actual holder so
+  `Kill` and `WaitForLeaseMigration` always target the correct pod.
+- **`leaseChaosEmail` defined once in `lease_holder_killed_test.go`.**
+  Both test files are in `package chaos_test` so helpers in one file are
+  visible to the other. `leaseChaosEmail` wraps `randEmail` (from
+  `network_and_provider_test.go`). `cross_pod_clock_skew_test.go` calls
+  it for consistent naming.
+- **No `ReleaseLeaseForcibly` in the kill test.** The kill test focuses on
+  the advisory-lock auto-release invariant, not re-acquisition from a
+  clean state. `ReleaseLeaseForcibly` is used in the golden monotonic test
+  where a deliberate clean-state re-acquisition is needed. The kill test
+  triggers re-acquisition by pushing directly to the surviving pod.
+- **`testing.Short()` guard on the skew test.** The wait period
+  (`skewSeconds + 2×heartbeat` = ~12s) plus cluster startup makes this
+  test slow. `-short` skips it for fast local iteration.

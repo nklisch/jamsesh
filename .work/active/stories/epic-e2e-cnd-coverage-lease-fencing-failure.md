@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing-failure
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-lease-fencing
 depends_on: [epic-e2e-cnd-coverage-lease-fencing-golden]
@@ -175,3 +175,54 @@ production bug.
 **Never game an assertion.** Do not change the 503 assertion to `!= 200`
 to accommodate a 500 or other non-intended status. 503 is the documented
 behavior; 500 would indicate a production bug to park.
+
+---
+
+## Implementation notes (2026-05-17)
+
+### Files landed
+- `tests/e2e/failure/lease_already_held_test.go` — `TestLeaseAlreadyHeld`
+- `tests/e2e/failure/stale_fencing_token_rejected_test.go` — `TestStaleFencingTokenRejected`
+
+### Design decisions
+
+**`TestLeaseAlreadyHeld`** — advisory-lock injection approach (same as
+`router_lease_unavailable_test.go`). Rather than racing two real pods (timing
+sensitive), the test process holds the Postgres advisory lock from a dedicated
+DB connection (`pg_advisory_lock(hashtext(sessionID)::oid)`) so neither portal
+pod can acquire the session lease. A git push directly to pod 0 triggers the
+post-receive lease acquisition path, which sees the lock is held and returns
+503. The test asserts 503 status, Retry-After header presence, and non-empty
+error code. A secondary HTTP probe against the git info/refs endpoint asserts
+the envelope shape independently of git's exit code parsing.
+
+**`TestStaleFencingTokenRejected`** — manifest injection via `mn.GetObject` /
+`mn.PutObject`. The manifest format is public JSON (`staleManifest` mirrors the
+`Manifest` struct in `manifest.go`). The test reads the real on-disk manifest
+after a successful push, replaces `FencingToken` with T3 = T2 + 1000, and
+writes it back. A subsequent push from the surviving pod (with token T2 < T3)
+must be rejected by `ManifestStore.Save`'s pre-flight check
+(`onDisk.FencingToken > m.FencingToken → ErrFenced`). The test also verifies
+the manifest is unchanged after the rejected write (T3 still on-disk, not T2).
+
+**Skip paths (honest, not hiding bugs):**
+- If `mn.GetObject` fails (manifest not yet written — lazy acquisition), the
+  test skips with a documented reason and a follow-on story reference.
+- If `mn.PutObject` fails (ETag conflict or permission), same skip treatment.
+- Neither skip is triggered by the actual portal returning 200 on a stale push;
+  that path is always a `t.Fatal`.
+
+**`go build ./failure/...` + `go vet ./failure/...` both pass cleanly.**
+
+### Deviations from story body
+
+- The story sketched `pushDirectToPodNoFail` returning `*http.Response`. Implemented
+  instead as two separate helpers: `leaseHeldAttemptPush` (returns int status from git
+  exit-code parsing) and `leaseHeldProbeGitEndpoint` (returns `*http.Response` for
+  header inspection). This is cleaner than combining git push + HTTP probe in one function.
+- `TestLeaseAlreadyHeld` uses Router: false (direct-pod cluster) as the story specified;
+  advisory lock injection is the mechanism rather than requiring a real push to one pod
+  to happen first. This makes the test deterministic and non-racy.
+- The stale-token test uses `Router: true` (needs surviving pod after Kill) rather than
+  `Router: false` from the lease-already-held test — each test configures the cluster
+  for its own scenario.
