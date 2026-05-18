@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-file-secrets
 kind: story
-stage: review
+stage: implementing
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -73,6 +73,37 @@ follow-up if desired).
 - `tests/e2e/failure/config_and_deps_test.go:296` — existing
   `ContainerFile` mount pattern
 - `tests/e2e/fixtures/portal/portal.go:45-79` — `Options` struct to extend
+
+## Review (2026-05-17)
+
+**Verdict**: Request changes
+
+**Blockers**: `review-file-secret-unreadable-subtest-bug`
+**Important**: none
+**Nits**: none
+
+**Notes**: The `ContainerFiles` extension to `portal.Options` is correct and
+backward-compatible. The `file_missing` subtest and golden happy-path test are
+both correct. The blocker is in the `file_unreadable` subtest:
+`os.WriteFile(secretPath, []byte("ignored"), 0o000)` creates a host-side file
+that the test process itself cannot read. testcontainers copies container files
+by calling `os.Open(hostFilePath)` on the host before container creation —
+this returns "permission denied", causing `GenericContainer` to error before
+the portal ever runs. The test fails for the wrong reason and the portal's
+behavior on an unreadable secret file is never verified. Fix: write the host
+file with `0o600` (so testcontainers can open it) and let `FileMode: 0o000`
+on the `ContainerFile` struct set the unreadable permission inside the
+container (that field controls the in-container mode, not the host mode).
+
+## Review findings
+
+### Blockers
+
+- **`file_unreadable` subtest: host file mode 0o000 breaks testcontainers
+  host-side open** — `os.WriteFile` with `0o000` makes the file unreadable
+  on the host; testcontainers calls `os.Open(hostFilePath)` and fails before
+  the container starts. The portal contract is never exercised.
+  → Item: `review-file-secret-unreadable-subtest-bug`
 
 ## Implementation notes
 
