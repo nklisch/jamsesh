@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-shutdown-deadline
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -123,3 +123,20 @@ data-race in `cmd/portal/main.go` (unsynchronized `shutdownStart` variable).
 This is benign in practice and does not affect these e2e tests — they do not
 run with `-race`. If the race surfaces as a flake, add `t.Skip` with the
 story id `graceful-shutdown-shutdownstart-race` and park a blocker reference.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: OAuth callback path confirmed against the package-level `oauthCallback`
+helper (same `POST /api/auth/oauth/callback` with `{provider, state, code}` JSON
+body). State nonce extraction from `authorize_url` is correct. `shutdownOAuthCallbackRaw`
+is file-local and correctly does not `t.Fatalf` on transport errors (expected in the
+deadline-exceeded case). Elapsed-time bound: `cutoff = signalMargin + gracePeriod +
+cutoffMargin = 200ms + 2s + 2s = 4.2s` from signal — conservative and correct (2.2s
+headroom over the 2s deadline). `runtime.Caller(0)` for testdata path follows the
+established chaos-test convention. All acceptance criteria satisfied.
