@@ -1,0 +1,13 @@
+---
+description: Project pattern index — terse pointers to detailed pattern files
+paths: ['internal/**', 'cmd/**', 'frontend/**', 'db/**', 'tests/**']
+---
+
+- **authfail-three-branch-guard**: Strict-server handlers gate on `handlerauth.Require*(...)`, branch on `(fail.Err → deperr.WrapDBIfTransient)` vs `(*OpFail(fail) → 401/403)` vs happy path. Define a per-operation `*Fail` mapper adjacent to the handler. → [authfail-three-branch-guard.md](../skills/patterns/authfail-three-branch-guard.md)
+- **deperr-translate-pipeline**: Wrap dep failures with `deperr.Wrap{SMTP,DB,DBIfTransient,OAuthProvider,GitSubprocess}` at call sites; `httperr.WriteFromError` classifies via `errors.Is` and emits typed envelope. → [deperr-translate-pipeline.md](../skills/patterns/deperr-translate-pipeline.md)
+- **tx-emit-then-fanout**: Inside `store.WithTx`: domain mutation → `EnsureEventSeqRow` → `AllocateNextSeq` → `InsertEvent`. After commit: `events.Log.FanOut`. Fanout never inside the tx. → [tx-emit-then-fanout.md](../skills/patterns/tx-emit-then-fanout.md)
+- **dual-dialect-mirror-queries**: For every table, mirror SQL between `db/queries/sqlite/` and `db/queries/postgres/` with identical query names, columns, and `org_id`/`session_id` scoping. Adapters in `internal/db/store/` translate to the unified `store.Store`. → [dual-dialect-mirror-queries.md](../skills/patterns/dual-dialect-mirror-queries.md)
+- **per-package-clock-interface**: Each package defines its own `Clock interface{Now() time.Time}` + `realClock{}` fallback so `*testclock.AdvanceableClock` advances every package without import coupling. → [per-package-clock-interface.md](../skills/patterns/per-package-clock-interface.md)
+- **testcontainers-fixture-shape**: Each `tests/e2e/fixtures/<dep>/` package exports a `<Type>` struct with both host-side and container-side address fields plus `Start(ctx, t, Options) *<Type>` that registers `t.Cleanup` and skips on missing image. → [testcontainers-fixture-shape.md](../skills/patterns/testcontainers-fixture-shape.md)
+- **snippet-children-component**: Reusable primitives in `frontend/src/lib/components/` take `children: Snippet` via destructured `$props()` with string-literal-union variants; render via `{@render children()}`. → [snippet-children-component.md](../skills/patterns/snippet-children-component.md)
+- **openapi-fetch-middleware-client**: One shared `client = createClient<paths>(...)` in `frontend/src/lib/api/client.ts` with `bearerMiddleware` + `unauthorizedMiddleware` attached via `client.use(...)`; `fetch` passed as a `lateFetch` indirection over `globalThis.fetch`. → [openapi-fetch-middleware-client.md](../skills/patterns/openapi-fetch-middleware-client.md)

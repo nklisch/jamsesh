@@ -55,3 +55,7 @@ self-host docs).
 - **gate-docs** (2026-05-18) — 15 findings (13 High foundation-doc drift, 1 High repo-skill drift, 1 Medium, 1 changelog-gap no-op)
   - 14 items into `.work/active/stories/` (gate-docs-*) — High at `implementing`, Medium at `drafting`
   - Changelog gap (Finding 15) addressed automatically by release-deploy phase 5.5
+- **gate-patterns** (2026-05-18) — 8 patterns extracted (0 inconsistencies, no pre-existing catalog)
+  - 8 pattern files written to `.claude/skills/patterns/`
+  - `.claude/rules/patterns.md` index created; `.claude/skills/patterns/SKILL.md` catalog created
+  - Tracking item `gate-patterns-v0.1.0` at `stage: done`
