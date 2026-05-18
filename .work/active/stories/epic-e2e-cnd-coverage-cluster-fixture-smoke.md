@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture-smoke
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage-cluster-fixture
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture-portalcluster]
@@ -103,6 +103,28 @@ to absorb fixture changes — don't paper over in this test.
   `epic-e2e-cnd-coverage-object-storage-sync`,
   `epic-e2e-cnd-coverage-routing-layer` to enter their own design passes
 - Unblocks `epic-e2e-cnd-coverage-cluster-fixture` to advance to review
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: Step 9 lease-migration assertions are in order `NotEqualf` then `GreaterOrEqualf` —
+  if `WaitForLeaseMigration` times out and returns -1, the first assertion passes (−1 ≠
+  holderIndex) and the second fails with "a pod must hold the lease post-handoff". Fine
+  functionally but slightly misleading error message. Reversing the order would give a
+  clearer "lease did not migrate" message.
+
+**Notes**: All 7 invariant steps implemented. Reviewed each step carefully for test
+integrity: RPO=0 assertion uses correct `sessions/<sessionID>/` prefix (verified in
+objectstore/sync.go), polls up to 10s, requires non-empty. Handoff assertion clones
+into a fresh `t.TempDir()` (confirmed in `gitclient.Clone`) — real hydration exercised.
+SHA equality check is genuine. LeaseHolder `holderIndex >= 0` assertion is real. Lease
+migration asserts holder changed AND is valid. Auth via MailHog is real magic-link flow.
+No mock-invocation assertions anywhere. `scope` field sent as JSON-encoded string matches
+openapi.yaml spec (`type: string`). No tautological assertions. No parked bugs. README
+updated.
 
 ## What's now possible (on completion)
 
