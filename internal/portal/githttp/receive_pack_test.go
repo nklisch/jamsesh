@@ -2,6 +2,7 @@ package githttp_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/storage"
+	"jamsesh/internal/portal/storage/objectstore"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -488,3 +491,155 @@ func TestReceivePack_PackSizeLimitExceeded(t *testing.T) {
 		t.Errorf("want 413 for oversized body, got %d", resp.StatusCode)
 	}
 }
+
+// TestReceivePack_ObjectStorageFailure verifies the RPO=0 contract:
+// when the object-storage sync fails (e.g. NoSuchBucket), the receive-pack
+// endpoint returns a non-2xx status so the git client exits non-zero.
+// The push must NOT be silently acknowledged.
+func TestReceivePack_ObjectStorageFailure(t *testing.T) {
+	ctx := context.Background()
+	storageRoot := t.TempDir()
+
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	tokenSvc := tokens.New(s)
+	storageSvc := storage.New(storageRoot, s)
+	eventLog := events.New(s)
+
+	// Wire a failing backend into the Syncer so every PutObject returns an error
+	// simulating NoSuchBucket from a misconfigured S3 endpoint.
+	failBackend := &errBackend{err: errors.New("NoSuchBucket: bucket does not exist")}
+	manifests := &objectstore.ManifestStore{Backend: failBackend}
+	syncer := &objectstore.Syncer{
+		Backend:   failBackend,
+		Manifests: manifests,
+		Storage:   storageSvc,
+		QueueSize: 16,
+	}
+	emitter := &postreceive.Emitter{
+		Log:     eventLog,
+		Syncer:  syncer,
+		Storage: storageSvc,
+		// Lifecycle is nil — Syncer uses a noop lease handle (fencing token 0).
+	}
+
+	h := &githttp.Handler{
+		Store:     s,
+		Tokens:    tokenSvc,
+		Storage:   storageSvc,
+		Validator: &prereceive.Validator{MaxPackBytes: 50 * 1024 * 1024},
+		Emitter:   emitter,
+	}
+
+	r := chi.NewRouter()
+	h.Mount(r)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	// Create account + session.
+	acc, err := s.CreateAccount(ctx, store.CreateAccountParams{
+		ID: nextID("osf-acc"), Email: "osf@example.com", DisplayName: "osf",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	pair, err := tokenSvc.Issue(ctx, acc.ID)
+	if err != nil {
+		t.Fatalf("Issue token: %v", err)
+	}
+	token := pair.AccessToken
+
+	orgID := nextID("osf-org")
+	_, err = s.CreateOrg(ctx, store.CreateOrgParams{
+		ID: orgID, Name: "OSF Org", Slug: orgID, CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+	sessionID := nextID("osf-sess")
+	_, err = s.CreateSession(ctx, store.CreateSessionParams{
+		ID: sessionID, OrgID: orgID, Name: "OSF Session", Goal: "osf",
+		WritableScope: `["**"]`, DefaultMode: "sync", Status: "active",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	err = s.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID: orgID, SessionID: sessionID, AccountID: acc.ID,
+		Role: "member", JoinedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("AddSessionMember: %v", err)
+	}
+
+	// Initialise bare repo and a working clone.
+	bareDir := filepath.Join(storageRoot, "orgs", orgID, "sessions", sessionID+".git")
+	workDir := initBareRepo(t, bareDir)
+
+	// Commit with valid trailers so pre-receive accepts it.
+	refName := fmt.Sprintf("refs/heads/jam/%s/%s/main", sessionID, acc.ID)
+	makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "src/hello.go", "package main")
+
+	// Push — the object-storage backend will fail. Expect non-zero exit from git.
+	host := strings.TrimPrefix(srv.URL, "http://")
+	pushURLStr := fmt.Sprintf("http://x-access-token:%s@%s/%s/%s.git",
+		token, host, orgID, sessionID)
+
+	output, ok := runGitExpectFail(workDir, "push", pushURLStr,
+		fmt.Sprintf("HEAD:%s", refName))
+
+	t.Logf("push output: %s", output)
+
+	// The push must NOT succeed — the portal must return non-2xx when object
+	// storage is broken so the git client exits non-zero.
+	if ok {
+		t.Fatal("git push should have failed due to object-storage error, but it exited 0 (2xx) — RPO=0 violation")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// errBackend — a Backend that returns a fixed error on every write.
+// ---------------------------------------------------------------------------
+
+// errBackend implements objectstore.Backend with all writes returning a
+// configurable error. Reads return ErrNotFound. Used to simulate a broken
+// S3 endpoint (e.g. NoSuchBucket) without real infrastructure.
+type errBackend struct {
+	mu  sync.Mutex
+	err error
+}
+
+func (b *errBackend) Put(_ context.Context, _ string, _ []byte, _ int64, _ string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return "", b.err
+}
+
+func (b *errBackend) PutIdempotent(_ context.Context, _ string, _ []byte, _ int64) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.err
+}
+
+func (b *errBackend) Get(_ context.Context, _ string) ([]byte, string, int64, error) {
+	return nil, "", 0, objectstore.ErrNotFound
+}
+
+func (b *errBackend) Delete(_ context.Context, _ string) error { return nil }
+
+func (b *errBackend) List(_ context.Context, _ string, _ func(string) error) error { return nil }
+
+func (b *errBackend) Probe(_ context.Context) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.err
+}
+
+// Ensure errBackend is used as objectstore.Backend (compile-time check).
+var _ objectstore.Backend = (*errBackend)(nil)

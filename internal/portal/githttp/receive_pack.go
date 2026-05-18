@@ -153,7 +153,14 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write full body to subprocess stdin in a goroutine to avoid deadlock
-	// while simultaneously streaming subprocess stdout to the client.
+	// while simultaneously draining subprocess stdout into a buffer.
+	//
+	// We buffer stdout rather than streaming it directly to the client so that
+	// the object-storage sync (EmitForUpdates) can run before any response bytes
+	// are committed. This is the RPO=0 contract: the git client must not receive
+	// a success acknowledgement until the pushed objects are durable in object
+	// storage. If the sync fails we can still return HTTP 500 because headers
+	// have not yet been written.
 	stdinErrCh := make(chan error, 1)
 	go func() {
 		defer stdin.Close()
@@ -161,9 +168,8 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		stdinErrCh <- err
 	}()
 
-	// WriteHeader here; after this point we cannot change the status.
-	w.WriteHeader(http.StatusOK)
-	streamWithFlush(w, stdout)
+	var subprocOut bytes.Buffer
+	io.Copy(&subprocOut, stdout) //nolint:errcheck // read until EOF; errors manifest as truncation
 
 	// Wait for subprocess to exit.
 	cmdErr := cmd.Wait()
@@ -172,7 +178,11 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	if cmdErr != nil {
 		slog.ErrorContext(r.Context(), "receive-pack subprocess exited non-zero",
 			"err", cmdErr, "org", orgID, "session", sessionID)
-		// Response has already been written; can't change the status code.
+		// Subprocess already wrote its own error report into subprocOut. Flush
+		// it to the client now — headers are not yet committed so we can set 200
+		// (the report-status payload is what git parses for the error detail).
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(subprocOut.Bytes())
 		return
 	}
 
@@ -182,6 +192,9 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.ErrorContext(r.Context(), "receive-pack: open repo post-push",
 			"err", err, "repo", repoPath)
+		// Disk is readable but we can't open it — treat as internal error.
+		// Headers are not yet written so we can return 500.
+		httperr.Write(w, r, httperr.ErrInternal(err))
 		return
 	}
 
@@ -208,16 +221,33 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Post-receive: emit commit.arrived events for accepted ref updates.
+	// In clustered mode the Emitter also calls SyncPushPath, which mirrors the
+	// push to object storage. We MUST call this BEFORE committing 200 OK —
+	// if the sync fails (e.g. NoSuchBucket), we return 500 so the git client
+	// sees a non-zero exit and does not believe the push succeeded.
 	if h.Emitter != nil {
 		if emitErr := h.Emitter.EmitForUpdates(
 			r.Context(), diskRepo, &session, account,
 			toEmitterUpdates(updates),
 		); emitErr != nil {
-			// Log loudly but don't fail the request — the push already succeeded.
-			slog.ErrorContext(r.Context(), "receive-pack: post-receive emit",
+			slog.ErrorContext(r.Context(), "receive-pack: post-receive emit (object-storage sync failure)",
 				"err", emitErr, "org", orgID, "session", sessionID)
+			// Headers are not yet committed — return 500 so the git client sees
+			// a non-2xx response and exits non-zero. This preserves the RPO=0
+			// contract: a push is never acknowledged when its objects are not
+			// durable in object storage.
+			httperr.Write(w, r, httperr.ErrInternal(emitErr))
+			if h.Metrics != nil {
+				h.Metrics.GitPushesTotal.WithLabelValues("storage_error").Inc()
+			}
+			return
 		}
 	}
+
+	// Object-storage sync succeeded (or is not configured in single-instance
+	// mode). Now commit 200 OK and flush the buffered subprocess output.
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(subprocOut.Bytes())
 
 	// Record successful push outcome. This runs after the subprocess exits 0 and
 	// post-receive events are dispatched, so it reflects end-to-end success.
