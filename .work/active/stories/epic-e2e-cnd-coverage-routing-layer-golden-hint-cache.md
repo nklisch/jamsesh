@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-golden-hint-cache
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-routing-layer-golden-consistent-hash]
@@ -161,3 +161,24 @@ File: `tests/e2e/golden/router_hint_cache_test.go`
 - `routerSessionRef` type is defined in `router_consistent_hash_test.go` (same
   package `golden_test`); reused here without redeclaration.
 - `go build ./golden/... && go vet ./golden/...` both pass cleanly.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Metrics-based observability via `/metrics` counter increment is
+correctly implemented — `requireRouterDecisionsCounter` pre-flights the
+metric existence and skips (not fails) if absent. The advisory lock hold uses
+`pg_advisory_lock(hashtext($1)::oid)` matching the `::oid` convention
+established in `lifecycle.go` and `postgres_test.go`. The 503 sequence is
+correctly instrumented: accepts both 503 (both pods blocked) and 2xx (race
+edge case) and explains why. Per-session isolation subtest uses interleaved
+round-robin requests to stress a blanket-replacement bug. The non-fatal
+warning when all sessions land on one pod (vacuous pass) is the right choice.
+`sortedFamilyNames` avoids the `sort` package import correctly.
+`routerSessionRef` type reuse from `router_consistent_hash_test.go` is
+documented in implementation notes. No mocks, no response-body assertions.
