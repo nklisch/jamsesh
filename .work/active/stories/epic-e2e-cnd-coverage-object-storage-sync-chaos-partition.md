@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-chaos-partition
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture, epic-e2e-cnd-coverage-object-storage-sync-golden-rpo0]
@@ -111,3 +111,28 @@ cluster := portalcluster.Start(ctx, t, portalcluster.Options{
   endpoint override will take precedence over the MinIO default.
 - Baseline timing: verify the stack produces fast pushes (< 2s) before
   injecting any toxic, to confirm the chaos results are meaningful.
+
+## Implementation Notes
+
+Implemented in `tests/e2e/chaos/object_storage_partition_test.go`.
+
+Key design decisions:
+
+- `partitionSetupStack` centralises MinIO + Toxiproxy + Postgres + MailHog +
+  cluster startup. Each scenario calls it independently (separate stacks prevent
+  cross-contamination from leftover toxics).
+- Toxiproxy proxy `minio` listens on `0.0.0.0:9001` inside the container
+  network and forwards to `<mn.ContainerEndpoint stripped of http://>`. Portal
+  pods reach it at `tp.ContainerIP:9001`; test assertions reach MinIO directly
+  via `mn.Endpoint` (host-mapped port, bypasses Toxiproxy).
+- `partitionTryPush` wraps `exec.CommandContext(ctx, "git", "push", ...)` and
+  returns an error instead of calling `t.Fatal`. This lets chaos subtests
+  observe push failures without terminating the test.
+- The transient and permanent scenarios use a `switch` on `(pushErr, len(keys))`
+  to enumerate all four outcomes explicitly, with the forbidden case
+  (`pushErr == nil && len(keys) == 0`) triggering `t.Fatalf` with a directive
+  to park a Critical bug.
+- `toxiproxyRemoveToxicBestEffort` is used in `t.Cleanup` for the permanent
+  scenario where the toxic is intentionally left in place during the test but
+  must be cleaned up on teardown.
+- `go build ./chaos/... && go vet ./chaos/...` pass with no errors.
