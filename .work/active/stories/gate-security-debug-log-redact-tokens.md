@@ -1,7 +1,7 @@
 ---
 id: gate-security-debug-log-redact-tokens
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal, documentation]
 parent: null
 depends_on: []
@@ -42,3 +42,16 @@ paths.
 Document that operators should NOT raise log level to DEBUG in
 production; consider a redaction pass that strips `?token=`, `?code=`,
 `?state=` from any field that is logged.
+
+## Implementation notes
+
+### Files changed
+
+- `internal/portal/logging/redact.go` — new file; exports `RedactQueryTokens(s string) string`. Parses the raw query string pair-by-pair preserving percent-encoding on non-sensitive values; replaces sensitive param values with the literal `<redacted>`. Falls back to a compiled regex (`sensitiveParamRE`) when `url.ParseQuery` rejects the input so a raw token can never pass through.
+- `internal/portal/logging/logging.go` — added `"query", RedactQueryTokens(r.URL.RawQuery)` field to the `slog.InfoContext` call in `Access`. Path is unchanged (still `r.URL.Path`, which excludes the query string by definition); the new `query` field makes the redacted query string visible and keeps the log shape consistent even when there are no params (emits `""`).
+- `internal/portal/logging/logging_test.go` — added `TestRedactQueryTokens` (table-driven, 9 sub-cases), `TestRedactQueryTokensMultipleValues`, `TestRedactQueryTokensMalformed`, and `TestAccessMiddlewareLogsRedactedQuery` (integration: verifies the middleware emits a `query` field with `<redacted>` and that the raw token is absent from the log line).
+- `docs/SELF_HOST.md` — added "Access-log query-string redaction" subsection under §8 Monitoring / Log output describing the redaction behaviour and noting that operators should still avoid `JAMSESH_LOG_LEVEL=-4` in production because third-party middleware is not covered.
+
+### Redacted param set
+
+`token`, `code`, `state`, `ticket` (case-insensitive match). Covers magic-link tokens, OAuth authorization codes, OAuth CSRF state, and ticket-based auth flows.

@@ -463,6 +463,20 @@ Useful log attributes to watch:
 | `merge_result` | `succeeded` or `conflict` on auto-merger events |
 | `error` | machine-readable error code on failures |
 
+### Access-log query-string redaction
+
+The HTTP access logger emits a `query` field alongside `path`. The values of
+known token-bearing query parameters (`token`, `code`, `state`, `ticket`) are
+replaced with `<redacted>` before the log line is written, so magic-link tokens
+and OAuth codes never appear in plaintext in the portal's own logs.
+
+**Operators should still avoid `JAMSESH_LOG_LEVEL=-4` (DEBUG) in production.**
+Third-party middleware, tracing libraries, or request-body capture that you
+layer in front of the portal is not covered by this redaction. The portal's
+access-log redaction only applies to fields the access middleware emits itself.
+If you need DEBUG logs temporarily for troubleshooting, enable them in a
+staging environment or rotate/purge the resulting log files promptly.
+
 ### Metrics
 
 The portal exposes a Prometheus metrics endpoint at `/metrics` in the

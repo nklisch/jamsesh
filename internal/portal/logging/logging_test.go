@@ -160,6 +160,163 @@ func TestAccessLogNoWSBearerLeak(t *testing.T) {
 	}
 }
 
+// TestRedactQueryTokens exercises RedactQueryTokens across the documented
+// sensitive-param set and edge cases. Assertions are on the actual security
+// invariant (the raw token value must not appear) rather than on exact
+// URL-encoding output, which may vary between Go versions.
+func TestRedactQueryTokens(t *testing.T) {
+	cases := []struct {
+		name        string
+		input       string
+		wantContain string   // substring that MUST appear in output
+		wantAbsent  []string // values that must NOT appear
+	}{
+		{
+			name:        "no query string passes through unchanged",
+			input:       "",
+			wantContain: "",
+		},
+		{
+			name:        "token value is redacted, param name is preserved",
+			input:       "token=abc123&foo=bar",
+			wantContain: "token=",
+			wantAbsent:  []string{"abc123"},
+		},
+		{
+			name:        "code param is redacted",
+			input:       "code=xyz789",
+			wantContain: "code=",
+			wantAbsent:  []string{"xyz789"},
+		},
+		{
+			name:        "state param is redacted",
+			input:       "state=csrf-secret&next=%2Fdashboard",
+			wantContain: "state=",
+			wantAbsent:  []string{"csrf-secret"},
+		},
+		{
+			name:        "ticket param is redacted",
+			input:       "ticket=tkt-secret",
+			wantContain: "ticket=",
+			wantAbsent:  []string{"tkt-secret"},
+		},
+		{
+			name:        "case-insensitive: TOKEN is redacted",
+			input:       "TOKEN=uppercaseSecret",
+			wantContain: "TOKEN=",
+			wantAbsent:  []string{"uppercaseSecret"},
+		},
+		{
+			name:        "non-sensitive params are not redacted",
+			input:       "foo=bar&baz=qux",
+			wantContain: "bar",
+		},
+		{
+			name:        "full URL string: token in query is redacted",
+			input:       "/auth/magic-link?token=secretlink&redirect=%2F",
+			wantContain: "token=",
+			wantAbsent:  []string{"secretlink"},
+		},
+		{
+			name:        "redacted value sentinel is present",
+			input:       "token=abc",
+			wantContain: "<redacted>",
+			wantAbsent:  []string{"abc"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := logging.RedactQueryTokens(tc.input)
+			if tc.wantContain != "" && !strings.Contains(got, tc.wantContain) {
+				t.Errorf("RedactQueryTokens(%q) = %q; want it to contain %q", tc.input, got, tc.wantContain)
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("RedactQueryTokens(%q) = %q; must not contain %q", tc.input, got, absent)
+				}
+			}
+		})
+	}
+}
+
+// TestRedactQueryTokensMultipleValues verifies that when the same sensitive
+// param appears multiple times (e.g. repeated token= keys), all values are
+// redacted — not just the first occurrence.
+func TestRedactQueryTokensMultipleValues(t *testing.T) {
+	input := "token=first&token=second"
+	got := logging.RedactQueryTokens(input)
+	for _, raw := range []string{"first", "second"} {
+		if strings.Contains(got, raw) {
+			t.Errorf("RedactQueryTokens(%q) = %q; still contains raw value %q", input, got, raw)
+		}
+	}
+	if !strings.Contains(got, "token=") {
+		t.Errorf("RedactQueryTokens(%q) = %q; param name 'token' should be preserved", input, got)
+	}
+}
+
+// TestRedactQueryTokensMalformed verifies that a malformed query string never
+// returns the raw input unchanged when it contains a sensitive param name.
+// Either the value is redacted or the whole string is replaced.
+func TestRedactQueryTokensMalformed(t *testing.T) {
+	// A query string that url.ParseQuery may struggle with but still contains
+	// a token key — we want to ensure the raw value never leaks.
+	input := "token=%ZZ" // invalid percent-encoding
+	got := logging.RedactQueryTokens(input)
+	// The raw sequence "%ZZ" is the (invalid-encoded) value — it should not appear
+	// verbatim in the output after the token= key.
+	if strings.Contains(got, "token=%ZZ") {
+		t.Errorf("RedactQueryTokens(%q) = %q; raw token value leaked through", input, got)
+	}
+}
+
+func TestAccessMiddlewareLogsRedactedQuery(t *testing.T) {
+	// Verify that the access middleware logs a 'query' field and that
+	// a token in the query string is redacted in the log output.
+	const secretToken = "verysecrettoken"
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/auth/magic-link?token="+secretToken+"&redirect=%2F", nil)
+
+	logging.Access(nil)(inner).ServeHTTP(w, r)
+
+	line := strings.TrimSpace(buf.String())
+	if line == "" {
+		t.Fatal("expected at least one log line")
+	}
+
+	// The raw secret must not appear anywhere in the log line.
+	if strings.Contains(line, secretToken) {
+		t.Errorf("access log leaks raw token %q: %s", secretToken, line)
+	}
+
+	// A 'query' field must be present and contain the redacted sentinel.
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		t.Fatalf("decode log line: %v\nline: %s", err, line)
+	}
+	q, ok := entry["query"]
+	if !ok {
+		t.Fatal("log line missing 'query' field")
+	}
+	qs, ok := q.(string)
+	if !ok {
+		t.Fatalf("'query' field is not a string: %T", q)
+	}
+	if !strings.Contains(qs, "<redacted>") {
+		t.Errorf("'query' field %q does not contain '<redacted>'", qs)
+	}
+}
+
 func TestAccessMiddlewareDurationAndBytes(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))

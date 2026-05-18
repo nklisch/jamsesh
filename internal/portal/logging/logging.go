@@ -60,6 +60,7 @@ func Access(reg *metrics.Registry) func(next http.Handler) http.Handler {
 			slog.InfoContext(r.Context(), "http access",
 				"method", r.Method,
 				"path", r.URL.Path,
+				"query", RedactQueryTokens(r.URL.RawQuery),
 				"route", route,
 				"status", sr.status,
 				"duration_ms", elapsed.Milliseconds(),
