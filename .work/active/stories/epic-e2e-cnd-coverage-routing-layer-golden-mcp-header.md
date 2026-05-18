@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-golden-mcp-header
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -104,6 +104,23 @@ c   := portalcluster.Start(ctx, t, portalcluster.Options{
 - **No mocks**: cluster of 2 real portal containers + 1 real router container
   via Testcontainers-Go. Docker image required; test skips automatically if
   unavailable (propagated from portal.Start).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: The critical acceptance criterion — both `Mcp-Session-Id` AND
+`Jam-Session-Id` headers set on every MCP tool call — is correctly
+implemented in `routerMCPRequest`. The router's extraction of `Jam-Session-Id`
+is confirmed in `internal/router/extract/extract.go`. The `MCPSessionID()`
+accessor was correctly added to `mcpclient.Client`. Routing identity is
+verified via `cluster.RequireLeaseHolder` (initial) then `cluster.LeaseHolder`
+per call — no response-body assertions. `query_session_state` is a sound
+read-only tool choice. SSE/JSON parse helper is defensive. No mocks.
 
 ## Test-integrity rules
 
