@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-golden-hint-cache
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-routing-layer-golden-consistent-hash]
@@ -115,3 +115,49 @@ that session while holding the lock from a separate Postgres connection).
   never populates (`hit_cache` stays 0 across many requests), park the bug.
 - **Never game an assertion.** Do not skip the metrics check and pass the test
   on response-status alone — that would make it tautological.
+
+## Implementation notes (2026-05-17)
+
+File: `tests/e2e/golden/router_hint_cache_test.go`
+
+### Approach
+
+**Subtest 1 (`hint_cache_overrides_ring_after_503`)** — 2-pod cluster:
+
+1. Create session, warm hint via clean GET (hit_ring → hint.Set).
+2. Snapshot `jamsesh_router_decisions_total{result="hit_cache"}` baseline.
+3. Hold Postgres advisory lock (`pg_advisory_lock(hashtext(sessionID)::oid)`)
+   from the test process via a dedicated `database/sql` connection. The portal
+   uses `pg_try_advisory_lock` (non-blocking), so it fails immediately and
+   returns 503. Router calls `hint.Invalidate` and retries on the next pod.
+   With both pods blocked, client sees 503.
+4. Release the lock (`pg_advisory_unlock`). Subsequent clean GET → ring lookup
+   (hint was invalidated; retry does NOT re-set hint per proxy.go comment) →
+   hit_ring → clean success → hint.Set.
+5. Second clean GET → hit_cache counter increments.
+6. Assert counter > baseline. Pre-flight `requireRouterDecisionsCounter` skips
+   the subtest with a clear message if the metric is absent (avoids tautological
+   pass on wrong metric name).
+
+**Subtest 2 (`hint_cache_is_per_session`)** — 3-pod cluster:
+
+1. Create 3 sessions. Warm each with an initial GET.
+2. Capture `initialHolders[i]` via `cluster.RequireLeaseHolder`.
+3. Interleave 5 rounds of requests across sessions (0,1,2,0,1,2,...) to stress
+   a blanket-replacement cache.
+4. After each request, assert `cluster.LeaseHolder(sid)` == `initialHolders[i]`.
+5. Log a non-fatal warning if all 3 sessions land on the same pod (vacuous pass).
+
+### Key design decisions
+
+- Advisory lock held via test-process `database/sql` connection to `pg.DSN`
+  (the host-side DSN accessible to the test process). The cluster's postgres
+  reference is private to `portalcluster`; `pg.DSN` from `postgres.Start` is
+  used directly.
+- `hintDoGetSession` returns `(int, error)` without asserting — lets the 503
+  case be observed and logged without failing the test at that point.
+- `sortedFamilyNames` implements inline insertion sort; `sort` package import
+  avoided to keep imports minimal.
+- `routerSessionRef` type is defined in `router_consistent_hash_test.go` (same
+  package `golden_test`); reused here without redeclaration.
+- `go build ./golden/... && go vet ./golden/...` both pass cleanly.
