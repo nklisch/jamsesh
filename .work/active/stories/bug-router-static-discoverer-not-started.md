@@ -1,7 +1,7 @@
 ---
 id: bug-router-static-discoverer-not-started
 kind: story
-stage: implementing
+stage: review
 tags: [bug, router, discovery, Important]
 parent: null
 depends_on: []
@@ -83,3 +83,40 @@ skipped with a reference to this backlog item until the fix lands.
 hashing to it. In a 3-pod cluster, ~33% of sessions are affected per pod
 failure. The fix is small (one `go func()` call + import), but the test
 must be green before the backlog item is closed.
+
+## Implementation notes
+
+### What was done
+
+Wired `discovery.Static(...).Run(ctx, publishWithMetrics(r.SetPods))` into
+`cmd/jamsesh-router/main.go` inside the existing `cfg.DiscoveryMode == "static"`
+block. The goroutine is started after the ring is seeded from static config.
+
+**Structural change**: The signal context (`ctx`) was moved earlier in `run()` —
+before the static-mode block — so it is defined when the goroutine is launched.
+This is a safe ordering change: signal notification registration is now slightly
+earlier, but SIGTERM handling was already deferred to the `select` at the bottom.
+
+**Placeholder suppressions removed**: The two `_ = publishWithMetrics` and
+`_ = probe` assignments that silenced unused-variable warnings are gone; both
+variables are now consumed by the discovery goroutine.
+
+**Import added**: `"jamsesh/internal/router/discovery"` added to the import block.
+
+### Config field
+
+`cfg.ProbeInterval` exists in `internal/router/config/config.go` with a default
+of 5s — matches the story sketch exactly. No adaptation needed.
+
+### e2e test un-skipped
+
+`tests/e2e/failure/router_backend_dead_test.go` — the `t.Skip(...)` call in
+`testDeadPodRemovedFromRoutingPool` was removed. The test is ready to run.
+The acceptance criterion noted this was optional if simple; it was one line.
+
+### Verification
+
+- `go build ./cmd/jamsesh-router/...` — clean
+- `go vet ./cmd/jamsesh-router/...` — clean
+- `go test ./internal/router/... -timeout 60s` — all 7 packages pass
+- `make test-router-image` — rebuilt `jamsesh/router:e2e` successfully

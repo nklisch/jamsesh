@@ -84,13 +84,6 @@ func TestRouterBackendDead(t *testing.T) {
 // the discovery loop; the ring is static after seeding. Remove the t.Skip once
 // the wiring is added. See package-level comment for details.
 func testDeadPodRemovedFromRoutingPool(t *testing.T) {
-	// SKIP until bug-router-static-discoverer-not-started is fixed.
-	// The static discoverer Run loop is not started in main.go; dead pods are
-	// never evicted from the ring and this test will always see 502 after the
-	// kill, never 2xx. Re-enable once cmd/jamsesh-router/main.go wires up
-	// discovery.Static(cfg.StaticPods, probe, cfg.ProbeInterval).Run(ctx, ring.SetPods).
-	t.Skip("bug-router-static-discoverer-not-started: static discoverer not started in main.go; dead pod is never evicted from ring")
-
 	ctx := context.Background()
 
 	// ── Infrastructure ───────────────────────────────────────────────────────

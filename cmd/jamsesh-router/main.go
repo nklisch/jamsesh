@@ -40,6 +40,7 @@ import (
 	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/router/cache"
 	"jamsesh/internal/router/config"
+	"jamsesh/internal/router/discovery"
 	"jamsesh/internal/router/extract"
 	"jamsesh/internal/router/proxy"
 	"jamsesh/internal/router/readyz"
@@ -103,13 +104,16 @@ func run(args []string) int {
 			metricsReg.RouterRingSize.Set(float64(len(pods)))
 		}
 	}
-	_ = publishWithMetrics // used below when discovery is wired; silences unused warning
-
 	// Build the readiness probe (with metrics wired for failure tracking).
 	probe := &readyz.Probe{
 		Metrics: metricsReg,
 	}
-	_ = probe // used by discovery; probe is constructed here for metrics wiring
+
+	// Context cancelled on SIGTERM or SIGINT.
+	// Created before background goroutines (e.g. the discovery loop) so they
+	// receive cancellation on shutdown.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
 
 	// Seed the ring from static config (the discovery story / Unit 3 will
 	// overlay this with live k8s watch results by calling SetPods on the
@@ -126,6 +130,16 @@ func run(args []string) int {
 		metricsReg.RouterRingRebalancesTotal.Inc()
 		metricsReg.RouterRingSize.Set(float64(len(pods)))
 		slog.Info("ring seeded from static config", "pod_count", len(pods))
+
+		// Start the static discovery loop to evict dead pods from the ring.
+		// The loop probes all configured backends every cfg.ProbeInterval and
+		// calls ring.SetPods atomically when the healthy set changes.
+		disc := discovery.Static(cfg.StaticPods, probe, cfg.ProbeInterval)
+		go func() {
+			if err := disc.Run(ctx, publishWithMetrics(r.SetPods)); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("jamsesh-router: discovery loop exited unexpectedly", "err", err)
+			}
+		}()
 	}
 
 	// Build the hint cache.
@@ -155,10 +169,6 @@ func run(args []string) int {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
-
-	// Context cancelled on SIGTERM or SIGINT.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
 
 	listenErr := make(chan error, 1)
 	go func() {
