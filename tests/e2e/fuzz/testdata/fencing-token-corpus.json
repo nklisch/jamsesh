@@ -1,0 +1,19 @@
+[
+  {"description": "zero (NoopManager sentinel)", "token": "0"},
+  {"description": "one (first real PG sequence value)", "token": "1"},
+  {"description": "MaxInt64", "token": "9223372036854775807"},
+  {"description": "MinInt64", "token": "-9223372036854775808"},
+  {"description": "negative one", "token": "-1"},
+  {"description": "MaxInt64 + 1 (overflows to MinInt64)", "token": "9223372036854775808"},
+  {"description": "empty string", "token": ""},
+  {"description": "null string literal", "token": "null"},
+  {"description": "boolean true", "token": "true"},
+  {"description": "decimal float", "token": "3.14"},
+  {"description": "hex string", "token": "0xff"},
+  {"description": "256-char digit string", "token": "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456"},
+  {"description": "embedded space (not a valid int64 literal)", "token": "42 43"},
+  {"description": "embedded newline escape (JSON-escaped)", "token": "42\n43"},
+  {"description": "base64-encoded int64", "token": "AAAAAAAAAAE="},
+  {"description": "UTF-8 multibyte", "token": "42αβγ"},
+  {"description": "only whitespace", "token": "   "}
+]
