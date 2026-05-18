@@ -27,6 +27,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -126,6 +127,42 @@ func (p *Portal) Logs(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// SendSignal sends a Unix signal to PID 1 inside the container using BusyBox
+// kill (available on alpine-based images). Use this to test graceful-shutdown
+// behaviour (SIGTERM) without going through the Docker daemon's stop command.
+//
+// The kill is executed inside the container via exec, so it reaches the
+// process that is PID 1 in the container's PID namespace — typically the
+// portal binary itself when started without an init wrapper.
+func (p *Portal) SendSignal(ctx context.Context, sig syscall.Signal) error {
+	if p.container == nil {
+		return fmt.Errorf("portal: SendSignal: container is nil")
+	}
+	code, _, err := p.container.Exec(ctx, []string{"kill", "-" + signalName(sig), "1"})
+	if err != nil {
+		return fmt.Errorf("portal: SendSignal(%v): exec: %w", sig, err)
+	}
+	if code != 0 {
+		return fmt.Errorf("portal: SendSignal(%v): kill exited %d", sig, code)
+	}
+	return nil
+}
+
+// signalName maps common signals to their symbolic names as understood by
+// BusyBox kill on alpine. Falls back to the numeric string for unknown signals.
+func signalName(sig syscall.Signal) string {
+	switch sig {
+	case syscall.SIGTERM:
+		return "TERM"
+	case syscall.SIGKILL:
+		return "KILL"
+	case syscall.SIGINT:
+		return "INT"
+	default:
+		return fmt.Sprintf("%d", int(sig))
+	}
 }
 
 // Start spins up a fresh portal container with the given configuration,

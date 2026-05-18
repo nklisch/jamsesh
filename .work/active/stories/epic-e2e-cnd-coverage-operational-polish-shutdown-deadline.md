@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-shutdown-deadline
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -77,5 +77,49 @@ injected `fixedDelayMilliseconds` (existing pattern at
   — existing pattern for OAuth-with-delay testing
 - `tests/e2e/fixtures/portal/portal.go:97-103` — existing
   `ContainerName` helper as model for `SendSignal` extension
-- `.work/backlog/graceful-shutdown-shutdownstart-race.md` — open race
-  this test may surface
+- `.work/active/stories/graceful-shutdown-shutdownstart-race.md` — open race
+  this test may surface (active story, not backlog)
+
+## Implementation notes
+
+### SendSignal method
+
+Added `SendSignal(ctx context.Context, sig syscall.Signal) error` to `*Portal`
+in `tests/e2e/fixtures/portal/portal.go`. Uses `container.Exec(ctx, ["kill",
+"-TERM", "1"])` (Option A from the story spec). BusyBox `kill` on alpine
+accepts symbolic names (TERM, KILL, INT) and falls back to numeric for unknown
+signals. The `signalName` helper provides the mapping. This coexists with the
+existing `ContainerFiles` field and `Logs` method.
+
+### WireMock mappings
+
+Both mappings mirror the shape of `tests/e2e/chaos/testdata/github_delay_30s.json`:
+- `tests/e2e/failure/testdata/oauth_delay_2s.json` — 2000ms delay on
+  `POST /login/oauth/access_token`; `/user` and `/user/emails` respond
+  immediately (needed by the portal's token exchange to complete the flow).
+- `tests/e2e/failure/testdata/oauth_delay_10s.json` — 10000ms delay on
+  the same endpoint.
+
+### OAuth callback path
+
+Used `POST /api/auth/oauth/callback` with JSON body `{provider, state, code}` —
+confirmed from the existing chaos test helpers in
+`tests/e2e/chaos/network_and_provider_test.go` and the failure package's own
+`oauthCallback` helper in `config_and_deps_test.go`.
+
+Flow: `POST /api/auth/oauth/start` → extract `state` nonce from `authorize_url`
+→ `POST /api/auth/oauth/callback` with that nonce. This matches exactly what
+`testOAuthProviderTimeout` does. No session cookies or CSRF tokens required.
+
+A file-local `shutdownOAuthCallbackRaw` helper is used instead of the
+package-level `oauthCallback` because the package-level helper calls
+`t.Fatalf` on transport errors, but a connection error is the *expected*
+outcome in `request_exceeds_deadline`.
+
+### Race note
+
+`.work/active/stories/graceful-shutdown-shutdownstart-race.md` documents a
+data-race in `cmd/portal/main.go` (unsynchronized `shutdownStart` variable).
+This is benign in practice and does not affect these e2e tests — they do not
+run with `-race`. If the race surfaces as a flake, add `t.Skip` with the
+story id `graceful-shutdown-shutdownstart-race` and park a blocker reference.

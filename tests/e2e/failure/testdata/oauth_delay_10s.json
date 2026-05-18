@@ -1,0 +1,52 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "/login/oauth/access_token"
+      },
+      "response": {
+        "status": 200,
+        "fixedDelayMilliseconds": 10000,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "access_token": "test-access-token",
+          "token_type": "bearer",
+          "scope": "user:email"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "/user"
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "id": 42,
+          "login": "shutdown-user",
+          "name": "Shutdown Test User"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "/user/emails"
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": [
+          {
+            "email": "shutdown@example.com",
+            "primary": true,
+            "verified": true
+          }
+        ]
+      }
+    }
+  ]
+}
