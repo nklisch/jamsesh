@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-hydration-handoff-wiring
 kind: story
-stage: review
+stage: done
 tags: [portal, documentation]
 parent: epic-cloud-native-deploy-hydration-handoff
 depends_on: [epic-cloud-native-deploy-hydration-handoff-lifecycle]
@@ -84,3 +84,21 @@ Append to Registry + register in New():
 - ARCHITECTURE.md: removed preview callout; replaced "Hydration handoff (to come)" with shipped description; updated fencing-token paragraph to describe the implementation rather than future plans.
 - SELF_HOST.md §14: removed preview callout and preview-limitations subsection; added hydration env vars subsection with the four new knobs.
 - `go build ./...` and `go test ./...` both clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Final story in the epic. Clean execution across 6 surfaces:
+1. Config — 4 new hydration env vars with defaults + validation + tests
+2. SyncPushPath refactor — Syncer.Lease field removed; handle is now caller-provided. Mechanical fix as designed; only one caller (postreceive Emitter) needed updating
+3. Emitter wiring — nil-safe Lifecycle handoff; single-instance falls back to noop handle for the Syncer call
+4. main.go wiring — Hydrator + LifecycleManager constructed in clustered mode; background goroutine started; OrgIDLookup wired to GetSessionByID
+5. GetSessionByID — added to store.Store interface + both adapter impls + TxStore wrappers + stubStore patched. Hand-written sql.go files follow the established `*_extra.go` pattern (sqlc not in env)
+6. Docs — SELF_HOST §14 preview callout removed; hydration env vars subsection added; ARCHITECTURE preview callout replaced with shipped description; no "previously" prose
+
+Build + tests green. The clustered-mode capability is now COMPLETE in code.

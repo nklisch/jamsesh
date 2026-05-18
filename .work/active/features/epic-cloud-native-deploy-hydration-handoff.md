@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-hydration-handoff
 kind: feature
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy
 depends_on: [epic-cloud-native-deploy-object-storage-sync, epic-cloud-native-deploy-lease-fencing, epic-cloud-native-deploy-routing-layer]
@@ -322,3 +322,17 @@ evict-disk` ordering. Resolve in design.
 `git fsck` is fast on healthy repos but pathologically slow on large /
 broken ones. Consider `git fsck --quick` or a custom go-git
 verification pass; resolve in design.
+
+## Children complete (2026-05-17)
+
+All 3 child stories landed and reviewed:
+
+| Story | Verdict | Notes |
+|---|---|---|
+| hydrator | Approve | 410 LoC + 573 LoC tests; atomic writes via tmp+rename; errgroup parallel downloads; git fsck integrity check |
+| lifecycle | Approve | LoadOrStore race guard; bounded drain (10s/50ms poll); LRU via dirSize on eviction tick; shutdown drains in parallel |
+| wiring (review pending) | — | Config + main.go wiring + SyncPushPath refactor + GetSessionByID + docs reframe (preview → shipped) |
+
+Verification: `go build ./...` clean; `go test ./...` green across all packages.
+
+Feature advanced `implementing → review`. The capstone — clustered mode now supports clean pod-to-pod session migration via lease-driven hydration + eviction.
