@@ -1,7 +1,7 @@
 ---
 id: graceful-shutdown-shutdownstart-race
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, infra]
 parent: null
 depends_on: []
@@ -89,3 +89,30 @@ Surfaced in review of
 `epic-cloud-native-deploy-operational-polish-graceful-shutdown` (commit
 336b38e). Not blocking — the implementation works correctly in practice
 under typical loads — but the formal-correctness gap deserves a clean fix.
+
+## Implementation notes
+
+Replaced the unsynchronized `var shutdownStart time.Time` + `sync.Once`
+pattern with a `chan time.Time` (buffered, size 1). Key decisions:
+
+- **Channel over atomic**: a buffered channel gives the HB edge directly via
+  the channel communication rule. `atomic.Pointer[time.Time]` would also
+  work but requires an extra allocation; the channel reads more naturally
+  at the select site.
+- **`sync.Once` removed**: the once-guard was never needed for correctness
+  (only one goroutine ever sent), but its presence implied the variable
+  write was the source of safety. With the channel, `sync.Once` is simply
+  gone.
+- **Comment corrected**: the old comment claimed "no mutex needed because
+  server.Run blocks until ctx is cancelled" — that reasoning was wrong
+  under the Go memory model (ctx.Done close creates HB edges to each
+  observer independently, not between observers). The new comment explains
+  the actual guarantee the channel provides.
+- **`default` branch**: explicitly documents the listen-error path. The
+  buffered channel means the writer goroutine never blocks if ctx is never
+  cancelled; the goroutine is unreachable past `cancel()` at test teardown.
+- **Test added**: `cmd/portal/shutdown_race_test.go` with two cases —
+  `TestShutdownStartChannelHappensBefore` (graceful path, verifies the
+  receive delivers a valid timestamp) and
+  `TestShutdownStartChannelListenErrorPath` (listen-error path, verifies
+  default branch taken immediately). Both pass under `go test -race`.

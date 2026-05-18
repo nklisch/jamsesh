@@ -254,16 +254,17 @@ func main() {
 		os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// shutdownClock records the moment ctx is cancelled so we can derive a
-	// shared drain budget across all subsystems. It is written exactly once by
-	// the goroutine below and read only after server.Run returns — no mutex
-	// needed because server.Run blocks until ctx is cancelled (or a listen
-	// error), creating the necessary happens-before relationship.
-	var shutdownStart time.Time
-	var shutdownOnce sync.Once
+	// shutdownStartCh delivers the moment ctx is cancelled to the drain block
+	// below. Using a buffered channel of size 1 gives a proper happens-before
+	// edge between the send (in the goroutine) and the receive (after
+	// server.Run returns), satisfying the Go memory model. The channel is
+	// buffered so the goroutine never blocks if server.Run exits via a listen
+	// error (ctx never cancelled → channel is never sent on → drain skipped
+	// via the default branch of the select below).
+	shutdownStartCh := make(chan time.Time, 1)
 	go func() {
 		<-ctx.Done()
-		shutdownOnce.Do(func() { shutdownStart = time.Now() })
+		shutdownStartCh <- time.Now()
 	}()
 
 	// Open the database and run migrations. Translate config.DBConfig into
@@ -754,14 +755,15 @@ func main() {
 	//
 	// server.Run blocks until ctx is cancelled (graceful path) or a listen
 	// error occurs (error path, already handled above). On the graceful path,
-	// shutdownStart was set when ctx fired, and server.Run consumed some of the
-	// budget draining in-flight HTTP requests. We log the HTTP step elapsed time
-	// and compute how much of the shared budget remains for the auto-merger and
-	// WS gateway.
+	// shutdownStartCh will have exactly one value: the timestamp recorded when
+	// ctx fired. server.Run consumed some of the grace budget draining
+	// in-flight HTTP requests; we log that elapsed time and compute how much
+	// remains for the auto-merger and WS gateway.
 	//
-	// On the listen-error path server.Run exits immediately without ctx being
-	// cancelled, so shutdownStart is zero — skip the drain in that case.
-	if !shutdownStart.IsZero() {
+	// On the listen-error path ctx is never cancelled, so shutdownStartCh
+	// holds no value — the default branch skips the drain entirely.
+	select {
+	case shutdownStart := <-shutdownStartCh:
 		httpElapsed := time.Since(shutdownStart)
 		slog.Info("shutdown", "shutdown_step", "http", "elapsed_ms", httpElapsed.Milliseconds())
 
@@ -800,6 +802,8 @@ func main() {
 		}()
 
 		wg.Wait()
+	default:
+		// Listen-error path: ctx was never cancelled, no drain needed.
 	}
 
 	slog.Info("portal stopped cleanly")
