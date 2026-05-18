@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-hydration-handoff-lifecycle
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy-hydration-handoff
 depends_on: [epic-cloud-native-deploy-hydration-handoff-hydrator]
@@ -84,3 +84,23 @@ New:
 - LRU bytes tracking: refresh per-session repo size on each acquire/release (sum into a cumulative gauge); when sum > CacheMaxBytes, find oldest-lastActiveAt session and Release.
 - Shutdown: cancel idle goroutine ctx → parallel-Release all entries in goroutines with 30s per-session bounded wait.
 - The Syncer's `SyncPushPath` signature changes in Unit 3 to accept an existing handle — LifecycleManager doesn't call SyncPushPath itself; the postreceive Emitter does that after calling LifecycleManager.AcquireForRequest.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Excellent state-machine design. LoadOrStore race guard handles the narrow window where two goroutines race to insert the same session — loser releases its handle and returns the winner's. Verified under `-race` via `TestLifecycle_AcquireWhileReleasing`.
+
+Release drain (10s bounded ctx + 50ms poll) is the right shape; warns on timeout but proceeds to handle.Release() + os.RemoveAll regardless (failsafe — better to leak some local cache than block shutdown forever).
+
+watchLost goroutine spawned AFTER LoadOrStore winner is confirmed — so cleanup is guaranteed regardless of which goroutine actually entered the map.
+
+LRU byte-tracking refreshes via `dirSize` (filepath.Walk) in the eviction tick — avoids the circular dependency with Syncer's success path that an "update on each sync" approach would introduce. At typical session sizes (20-50MB) the walk is cheap and runs every 30s.
+
+Syncer.InFlightCount accessor added cleanly — uses Load (not LoadOrStore) so it doesn't accidentally create an entry. Right primitive.
+
+11 tests cover every acceptance criterion plus the AcquireWhileReleasing race case. 2 new metric handles (LifecycleActiveSessions gauge, LifecycleEvictionsTotal{reason} counter with idle/lru/lost/shutdown/explicit labels) registered cleanly.
