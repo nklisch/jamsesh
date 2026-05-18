@@ -47,12 +47,6 @@ type S3Config struct {
 	// Ceph. Set to false for AWS S3 and Cloudflare R2.
 	UsePathStyle bool
 
-	// DisableSSL is no longer needed — set EndpointURL to an http:// URL for
-	// local MinIO testing. This field is retained for backwards compatibility
-	// but has no effect; the scheme in EndpointURL controls TLS.
-	//
-	// Deprecated: set EndpointURL to "http://..." instead.
-	DisableSSL bool
 }
 
 // s3Backend is the S3-compatible implementation of Backend.

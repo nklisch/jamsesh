@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-disablessl-config
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, portal, infra]
 parent: null
 depends_on: []
@@ -37,3 +37,14 @@ This is a v0.1.0 release — there is no prior public API to be compatible
 with. Remove `DisableSSL` from both `Config` (factory.go) and `S3Config`
 (s3.go), plus the four assignments in factory.go
 (`DisableSSL: cfg.DisableSSL`). No external consumers exist to break.
+
+## Implementation notes
+
+Lines removed:
+
+- `internal/portal/storage/objectstore/factory.go` lines 32–36: deleted the `DisableSSL bool` field and its deprecation comment from `Config`
+- `internal/portal/storage/objectstore/factory.go` line 74: deleted `DisableSSL: cfg.DisableSSL,` from the `s3://` case `S3Config` literal
+- `internal/portal/storage/objectstore/factory.go` line 88: deleted `DisableSSL: cfg.DisableSSL,` from the `s3-compatible://` case `S3Config` literal
+- `internal/portal/storage/objectstore/s3.go` lines 50–55: deleted the `DisableSSL bool` field and its deprecation comment from `S3Config`
+
+No read references (`if cfg.DisableSSL { ... }`) existed anywhere in the codebase. No test files referenced the field. Build and test suite pass cleanly.

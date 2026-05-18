@@ -29,11 +29,6 @@ type Config struct {
 	// and GCS (where it has no effect). Not used for Azure Blob.
 	UsePathStyle bool
 
-	// DisableSSL is retained for API compatibility but has no effect.
-	// To use plain HTTP, pass an http:// URL in EndpointURL or as the raw URL.
-	//
-	// Deprecated: set EndpointURL to "http://..." instead.
-	DisableSSL bool
 }
 
 // New constructs a Backend from a URL and supplemental Config.
@@ -71,7 +66,6 @@ func New(rawURL string, cfg Config) (Backend, error) {
 			Region:       cfg.Region,
 			EndpointURL:  cfg.EndpointURL,
 			UsePathStyle: cfg.UsePathStyle,
-			DisableSSL:   cfg.DisableSSL,
 		})
 
 	case "s3-compatible":
@@ -85,7 +79,6 @@ func New(rawURL string, cfg Config) (Backend, error) {
 			Region:       cfg.Region,
 			EndpointURL:  cfg.EndpointURL,
 			UsePathStyle: cfg.UsePathStyle,
-			DisableSSL:   cfg.DisableSSL,
 		})
 
 	case "gs":
