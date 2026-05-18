@@ -133,6 +133,21 @@ type Registry struct {
 	// storage across all Hydrate calls (loose objects + pack + idx files).
 	HydrationBytesTotal prometheus.Counter
 
+	// ── Lifecycle metrics ─────────────────────────────────────────────────────
+	// These fields track the LifecycleManager: active sessions held by this pod
+	// and eviction events. Populated only in clustered mode; nil in single-
+	// instance mode. Use nil checks before incrementing.
+
+	// LifecycleActiveSessions tracks the current number of sessions whose leases
+	// are held (and whose local caches are live) on this pod. Incremented on
+	// AcquireForRequest (first time); decremented on Release.
+	LifecycleActiveSessions prometheus.Gauge
+
+	// LifecycleEvictionsTotal counts session evictions triggered by the
+	// LifecycleManager. Label "reason" is one of: idle, lru, lost, shutdown,
+	// explicit.
+	LifecycleEvictionsTotal *prometheus.CounterVec
+
 	reg *prometheus.Registry
 }
 
@@ -296,6 +311,21 @@ func New() *Registry {
 	})
 	reg.MustRegister(hydrationBytesTotal)
 
+	// ── Lifecycle metrics ──────────────────────────────────────────────────────
+
+	lifecycleActiveSessions := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "jamsesh_lifecycle_active_sessions",
+		Help: "Current number of sessions whose leases are held and local caches are live on this pod.",
+	})
+	reg.MustRegister(lifecycleActiveSessions)
+
+	lifecycleEvictionsTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "jamsesh_lifecycle_evictions_total",
+		Help: "Total number of session evictions by the LifecycleManager, labeled by reason " +
+			"(idle, lru, lost, shutdown, explicit).",
+	}, []string{"reason"})
+	reg.MustRegister(lifecycleEvictionsTotal)
+
 	return &Registry{
 		HTTPRequestsTotal:             httpRequestsTotal,
 		HTTPRequestDuration:           httpRequestDuration,
@@ -318,6 +348,8 @@ func New() *Registry {
 		HydrationsTotal:                   hydrationsTotal,
 		HydrationDurationSeconds:          hydrationDurationSeconds,
 		HydrationBytesTotal:               hydrationBytesTotal,
+		LifecycleActiveSessions:           lifecycleActiveSessions,
+		LifecycleEvictionsTotal:           lifecycleEvictionsTotal,
 		reg:                               reg,
 	}
 }

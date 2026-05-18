@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-hydration-handoff-lifecycle
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-cloud-native-deploy-hydration-handoff
 depends_on: [epic-cloud-native-deploy-hydration-handoff-hydrator]
@@ -42,6 +42,38 @@ New:
 - [ ] LRU eviction releases oldest-lastActive when CacheMaxBytes exceeded
 - [ ] Shutdown (ctx cancel) releases all active leases within 30s
 - [ ] AcquireForRequest racing with Release on the same session waits or retries (no double-state)
+
+## Implementation notes
+
+### Files produced
+
+- `internal/portal/storage/objectstore/lifecycle.go` — `LifecycleManager`,
+  `sessionEntry`, `dirSize` helper.
+- `internal/portal/storage/objectstore/lifecycle_test.go` — 11 tests covering
+  all acceptance criteria; race-detector clean.
+- `internal/portal/storage/objectstore/sync.go` — added `InFlightCount(sessionID)
+  int64` method on `Syncer` (clean API, reads the per-session atomic via `Load`).
+- `internal/portal/metrics/metrics.go` — added `LifecycleActiveSessions` (Gauge)
+  and `LifecycleEvictionsTotal{reason}` (CounterVec) with labels idle/lru/lost/
+  shutdown/explicit; registered in `New()` and wired in the returned `Registry`.
+
+### Design choices
+
+- **Release drain loop** uses a `context.WithTimeout(10s)` sub-context and polls
+  every 50ms. The outer drain context is cancelled on timeout; a `slog.Warn` is
+  emitted. Continues to handle.Release() and os.RemoveAll regardless.
+- **LoadOrStore race guard**: `acquireNew` uses `sync.Map.LoadOrStore` to handle
+  the narrow window where two goroutines race to insert the same session. The
+  loser releases its handle and returns the winner's. Verified by
+  `TestLifecycle_AcquireWhileReleasing` under `-race`.
+- **LRU byte tracking**: repo sizes refreshed in the eviction tick via `dirSize`
+  (filepath.Walk). Avoids a circular dependency with Syncer's success path.
+- **Metrics**: nil-safe checks at every metric call site consistent with the
+  hydrator and sync patterns already in the codebase.
+- **watchLost goroutine**: spawned after `LoadOrStore` winner is confirmed, so
+  it is always cleaned up by `releaseWithReason` regardless of entry provenance.
+
+### All 11 tests pass; `go test -race ./...` green.
 
 ## Notes
 

@@ -122,6 +122,21 @@ func (s *Syncer) inFlightFor(sessionID string) *int64 {
 	return v.(*int64)
 }
 
+// InFlightCount returns the current number of in-flight SyncPush calls for
+// the given session. Returns 0 if no uploads have ever been tracked for the
+// session (which is indistinguishable from the counter reaching zero after
+// draining — both are correct: no pending uploads either way).
+//
+// This method is the clean API surface consumed by LifecycleManager to drain
+// uploads before evicting a session's local cache.
+func (s *Syncer) InFlightCount(sessionID string) int64 {
+	v, ok := s.sessionInFlight.Load(sessionID)
+	if !ok {
+		return 0
+	}
+	return atomic.LoadInt64(v.(*int64))
+}
+
 // SyncPushPath enumerates new objects, refs, and pack files in the local bare
 // repo at repoPath, uploads them to object storage, and saves an updated
 // manifest with conditional-write semantics.
