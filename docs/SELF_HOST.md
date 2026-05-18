@@ -617,6 +617,36 @@ handled by the portal.
 - Network access controls — firewall rules for who can reach the portal
 - OAuth callback URL configuration
 - Patching the portal binary as security updates ship
+- **Proxy log redaction for WebSocket bearer tokens** (see below)
+
+**Important: WebSocket bearer token in proxy logs.**
+The WebSocket gateway authenticates upgrade requests via the
+`Sec-WebSocket-Protocol` header, which encodes a long-lived bearer token
+(`jamsesh.bearer.<token>`). If your reverse proxy or load balancer logs
+request headers (NGINX `$http_*`, Envoy default logs, CloudFront, ALB), you
+MUST redact or strip this header before logs are persisted. Without redaction,
+anyone with read access to those logs can hijack a session by replaying the
+captured token.
+
+Operators have three reasonable options:
+
+1. **Strip the header at the proxy before upstream forwarding.** For NGINX,
+   add `proxy_set_header Sec-WebSocket-Protocol "";` inside the `location`
+   block that proxies WebSocket upgrades (after passing the header to the
+   upstream but before logging — alternatively use `proxy_hide_header`).
+   For Caddy, use a `request_header` directive in the reverse-proxy handler.
+
+2. **Configure the log format to omit `Sec-WebSocket-Protocol`.** For NGINX,
+   define a custom `log_format` that does not include `$http_sec_websocket_protocol`.
+   For Envoy, configure a custom access-log format or use a log filter that
+   redacts the header. For CloudFront and ALB, configure log field exclusions
+   in the distribution / load-balancer settings.
+
+3. **Terminate WebSocket directly at the portal** (no reverse proxy sees the
+   upgrade). Use `JAMSESH_TLS_MODE=native` with `JAMSESH_TLS_CERT` and
+   `JAMSESH_TLS_KEY` set; the proxy only forwards non-WebSocket traffic, or
+   is not used at all. This eliminates the logging exposure entirely but
+   requires the portal to hold the TLS private key.
 
 **What the portal handles**:
 

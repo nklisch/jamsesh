@@ -223,6 +223,20 @@ Self-host operators are responsible for:
   for who can reach it).
 - OAuth callback URL configuration.
 - Patching the portal binary as security updates ship.
+- **Proxy log redaction for WebSocket bearer tokens** — the WebSocket gateway
+  authenticates upgrade requests via the `Sec-WebSocket-Protocol` header,
+  which encodes a long-lived bearer token (`jamsesh.bearer.<token>`). If your
+  reverse proxy or load balancer logs request headers (NGINX `$http_*`, Envoy
+  default logs, CloudFront, ALB), you MUST redact or strip this header before
+  logs are persisted. Without redaction, anyone with read access to those logs
+  can hijack a session by replaying the captured token. Operators have three
+  reasonable options:
+  1. Strip the header at the proxy before upstream forwarding.
+  2. Configure the log format to omit `Sec-WebSocket-Protocol`.
+  3. Mount the portal so the proxy does not see WebSocket upgrades (terminate
+     WS at the portal directly using `JAMSESH_TLS_MODE=native`).
+  See [docs/SELF_HOST.md](SELF_HOST.md) §10 for proxy-specific configuration
+  examples.
 - **Object storage IAM** — when clustered mode and object-storage are enabled,
   the operator must configure a service principal or IAM role with
   bucket-scoped read/write/list/delete permissions on the bucket named in
