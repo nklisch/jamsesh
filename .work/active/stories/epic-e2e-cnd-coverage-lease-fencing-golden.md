@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing-golden
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-lease-fencing
 depends_on: [epic-e2e-cnd-coverage-lease-fencing-infra]
@@ -165,3 +165,39 @@ informational until PROTOCOL.md documents the code.
 accommodate a token of 0 in clustered mode. Token 0 is the NoopManager
 sentinel — receiving it in clustered mode means the Postgres sequence is not
 being used, which is a real bug.
+
+## Implementation notes
+
+**File landed:** `tests/e2e/golden/lease_acquire_and_fence_test.go`
+
+**All three subtests implemented:**
+
+1. `single_pod_acquires_lease_for_session` — 2-pod cluster + router; git push
+   via router; `RequireLeaseHolder` asserts pod index ≥ 0; `FencingTokenForSession`
+   asserts token > 0 (clustered mode must use the PG sequence, not NoopManager).
+
+2. `two_pods_race_acquire_only_one_wins` — 2-pod cluster + router; initial push
+   via router establishes the lease on one pod; concurrent GET requests to both
+   pods are issued; `RequireLeaseHolder` confirms exactly one pod holds the
+   advisory lock (the safety-critical assertion). The 503 assertion is
+   informational: the current portal does not return 503 synchronously on
+   lease-contended direct-pod REST requests (lease acquisition occurs in
+   post-receive, after the HTTP 200 is committed). The test logs this gap and
+   skips the 503 status assertion without skipping the test. The advisory-lock
+   exclusivity assertion is NOT skipped.
+
+3. `monotonic_fencing_tokens_across_acquisitions` — 2-pod cluster + router;
+   initial push via router (T1); `Kill(holderPod)` + `ReleaseLeaseForcibly`;
+   push to surviving pod directly (T2); `WaitForLeaseMigration` polls until
+   lock migrates (30s SLO); `FencingTokenForSession` asserts T2 > T1.
+
+**Key architectural finding:** The portal's lease acquisition is lazy — it
+occurs in `postreceive.Emitter.EmitForUpdates` (via `LifecycleManager.AcquireForRequest`)
+which is called AFTER `w.WriteHeader(http.StatusOK)` in the git receive-pack
+handler. This means direct-pod pushes for a session held by another pod do not
+return 503 synchronously. The split-brain prevention is in the object-storage
+fencing-token check (T2 > T1 rejects stale writes), not in the HTTP layer.
+The failure-mode test `lease_already_held_test.go` covers the 503 scenario if
+and when a synchronous lease-rejection layer is added to the portal.
+
+**Build + vet:** `go build ./golden/... && go vet ./golden/...` — clean.
