@@ -11,6 +11,64 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+// TestSQLiteFilePath verifies that sqliteFilePath correctly identifies
+// in-memory DSNs (returns "") and returns the path for file-backed ones,
+// stripping query parameters and the "file:" prefix when present.
+func TestSQLiteFilePath(t *testing.T) {
+	cases := []struct {
+		dsn  string
+		want string
+	}{
+		{":memory:", ""},
+		{"file::memory:", ""},
+		{"file::memory:?cache=shared", ""},
+		{"./jamsesh.db", "./jamsesh.db"},
+		{"./jamsesh.db?_pragma=foreign_keys(1)", "./jamsesh.db"},
+		{"/var/lib/jamsesh/jamsesh.db", "/var/lib/jamsesh/jamsesh.db"},
+		{"/var/lib/jamsesh/jamsesh.db?_pragma=busy_timeout(5000)", "/var/lib/jamsesh/jamsesh.db"},
+		{"file:/var/lib/jamsesh/jamsesh.db", "/var/lib/jamsesh/jamsesh.db"},
+		{"file:./jamsesh.db?mode=rwc", "./jamsesh.db"},
+	}
+	for _, tc := range cases {
+		got := sqliteFilePath(tc.dsn)
+		if got != tc.want {
+			t.Errorf("sqliteFilePath(%q) = %q, want %q", tc.dsn, got, tc.want)
+		}
+	}
+}
+
+// TestOpenSQLite_Chmod verifies that Open chmods the SQLite DB file to 0600
+// on a file-backed DSN and does not fail for an in-memory DSN.
+func TestOpenSQLite_Chmod(t *testing.T) {
+	ctx := context.Background()
+
+	// In-memory: no chmod attempted, should succeed without error.
+	store, _, err := Open(ctx, "sqlite", ":memory:", PoolConfig{})
+	if err != nil {
+		t.Fatalf("Open sqlite :memory: failed: %v", err)
+	}
+	store.Close()
+
+	// File-backed: Open must chmod the file to 0600.
+	dir := t.TempDir()
+	dbPath := dir + "/test.db"
+
+	s, _, err := Open(ctx, "sqlite", dbPath, PoolConfig{})
+	if err != nil {
+		t.Fatalf("Open sqlite file-backed failed: %v", err)
+	}
+	s.Close()
+
+	info, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatalf("stat %s: %v", dbPath, err)
+	}
+	got := info.Mode().Perm()
+	if got != 0600 {
+		t.Errorf("DB file permissions = %04o, want 0600", got)
+	}
+}
+
 // TestOpenSQLite_DefaultPoolConfig verifies that Open succeeds with a
 // zero-value PoolConfig (the "if pc.X > 0" guards must all be skipped).
 func TestOpenSQLite_DefaultPoolConfig(t *testing.T) {

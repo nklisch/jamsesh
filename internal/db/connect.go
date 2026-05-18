@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -87,6 +89,18 @@ func Open(ctx context.Context, driver, dsn string, pc PoolConfig) (store.Store, 
 			db.Close()
 			return nil, nil, fmt.Errorf("migrate: %w", err)
 		}
+		// Harden the on-disk file to 0600 (owner-only read/write). This
+		// prevents other local users or container processes from reading the
+		// database file, which holds oauth_tokens, magic_link_tokens, and
+		// account email PII. chmod is best-effort: failure logs a warning but
+		// does not abort startup. In-memory DSNs (:memory: / file::memory:)
+		// have no file and are skipped.
+		if fp := sqliteFilePath(dsn); fp != "" {
+			if err := os.Chmod(fp, 0600); err != nil {
+				slog.WarnContext(ctx, "db: sqlite chmod 0600 failed — DB file may be world-readable",
+					"path", fp, "err", err)
+			}
+		}
 		return store.NewSQLiteAdapter(db), db, nil
 
 	case "postgres":
@@ -154,4 +168,21 @@ func sqliteDSN(dsn string) string {
 		return path
 	}
 	return path + "?" + strings.Join(params, "&")
+}
+
+// sqliteFilePath extracts the filesystem path from a SQLite DSN, stripping any
+// query parameters. Returns an empty string for in-memory DSNs (:memory: or
+// file::memory:) since those have no on-disk file to chmod.
+func sqliteFilePath(dsn string) string {
+	// Strip any query parameters to get the raw path portion.
+	path, _, _ := strings.Cut(dsn, "?")
+
+	// Strip the "file:" URI prefix if present.
+	path = strings.TrimPrefix(path, "file:")
+
+	// In-memory DSNs have no file.
+	if path == "" || path == ":memory:" {
+		return ""
+	}
+	return path
 }

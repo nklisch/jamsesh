@@ -308,6 +308,19 @@ sqlite3 /var/lib/jamsesh/jamsesh.db ".backup /var/backups/jamsesh-$(date +%Y%m%d
 For automated backups, run this as a cron job. The file is small — a few
 megabytes for typical usage — and backs up quickly.
 
+**File permissions.** The portal chmods the SQLite database file to `0600`
+(owner read/write only) on every startup. This prevents other local users or
+container processes from reading the file, which holds OAuth tokens, magic-link
+tokens, and account email PII. If you are upgrading from a version that did not
+apply this chmod, run once after upgrade to harden a pre-existing file:
+
+```bash
+chmod 0600 /var/lib/jamsesh/jamsesh.db
+```
+
+This only affects SQLite deployments. For Postgres, file permissions are
+managed by the database server and this step is irrelevant.
+
 ### Postgres
 
 Set `JAMSESH_DB_DRIVER=postgres` and provide a Postgres DSN:
