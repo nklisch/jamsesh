@@ -276,7 +276,7 @@ func TestApply_SafeAutoResolve(t *testing.T) {
 		t.Fatalf("Merge: %v", err)
 	}
 	if result.Kind != automerger.SafeAutoResolve {
-		t.Skipf("did not get SafeAutoResolve (got %s); this test requires a whitespace conflict", result.Kind)
+		t.Fatalf("expected SafeAutoResolve for whitespace-only conflict, got %s", result.Kind)
 	}
 
 	if err := s.EnsureEventSeqRow(ctx, sess.ID); err != nil {

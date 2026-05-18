@@ -1,7 +1,7 @@
 ---
 id: gate-tests-automerger-safe-resolve-skipf
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal]
 parent: null
 depends_on: []
@@ -35,3 +35,14 @@ regression, not a precondition miss.
 
 ## Test location (suggested)
 `internal/portal/automerger/outcomes_test.go:279`
+
+## Implementation notes
+
+Changed `internal/portal/automerger/outcomes_test.go` line 279:
+- Before: `t.Skipf("did not get SafeAutoResolve (got %s); this test requires a whitespace conflict", result.Kind)`
+- After: `t.Fatalf("expected SafeAutoResolve for whitespace-only conflict, got %s", result.Kind)`
+
+The whitespace-conflict subtest is deliberately constructed to produce a `SafeAutoResolve` classification. If the classifier ever drifts, the test now fails rather than silently skipping.
+
+Build: `go build ./...` — clean, no errors.
+Tests: `go test ./internal/portal/automerger/...` — ok (0.873s), all passing. The whitespace conflict continues to classify as `SafeAutoResolve` on main.
