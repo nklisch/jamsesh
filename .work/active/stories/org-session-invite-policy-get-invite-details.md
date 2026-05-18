@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-get-invite-details
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: org-session-invite-policy
 depends_on: []
@@ -177,3 +177,26 @@ agent finds the duplication painful, extract a small private helper —
 `validateSessionInvite(ctx, store, orgID, sessionID, inviteID, token, acc) (SessionInvite, AcceptInviteResponseEnvelope, ok bool)`
 — and have both endpoints call it. This is a refactor-during-implementation
 opportunity, not a blocker.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Token/email/expiry validation is duplicated verbatim between
+  `AcceptSessionInvite` and `GetSessionInvite`. The story explicitly allowed
+  this and called the refactor optional; agent left both inline. Reasonable
+  given the security-sensitive nature — extracting later as a separate
+  refactor pass is fine.
+- Check order is `already_accepted` before `email_match` (mirrors the existing
+  POST handler). This means a 409 leaks "invite exists and was accepted"
+  even to a non-invitee — but the adversary would also need the valid token
+  hash to reach that point, so practically not exploitable.
+
+**Notes**: Auth shape mirrors `AcceptSessionInvite` exactly with the
+deliberate 401-instead-of-403/404 substitutions on GET to prevent invite-id
+and email enumeration. Eight tests cover happy, invalid-token, missing-token,
+unknown-invite, wrong-email, expired, already-accepted, and no-mutation paths.
+Doc comments clearly state the "why" for the security choices.
