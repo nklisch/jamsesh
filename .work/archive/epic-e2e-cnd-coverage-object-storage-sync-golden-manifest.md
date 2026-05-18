@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-golden-manifest
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture, epic-e2e-cnd-coverage-object-storage-sync-golden-rpo0]
@@ -51,6 +51,24 @@ bucket. No dangling references, no missing entries.
 - [ ] `manifest.SessionID` and `manifest.Version` are asserted
 - [ ] Any production bugs (dangling manifest references) are parked, not silenced
 - [ ] No in-process mocks introduced
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Manifest is read exclusively via `mn.GetObject` — no portal API calls,
+fully non-tautological. Bidirectional consistency check is present: manifest→bucket
+(every PackEntry's keys exist) AND bucket→manifest (every bucket pack object is
+referenced in the manifest). The inlined `manifestJSON` mirror struct matches the
+production `objectstore.Manifest` JSON tags exactly; the two extra production fields
+(`fencing_token`, `updated_at`) that are absent from the mirror do not affect
+correctness since they aren't asserted on. Module boundary constraint (no cross-
+module imports) is correctly handled with the inlined struct approach. Infrastructure
+setup matches rpo0 test. Helpers reused correctly from package-scoped definitions.
 
 ## Notes
 
