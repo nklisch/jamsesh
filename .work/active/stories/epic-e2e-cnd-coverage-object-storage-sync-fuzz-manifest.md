@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-fuzz-manifest
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture, epic-e2e-cnd-coverage-object-storage-sync-golden-rpo0]
@@ -123,3 +123,27 @@ control seed that verifies the harness itself works.
 - Random phase: 5 iterations by default (MANIFEST_FUZZ_COUNT to override),
   each generating a random malformed manifest across 12 shape categories.
 - `go build ./fuzz/... && go vet ./fuzz/...` pass cleanly.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Design said to `t.Skip` with a backlog ID when silent truncation is detected;
+  implementation uses `t.Errorf` instead, which is stricter (keeps the suite red
+  until the bug is fixed). The inline comment "Do NOT change the assertion to accept
+  2xx on clearly invalid seeds" documents the intent. Defensible deviation — more
+  honest than skip-and-forget.
+- The "oversize 5MB" seed from the design is in the random generator rather than
+  the static corpus. The corpus covers the other 14+ required categories; the oversize
+  shape is exercised in the random phase.
+
+**Notes**: PLACEHOLDER substitution is applied correctly at test time. Control seed
+runs first (sequential) to validate the harness before exercising invalid seeds.
+Panic detection is applied at both clone-time and push-time. Bootstrap + hot-cluster
+separation ensures cold-start hydration reads the pre-seeded manifest. No in-process
+mocks. Corpus has 15 entries (≥10 required). Random phase exercises 12 shape
+categories. Silent truncation path triggers `t.Errorf` with a clear directive
+to park — no silent acceptance.
