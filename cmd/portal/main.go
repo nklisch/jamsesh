@@ -16,9 +16,11 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -36,16 +38,20 @@ import (
 	"jamsesh/internal/portal/finalize"
 	"jamsesh/internal/portal/githttp"
 	"jamsesh/internal/portal/httperr"
+	"jamsesh/internal/portal/lease"
 	"jamsesh/internal/portal/logging"
 	"jamsesh/internal/portal/mcpendpoint"
+	"jamsesh/internal/portal/metrics"
 	portaloauth "jamsesh/internal/portal/oauth"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
+	"jamsesh/internal/portal/probes"
 	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/server"
 	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
+	"jamsesh/internal/portal/storage/objectstore"
 	"jamsesh/internal/portal/tokens"
 	"jamsesh/internal/portal/wsgateway"
 )
@@ -216,6 +222,10 @@ func main() {
 	// Wire the default slog logger now that we have log config.
 	logging.Setup(cfg.Log.Format, cfg.Log.Level)
 
+	// Build the Prometheus metrics registry. Constructed early so it can be
+	// threaded into all subsystems before they start.
+	metricsReg := metrics.New()
+
 	slog.Info("portal starting",
 		"bind", cfg.Bind,
 		"tls_mode", cfg.TLS.Mode,
@@ -229,13 +239,74 @@ func main() {
 		os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Open the database and run migrations.
-	dbStore, err := db.Open(ctx, cfg.DBDriver, cfg.DBDSN)
+	// shutdownClock records the moment ctx is cancelled so we can derive a
+	// shared drain budget across all subsystems. It is written exactly once by
+	// the goroutine below and read only after server.Run returns — no mutex
+	// needed because server.Run blocks until ctx is cancelled (or a listen
+	// error), creating the necessary happens-before relationship.
+	var shutdownStart time.Time
+	var shutdownOnce sync.Once
+	go func() {
+		<-ctx.Done()
+		shutdownOnce.Do(func() { shutdownStart = time.Now() })
+	}()
+
+	// Open the database and run migrations. Translate config.DBConfig into
+	// db.PoolConfig at the call site to avoid an import cycle (internal/db
+	// must not import internal/portal/config).
+	dbStore, sqlDB, err := db.Open(ctx, cfg.DBDriver, cfg.DBDSN, db.PoolConfig{
+		MaxOpenConns:    cfg.DB.MaxOpenConns,
+		MaxIdleConns:    cfg.DB.MaxIdleConns,
+		ConnMaxLifetime: cfg.DB.ConnMaxLifetime,
+	})
 	if err != nil {
 		slog.Error("database open failed", "err", err)
 		os.Exit(1)
 	}
 	defer dbStore.Close()
+	if sqlDB != nil {
+		defer sqlDB.Close()
+	}
+
+	// Determine the pod ID used to identify this instance in the distributed
+	// lease table. Use the HOSTNAME env var (set by Kubernetes as the pod name)
+	// with a fallback to the OS hostname. In single-instance mode this value is
+	// not used (NoopManager is selected), but computing it unconditionally keeps
+	// the startup sequence clean.
+	podID := os.Getenv("HOSTNAME")
+	if podID == "" {
+		if h, err := os.Hostname(); err == nil {
+			podID = h
+		} else {
+			podID = "unknown-pod"
+		}
+	}
+
+	// Build and wire the session lease manager. In single-instance mode
+	// (DeployMode="single", the default) this returns a NoopManager that never
+	// touches the leases table. In clustered mode it returns a PostgresManager
+	// that uses advisory locks and fencing tokens.
+	heartbeatInterval := time.Duration(cfg.LeaseHeartbeatIntervalS) * time.Second
+	leaseMgr := lease.New(cfg.DeployMode, sqlDB, dbStore, podID, heartbeatInterval, metricsReg)
+
+	// In clustered mode, start the retention goroutine that purges old released
+	// lease rows. The goroutine respects ctx cancellation so it exits on SIGTERM.
+	if cfg.DeployMode == "clustered" {
+		retentionInterval := time.Duration(cfg.LeaseRetentionIntervalHours) * time.Hour
+		retentionDuration := time.Duration(cfg.LeaseRetentionDays) * 24 * time.Hour
+		go func() {
+			if err := lease.RunRetention(ctx, dbStore, retentionInterval, retentionDuration); err != nil {
+				slog.Info("lease retention goroutine stopped", "reason", err)
+			}
+		}()
+	}
+
+	// Log the deploy mode and the lease manager type for observability.
+	slog.Info("lease manager configured",
+		"deploy_mode", cfg.DeployMode,
+		"manager_type", fmt.Sprintf("%T", leaseMgr),
+		"pod_id", podID,
+	)
 
 	// Build the email sender from config. A missing / misconfigured provider
 	// is a startup error, not a runtime one.
@@ -321,12 +392,95 @@ func main() {
 	// Build the event log. In e2etest builds, inject the advanceable clock
 	// so event CreatedAt timestamps reflect the advanced offset; in
 	// production builds the provider's eventsClock() returns nil and the
-	// real-clock constructor is used.
+	// real-clock constructor is used. Metrics registry threaded in regardless.
 	var eventLog *events.Log
 	if c := testClk.eventsClock(); c != nil {
-		eventLog = events.NewWithClock(dbStore, c)
+		eventLog = events.NewWithClock(dbStore, c).WithMetrics(metricsReg)
 	} else {
-		eventLog = events.New(dbStore)
+		eventLog = events.New(dbStore).WithMetrics(metricsReg)
+	}
+
+	// Build the object-storage sync pipeline when running in clustered mode.
+	// In single-instance mode (the default) this block is skipped entirely and
+	// a nil Syncer is passed to the postreceive Emitter, which treats nil as
+	// "no sync" — local disk remains the system of record.
+	//
+	// In clustered mode, the Syncer mirrors every push to object storage before
+	// the git client receives a success response (RPO=0 contract). config.validate()
+	// already guarantees ObjectStorageURL is non-empty in clustered mode, so the
+	// guard below is belt-and-suspenders.
+	var objSyncer *objectstore.Syncer
+	var objLifecycle *objectstore.LifecycleManager
+	if cfg.DeployMode == "clustered" && cfg.ObjectStorageURL != "" {
+		backend, backendErr := objectstore.New(cfg.ObjectStorageURL, objectstore.Config{
+			Region:       cfg.ObjectStorageRegion,
+			EndpointURL:  cfg.ObjectStorageEndpointURL,
+			UsePathStyle: cfg.ObjectStoragePathStyle,
+		})
+		if backendErr != nil {
+			slog.Error("object storage backend init failed", "err", backendErr,
+				"url", cfg.ObjectStorageURL)
+			os.Exit(1)
+		}
+		slog.Info("object storage backend initialised",
+			"url", cfg.ObjectStorageURL,
+			"region", cfg.ObjectStorageRegion,
+			"path_style", cfg.ObjectStoragePathStyle,
+		)
+		objSyncer = &objectstore.Syncer{
+			Backend:                backend,
+			Manifests:              &objectstore.ManifestStore{Backend: backend},
+			Storage:                storageSvc,
+			Metrics:                metricsReg,
+			QueueSize:              cfg.ObjectStorageSyncQueueSize,
+			PerSessionBackpressure: true,
+		}
+
+		// Build the LifecycleManager: per-pod session lease + hydration
+		// coordinator. On the first request for a session this pod doesn't hold,
+		// AcquireForRequest acquires the distributed lease and downloads the bare
+		// repo from object storage before the push is processed. On release (idle
+		// timeout, LRU cap, lease loss, or SIGTERM), it drains in-flight uploads
+		// and removes the local cache.
+		hydrator := &objectstore.Hydrator{
+			Backend:   backend,
+			Manifests: &objectstore.ManifestStore{Backend: backend},
+			Storage:   storageSvc,
+			Metrics:   metricsReg,
+			Workers:   cfg.HydrationWorkers,
+		}
+		objLifecycle = &objectstore.LifecycleManager{
+			Lease:    leaseMgr,
+			Hydrator: hydrator,
+			Syncer:   objSyncer,
+			Storage:  storageSvc,
+			OrgIDLookup: func(ctx context.Context, sessionID string) (string, error) {
+				sess, err := dbStore.GetSessionByID(ctx, sessionID)
+				if err != nil {
+					return "", fmt.Errorf("orgID lookup for session %s: %w", sessionID, err)
+				}
+				return sess.OrgID, nil
+			},
+			IdleTimeout:     time.Duration(cfg.HydrationIdleTimeoutS) * time.Second,
+			CacheMaxBytes:   cfg.HydrationCacheMaxBytes,
+			IdleCheckPeriod: time.Duration(cfg.HydrationIdleCheckPeriodS) * time.Second,
+			Metrics:         metricsReg,
+		}
+
+		// Start the lifecycle goroutine: idle-eviction + LRU loop. Blocks until
+		// ctx is cancelled (SIGTERM), then drains all active sessions.
+		go func() {
+			if err := objLifecycle.Start(ctx); err != nil && err != context.Canceled {
+				slog.Warn("lifecycle manager exited", "err", err)
+			}
+		}()
+
+		slog.Info("lifecycle manager started",
+			"idle_timeout_s", cfg.HydrationIdleTimeoutS,
+			"cache_max_bytes", cfg.HydrationCacheMaxBytes,
+			"idle_check_period_s", cfg.HydrationIdleCheckPeriodS,
+			"workers", cfg.HydrationWorkers,
+		)
 	}
 
 	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
@@ -384,12 +538,14 @@ func main() {
 	} else {
 		mergerApplier = automerger.NewApplier(dbStore, eventLog)
 	}
+	mergerApplier.Metrics = metricsReg
 	mergerWorker := &automerger.Worker{
 		Store:      dbStore,
 		Storage:    storageSvc,
 		Log:        eventLog,
 		Applier:    mergerApplier,
 		PortalHost: portalHost,
+		Metrics:    metricsReg,
 	}
 	if err := mergerWorker.Start(ctx); err != nil {
 		slog.Error("auto-merger worker start failed", "err", err)
@@ -451,7 +607,13 @@ func main() {
 		Validator: &prereceive.Validator{
 			MaxPackBytes: cfg.Git.MaxPackBytes,
 		},
-		Emitter: &postreceive.Emitter{Log: eventLog},
+		Emitter: &postreceive.Emitter{
+				Log:       eventLog,
+				Syncer:    objSyncer,    // nil in single-instance mode; Emitter handles nil as no-op
+				Lifecycle: objLifecycle, // nil in single-instance mode; provides hydration + long-held lease
+				Storage:   storageSvc,  // used only when Syncer is non-nil
+			},
+		Metrics: metricsReg,
 	}
 
 	// Wire the embedded SPA handler. assets.Handler() returns a handler that
@@ -476,6 +638,21 @@ func main() {
 		MountMCP:          mcpEndpoint.Handler(),
 		MountWS:           wsGateway.Handler(),
 		MountTest:         testClk.mountTestEndpointsHook(),
+		MetricsHandler:    metricsReg.Handler(),
+		MetricsRegistry:   metricsReg,
+		ReadyzChecks: []probes.Check{
+			{
+				Name: "db",
+				Fn:   dbStore.Ping,
+			},
+			{
+				Name: "storage",
+				Fn: func(ctx context.Context) error {
+					_, err := os.Stat(cfg.Storage)
+					return err
+				},
+			},
+		},
 		MountAPI: func(r chi.Router) {
 			// Public auth endpoints — no Bearer middleware.
 			r.Group(func(r chi.Router) {
@@ -551,17 +728,57 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Drain the auto-merger worker after the HTTP server stops accepting requests.
-	// Give it up to 10 seconds to finish in-flight merges.
-	stopCtx, cancelStop := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancelStop()
-	if err := mergerWorker.Stop(stopCtx); err != nil {
-		slog.Warn("auto-merger worker stop timed out", "err", err)
-	}
+	// Drain subsystems within the remaining grace budget.
+	//
+	// server.Run blocks until ctx is cancelled (graceful path) or a listen
+	// error occurs (error path, already handled above). On the graceful path,
+	// shutdownStart was set when ctx fired, and server.Run consumed some of the
+	// budget draining in-flight HTTP requests. We log the HTTP step elapsed time
+	// and compute how much of the shared budget remains for the auto-merger and
+	// WS gateway.
+	//
+	// On the listen-error path server.Run exits immediately without ctx being
+	// cancelled, so shutdownStart is zero — skip the drain in that case.
+	if !shutdownStart.IsZero() {
+		httpElapsed := time.Since(shutdownStart)
+		slog.Info("shutdown", "shutdown_step", "http", "elapsed_ms", httpElapsed.Milliseconds())
 
-	// Stop the WebSocket gateway — unsubscribes from the event log.
-	// In-flight connections are already draining because ctx was cancelled above.
-	wsGateway.Stop()
+		// Compute remaining budget; enforce a 1s floor so callers always get
+		// at least a minimal window even if HTTP draining consumed most of it.
+		grace := time.Duration(cfg.ShutdownGraceSeconds) * time.Second
+		remaining := grace - httpElapsed
+		if remaining < 1*time.Second {
+			remaining = 1 * time.Second
+		}
+
+		// Drain the auto-merger and WS gateway in parallel so neither waits on
+		// the other. Both share the same remaining budget context.
+		stopCtx, cancelStop := context.WithTimeout(context.Background(), remaining)
+		defer cancelStop()
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			if err := mergerWorker.Stop(stopCtx); err != nil {
+				slog.Warn("auto-merger stop timed out", "err", err)
+			}
+			slog.Info("shutdown", "shutdown_step", "automerger",
+				"elapsed_ms", time.Since(start).Milliseconds())
+		}()
+
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			wsGateway.Stop()
+			slog.Info("shutdown", "shutdown_step", "wsgateway",
+				"elapsed_ms", time.Since(start).Milliseconds())
+		}()
+
+		wg.Wait()
+	}
 
 	slog.Info("portal stopped cleanly")
 }

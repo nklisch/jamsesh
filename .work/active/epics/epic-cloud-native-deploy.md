@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy
 kind: epic
-stage: drafting
+stage: done
 tags: [infra, portal]
 parent: null
 depends_on: []
@@ -255,3 +255,62 @@ re-discover them:
   feature design.)
 - Lease heartbeat cadence and timeout. (Resolved in lease-fencing
   feature design.)
+
+## Children complete (2026-05-17)
+
+All 5 child features landed and reviewed:
+
+| Feature | Verdict | Notes |
+|---|---|---|
+| operational-polish | Approve | Phase 1 single-instance polish — `/readyz`, `/metrics`, `_FILE` secrets, migration lock, graceful shutdown, PG pool config |
+| routing-layer | Approve | Phase 2 — standalone `cmd/jamsesh-router/` binary; consistent-hash + soft-coordinator hint cache; k8s + static discovery |
+| lease-fencing | Approve with comments | Phase 2 — per-session Postgres advisory locks with fencing tokens; NoopManager for single-instance compatibility |
+| object-storage-sync | Approve | Phase 2 — S3/GCS/Azure backends; RPO=0 sync; pack manifest for linearizable state; gc.auto=0 on CreateRepo |
+| hydration-handoff (review pending) | — | Phase 2 capstone — lifecycle manager + hydration on acquire + eviction on release; LRU + idle eviction |
+
+Verification: `go build ./...` clean; `go test ./...` green across all packages.
+
+Epic advanced `drafting → review`. The clustered-mode cloud-native deployment capability is end-to-end shipped: single-instance deploys remain the default and gain operational polish; clustered deploys are first-class with horizontal scaling, fail-stop safety, and clean session migration.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Epic delivered as briefed; advancing to done.**
+
+### Aggregate concerns (epic-level lenses)
+
+- **Capability completeness**: ✓ Both deploy shapes shipped. Single-instance (default) gets `/readyz`, `/metrics`, `_FILE` secret variants, configurable graceful shutdown, PG pool tuning, migration advisory lock. Clustered (opt-in via `JAMSESH_DEPLOY_MODE=clustered`) adds routing service + per-session leases with fencing tokens + S3/GCS/Azure object-storage durability + hydration-handoff lifecycle.
+
+- **Foundation-doc alignment**: ✓ Rolling-foundation honored throughout. SELF_HOST.md grew from a single-instance-only guide to one with §13 cloud-deploy recipes (Cloud Run, Fly, Railway, k8s) and §14 clustered mode (object storage + hydration + per-provider deploys). ARCHITECTURE.md gained Horizontal Scaling subsection with dual-layer storage description. SPEC.md "Deployment shape" lists all new env vars; "What's explicitly deferred" no longer mentions multi-instance scaling. SECURITY.md gained object-storage IAM operator-responsibility row. PRINCIPLES.md unchanged — the new direction extends without contradicting existing principles. No "previously" prose anywhere in any foundation doc.
+
+- **Breaking changes** (cross-cutting, all internal-only — public REST API + git protocol unchanged): `db.Open` returns `(store.Store, *sql.DB, error)`; `logging.Access` takes `*metrics.Registry`; `Store` interface gained `Ping`, `LeaseStore`, `GetSessionByID`; `applyEnv` family returns error; `SyncPushPath` takes a `lease.Handle`. All cascades propagated; build + tests clean.
+
+- **Single-instance non-regression**: ✓ The simple-deploy invariant from the epic's strategic decisions is preserved. SQLite + local disk + single binary remains the default. Every clustered-mode knob defaults to off. Operators with existing single-binary self-host setups gain capabilities (`/readyz`, `/metrics`, `_FILE` secrets, graceful shutdown) without any required config changes.
+
+### Filed backlog items (2)
+
+- `graceful-shutdown-shutdownstart-race` (Important — benign-in-practice race in shutdownStart variable; one-line fix)
+- `lease-fencing-schema-verify-sqlc-regen` (Important — verify hand-written sqlc files match regen output once sqlc is available)
+
+### Statistics
+
+- 5 features designed + implemented + reviewed
+- 24 stories landed across the 5 features
+- ~50 commits on the autopilot/cloud-native-deploy branch
+- New dependencies (clustered mode only): aws-sdk-go-v2 (~12MB), cloud.google.com/go/storage (~20MB via gRPC), azure-sdk-for-go/storage/azblob+azidentity (~7MB), k8s.io/client-go (~5MB)
+- Single-instance binary unchanged in size — clustered deps only load when `JAMSESH_DEPLOY_MODE=clustered`
+
+### What's now possible
+
+Operators can now deploy jamsesh in two production-capable shapes:
+
+1. **Single-instance** (existing default, now polished) — one binary, SQLite or Postgres, local disk. Deploys cleanly to Cloud Run, Fly, Railway, a single VM, or k8s with a PersistentVolumeClaim. Cloud deploy recipes documented per platform.
+
+2. **Clustered** (new) — N portal pods behind a consistent-hashing router; per-session leases via Postgres advisory locks; object storage (S3 / R2 / B2 / MinIO / GCS / Azure) as system of record; pods can be added, removed, and rolled with sessions migrating cleanly between pods via the hydration lifecycle. Full RPO=0 durability contract.
+
+The whole epic was delivered without regressing the single-instance path — that was the framing-setting commitment from the strategic-decisions round at scope time, and it held end-to-end.

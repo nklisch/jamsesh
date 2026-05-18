@@ -241,3 +241,20 @@ CREATE TABLE finalize_locks (
 CREATE INDEX finalize_locks_session_idx ON finalize_locks(session_id);
 CREATE INDEX finalize_locks_active_idx ON finalize_locks(session_id)
     WHERE released_at IS NULL AND superseded_by_lock_id IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- leases table (00013_leases migration)
+-- ---------------------------------------------------------------------------
+
+CREATE SEQUENCE jamsesh_lease_fencing_tokens AS bigint;
+
+CREATE TABLE leases (
+    session_id     TEXT        PRIMARY KEY,
+    pod_id         TEXT        NOT NULL,
+    fencing_token  BIGINT      NOT NULL,
+    acquired_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    released_at    TIMESTAMPTZ,
+    heartbeat_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX leases_released_at_idx ON leases(released_at) WHERE released_at IS NOT NULL;

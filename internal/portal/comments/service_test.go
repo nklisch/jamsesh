@@ -138,7 +138,7 @@ var _ openapi.StrictServerInterface = (*commentsOnlyStrict)(nil)
 
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
-	s, err := db.Open(context.Background(), "sqlite", ":memory:")
+	s, _, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -789,7 +789,7 @@ func (f *failingListCommentsStore) ListCommentsForSession(_ context.Context, _ s
 }
 
 func TestHandlerListComments_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
-	s, err := db.Open(context.Background(), "sqlite", ":memory:")
+	s, _, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

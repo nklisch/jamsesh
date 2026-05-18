@@ -82,6 +82,9 @@ func (s *stubStore) CreateSession(_ context.Context, _ store.CreateSessionParams
 func (s *stubStore) GetSession(_ context.Context, _, _ string) (store.Session, error) {
 	panic("not implemented")
 }
+func (s *stubStore) GetSessionByID(_ context.Context, _ string) (store.Session, error) {
+	panic("not implemented")
+}
 func (s *stubStore) ListSessionsForOrg(_ context.Context, _ string) ([]store.Session, error) {
 	panic("not implemented")
 }
@@ -320,13 +323,24 @@ func (s *stubStore) SupersedeFinalizeLock(_ context.Context, _ store.SupersedeFi
 	panic("not implemented")
 }
 
+// --- LeaseStore ---
+
+func (s *stubStore) IssueLeaseFencingToken(_ context.Context) (int64, error)             { panic("not implemented") }
+func (s *stubStore) InsertLease(_ context.Context, _ store.InsertLeaseParams) (store.Lease, error) {
+	panic("not implemented")
+}
+func (s *stubStore) MarkLeaseReleased(_ context.Context, _ string) error                 { panic("not implemented") }
+func (s *stubStore) UpdateLeaseHeartbeat(_ context.Context, _ string) error              { panic("not implemented") }
+func (s *stubStore) DeleteReleasedLeasesOlderThan(_ context.Context, _ time.Time) error  { panic("not implemented") }
+
 // --- Store-level methods ---
 
 func (s *stubStore) WithTx(_ context.Context, _ func(store.TxStore) error) error {
 	panic("not implemented")
 }
-func (s *stubStore) Close() error    { return nil }
-func (s *stubStore) Dialect() string { return "stub" }
+func (s *stubStore) Ping(_ context.Context) error { panic("not implemented") }
+func (s *stubStore) Close() error                  { return nil }
+func (s *stubStore) Dialect() string               { return "stub" }
 
 // Compile-time interface check.
 var _ store.Store = (*stubStore)(nil)

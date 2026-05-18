@@ -44,7 +44,7 @@ func nextID(prefix string) string {
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 
-	s, err := db.Open(context.Background(), "sqlite", ":memory:")
+	s, _, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}

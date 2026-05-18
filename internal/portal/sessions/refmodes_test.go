@@ -29,7 +29,7 @@ type refmodesTestEnv struct {
 
 func buildRefmodesEnv(t *testing.T) *refmodesTestEnv {
 	t.Helper()
-	s, err := db.Open(context.Background(), "sqlite", "file::memory:?cache=shared&mode=memory")
+	s, _, err := db.Open(context.Background(), "sqlite", "file::memory:?cache=shared&mode=memory", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

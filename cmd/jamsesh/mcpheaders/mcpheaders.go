@@ -25,9 +25,19 @@ func Command() *cli.Command {
 				fmt.Fprintln(os.Stderr, "no token found; run `jamsesh auth` first")
 				os.Exit(2)
 			}
-			return json.NewEncoder(os.Stdout).Encode(map[string]string{
+
+			headers := map[string]string{
 				"Authorization": "Bearer " + tok,
-			})
+			}
+
+			// Include Jam-Session-Id when this CC instance has a bound session.
+			// Absent binding is safe: single-instance portal ignores the header;
+			// clustered-mode router falls back to round-robin for unrouted MCP calls.
+			if sessID, ok := state.CurrentSessionID(); ok {
+				headers["Jam-Session-Id"] = sessID
+			}
+
+			return json.NewEncoder(os.Stdout).Encode(headers)
 		},
 	}
 }

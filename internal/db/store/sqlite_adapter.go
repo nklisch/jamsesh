@@ -30,6 +30,7 @@ type sqliteAdapter struct {
 
 func (a *sqliteAdapter) Dialect() string { return "sqlite" }
 func (a *sqliteAdapter) Close() error    { return a.db.Close() }
+func (a *sqliteAdapter) Ping(ctx context.Context) error { return a.db.PingContext(ctx) }
 
 // RawDB returns the underlying *sql.DB. This is provided for tests that need
 // to configure connection-pool settings (e.g. SetMaxOpenConns) on a freshly
@@ -404,6 +405,17 @@ func (a *sqliteAdapter) GetSession(ctx context.Context, orgID, id string) (Sessi
 		OrgID: orgID,
 		ID:    id,
 	})
+	if err != nil {
+		return Session{}, mapSQLiteErr(err)
+	}
+	return sqliteSession(row), nil
+}
+
+// GetSessionByID looks up a session by its primary key without org scoping.
+// Intentional cross-org exception: the org_id returned on the Session is used
+// by the LifecycleManager to route subsequent org-scoped operations.
+func (a *sqliteAdapter) GetSessionByID(ctx context.Context, id string) (Session, error) {
+	row, err := a.q.GetSessionByID(ctx, id)
 	if err != nil {
 		return Session{}, mapSQLiteErr(err)
 	}
@@ -1173,6 +1185,13 @@ func (s *sqliteTxStore) GetSession(ctx context.Context, orgID, id string) (Sessi
 	}
 	return sqliteSession(row), nil
 }
+func (s *sqliteTxStore) GetSessionByID(ctx context.Context, id string) (Session, error) {
+	row, err := s.q.GetSessionByID(ctx, id)
+	if err != nil {
+		return Session{}, mapSQLiteErr(err)
+	}
+	return sqliteSession(row), nil
+}
 func (s *sqliteTxStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error) {
 	rows, err := s.q.ListSessionsForOrg(ctx, orgID)
 	if err != nil {
@@ -1933,5 +1952,85 @@ func sqliteFinalizeLock(r sqlitestore.FinalizeLock) FinalizeLock {
 		CommitMessage:       nullStringToPtr(r.CommitMessage),
 		SupersededByLockID:  nullStringToPtr(r.SupersededByLockID),
 		ReleasedAt:          nullTimeToPtr(r.ReleasedAt),
+	}
+}
+
+// ---------------------------------------------------------------------------
+// LeaseStore (outer adapter)
+// ---------------------------------------------------------------------------
+
+// IssueLeaseFencingToken is Postgres-only; the SQLite adapter (single-instance,
+// NoopManager) never calls this and returns an explicit error if it does.
+func (a *sqliteAdapter) IssueLeaseFencingToken(_ context.Context) (int64, error) {
+	return 0, fmt.Errorf("store: IssueLeaseFencingToken is not supported on SQLite")
+}
+
+func (a *sqliteAdapter) InsertLease(ctx context.Context, p InsertLeaseParams) (Lease, error) {
+	row, err := a.q.InsertLease(ctx, sqlitestore.InsertLeaseParams{
+		SessionID:    p.SessionID,
+		PodID:        p.PodID,
+		FencingToken: p.FencingToken,
+	})
+	if err != nil {
+		return Lease{}, mapSQLiteErr(err)
+	}
+	return sqliteLease(row), nil
+}
+
+func (a *sqliteAdapter) MarkLeaseReleased(ctx context.Context, sessionID string) error {
+	return mapSQLiteErr(a.q.MarkLeaseReleased(ctx, sessionID))
+}
+
+func (a *sqliteAdapter) UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error {
+	return mapSQLiteErr(a.q.UpdateLeaseHeartbeat(ctx, sessionID))
+}
+
+// DeleteReleasedLeasesOlderThan is Postgres-only; the SQLite adapter returns
+// an explicit error if called.
+func (a *sqliteAdapter) DeleteReleasedLeasesOlderThan(_ context.Context, _ time.Time) error {
+	return fmt.Errorf("store: DeleteReleasedLeasesOlderThan is not supported on SQLite")
+}
+
+// ---------------------------------------------------------------------------
+// LeaseStore (TxStore)
+// ---------------------------------------------------------------------------
+
+func (s *sqliteTxStore) IssueLeaseFencingToken(_ context.Context) (int64, error) {
+	return 0, fmt.Errorf("store: IssueLeaseFencingToken is not supported on SQLite")
+}
+
+func (s *sqliteTxStore) InsertLease(ctx context.Context, p InsertLeaseParams) (Lease, error) {
+	row, err := s.q.InsertLease(ctx, sqlitestore.InsertLeaseParams{
+		SessionID:    p.SessionID,
+		PodID:        p.PodID,
+		FencingToken: p.FencingToken,
+	})
+	if err != nil {
+		return Lease{}, mapSQLiteErr(err)
+	}
+	return sqliteLease(row), nil
+}
+
+func (s *sqliteTxStore) MarkLeaseReleased(ctx context.Context, sessionID string) error {
+	return mapSQLiteErr(s.q.MarkLeaseReleased(ctx, sessionID))
+}
+
+func (s *sqliteTxStore) UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error {
+	return mapSQLiteErr(s.q.UpdateLeaseHeartbeat(ctx, sessionID))
+}
+
+func (s *sqliteTxStore) DeleteReleasedLeasesOlderThan(_ context.Context, _ time.Time) error {
+	return fmt.Errorf("store: DeleteReleasedLeasesOlderThan is not supported on SQLite")
+}
+
+// sqliteLease converts a sqlitestore.Lease to a domain Lease.
+func sqliteLease(r sqlitestore.Lease) Lease {
+	return Lease{
+		SessionID:    r.SessionID,
+		PodID:        r.PodID,
+		FencingToken: r.FencingToken,
+		AcquiredAt:   r.AcquiredAt,
+		ReleasedAt:   nullTimeToPtr(r.ReleasedAt),
+		HeartbeatAt:  r.HeartbeatAt,
 	}
 }

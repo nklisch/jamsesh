@@ -24,7 +24,7 @@ func (f *fakeClock) Now() time.Time { return f.t }
 // — proving the injected clock replaced the real time source.
 func TestArchiveSession_UsesInjectedClock(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}

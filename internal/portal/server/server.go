@@ -20,9 +20,10 @@ import (
 //   - "native": ListenAndServeTLS using cfg.TLS.CertPath and cfg.TLS.KeyPath
 //   - "behind_proxy" (default): plain HTTP, TLS terminated upstream
 //
-// On ctx cancellation, Shutdown is called with a 25-second drain budget.
-// Returns nil on graceful shutdown, error on listen failure or shutdown
-// timeout (callers map non-nil to a non-zero exit code).
+// On ctx cancellation, Shutdown is called with a drain budget of
+// cfg.ShutdownGraceSeconds (default 30s). Returns nil on graceful shutdown,
+// error on listen failure or shutdown timeout (callers map non-nil to a
+// non-zero exit code).
 func Run(ctx context.Context, cfg config.Config, handler http.Handler) error {
 	srv := &http.Server{
 		Addr:              cfg.Bind,
@@ -57,9 +58,10 @@ func Run(ctx context.Context, cfg config.Config, handler http.Handler) error {
 		return err
 
 	case <-ctx.Done():
+		grace := time.Duration(cfg.ShutdownGraceSeconds) * time.Second
 		slog.InfoContext(context.Background(), "portal shutting down",
-			"drain_budget_s", 25)
-		shutCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+			"drain_budget_s", cfg.ShutdownGraceSeconds)
+		shutCtx, cancel := context.WithTimeout(context.Background(), grace)
 		defer cancel()
 		if err := srv.Shutdown(shutCtx); err != nil {
 			return err

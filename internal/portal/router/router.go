@@ -11,6 +11,8 @@ import (
 
 	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/logging"
+	"jamsesh/internal/portal/metrics"
+	"jamsesh/internal/portal/probes"
 )
 
 // Deps is the dependency surface for the portal router. Concrete handler
@@ -40,6 +42,22 @@ type Deps struct {
 	// and the /test subtree is never registered. The build-tag gate in
 	// cmd/portal is the trust boundary for this hook.
 	MountTest func(chi.Router)
+
+	// ReadyzChecks is the list of readiness probes mounted at /readyz.
+	// When nil or empty, the /readyz route is not registered and the path
+	// falls through to the 404 handler. Populated in main.go with DB ping
+	// and storage stat checks.
+	ReadyzChecks []probes.Check
+
+	// MetricsHandler serves GET /metrics in Prometheus text exposition format.
+	// When nil the /metrics path is not registered. Unauthenticated; operators
+	// secure it via network policy.
+	MetricsHandler http.Handler
+
+	// MetricsRegistry is threaded into the Access logging middleware so that
+	// per-request counters and histograms are recorded. When nil, the Access
+	// middleware logs normally but skips metric recording.
+	MetricsRegistry *metrics.Registry
 }
 
 // New returns the root http.Handler for the portal. Middleware order is
@@ -64,11 +82,21 @@ func New(d Deps) http.Handler {
 	if d.TrustProxyHeaders {
 		r.Use(chimw.RealIP)
 	}
-	r.Use(logging.Access)
+	r.Use(logging.Access(d.MetricsRegistry))
 	r.Use(httperr.Recoverer)
 
 	// Public liveness probe — no auth.
 	r.Get("/healthz", healthz)
+
+	// Public readiness probe — only registered when checks are configured.
+	if len(d.ReadyzChecks) > 0 {
+		r.Get("/readyz", probes.Handler(d.ReadyzChecks).ServeHTTP)
+	}
+
+	// Public metrics endpoint — unauthenticated; operators secure via network policy.
+	if d.MetricsHandler != nil {
+		r.Mount("/metrics", d.MetricsHandler)
+	}
 
 	// /api — REST API, Bearer auth. Hook is responsible for attaching
 	// auth middleware and mounting oapi-codegen handlers.

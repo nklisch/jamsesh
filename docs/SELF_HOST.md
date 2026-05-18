@@ -111,7 +111,18 @@ path as the first argument: `jamsesh-portal /etc/jamsesh/config.yaml`.
 | `JAMSESH_STORAGE` | `storage` | `./storage` | Filesystem path for per-session bare repos |
 | `JAMSESH_OAUTH_GITHUB_CLIENT_ID` | `oauth.github.client_id` | _(none)_ | GitHub OAuth application client ID |
 | `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET` | `oauth.github.client_secret` | _(none)_ | GitHub OAuth application client secret |
+| `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the GitHub OAuth client secret; takes precedence over `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET` when set |
 | `JAMSESH_OAUTH_GITHUB_BASE_URL` | `oauth.github.base_url` | _(none)_ | Override GitHub OAuth base URL for testing; leave unset in production |
+| `JAMSESH_PORTAL_URL` | `portal_url` | _(none)_ | Public base URL of the portal, e.g. `https://jamsesh.example.com`. Required when running behind a reverse proxy that does not forward `Host` and `X-Forwarded-Proto`. Used to construct OAuth callback URLs and magic-link email URLs. |
+| `JAMSESH_DB_DSN_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the DB DSN; takes precedence over `JAMSESH_DB_DSN` when set |
+| `JAMSESH_DB_MAX_OPEN_CONNS` | `db.max_open_conns` | `25` | Maximum number of open connections in the pool. For Postgres this maps to `pgxpool.MaxConns`; no-op for SQLite (single-writer). |
+| `JAMSESH_DB_MAX_IDLE_CONNS` | `db.max_idle_conns` | `5` | Minimum number of idle connections the pool maintains. For Postgres this maps to `pgxpool.MinConns`; no-op for SQLite. |
+| `JAMSESH_DB_CONN_MAX_LIFETIME` | `db.conn_max_lifetime` | `30m` | Maximum lifetime of a pooled connection before it is replaced. Go duration string (`30m`, `1h`). For Postgres maps to `pgxpool.MaxConnLifetime`. |
+| `JAMSESH_SHUTDOWN_GRACE_S` | `shutdown_grace_s` | `30` | Shared graceful-shutdown budget in seconds. HTTP drain, auto-merger drain, and WebSocket gateway stop all compete within this window. Must be a positive integer. |
+| `JAMSESH_EMAIL_SMTP_PASS_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the SMTP password; takes precedence over `JAMSESH_EMAIL_SMTP_PASS` when set |
+| `JAMSESH_EMAIL_SENDGRID_API_KEY_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the SendGrid API key; takes precedence over `JAMSESH_EMAIL_SENDGRID_API_KEY` when set |
+| `JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the Postmark server token; takes precedence over `JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN` when set |
+| `JAMSESH_EMAIL_RESEND_API_KEY_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the Resend API key; takes precedence over `JAMSESH_EMAIL_RESEND_API_KEY` when set |
 | `JAMSESH_WS_ALLOW_ORIGINS` | _(env-only)_ | _(none)_ | Comma-separated list of allowed `Origin` headers for cross-origin WebSocket upgrades to `/ws/sessions/{sessionID}`. Empty (default) denies all cross-origin upgrades. |
 
 **On `JAMSESH_WS_ALLOW_ORIGINS`.** Same-origin connections (SPA and portal
@@ -127,6 +138,38 @@ exactly as the browser will send it. Examples:
 Origins are compared verbatim (scheme + host + port). Wildcards are not
 supported. Trailing slashes are not part of an origin and must not be
 included.
+
+### `_FILE` convention for secret env vars
+
+Every secret-bearing env var has a `_FILE` companion. When the `_FILE`
+variant is set, the portal reads the secret from the file at that path
+(trailing whitespace and newlines are trimmed). The `_FILE` variant takes
+precedence over the plain env var when both are set. Failure to read a
+configured `_FILE` path (missing file, permission denied) is fail-fast at
+startup — the portal exits with an error rather than silently using an empty
+secret.
+
+The `_FILE` variants are:
+
+| `_FILE` env var | Reads from |
+|---|---|
+| `JAMSESH_DB_DSN_FILE` | Database DSN |
+| `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE` | GitHub OAuth client secret |
+| `JAMSESH_EMAIL_SMTP_PASS_FILE` | SMTP password |
+| `JAMSESH_EMAIL_SENDGRID_API_KEY_FILE` | SendGrid API key |
+| `JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN_FILE` | Postmark server token |
+| `JAMSESH_EMAIL_RESEND_API_KEY_FILE` | Resend API key |
+
+This convention integrates naturally with:
+
+- **Kubernetes Secrets** mounted as files (set `JAMSESH_DB_DSN_FILE=/run/secrets/db-dsn`)
+- **Docker Swarm secrets** (secrets are mounted at `/run/secrets/<name>` by default)
+- **Google Secret Manager** / **AWS Secrets Manager** with a sidecar that writes secret
+  values to a volume (e.g., `secrets-store-csi-driver`)
+- Any secrets manager that can write a file — the portal reads it once at startup
+
+Non-secret env vars (`JAMSESH_BIND`, `JAMSESH_PORTAL_URL`, `JAMSESH_LOG_LEVEL`, etc.)
+do not have `_FILE` variants; they use plain env vars only.
 
 ### Example YAML config file
 
@@ -356,11 +399,86 @@ Useful log attributes to watch:
 | `merge_result` | `succeeded` or `conflict` on auto-merger events |
 | `error` | machine-readable error code on failures |
 
-### Metrics and alerting
+### Metrics
 
-A Prometheus metrics endpoint (`/metrics`) is planned for a future release.
-In the meantime, the JSON log stream is the primary observability surface.
-Key signals to alert on via log aggregation:
+The portal exposes a Prometheus metrics endpoint at `/metrics` in the
+standard [text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/).
+No authentication is required. Point your Prometheus scrape config at the
+portal's host and port:
+
+```yaml
+scrape_configs:
+  - job_name: jamsesh
+    static_configs:
+      - targets: ["jamsesh.example.com:8443"]
+    scheme: https
+```
+
+**Exposed metrics:**
+
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| `http_requests_total` | counter | `method`, `route`, `status` | Total HTTP requests. Route labels are chi route patterns (`/api/orgs/{orgID}/sessions/{sessionID}`), not raw URLs — cardinality is bounded by the route table. |
+| `http_request_duration_seconds` | histogram | `method`, `route` | Request latency. Buckets span 5ms–10s (exponential). |
+| `jamsesh_git_pushes_total` | counter | `result` | Git pushes. `result` is `ok` or `rejected`. |
+| `jamsesh_automerger_outcomes_total` | counter | `outcome` | Auto-merger attempts. `outcome` is `succeeded`, `conflict`, or `backpressure`. |
+| `jamsesh_event_log_emit_total` | counter | _(none)_ | Event-log entries committed to the database. |
+| `go_goroutines`, `go_memstats_*`, `process_cpu_seconds_total`, … | — | — | Standard Go runtime and process metrics, collected automatically. |
+
+Key signals to alert on:
+
+- `rate(jamsesh_git_pushes_total{result="rejected"}[5m])` — elevated rejection rate
+  indicates auth or scope problems.
+- `rate(jamsesh_automerger_outcomes_total{outcome="conflict"}[5m])` — high conflict
+  rate may indicate misaligned session scopes.
+- `rate(http_requests_total{status=~"5.."}[5m])` — server-error rate.
+
+### Readiness probe
+
+`GET /readyz` returns the portal's readiness as a JSON object. Use it for
+container readiness probes, load-balancer health checks, and CI deployment
+gates.
+
+**200 OK — ready:**
+
+```json
+{
+  "status": "ready",
+  "checks": [
+    {"name": "db",      "ok": true},
+    {"name": "storage", "ok": true}
+  ]
+}
+```
+
+**503 Service Unavailable — not ready:**
+
+```json
+{
+  "status": "not_ready",
+  "checks": [
+    {"name": "db",      "ok": false, "error": "dial tcp: connection refused"},
+    {"name": "storage", "ok": true}
+  ]
+}
+```
+
+Each probe runs in parallel with a 2-second per-check timeout. A check that
+exceeds 2s reports `"error": "timeout"`. The default probe set:
+
+| Check | What it tests |
+|---|---|
+| `db` | `Ping` against the configured database (SQLite or Postgres) |
+| `storage` | `stat` on the configured storage root directory |
+
+`GET /healthz` is a liveness check that returns `{"status":"ok"}` as long as
+the process is running. Use `/healthz` for liveness probes and `/readyz` for
+readiness probes — they serve different purposes and should not be conflated.
+
+### Log-based alerting
+
+The JSON log stream is a complementary observability surface. Key log
+attributes for alert routing:
 
 - Error rate on `push received` events (indicates auth or scope problems).
 - `merge_result=conflict` rate (high rate may indicate misaligned session scopes).
@@ -398,12 +516,35 @@ sudo chmod +x /usr/local/bin/jamsesh-portal
 sudo systemctl start jamsesh
 ```
 
+### Graceful shutdown
+
+On SIGTERM the portal drains in-flight requests, the auto-merger queue, and
+the WebSocket gateway before exiting. All drain steps share a single wall-clock
+budget controlled by `JAMSESH_SHUTDOWN_GRACE_S` (default `30`). The portal
+logs per-step elapsed times at shutdown:
+
+```
+{"level":"INFO","msg":"shutdown complete","shutdown_step":"http","elapsed_ms":180}
+{"level":"INFO","msg":"shutdown complete","shutdown_step":"automerger","elapsed_ms":45}
+{"level":"INFO","msg":"shutdown complete","shutdown_step":"wsgateway","elapsed_ms":12}
+```
+
+For Kubernetes deployments, set `terminationGracePeriodSeconds` to
+`JAMSESH_SHUTDOWN_GRACE_S + 5` to give the portal time to finish draining
+before the kubelet sends SIGKILL (see the k8s recipe in §13).
+
 ### When migrations are required
 
 Every release notes document lists any schema migrations included. All
 migrations are backward-safe (additive: new columns, new tables). There are
 no destructive migrations in v1 — the portal can always start against a
 database from the previous release.
+
+When using Postgres, concurrent pod restarts during a rolling deploy are safe:
+the portal serializes migration execution with a Postgres advisory lock
+(`pg_advisory_lock(8675309)`). Only one pod runs migrations at a time; the
+others wait and then skip the already-applied migrations. The lock releases
+automatically if the migrating process dies mid-run.
 
 ### Rollback
 
@@ -497,6 +638,344 @@ The `e2e` GitHub Actions workflow runs the full end-to-end suite on every PR and
 
 ---
 
+## 13. Cloud deploy recipes
+
+The portal is a single binary that binds on `JAMSESH_BIND` (default `:8443`)
+and persists state to a database and a storage directory. Cloud deploys need
+to supply both. The recipes below are concrete starting points; adapt secrets
+management and resource sizing to your environment.
+
+### Google Cloud Run
+
+Cloud Run terminates TLS and handles HTTPS routing automatically. The portal
+runs in `behind_proxy` mode (the default). Cloud Run's request timeout caps at
+60 minutes — WebSocket sessions that run longer will be cut by the platform.
+For interactive jam sessions this is acceptable; set `min-instances=1` to keep
+a warm instance and avoid cold-start latency mid-session.
+
+Cloud Run's instance filesystem is ephemeral. For any non-trivial deployment:
+- Use **Cloud SQL (Postgres)** for the database; connect via the Cloud SQL Auth Proxy
+  socket injected by `--add-cloudsql-instances`.
+- Use Cloud SQL's managed storage; the portal's `storage` directory (bare repos)
+  must also be persisted — Cloud Run doesn't offer a persistent volume, so
+  either use a mounted GCS FUSE sidecar or switch to a VM-based deploy for
+  bare-repo persistence. Single-instance Cloud Run with a persistent disk
+  add-on (preview feature) is an alternative.
+
+**Store the OAuth secret in Secret Manager and mount it as a file:**
+
+```bash
+# Create the secret
+echo -n "your-github-oauth-secret" | \
+  gcloud secrets create jamsesh-github-secret --data-file=-
+
+# Deploy
+gcloud run deploy jamsesh \
+  --image ghcr.io/<owner>/jamsesh:v0.2.0 \
+  --region us-central1 \
+  --port 8443 \
+  --min-instances 1 \
+  --timeout 3600 \
+  --set-env-vars "JAMSESH_TLS_MODE=behind_proxy" \
+  --set-env-vars "JAMSESH_DB_DRIVER=postgres" \
+  --set-env-vars "JAMSESH_DB_DSN=host=/cloudsql/PROJECT:REGION:INSTANCE user=jamsesh dbname=jamsesh sslmode=disable" \
+  --set-env-vars "JAMSESH_OAUTH_GITHUB_CLIENT_ID=your-client-id" \
+  --set-env-vars "JAMSESH_PORTAL_URL=https://jamsesh-<hash>-uc.a.run.app" \
+  --set-env-vars "JAMSESH_STORAGE=/tmp/storage" \
+  --set-env-vars "JAMSESH_WS_ALLOW_ORIGINS=https://your-spa-domain.example.com" \
+  --set-secrets "JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE=jamsesh-github-secret:latest" \
+  --add-cloudsql-instances PROJECT:REGION:INSTANCE \
+  --service-account jamsesh-sa@PROJECT.iam.gserviceaccount.com
+```
+
+`--set-secrets JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE=...` mounts the
+Secret Manager secret as a file and sets the env var to its path — exactly
+what the `_FILE` convention expects. The portal reads and trims the file
+at startup.
+
+Set `JAMSESH_WS_ALLOW_ORIGINS` if your SPA is served from a domain different
+from the Cloud Run service URL (common when the SPA is on a CDN).
+
+### Fly.io
+
+Fly.io provides persistent volumes, which makes it a natural fit for the
+portal's bare-repo storage. The deploy strategy `immediate` replaces the
+running instance in-place rather than doing a rolling deploy — correct for a
+single-instance stateful service.
+
+**`fly.toml`:**
+
+```toml
+app = "jamsesh"
+primary_region = "ord"
+
+[build]
+  image = "ghcr.io/<owner>/jamsesh:v0.2.0"
+
+[deploy]
+  strategy = "immediate"
+
+[http_service]
+  internal_port = 8443
+  force_https = true
+  [[http_service.checks]]
+    path = "/healthz"
+    interval = "10s"
+    timeout = "5s"
+  [[http_service.checks]]
+    path = "/readyz"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "15s"
+
+kill_signal = "SIGTERM"
+kill_timeout = "35s"
+
+[[mounts]]
+  source = "jamsesh_data"
+  destination = "/data"
+
+[env]
+  JAMSESH_BIND            = ":8443"
+  JAMSESH_TLS_MODE        = "behind_proxy"
+  JAMSESH_DB_DRIVER       = "sqlite"
+  JAMSESH_DB_DSN          = "/data/jamsesh.db"
+  JAMSESH_STORAGE         = "/data/storage"
+  JAMSESH_PORTAL_URL      = "https://jamsesh.fly.dev"
+  JAMSESH_SHUTDOWN_GRACE_S = "30"
+```
+
+**Create the volume and set secrets:**
+
+```bash
+fly volumes create jamsesh_data --region ord --size 10
+fly secrets set \
+  JAMSESH_OAUTH_GITHUB_CLIENT_ID=your-client-id \
+  JAMSESH_OAUTH_GITHUB_CLIENT_SECRET=your-client-secret
+fly deploy
+```
+
+Fly secrets are injected as env vars in the container environment (not file
+mounts), so use the plain `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET` form rather
+than the `_FILE` variant.
+
+`kill_timeout = "35s"` gives the portal its full 30-second grace window plus a
+5-second buffer before Fly sends SIGKILL.
+
+For Postgres, add a Fly Postgres cluster and set:
+```bash
+fly secrets set JAMSESH_DB_DSN="postgres://user:pass@top2.nearest.of.jamsesh-db.internal/jamsesh"
+```
+
+### Railway
+
+Railway auto-detects the Dockerfile (or uses the image directly). The
+simplest deploy uses Railway's Postgres plugin, which injects `DATABASE_URL`
+into the environment.
+
+**`railway.json`:**
+
+```json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE"
+  },
+  "deploy": {
+    "startCommand": "/jamsesh-portal",
+    "healthcheckPath": "/healthz",
+    "healthcheckTimeout": 10,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}
+```
+
+Set env vars in the Railway dashboard or via the Railway CLI:
+
+```bash
+railway variables set \
+  JAMSESH_DB_DRIVER=postgres \
+  JAMSESH_DB_DSN='${{Postgres.DATABASE_URL}}' \
+  JAMSESH_STORAGE=/data/storage \
+  JAMSESH_PORTAL_URL=https://jamsesh.up.railway.app \
+  JAMSESH_TLS_MODE=behind_proxy \
+  JAMSESH_OAUTH_GITHUB_CLIENT_ID=your-client-id \
+  JAMSESH_OAUTH_GITHUB_CLIENT_SECRET=your-client-secret \
+  JAMSESH_SHUTDOWN_GRACE_S=30
+```
+
+`${{Postgres.DATABASE_URL}}` is Railway's template syntax for referencing the
+linked Postgres plugin's connection string. Adjust to your plugin's variable
+name.
+
+Railway does not natively support persistent volumes on the Hobby plan —
+use Postgres for the database and consider GCS/S3 for bare-repo storage, or
+upgrade to the Pro plan for volume support.
+
+### Kubernetes with PVC
+
+The portal supports both single-pod and clustered multi-replica deployments.
+For single-instance Kubernetes with a PVC, run `replicas: 1`. For clustered
+mode, see §14.
+
+**`jamsesh-k8s.yaml`:**
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jamsesh
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jamsesh-data
+  namespace: jamsesh
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jamsesh-config
+  namespace: jamsesh
+data:
+  JAMSESH_BIND: ":8443"
+  JAMSESH_TLS_MODE: "behind_proxy"
+  JAMSESH_DB_DRIVER: "postgres"
+  JAMSESH_STORAGE: "/data/storage"
+  JAMSESH_PORTAL_URL: "https://jamsesh.example.com"
+  JAMSESH_SHUTDOWN_GRACE_S: "30"
+  JAMSESH_DB_MAX_OPEN_CONNS: "25"
+  JAMSESH_DB_MAX_IDLE_CONNS: "5"
+  JAMSESH_DB_CONN_MAX_LIFETIME: "30m"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jamsesh-secrets
+  namespace: jamsesh
+type: Opaque
+stringData:
+  db-dsn: "host=postgres-svc user=jamsesh password=<pw> dbname=jamsesh sslmode=require"
+  github-client-secret: "<your-secret>"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jamsesh
+  namespace: jamsesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jamsesh
+  template:
+    metadata:
+      labels:
+        app: jamsesh
+    spec:
+      terminationGracePeriodSeconds: 35
+      containers:
+        - name: portal
+          image: ghcr.io/<owner>/jamsesh:v0.2.0
+          ports:
+            - containerPort: 8443
+          envFrom:
+            - configMapRef:
+                name: jamsesh-config
+          env:
+            - name: JAMSESH_OAUTH_GITHUB_CLIENT_ID
+              value: "your-client-id"
+            - name: JAMSESH_DB_DSN_FILE
+              value: /run/secrets/db-dsn
+            - name: JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE
+              value: /run/secrets/github-client-secret
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: jamsesh-data
+        - name: secrets
+          secret:
+            secretName: jamsesh-secrets
+            items:
+              - key: db-dsn
+                path: db-dsn
+              - key: github-client-secret
+                path: github-client-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jamsesh
+  namespace: jamsesh
+spec:
+  selector:
+    app: jamsesh
+  ports:
+    - port: 8443
+      targetPort: 8443
+```
+
+Key choices:
+
+- `terminationGracePeriodSeconds: 35` — 30s portal grace + 5s buffer before
+  SIGKILL. Matches `JAMSESH_SHUTDOWN_GRACE_S=30` in the ConfigMap.
+- `readinessProbe` on `/readyz` — kubelet gates traffic until DB and storage
+  are both healthy. `initialDelaySeconds: 5` gives the portal time to connect
+  to Postgres before the first probe.
+- `livenessProbe` on `/healthz` — restarts the pod if the process hangs.
+- Secrets are mounted as files via `volumeMounts` and consumed via the `_FILE`
+  env vars — Kubernetes Secret values never appear as plain env vars in this
+  setup, which avoids `env`-based secret exposure in process listings.
+- `replicas: 1` — the portal is single-instance by design; multiple replicas
+  with a shared PVC (ReadWriteOnce) would cause mount conflicts.
+
+Apply with:
+
+```bash
+kubectl apply -f jamsesh-k8s.yaml
+kubectl -n jamsesh rollout status deployment/jamsesh
+```
+
+---
+
 ### Common setup issues
 
 **Portal starts but `/healthz` returns connection refused**:
@@ -523,3 +1002,416 @@ The `e2e` GitHub Actions workflow runs the full end-to-end suite on every PR and
 - Ensure the `storage` directory (or the mounted volume in Docker) is
   persisted across restarts. Check that the volume mount in your `docker run`
   command covers both the database file and the storage directory.
+
+---
+
+## 14. Clustered mode
+
+### When to use clustered mode
+
+The default jamsesh deployment is a single portal pod. A single pod is
+adequate for teams of up to ~50 concurrent agents, scales well vertically, and
+avoids all distributed-systems concerns. Clustered mode is appropriate when:
+
+- You need horizontal scale-out beyond what a single host can provide.
+- You need zero-downtime rolling upgrades without session disruption.
+- You are running a multi-tenant managed service where isolation between
+  tenants is enforced at the pod level.
+
+### Prerequisites
+
+- **Postgres** — SQLite is not supported in clustered mode. Advisory locks
+  used by the per-session lease mechanism require Postgres 12+. See §5 for
+  Postgres setup.
+- **Object storage** — required for cross-pod bare-repo durability. Every push
+  is mirrored to object storage before the git client receives a success
+  response (RPO=0). Set `JAMSESH_OBJECT_STORAGE_URL` to one of the supported
+  URL schemes (see §14 "Object storage (durability)" below). The portal refuses
+  to start in clustered mode without this URL.
+- **The `jamsesh-router` binary** — a separate Go binary in the same repo
+  (`cmd/jamsesh-router`). Build it alongside the portal:
+  ```bash
+  go build -o jamsesh-router ./cmd/jamsesh-router
+  ```
+
+### Architecture overview
+
+```
+         Clients (agents + browsers)
+                    │
+         ┌──────────▼──────────┐
+         │  jamsesh-router      │   consistent-hash reverse proxy
+         │  (:8080, no TLS)    │   + round-robin for session-less routes
+         └──────────┬──────────┘
+                    │  session-ID-keyed sticky routing
+         ┌──────────▼───────────────────────────┐
+         │  portal pods (N replicas, :8443)      │
+         │  shared Postgres + object storage     │
+         └───────────────────────────────────────┘
+```
+
+The router extracts the session ID from every request:
+- REST: from the URL path (`/api/orgs/{org}/sessions/{id}/...`)
+- WebSocket: same path
+- Git: same path (`/git/orgs/{org}/sessions/{id}.git/...`)
+- MCP: from the `Jam-Session-Id` request header
+
+It hashes the session ID onto the consistent-hash ring of healthy portal pods
+and reverse-proxies the request. Requests without a session ID (e.g. `/healthz`,
+`/auth/*`) are distributed round-robin across all pods. On a pod returning 503
+the router invalidates its hint cache entry and retries once against the next
+ring preference.
+
+### Config knobs (`JAMSESH_ROUTER_*`)
+
+| Env var | Default | Description |
+|---|---|---|
+| `JAMSESH_ROUTER_BIND` | `:8080` | Listen address for the router |
+| `JAMSESH_ROUTER_DISCOVERY_MODE` | `static` | `static` or `kubernetes` |
+| `JAMSESH_ROUTER_STATIC_PODS` | — | Comma-separated pod addresses, e.g. `10.0.0.1:8443,10.0.0.2:8443` (static mode) |
+| `JAMSESH_ROUTER_KUBE_NAMESPACE` | — | Kubernetes namespace to watch (kubernetes mode) |
+| `JAMSESH_ROUTER_KUBE_SERVICE_NAME` | — | Service name whose pod IPs to watch (kubernetes mode) |
+| `JAMSESH_ROUTER_VNODES` | `150` | Consistent-hash virtual nodes per pod |
+| `JAMSESH_ROUTER_HINT_CACHE_TTL` | `5m` | Soft-coordinator hint cache TTL |
+| `JAMSESH_ROUTER_PROBE_INTERVAL` | `10s` | Readiness-probe interval (kubernetes mode) |
+| `JAMSESH_ROUTER_SHUTDOWN_GRACE_S` | `30` | Graceful drain budget in seconds |
+
+### Kubernetes deployment
+
+The following YAML deploys a two-replica portal cluster plus the router as a
+separate Deployment. Adapt namespaces, image references, resource limits, and
+secrets management to your environment.
+
+```yaml
+# jamsesh-cluster.yaml
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jamsesh
+
+---
+# Portal ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jamsesh-portal-config
+  namespace: jamsesh
+data:
+  JAMSESH_TLS_MODE: "behind_proxy"
+  JAMSESH_DB_DRIVER: "postgres"
+  JAMSESH_SHUTDOWN_GRACE_S: "30"
+
+---
+# Portal Deployment (multi-replica)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jamsesh-portal
+  namespace: jamsesh
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: jamsesh-portal
+  template:
+    metadata:
+      labels:
+        app: jamsesh-portal
+    spec:
+      terminationGracePeriodSeconds: 35
+      containers:
+        - name: portal
+          image: ghcr.io/<owner>/jamsesh:v0.3.0
+          ports:
+            - name: http
+              containerPort: 8443
+          envFrom:
+            - configMapRef:
+                name: jamsesh-portal-config
+          env:
+            - name: JAMSESH_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: jamsesh-secrets
+                  key: db_dsn
+            - name: JAMSESH_GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: jamsesh-secrets
+                  key: github_client_id
+            - name: JAMSESH_GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jamsesh-secrets
+                  key: github_client_secret
+            - name: JAMSESH_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jamsesh-secrets
+                  key: session_secret
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+            initialDelaySeconds: 15
+            periodSeconds: 30
+
+---
+# Portal Service (ClusterIP — only the router talks to pods directly)
+apiVersion: v1
+kind: Service
+metadata:
+  name: jamsesh-portal
+  namespace: jamsesh
+spec:
+  selector:
+    app: jamsesh-portal
+  ports:
+    - port: 8443
+      targetPort: 8443
+  # ClusterIP is intentional: external traffic enters via the router, not here.
+
+---
+# Router Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jamsesh-router
+  template:
+    metadata:
+      labels:
+        app: jamsesh-router
+    spec:
+      serviceAccountName: jamsesh-router  # needs pod list/watch on the namespace
+      terminationGracePeriodSeconds: 35
+      containers:
+        - name: router
+          image: ghcr.io/<owner>/jamsesh-router:v0.3.0
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: JAMSESH_ROUTER_BIND
+              value: ":8080"
+            - name: JAMSESH_ROUTER_DISCOVERY_MODE
+              value: "kubernetes"
+            - name: JAMSESH_ROUTER_KUBE_NAMESPACE
+              value: "jamsesh"
+            - name: JAMSESH_ROUTER_KUBE_SERVICE_NAME
+              value: "jamsesh-portal"
+            - name: JAMSESH_ROUTER_SHUTDOWN_GRACE_S
+              value: "30"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+---
+# Router Service (LoadBalancer — external entry point)
+apiVersion: v1
+kind: Service
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+spec:
+  type: LoadBalancer
+  selector:
+    app: jamsesh-router
+  ports:
+    - port: 443
+      targetPort: 8080
+      # TLS termination handled upstream (e.g. cloud LB or an ingress with
+      # cert-manager). The router speaks plain HTTP internally.
+
+---
+# RBAC: allow the router to list/watch pods
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jamsesh-router
+  namespace: jamsesh
+subjects:
+  - kind: ServiceAccount
+    name: jamsesh-router
+roleBinding:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jamsesh-router
+```
+
+Apply with:
+
+```bash
+kubectl apply -f jamsesh-cluster.yaml
+kubectl -n jamsesh rollout status deployment/jamsesh-portal
+kubectl -n jamsesh rollout status deployment/jamsesh-router
+```
+
+### Observability
+
+The router exposes Prometheus metrics at `/metrics` on its bind address.
+Scraped metric families:
+
+| Metric | Type | Description |
+|---|---|---|
+| `jamsesh_router_decisions_total{result}` | counter | Routing decisions; result ∈ {hit_cache, hit_ring, fallback, empty_ring, retry, error_503} |
+| `jamsesh_router_ring_size` | gauge | Current pod count in the consistent-hash ring |
+| `jamsesh_router_ring_rebalances_total` | counter | Ring rebalances (pod set changes) |
+| `jamsesh_router_probe_failures_total{addr}` | counter | Readiness-probe failures per pod address |
+
+Standard Go runtime and process metrics (`go_goroutines`, `go_memstats_*`,
+`process_cpu_seconds_total`) are also included.
+
+### Hydration env vars
+
+When the consistent-hash ring rebalances and a session migrates to a new pod,
+the `LifecycleManager` pre-hydrates the local bare-repo cache from object
+storage before the pod accepts push traffic. These knobs control the hydration
+subsystem:
+
+| Env var | Default | Description |
+|---|---|---|
+| `JAMSESH_HYDRATION_WORKERS` | `8` | Parallel object-download workers per hydration job |
+| `JAMSESH_HYDRATION_IDLE_TIMEOUT_S` | `300` | Seconds of idle time before a hydrated session cache is evicted from the working set |
+| `JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S` | `30` | How often the LifecycleManager scans for idle sessions to evict |
+| `JAMSESH_HYDRATION_CACHE_MAX_BYTES` | `0` (unlimited) | Maximum combined disk used by all local bare-repo caches; `0` disables the cap |
+
+Hydration is transparent to git clients. The pod acquires its Postgres lease
+and hydrates from object storage before serving any push; the router's 503-retry
+ensures the client retries against the ready pod.
+
+### Object storage (durability)
+
+Object storage is the system of record for bare repos in clustered mode. Every
+push is mirrored to object storage before the git client receives a success
+response — this is the RPO=0 contract. Local disk on each pod is a working
+cache; its contents are bounded by lease tenure.
+
+**Required env vars:**
+
+| Env var | Purpose |
+|---|---|
+| `JAMSESH_OBJECT_STORAGE_URL` | Object-storage URL (required in clustered mode) |
+| `JAMSESH_OBJECT_STORAGE_REGION` | Provider region (required for AWS S3; optional for others) |
+| `JAMSESH_OBJECT_STORAGE_ENDPOINT_URL` | Endpoint override for S3-compatible services (R2, B2, MinIO) |
+| `JAMSESH_OBJECT_STORAGE_PATH_STYLE` | Force path-style addressing — `true` for MinIO/Ceph, `false` otherwise |
+| `JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE` | Max concurrent in-flight uploads per session (default `256`) |
+
+**Supported URL schemes:**
+
+| Scheme | Provider | Example |
+|---|---|---|
+| `s3://bucket/prefix` | AWS S3 | `s3://my-jamsesh-bucket/sessions` |
+| `s3-compatible://bucket/prefix` | Cloudflare R2, Backblaze B2, MinIO, Ceph | `s3-compatible://my-bucket` |
+| `gs://bucket/prefix` | Google Cloud Storage | `gs://my-jamsesh-bucket/sessions` |
+| `azblob://account/container/prefix` | Azure Blob Storage | `azblob://myaccount/jamsesh/sessions` |
+
+**AWS S3 (recommended for AWS deployments):**
+
+Use IRSA (IAM Roles for Service Accounts) on EKS — no static credentials needed.
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=s3://my-jamsesh-bucket/sessions
+JAMSESH_OBJECT_STORAGE_REGION=us-east-1
+# Credentials: IRSA annotation on the ServiceAccount, or IAM instance role
+```
+
+Required S3 permissions: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`,
+`s3:ListBucket` scoped to the configured bucket.
+
+**Cloudflare R2:**
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=s3-compatible://my-r2-bucket
+JAMSESH_OBJECT_STORAGE_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+AWS_ACCESS_KEY_ID=<r2-access-key-id>
+AWS_SECRET_ACCESS_KEY=<r2-secret-access-key>
+```
+
+R2 does not require a region setting. Credentials are R2-specific API tokens
+created in the Cloudflare dashboard under R2 → Manage API Tokens.
+
+**MinIO (self-hosted):**
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=s3-compatible://my-bucket/sessions
+JAMSESH_OBJECT_STORAGE_ENDPOINT_URL=http://minio.internal:9000
+JAMSESH_OBJECT_STORAGE_PATH_STYLE=true
+AWS_ACCESS_KEY_ID=<minio-access-key>
+AWS_SECRET_ACCESS_KEY=<minio-secret-key>
+```
+
+Set `JAMSESH_OBJECT_STORAGE_PATH_STYLE=true` for MinIO and self-hosted Ceph.
+For local development MinIO (plain HTTP), pass an `http://` endpoint URL.
+
+**Google Cloud Storage (GKE Workload Identity — recommended):**
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=gs://my-jamsesh-bucket/sessions
+# Credentials: GKE Workload Identity annotation on the KSA, or ADC via
+# GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+```
+
+Required GCS permissions: `storage.objects.create`, `storage.objects.get`,
+`storage.objects.delete`, `storage.buckets.list` on the configured bucket.
+Grant via IAM with the `Storage Object User` role (or a custom role scoped
+to the bucket).
+
+**Azure Blob Storage (AKS Workload Identity — recommended):**
+
+```bash
+JAMSESH_OBJECT_STORAGE_URL=azblob://myaccount/jamsesh/sessions
+# Credentials: AKS Workload Identity federated identity + Service Principal,
+# or static credentials via:
+#   AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
+```
+
+Required Azure permissions: `Storage Blob Data Contributor` role scoped to the
+storage account container.
+
+**Cost model:**
+
+Object storage costs for jamsesh are dominated by API call counts rather than
+storage volume. A session produces roughly 5–20 objects per push (loose git
+objects + a manifest update). At heavy use (~100 pushes/session/day across 10
+active sessions):
+
+- ~$0.05 per active session per day at AWS S3 / GCS pricing.
+- Storage cost is negligible — a busy session accumulates a few MB of git objects.
+- Cloudflare R2 eliminates egress costs, making it cost-efficient when
+  portal pods and clients are outside the same AWS/GCP region.
+
+Monitor `jamsesh_object_storage_uploads_total{result="error"}` to detect
+object-storage errors that would degrade push reliability.

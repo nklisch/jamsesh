@@ -120,6 +120,46 @@ func WriteRefreshToken(t string) error {
 	return Write("refresh_token", []byte(t), 0o600)
 }
 
+// CurrentSessionID returns the jamsesh session ID bound to the current Claude
+// Code instance, and true. It locates the binding by matching the
+// CLAUDE_SESSION_ID environment variable against the instance_id files stored
+// under ${CLAUDE_PLUGIN_DATA}/sessions/<sessionID>/instance_id.
+//
+// When CLAUDE_SESSION_ID is not set or no matching binding is found, it returns
+// ("", false) — callers should omit the Jam-Session-Id header in that case.
+func CurrentSessionID() (string, bool) {
+	dir, err := PluginDataDir()
+	if err != nil {
+		return "", false
+	}
+
+	ccID := os.Getenv("CLAUDE_SESSION_ID")
+	if ccID == "" {
+		return "", false
+	}
+
+	sessionsDir := filepath.Join(dir, "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return "", false
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		instanceFile := filepath.Join(sessionsDir, e.Name(), "instance_id")
+		data, err := os.ReadFile(instanceFile)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(data)) == ccID {
+			return e.Name(), true
+		}
+	}
+	return "", false
+}
+
 // ReadPortalURL resolves the portal URL with the following precedence:
 //  1. JAMSESH_PORTAL_URL environment variable
 //  2. ${CLAUDE_PLUGIN_DATA}/portal_url file (trimmed)

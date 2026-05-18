@@ -51,6 +51,7 @@ type Querier interface {
 	InsertConflictEvent(ctx context.Context, arg InsertConflictEventParams) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) error
 	InsertFinalizeLock(ctx context.Context, arg InsertFinalizeLockParams) error
+	InsertLease(ctx context.Context, arg InsertLeaseParams) (Lease, error)
 	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
 	InsertOrgInvite(ctx context.Context, arg InsertOrgInviteParams) (OrgInvite, error)
 	InsertSessionInvite(ctx context.Context, arg InsertSessionInviteParams) (SessionInvite, error)
@@ -75,6 +76,7 @@ type Querier interface {
 	ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error)
 	ListSessionsForOrgWithCursor(ctx context.Context, arg ListSessionsForOrgWithCursorParams) ([]Session, error)
 	MarkConflictEventResolved(ctx context.Context, arg MarkConflictEventResolvedParams) error
+	MarkLeaseReleased(ctx context.Context, sessionID string) error
 	MarkOrgInviteAccepted(ctx context.Context, arg MarkOrgInviteAcceptedParams) error
 	MarkSessionInviteAccepted(ctx context.Context, arg MarkSessionInviteAcceptedParams) error
 	ReleaseFinalizeLock(ctx context.Context, arg ReleaseFinalizeLockParams) error
@@ -90,6 +92,7 @@ type Querier interface {
 	TouchFinalizeLock(ctx context.Context, arg TouchFinalizeLockParams) error
 	TouchOAuthTokenLastUsed(ctx context.Context, arg TouchOAuthTokenLastUsedParams) error
 	UpdateAccountDisplayName(ctx context.Context, arg UpdateAccountDisplayNameParams) error
+	UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error
 	UpdateFinalizeLockCuration(ctx context.Context, arg UpdateFinalizeLockCurationParams) error
 	UpdateSessionGoalScopeMode(ctx context.Context, arg UpdateSessionGoalScopeModeParams) error
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error

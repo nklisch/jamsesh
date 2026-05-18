@@ -34,7 +34,7 @@ func newFetchEnv(t *testing.T) (*testFetchEnv, string) {
 
 	storageRoot := t.TempDir()
 
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}

@@ -12,7 +12,7 @@ import (
 
 func TestBasicAuthValidator_ValidToken(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestBasicAuthValidator_ValidToken(t *testing.T) {
 
 func TestBasicAuthValidator_InvalidToken(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestBasicAuthValidator_InvalidToken(t *testing.T) {
 
 func TestBasicAuthValidator_ExpiredToken(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestBasicAuthValidator_ExpiredToken(t *testing.T) {
 
 func TestBasicAuthValidator_RevokedToken(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestBasicAuthValidator_RevokedToken(t *testing.T) {
 
 func TestBasicAuthValidator_UsernameIgnored(t *testing.T) {
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}

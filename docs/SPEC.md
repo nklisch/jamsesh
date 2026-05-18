@@ -213,6 +213,28 @@ user creates.
 - Configurable via env vars or YAML config: bind address, TLS certs, DB driver
   (sqlite | postgres), storage path for bare repos, auth providers, org defaults.
 - Runs as a systemd service, container, or unmanaged process.
+- Key env vars: `JAMSESH_BIND` (`:8443`), `JAMSESH_DB_DRIVER` (`sqlite` |
+  `postgres`), `JAMSESH_DB_DSN`, `JAMSESH_STORAGE`, `JAMSESH_PORTAL_URL`,
+  `JAMSESH_TLS_MODE` (`behind_proxy` | `native`).
+- Database connection pool is configurable: `JAMSESH_DB_MAX_OPEN_CONNS` (25),
+  `JAMSESH_DB_MAX_IDLE_CONNS` (5), `JAMSESH_DB_CONN_MAX_LIFETIME` (30m). Postgres
+  migrations are serialized via `pg_advisory_lock` — safe for concurrent pod starts.
+- Graceful shutdown budget: `JAMSESH_SHUTDOWN_GRACE_S` (30s). HTTP drain,
+  auto-merger drain, and WebSocket gateway stop share this window.
+- Secret env vars have `_FILE` companions (e.g. `JAMSESH_DB_DSN_FILE`,
+  `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE`) for file-based secret injection
+  (Kubernetes Secrets, Docker Swarm secrets, Secret Manager sidecars).
+- Observability: `/metrics` (Prometheus text format, no auth), `/readyz`
+  (JSON readiness probe, 200/503, parallel db + storage checks, 2s per-check
+  timeout), `/healthz` (liveness, always 200 while the process runs).
+- Clustered mode (`JAMSESH_DEPLOY_MODE=clustered`) supports multiple portal
+  replicas behind the `jamsesh-router` consistent-hash proxy. In clustered mode
+  the local-FS storage becomes a per-pod working cache and the object storage
+  backend (configured via `JAMSESH_OBJECT_STORAGE_URL`) is the system of record.
+  Every push synchronously mirrors objects, refs, and a pack manifest to the
+  object store before acknowledging to the client (RPO=0). The local copy is
+  bounded by lease tenure; when a pod picks up a session it re-seeds from
+  object storage.
 
 ## What's explicitly deferred
 

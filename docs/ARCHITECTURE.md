@@ -383,6 +383,114 @@ Failure modes and recovery:
 a portal API call restores social state. Nothing important lives only in
 client memory.
 
+## Horizontal scaling (clustered mode)
+
+Clustered mode is production-ready. The router service, per-session Postgres
+leases, fencing tokens, object-storage durability, and hydration handoff are
+all shipped. See §14 of `docs/SELF_HOST.md` for operator details.
+
+Single-instance jamsesh is a single portal pod: one Go process, one data store,
+one storage volume. For horizontal scale-out a second binary — `jamsesh-router`
+— sits in front of multiple portal pods and implements consistent-hash sticky
+routing.
+
+### Router binary as the front-door consistent-hash reverse proxy
+
+`jamsesh-router` is a stateless Go binary (`cmd/jamsesh-router`). It:
+
+1. **Extracts the session ID** from every incoming request — from the URL path
+   for REST, WebSocket, and Git requests; from the `Jam-Session-Id` header for
+   MCP connections.
+2. **Hashes the session ID** onto a consistent-hash ring of healthy portal pod
+   addresses. The ring uses virtual nodes (default 150 per pod) to keep
+   distribution even as pods are added or removed.
+3. **Reverse-proxies the request** to the chosen pod using
+   `net/http/httputil.ReverseProxy`. WebSocket upgrades pass through
+   transparently.
+4. **Falls back to round-robin** for requests without a session ID (e.g.
+   `/healthz`, `/auth/*`).
+5. **Retries on 503** — if the chosen pod returns 503 the router invalidates
+   its hint-cache entry for the session and retries once against the ring's
+   next preference.
+6. **Maintains a soft-coordinator hint cache** — a bounded LRU (10 000 entries,
+   5-minute TTL) that remembers which pod served a session last. On cache hit
+   the router checks the pod is still in the ring before using the hint, to
+   recover cleanly from pod replacement.
+
+Pod discovery is pluggable:
+- **Static mode** (`JAMSESH_ROUTER_DISCOVERY_MODE=static`) — a fixed list of
+  addresses, probed on a configurable interval.
+- **Kubernetes mode** (`JAMSESH_ROUTER_DISCOVERY_MODE=kubernetes`) — watches
+  the pod IPs backing a named Kubernetes Service via client-go informers, probes
+  each Running pod's `/readyz`, and publishes only the healthy subset to the
+  ring.
+
+The router is intentionally decoupled from session semantics; it does not read
+the database and holds no durable state.
+
+### Per-session leases via Postgres advisory locks
+
+Each portal pod acquires a Postgres advisory lock keyed on the session ID
+before beginning any write to the session's bare repo or event log. The lock
+is held for the duration of the operation and released immediately after.
+Advisory locks are lightweight (no table row required) and visible across
+connections, which makes them suitable for cross-pod coordination without an
+external lock service.
+
+The lock acquisition strategy is non-blocking: a pod that cannot acquire the
+lock within a short window returns 503, triggering the router's retry logic.
+The retry routes to the next ring preference, which is likely a pod not
+currently holding the lock.
+
+### Fencing tokens for split-brain protection
+
+Postgres advisory locks alone guard against concurrent writers in steady state.
+Under network partition or clock skew a pod might believe it holds a lease it
+has actually lost. Fencing tokens — monotonically increasing integers stamped
+on every write — let the storage layer reject stale writes: if a write arrives
+with a token lower than the current stored token, it is rejected.
+
+Fencing tokens are issued by Postgres (monotonically increasing integers stored
+in a dedicated table) and carried by every lease handle. The `objectstore.Syncer`
+embeds the fencing token in object metadata on every upload; a write from a
+stale pod is rejected by the manifest's conditional-write check, which compares
+the token against the stored value.
+
+### Bare-repo dual-layer storage
+
+Bare repos in clustered mode occupy a two-layer structure:
+
+- **Local-FS working cache** — the pod that holds the lease for a session
+  runs `git-receive-pack` against its local disk, exactly as in single-instance
+  mode. The local copy provides full git performance (no object-storage latency
+  on the critical path for reads and merge operations).
+- **Object-storage system of record** — after every `post-receive`, the
+  `objectstore.Syncer` uploads all new loose objects, any new or updated pack
+  files, and an updated session manifest to the configured object-storage
+  backend (AWS S3, Cloudflare R2, GCS, Azure Blob, or any S3-compatible
+  service). The manifest is a per-session JSON object written with conditional
+  writes (`If-Match` ETag / `ifGenerationMatch` for GCS) to maintain a single
+  linearizable history.
+
+This sync is **synchronous and fail-stop**: the git client does not receive a
+success response until all objects and the manifest are durable in object
+storage. RPO=0 for any push that is acknowledged.
+
+Every upload carries the current lease fencing token in object metadata. If a
+stale pod (whose lease was superseded by a newer pod) attempts a write, the
+manifest's conditional-write check detects the stale token and the write is
+rejected. The push then fails and the git client retries.
+
+### Hydration handoff
+
+When the consistent-hash ring rebalances and a session moves to a new pod, the
+`objectstore.LifecycleManager` pre-hydrates the local bare-repo cache as part
+of lease acquisition — before the router directs any push traffic to the pod.
+The `Hydrator` fetches all objects and pack files listed in the session manifest
+from object storage and writes them to local disk using a bounded worker pool
+(`JAMSESH_HYDRATION_WORKERS`, default 8). The pod is push-ready before the
+first client request arrives; there is no one-push latency on pod transition.
+
 ## Data layer (multi-tenancy)
 
 Every persisted entity carries `org_id`. Every API route is org-scoped.

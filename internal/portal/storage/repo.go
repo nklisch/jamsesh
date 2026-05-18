@@ -39,6 +39,20 @@ func (s *service) CreateRepo(ctx context.Context, orgID, sessionID string) error
 		return fmt.Errorf("storage: git init --bare: %w (output: %s)", err, out)
 	}
 
+	// Disable opportunistic gc on this bare repo. git's auto-gc can rewrite
+	// loose objects into pack files mid-push, producing unexpected pack
+	// rewrites that the object-storage sync pipeline would have to reconcile.
+	// With gc.auto=0 the only pack rewrites come from explicit operator-driven
+	// `git gc` or `git repack` invocations, which run outside of active pushes.
+	// Operators should schedule their own gc cadence; jamsesh does not enforce
+	// one. See also: cloud-native-deploy design doc, "gc.auto policy".
+	gcCmd := exec.CommandContext(ctx, "git", "-C", p, "config", "gc.auto", "0")
+	gcCmd.Stderr = os.Stderr
+	if out, err := gcCmd.Output(); err != nil {
+		_ = os.RemoveAll(p)
+		return fmt.Errorf("storage: git config gc.auto 0: %w (output: %s)", err, out)
+	}
+
 	return nil
 }
 

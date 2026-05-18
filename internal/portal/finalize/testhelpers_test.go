@@ -58,7 +58,7 @@ func newFinalizeEnv(t *testing.T) *finalizeEnv {
 	t.Helper()
 
 	ctx := context.Background()
-	s, err := db.Open(ctx, "sqlite", ":memory:")
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

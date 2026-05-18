@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"jamsesh/internal/portal/config"
 )
@@ -47,6 +48,18 @@ func TestDefaults(t *testing.T) {
 	const wantMaxPack = int64(52428800)
 	if cfg.Git.MaxPackBytes != wantMaxPack {
 		t.Errorf("Git.MaxPackBytes: got %d, want %d", cfg.Git.MaxPackBytes, wantMaxPack)
+	}
+	if cfg.DB.MaxOpenConns != 25 {
+		t.Errorf("DB.MaxOpenConns: got %d, want 25", cfg.DB.MaxOpenConns)
+	}
+	if cfg.DB.MaxIdleConns != 5 {
+		t.Errorf("DB.MaxIdleConns: got %d, want 5", cfg.DB.MaxIdleConns)
+	}
+	if cfg.DB.ConnMaxLifetime != 30*time.Minute {
+		t.Errorf("DB.ConnMaxLifetime: got %v, want 30m", cfg.DB.ConnMaxLifetime)
+	}
+	if cfg.ShutdownGraceSeconds != 30 {
+		t.Errorf("ShutdownGraceSeconds default: got %d, want 30", cfg.ShutdownGraceSeconds)
 	}
 }
 
@@ -281,6 +294,129 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	}
 }
 
+// TestDBConfigDefaults verifies that DB pool defaults are applied when
+// neither a YAML key nor an env var is set.
+func TestDBConfigDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DB.MaxOpenConns != 25 {
+		t.Errorf("DB.MaxOpenConns default: got %d, want 25", cfg.DB.MaxOpenConns)
+	}
+	if cfg.DB.MaxIdleConns != 5 {
+		t.Errorf("DB.MaxIdleConns default: got %d, want 5", cfg.DB.MaxIdleConns)
+	}
+	if cfg.DB.ConnMaxLifetime != 30*time.Minute {
+		t.Errorf("DB.ConnMaxLifetime default: got %v, want 30m", cfg.DB.ConnMaxLifetime)
+	}
+}
+
+// TestDBConfigEnvOverride verifies that the three JAMSESH_DB_* pool env vars
+// override the defaults.
+func TestDBConfigEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DB_MAX_OPEN_CONNS", "50")
+	t.Setenv("JAMSESH_DB_MAX_IDLE_CONNS", "10")
+	t.Setenv("JAMSESH_DB_CONN_MAX_LIFETIME", "1h")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DB.MaxOpenConns != 50 {
+		t.Errorf("DB.MaxOpenConns: got %d, want 50", cfg.DB.MaxOpenConns)
+	}
+	if cfg.DB.MaxIdleConns != 10 {
+		t.Errorf("DB.MaxIdleConns: got %d, want 10", cfg.DB.MaxIdleConns)
+	}
+	if cfg.DB.ConnMaxLifetime != time.Hour {
+		t.Errorf("DB.ConnMaxLifetime: got %v, want 1h", cfg.DB.ConnMaxLifetime)
+	}
+}
+
+// TestDBConfigYAML verifies that the db.* YAML keys are parsed correctly.
+func TestDBConfigYAML(t *testing.T) {
+	clearEnv(t)
+	yaml := `
+db:
+  max_open_conns: 100
+  max_idle_conns: 20
+  conn_max_lifetime: 45m
+`
+	path := writeTempConfig(t, yaml)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DB.MaxOpenConns != 100 {
+		t.Errorf("DB.MaxOpenConns: got %d, want 100", cfg.DB.MaxOpenConns)
+	}
+	if cfg.DB.MaxIdleConns != 20 {
+		t.Errorf("DB.MaxIdleConns: got %d, want 20", cfg.DB.MaxIdleConns)
+	}
+	if cfg.DB.ConnMaxLifetime != 45*time.Minute {
+		t.Errorf("DB.ConnMaxLifetime: got %v, want 45m", cfg.DB.ConnMaxLifetime)
+	}
+}
+
+// TestShutdownGraceSecondsDefault verifies the default value is 30.
+func TestShutdownGraceSecondsDefault(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ShutdownGraceSeconds != 30 {
+		t.Errorf("ShutdownGraceSeconds default: got %d, want 30", cfg.ShutdownGraceSeconds)
+	}
+}
+
+// TestShutdownGraceSecondsEnvOverride verifies JAMSESH_SHUTDOWN_GRACE_S is applied.
+func TestShutdownGraceSecondsEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_SHUTDOWN_GRACE_S", "60")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ShutdownGraceSeconds != 60 {
+		t.Errorf("ShutdownGraceSeconds: got %d, want 60", cfg.ShutdownGraceSeconds)
+	}
+}
+
+// TestShutdownGraceSecondsYAML verifies the shutdown_grace_s YAML key is parsed.
+func TestShutdownGraceSecondsYAML(t *testing.T) {
+	clearEnv(t)
+	yamlContent := "shutdown_grace_s: 45\n"
+	path := writeTempConfig(t, yamlContent)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ShutdownGraceSeconds != 45 {
+		t.Errorf("ShutdownGraceSeconds: got %d, want 45", cfg.ShutdownGraceSeconds)
+	}
+}
+
+// TestShutdownGraceSecondsValidation verifies that zero and negative values are rejected.
+func TestShutdownGraceSecondsValidation(t *testing.T) {
+	clearEnv(t)
+
+	for _, bad := range []string{"0", "-1", "-30"} {
+		t.Run("grace_s="+bad, func(t *testing.T) {
+			t.Setenv("JAMSESH_SHUTDOWN_GRACE_S", bad)
+			_, err := config.Load("")
+			if err == nil {
+				t.Errorf("expected validation error for JAMSESH_SHUTDOWN_GRACE_S=%s, got nil", bad)
+			}
+		})
+	}
+}
+
 // clearEnv unsets all JAMSESH_ environment variables for test isolation.
 func clearEnv(t *testing.T) {
 	t.Helper()
@@ -291,6 +427,22 @@ func clearEnv(t *testing.T) {
 		"JAMSESH_GIT_MAX_PACK_BYTES",
 		"JAMSESH_OAUTH_GITHUB_CLIENT_ID", "JAMSESH_OAUTH_GITHUB_CLIENT_SECRET",
 		"JAMSESH_OAUTH_GITHUB_BASE_URL",
+		"JAMSESH_DB_MAX_OPEN_CONNS", "JAMSESH_DB_MAX_IDLE_CONNS",
+		"JAMSESH_DB_CONN_MAX_LIFETIME",
+		"JAMSESH_SHUTDOWN_GRACE_S",
+		"JAMSESH_DEPLOY_MODE",
+		"JAMSESH_LEASE_HEARTBEAT_INTERVAL_S",
+		"JAMSESH_LEASE_RETENTION_DAYS",
+		"JAMSESH_LEASE_RETENTION_INTERVAL_HOURS",
+		"JAMSESH_OBJECT_STORAGE_URL",
+		"JAMSESH_OBJECT_STORAGE_REGION",
+		"JAMSESH_OBJECT_STORAGE_ENDPOINT_URL",
+		"JAMSESH_OBJECT_STORAGE_PATH_STYLE",
+		"JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE",
+		"JAMSESH_HYDRATION_IDLE_TIMEOUT_S",
+		"JAMSESH_HYDRATION_CACHE_MAX_BYTES",
+		"JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S",
+		"JAMSESH_HYDRATION_WORKERS",
 	}
 	for _, v := range vars {
 		t.Setenv(v, "") // t.Setenv restores on cleanup; set to "" to clear
@@ -311,6 +463,439 @@ func TestOAuthGitHubBaseURLEnvOverride(t *testing.T) {
 	if got, want := cfg.OAuth.GitHub.BaseURL, "https://fake.example.com"; got != want {
 		t.Errorf("BaseURL: got %q, want %q", got, want)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Lease config tests
+// ---------------------------------------------------------------------------
+
+// TestLeaseConfigDefaults verifies the default values for all JAMSESH_LEASE_*
+// and JAMSESH_DEPLOY_MODE fields.
+func TestLeaseConfigDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DeployMode != "single" {
+		t.Errorf("DeployMode default: got %q, want %q", cfg.DeployMode, "single")
+	}
+	if cfg.LeaseHeartbeatIntervalS != 10 {
+		t.Errorf("LeaseHeartbeatIntervalS default: got %d, want 10", cfg.LeaseHeartbeatIntervalS)
+	}
+	if cfg.LeaseRetentionDays != 30 {
+		t.Errorf("LeaseRetentionDays default: got %d, want 30", cfg.LeaseRetentionDays)
+	}
+	if cfg.LeaseRetentionIntervalHours != 1 {
+		t.Errorf("LeaseRetentionIntervalHours default: got %d, want 1", cfg.LeaseRetentionIntervalHours)
+	}
+}
+
+// TestLeaseConfigEnvOverride verifies that the JAMSESH_LEASE_* and
+// JAMSESH_DEPLOY_MODE env vars are applied correctly.
+func TestLeaseConfigEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
+	t.Setenv("JAMSESH_DB_DRIVER", "postgres")                       // clustered requires postgres
+	t.Setenv("JAMSESH_OBJECT_STORAGE_URL", "s3://bucket/prefix")    // clustered requires object storage
+	t.Setenv("JAMSESH_LEASE_HEARTBEAT_INTERVAL_S", "30")
+	t.Setenv("JAMSESH_LEASE_RETENTION_DAYS", "90")
+	t.Setenv("JAMSESH_LEASE_RETENTION_INTERVAL_HOURS", "6")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DeployMode != "clustered" {
+		t.Errorf("DeployMode: got %q, want %q", cfg.DeployMode, "clustered")
+	}
+	if cfg.LeaseHeartbeatIntervalS != 30 {
+		t.Errorf("LeaseHeartbeatIntervalS: got %d, want 30", cfg.LeaseHeartbeatIntervalS)
+	}
+	if cfg.LeaseRetentionDays != 90 {
+		t.Errorf("LeaseRetentionDays: got %d, want 90", cfg.LeaseRetentionDays)
+	}
+	if cfg.LeaseRetentionIntervalHours != 6 {
+		t.Errorf("LeaseRetentionIntervalHours: got %d, want 6", cfg.LeaseRetentionIntervalHours)
+	}
+}
+
+// TestValidation_DeployModeSingle verifies that deploy_mode=single is valid.
+func TestValidation_DeployModeSingle(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "single")
+	if _, err := config.Load(""); err != nil {
+		t.Errorf("deploy_mode=single should be valid: %v", err)
+	}
+}
+
+// TestValidation_DeployModeClustered verifies that deploy_mode=clustered with
+// db_driver=postgres and object_storage_url is valid.
+func TestValidation_DeployModeClustered(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
+	t.Setenv("JAMSESH_DB_DRIVER", "postgres")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_URL", "s3://my-bucket/prefix")
+	if _, err := config.Load(""); err != nil {
+		t.Errorf("deploy_mode=clustered with db_driver=postgres and object_storage_url should be valid: %v", err)
+	}
+}
+
+// TestValidation_DeployModeInvalid verifies that an unknown deploy_mode is rejected.
+func TestValidation_DeployModeInvalid(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "distributed")
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for unknown deploy_mode, got nil")
+	}
+}
+
+// TestValidation_ClusteredWithSQLite verifies that deploy_mode=clustered AND
+// db_driver=sqlite is rejected at validation time.
+func TestValidation_ClusteredWithSQLite(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
+	t.Setenv("JAMSESH_DB_DRIVER", "sqlite")
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for deploy_mode=clustered + db_driver=sqlite, got nil")
+	}
+}
+
+// TestValidation_LeaseIntervalNonPositive verifies that zero/negative lease
+// interval values are rejected.
+func TestValidation_LeaseIntervalNonPositive(t *testing.T) {
+	clearEnv(t)
+
+	t.Run("heartbeat_interval_s=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_LEASE_HEARTBEAT_INTERVAL_S", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_LEASE_HEARTBEAT_INTERVAL_S=0, got nil")
+		}
+	})
+
+	t.Run("retention_days=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_LEASE_RETENTION_DAYS", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_LEASE_RETENTION_DAYS=0, got nil")
+		}
+	})
+
+	t.Run("retention_interval_hours=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_LEASE_RETENTION_INTERVAL_HOURS", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_LEASE_RETENTION_INTERVAL_HOURS=0, got nil")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Object-storage config tests
+// ---------------------------------------------------------------------------
+
+// TestObjectStorageDefaults verifies the default values for object-storage fields.
+func TestObjectStorageDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ObjectStorageURL != "" {
+		t.Errorf("ObjectStorageURL default: got %q, want empty", cfg.ObjectStorageURL)
+	}
+	if cfg.ObjectStorageRegion != "" {
+		t.Errorf("ObjectStorageRegion default: got %q, want empty", cfg.ObjectStorageRegion)
+	}
+	if cfg.ObjectStorageEndpointURL != "" {
+		t.Errorf("ObjectStorageEndpointURL default: got %q, want empty", cfg.ObjectStorageEndpointURL)
+	}
+	if cfg.ObjectStoragePathStyle {
+		t.Errorf("ObjectStoragePathStyle default: got true, want false")
+	}
+	if cfg.ObjectStorageSyncQueueSize != 256 {
+		t.Errorf("ObjectStorageSyncQueueSize default: got %d, want 256", cfg.ObjectStorageSyncQueueSize)
+	}
+}
+
+// TestObjectStorageEnvOverride verifies that all five JAMSESH_OBJECT_STORAGE_*
+// env vars are applied correctly.
+func TestObjectStorageEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_OBJECT_STORAGE_URL", "s3://my-bucket/jamsesh")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_REGION", "eu-west-1")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_ENDPOINT_URL", "https://example.r2.cloudflarestorage.com")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_PATH_STYLE", "true")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE", "512")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ObjectStorageURL != "s3://my-bucket/jamsesh" {
+		t.Errorf("ObjectStorageURL: got %q, want %q", cfg.ObjectStorageURL, "s3://my-bucket/jamsesh")
+	}
+	if cfg.ObjectStorageRegion != "eu-west-1" {
+		t.Errorf("ObjectStorageRegion: got %q, want eu-west-1", cfg.ObjectStorageRegion)
+	}
+	if cfg.ObjectStorageEndpointURL != "https://example.r2.cloudflarestorage.com" {
+		t.Errorf("ObjectStorageEndpointURL: got %q", cfg.ObjectStorageEndpointURL)
+	}
+	if !cfg.ObjectStoragePathStyle {
+		t.Errorf("ObjectStoragePathStyle: got false, want true")
+	}
+	if cfg.ObjectStorageSyncQueueSize != 512 {
+		t.Errorf("ObjectStorageSyncQueueSize: got %d, want 512", cfg.ObjectStorageSyncQueueSize)
+	}
+}
+
+// TestObjectStoragePathStyleFalse verifies that JAMSESH_OBJECT_STORAGE_PATH_STYLE=false
+// is correctly parsed.
+func TestObjectStoragePathStyleFalse(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_OBJECT_STORAGE_PATH_STYLE", "false")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ObjectStoragePathStyle {
+		t.Errorf("ObjectStoragePathStyle: got true, want false for JAMSESH_OBJECT_STORAGE_PATH_STYLE=false")
+	}
+}
+
+// TestObjectStorageYAML verifies that the object_storage_* YAML keys are parsed.
+func TestObjectStorageYAML(t *testing.T) {
+	clearEnv(t)
+	yamlContent := `
+object_storage_url: "gs://my-bucket/sessions"
+object_storage_region: "us-central1"
+object_storage_endpoint_url: ""
+object_storage_path_style: false
+object_storage_sync_queue_size: 128
+`
+	path := writeTempConfig(t, yamlContent)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ObjectStorageURL != "gs://my-bucket/sessions" {
+		t.Errorf("ObjectStorageURL: got %q", cfg.ObjectStorageURL)
+	}
+	if cfg.ObjectStorageSyncQueueSize != 128 {
+		t.Errorf("ObjectStorageSyncQueueSize: got %d, want 128", cfg.ObjectStorageSyncQueueSize)
+	}
+}
+
+// TestValidation_ClusteredRequiresObjectStorage verifies that deploy_mode=clustered
+// without object_storage_url is rejected at startup.
+func TestValidation_ClusteredRequiresObjectStorage(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "clustered")
+	t.Setenv("JAMSESH_DB_DRIVER", "postgres")
+	// No JAMSESH_OBJECT_STORAGE_URL — must fail.
+
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for deploy_mode=clustered without object_storage_url, got nil")
+	}
+}
+
+// TestValidation_SingleModeNoObjectStorage verifies that single-instance mode
+// with no object_storage_url is valid (object storage is clustered-only).
+func TestValidation_SingleModeNoObjectStorage(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "single")
+	// No object storage URL — should be fine in single mode.
+
+	_, err := config.Load("")
+	if err != nil {
+		t.Errorf("single mode without object_storage_url should be valid: %v", err)
+	}
+}
+
+// TestValidation_SingleModeWithObjectStorage verifies that single-instance mode
+// with an object_storage_url set is accepted (the URL is ignored but not rejected).
+func TestValidation_SingleModeWithObjectStorage(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_DEPLOY_MODE", "single")
+	t.Setenv("JAMSESH_OBJECT_STORAGE_URL", "s3://bucket/prefix")
+
+	_, err := config.Load("")
+	if err != nil {
+		t.Errorf("single mode with object_storage_url should be valid: %v", err)
+	}
+}
+
+// TestValidation_ObjectStorageSyncQueueSizeZero verifies that a sync queue
+// size of zero is rejected.
+func TestValidation_ObjectStorageSyncQueueSizeZero(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE", "0")
+
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for object_storage_sync_queue_size=0, got nil")
+	}
+}
+
+// TestValidation_ObjectStorageSyncQueueSizeNegative verifies that a negative
+// sync queue size is rejected.
+func TestValidation_ObjectStorageSyncQueueSizeNegative(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE", "-1")
+
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for object_storage_sync_queue_size=-1, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Hydration config tests
+// ---------------------------------------------------------------------------
+
+// TestHydrationConfigDefaults verifies the default values for hydration fields.
+func TestHydrationConfigDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HydrationIdleTimeoutS != 300 {
+		t.Errorf("HydrationIdleTimeoutS default: got %d, want 300", cfg.HydrationIdleTimeoutS)
+	}
+	if cfg.HydrationCacheMaxBytes != 0 {
+		t.Errorf("HydrationCacheMaxBytes default: got %d, want 0 (unlimited)", cfg.HydrationCacheMaxBytes)
+	}
+	if cfg.HydrationIdleCheckPeriodS != 30 {
+		t.Errorf("HydrationIdleCheckPeriodS default: got %d, want 30", cfg.HydrationIdleCheckPeriodS)
+	}
+	if cfg.HydrationWorkers != 8 {
+		t.Errorf("HydrationWorkers default: got %d, want 8", cfg.HydrationWorkers)
+	}
+}
+
+// TestHydrationConfigEnvOverride verifies that all four JAMSESH_HYDRATION_* env
+// vars override the defaults correctly.
+func TestHydrationConfigEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_HYDRATION_IDLE_TIMEOUT_S", "600")
+	t.Setenv("JAMSESH_HYDRATION_CACHE_MAX_BYTES", "5368709120") // 5 GiB
+	t.Setenv("JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S", "60")
+	t.Setenv("JAMSESH_HYDRATION_WORKERS", "16")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HydrationIdleTimeoutS != 600 {
+		t.Errorf("HydrationIdleTimeoutS: got %d, want 600", cfg.HydrationIdleTimeoutS)
+	}
+	if cfg.HydrationCacheMaxBytes != 5368709120 {
+		t.Errorf("HydrationCacheMaxBytes: got %d, want 5368709120", cfg.HydrationCacheMaxBytes)
+	}
+	if cfg.HydrationIdleCheckPeriodS != 60 {
+		t.Errorf("HydrationIdleCheckPeriodS: got %d, want 60", cfg.HydrationIdleCheckPeriodS)
+	}
+	if cfg.HydrationWorkers != 16 {
+		t.Errorf("HydrationWorkers: got %d, want 16", cfg.HydrationWorkers)
+	}
+}
+
+// TestHydrationConfigYAML verifies the hydration_* YAML keys are parsed.
+func TestHydrationConfigYAML(t *testing.T) {
+	clearEnv(t)
+	yamlContent := `
+hydration_idle_timeout_s: 120
+hydration_cache_max_bytes: 1073741824
+hydration_idle_check_period_s: 15
+hydration_workers: 4
+`
+	path := writeTempConfig(t, yamlContent)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HydrationIdleTimeoutS != 120 {
+		t.Errorf("HydrationIdleTimeoutS: got %d, want 120", cfg.HydrationIdleTimeoutS)
+	}
+	if cfg.HydrationCacheMaxBytes != 1073741824 {
+		t.Errorf("HydrationCacheMaxBytes: got %d, want 1073741824", cfg.HydrationCacheMaxBytes)
+	}
+	if cfg.HydrationIdleCheckPeriodS != 15 {
+		t.Errorf("HydrationIdleCheckPeriodS: got %d, want 15", cfg.HydrationIdleCheckPeriodS)
+	}
+	if cfg.HydrationWorkers != 4 {
+		t.Errorf("HydrationWorkers: got %d, want 4", cfg.HydrationWorkers)
+	}
+}
+
+// TestHydrationConfigCacheMaxBytesZero verifies that HydrationCacheMaxBytes=0
+// is accepted (it means unlimited).
+func TestHydrationConfigCacheMaxBytesZero(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_HYDRATION_CACHE_MAX_BYTES", "0")
+
+	_, err := config.Load("")
+	if err != nil {
+		t.Errorf("HydrationCacheMaxBytes=0 (unlimited) should be valid: %v", err)
+	}
+}
+
+// TestHydrationConfigValidation verifies that non-positive values for positive-
+// integer fields are rejected, and that a negative CacheMaxBytes is rejected.
+func TestHydrationConfigValidation(t *testing.T) {
+	t.Run("idle_timeout_s=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_IDLE_TIMEOUT_S", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_IDLE_TIMEOUT_S=0, got nil")
+		}
+	})
+
+	t.Run("idle_timeout_s=-1", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_IDLE_TIMEOUT_S", "-1")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_IDLE_TIMEOUT_S=-1, got nil")
+		}
+	})
+
+	t.Run("idle_check_period_s=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S=0, got nil")
+		}
+	})
+
+	t.Run("workers=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_WORKERS", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_WORKERS=0, got nil")
+		}
+	})
+
+	t.Run("cache_max_bytes=-1", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_CACHE_MAX_BYTES", "-1")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_CACHE_MAX_BYTES=-1, got nil")
+		}
+	})
 }
 
 // writeTempConfig writes content to a temp YAML file and returns its path.

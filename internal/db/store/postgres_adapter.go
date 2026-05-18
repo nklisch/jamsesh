@@ -36,6 +36,11 @@ func (a *postgresAdapter) Close() error {
 	return nil
 }
 
+// Ping verifies the postgres connection pool is alive.
+func (a *postgresAdapter) Ping(ctx context.Context) error {
+	return a.pool.Ping(ctx)
+}
+
 // ---------------------------------------------------------------------------
 // mapPostgresErr normalises dialect-specific errors to store sentinels.
 // ---------------------------------------------------------------------------
@@ -403,6 +408,17 @@ func (a *postgresAdapter) GetSession(ctx context.Context, orgID, id string) (Ses
 		OrgID: orgID,
 		ID:    id,
 	})
+	if err != nil {
+		return Session{}, mapPostgresErr(err)
+	}
+	return pgSession(row), nil
+}
+
+// GetSessionByID looks up a session by its primary key without org scoping.
+// Intentional cross-org exception: the org_id returned on the Session is used
+// by the LifecycleManager to route subsequent org-scoped operations.
+func (a *postgresAdapter) GetSessionByID(ctx context.Context, id string) (Session, error) {
+	row, err := a.q.GetSessionByID(ctx, id)
 	if err != nil {
 		return Session{}, mapPostgresErr(err)
 	}
@@ -1172,6 +1188,13 @@ func (s *postgresTxStore) GetSession(ctx context.Context, orgID, id string) (Ses
 	}
 	return pgSession(row), nil
 }
+func (s *postgresTxStore) GetSessionByID(ctx context.Context, id string) (Session, error) {
+	row, err := s.q.GetSessionByID(ctx, id)
+	if err != nil {
+		return Session{}, mapPostgresErr(err)
+	}
+	return pgSession(row), nil
+}
 func (s *postgresTxStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error) {
 	rows, err := s.q.ListSessionsForOrg(ctx, orgID)
 	if err != nil {
@@ -1936,5 +1959,83 @@ func pgFinalizeLock(r pgstore.FinalizeLock) FinalizeLock {
 		CommitMessage:       pgTextToPtr(r.CommitMessage),
 		SupersededByLockID:  pgTextToPtr(r.SupersededByLockID),
 		ReleasedAt:          pgTimestamptzToPtr(r.ReleasedAt),
+	}
+}
+
+// ---------------------------------------------------------------------------
+// LeaseStore (outer adapter)
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) IssueLeaseFencingToken(ctx context.Context) (int64, error) {
+	token, err := a.q.IssueLeaseFencingToken(ctx)
+	return token, mapPostgresErr(err)
+}
+
+func (a *postgresAdapter) InsertLease(ctx context.Context, p InsertLeaseParams) (Lease, error) {
+	row, err := a.q.InsertLease(ctx, pgstore.InsertLeaseParams{
+		SessionID:    p.SessionID,
+		PodID:        p.PodID,
+		FencingToken: p.FencingToken,
+	})
+	if err != nil {
+		return Lease{}, mapPostgresErr(err)
+	}
+	return pgLease(row), nil
+}
+
+func (a *postgresAdapter) MarkLeaseReleased(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(a.q.MarkLeaseReleased(ctx, sessionID))
+}
+
+func (a *postgresAdapter) UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(a.q.UpdateLeaseHeartbeat(ctx, sessionID))
+}
+
+func (a *postgresAdapter) DeleteReleasedLeasesOlderThan(ctx context.Context, before time.Time) error {
+	return mapPostgresErr(a.q.DeleteReleasedLeasesOlderThan(ctx, before))
+}
+
+// ---------------------------------------------------------------------------
+// LeaseStore (TxStore)
+// ---------------------------------------------------------------------------
+
+func (s *postgresTxStore) IssueLeaseFencingToken(ctx context.Context) (int64, error) {
+	token, err := s.q.IssueLeaseFencingToken(ctx)
+	return token, mapPostgresErr(err)
+}
+
+func (s *postgresTxStore) InsertLease(ctx context.Context, p InsertLeaseParams) (Lease, error) {
+	row, err := s.q.InsertLease(ctx, pgstore.InsertLeaseParams{
+		SessionID:    p.SessionID,
+		PodID:        p.PodID,
+		FencingToken: p.FencingToken,
+	})
+	if err != nil {
+		return Lease{}, mapPostgresErr(err)
+	}
+	return pgLease(row), nil
+}
+
+func (s *postgresTxStore) MarkLeaseReleased(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(s.q.MarkLeaseReleased(ctx, sessionID))
+}
+
+func (s *postgresTxStore) UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error {
+	return mapPostgresErr(s.q.UpdateLeaseHeartbeat(ctx, sessionID))
+}
+
+func (s *postgresTxStore) DeleteReleasedLeasesOlderThan(ctx context.Context, before time.Time) error {
+	return mapPostgresErr(s.q.DeleteReleasedLeasesOlderThan(ctx, before))
+}
+
+// pgLease converts a pgstore.Lease to a domain Lease.
+func pgLease(r pgstore.Lease) Lease {
+	return Lease{
+		SessionID:    r.SessionID,
+		PodID:        r.PodID,
+		FencingToken: r.FencingToken,
+		AcquiredAt:   r.AcquiredAt,
+		ReleasedAt:   pgTimestamptzToPtr(r.ReleasedAt),
+		HeartbeatAt:  r.HeartbeatAt,
 	}
 }
