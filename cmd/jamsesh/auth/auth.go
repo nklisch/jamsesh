@@ -58,12 +58,6 @@ type config struct {
 // Option is a functional option for Command.
 type Option func(*config)
 
-// WithOpenURL replaces the default browser-open function. Primarily used in
-// tests to avoid launching a real browser.
-func WithOpenURL(fn func(url string) error) Option {
-	return func(c *config) { c.openURL = fn }
-}
-
 // defaultOpenURL opens url in the user's default browser using platform-
 // appropriate mechanisms. We inline this helper rather than depending on
 // github.com/pkg/browser to keep the dependency footprint minimal; the

@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-withopenurl
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, plugin]
 parent: null
 depends_on: []
@@ -33,3 +33,13 @@ func WithOpenURL(fn func(url string) error) Option { ... }
 Delete the function. Zero callers anywhere — neither production nor
 tests (verified with grep). The comment claims it's "primarily used in
 tests" but it isn't used at all.
+
+## Implementation notes
+
+- Deleted `WithOpenURL` (lines 61-65 in original) and its doc-comment from
+  `cmd/jamsesh/auth/auth.go`. No imports were affected — the function used no
+  packages not already needed by the remaining code.
+- `grep -rn 'WithOpenURL'` confirmed zero callers; only hits were the story
+  file and the parent epic doc.
+- `go build ./cmd/jamsesh/auth/...` and `go test ./cmd/jamsesh/auth/...` both
+  pass cleanly.
