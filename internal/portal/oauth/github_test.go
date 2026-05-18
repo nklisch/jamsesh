@@ -197,10 +197,16 @@ func TestGitHub_Exchange_FallsBackToLogin_WhenNameEmpty(t *testing.T) {
 	}
 }
 
-func TestGitHub_Exchange_PicksPrimaryVerifiedEmail(t *testing.T) {
+// TestGitHub_Exchange_PicksVerifiedPrimaryEmailFromList asserts the only path
+// that returns a non-error response: an email list that contains a
+// primary+verified entry among mixed entries. The fixture includes one
+// unverified primary and one non-primary-verified entry to actively guard
+// against re-introducing a fallback chain — if any fallback were added back,
+// the wrong email would be returned and this test would fail.
+func TestGitHub_Exchange_PicksVerifiedPrimaryEmailFromList(t *testing.T) {
 	fake := newFakeGitHub(t, fakeGitHubOpts{
 		emails: []map[string]interface{}{
-			{"email": "secondary@example.com", "primary": false, "verified": true},
+			{"email": "secondary-verified@example.com", "primary": false, "verified": true},
 			{"email": "primary-unverified@example.com", "primary": true, "verified": false},
 			{"email": "primary-verified@example.com", "primary": true, "verified": true},
 		},
@@ -209,8 +215,65 @@ func TestGitHub_Exchange_PicksPrimaryVerifiedEmail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Exchange() error: %v", err)
 	}
+	// Only the primary+verified entry is valid. Returning secondary-verified
+	// would indicate a fallback to non-primary rows; returning
+	// primary-unverified would indicate a fallback to unverified rows.
 	if id.Email != "primary-verified@example.com" {
-		t.Errorf("Email = %q, want primary-verified@example.com", id.Email)
+		t.Errorf("Email = %q, want primary-verified@example.com (not secondary-verified or primary-unverified)", id.Email)
+	}
+}
+
+// TestGitHub_Exchange_NoVerifiedEmail_RejectsWithUnverifiedEmail verifies that
+// when the email list has a primary entry that is NOT verified, Exchange rejects
+// the flow with ErrUnverifiedEmail. Accepting an unverified email would enable
+// account-confusion attacks; the provider must enforce verification.
+func TestGitHub_Exchange_NoVerifiedEmail_RejectsWithUnverifiedEmail(t *testing.T) {
+	fake := newFakeGitHub(t, fakeGitHubOpts{
+		emails: []map[string]interface{}{
+			{"email": "x@y.example.com", "primary": true, "verified": false},
+		},
+	})
+	_, err := fake.provider(t).Exchange(context.Background(), "code", "https://x.example.com/cb")
+	if err == nil {
+		t.Fatal("Exchange() returned nil error; want ErrUnverifiedEmail rejection for unverified primary email")
+	}
+	if !errors.Is(err, oauth.ErrUnverifiedEmail) {
+		t.Errorf("errors.Is(err, oauth.ErrUnverifiedEmail) = false, want true; err = %v", err)
+	}
+}
+
+// TestGitHub_Exchange_OnlyNonPrimaryVerified_AlsoRejects verifies that a
+// verified email that is NOT the primary is also rejected. There must be no
+// silent fallback to the first-row or any non-primary entry — such a fallback
+// would break the account model (primary is the canonical identity address).
+func TestGitHub_Exchange_OnlyNonPrimaryVerified_AlsoRejects(t *testing.T) {
+	fake := newFakeGitHub(t, fakeGitHubOpts{
+		emails: []map[string]interface{}{
+			{"email": "x@y.example.com", "primary": false, "verified": true},
+		},
+	})
+	_, err := fake.provider(t).Exchange(context.Background(), "code", "https://x.example.com/cb")
+	if err == nil {
+		t.Fatal("Exchange() returned nil error; want ErrUnverifiedEmail rejection for non-primary verified email")
+	}
+	if !errors.Is(err, oauth.ErrUnverifiedEmail) {
+		t.Errorf("errors.Is(err, oauth.ErrUnverifiedEmail) = false, want true; err = %v", err)
+	}
+}
+
+// TestGitHub_Exchange_EmptyEmailList_Rejects verifies that an empty email list
+// is rejected with ErrUnverifiedEmail. A GitHub account without any listed
+// email has no verified primary by definition.
+func TestGitHub_Exchange_EmptyEmailList_Rejects(t *testing.T) {
+	fake := newFakeGitHub(t, fakeGitHubOpts{
+		emails: []map[string]interface{}{}, // explicitly empty
+	})
+	_, err := fake.provider(t).Exchange(context.Background(), "code", "https://x.example.com/cb")
+	if err == nil {
+		t.Fatal("Exchange() returned nil error; want ErrUnverifiedEmail rejection for empty email list")
+	}
+	if !errors.Is(err, oauth.ErrUnverifiedEmail) {
+		t.Errorf("errors.Is(err, oauth.ErrUnverifiedEmail) = false, want true; err = %v", err)
 	}
 }
 

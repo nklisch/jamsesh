@@ -1,7 +1,7 @@
 ---
 id: gate-tests-github-oauth-unverified-email
 kind: story
-stage: implementing
+stage: review
 tags: [testing, security, portal, refactor]
 parent: null
 depends_on: [gate-security-github-oauth-reject-unverified-email]
@@ -44,3 +44,32 @@ should be rewritten to assert against the fixed contract or removed.
 
 ## Test location (suggested)
 `internal/portal/oauth/github_test.go`
+
+## Implementation notes
+
+### Three new negative-path tests (`internal/portal/oauth/github_test.go`)
+
+1. **`TestGitHub_Exchange_NoVerifiedEmail_RejectsWithUnverifiedEmail`** — fixture: `[{primary:true, verified:false, email:"x@y.example.com"}]`. Calls `Exchange` and asserts `errors.Is(err, oauth.ErrUnverifiedEmail)` is true. Verifies that a primary-but-unverified email is rejected.
+
+2. **`TestGitHub_Exchange_OnlyNonPrimaryVerified_AlsoRejects`** — fixture: `[{primary:false, verified:true, email:"x@y.example.com"}]`. Same assertion. Verifies there is no silent fallback to the first-row or any non-primary entry.
+
+3. **`TestGitHub_Exchange_EmptyEmailList_Rejects`** — fixture: `[]` (explicitly empty slice, not nil, so the `fakeGitHub` stub bypasses the nil-default and serves the empty list). Same assertion. Verifies an account with no listed emails is rejected.
+
+### Tautological-test rework
+
+`TestGitHub_Exchange_PicksPrimaryVerifiedEmail` was renamed to **`TestGitHub_Exchange_PicksVerifiedPrimaryEmailFromList`** and its fixture was extended to include:
+- `secondary-verified@example.com` (primary:false, verified:true) — would be selected if a non-primary fallback were introduced
+- `primary-unverified@example.com` (primary:true, verified:false) — would be selected if verification were dropped
+- `primary-verified@example.com` (primary:true, verified:true) — the only valid entry
+
+The doc comment was updated to state: "this is the only path that returns a non-error response — no fallback." Returning either of the other two emails would now fail the assertion, actively guarding against fallback re-introduction.
+
+### Handler-level integration test (`internal/portal/auth/oauth_test.go`)
+
+**`TestOauthCallback_UnverifiedEmail_Returns400WithOauthUnverifiedEmailCode`** — uses `stubProvider` returning `*portaloauth.ErrExchange{Cause: portaloauth.ErrUnverifiedEmail}` (matching the real GitHub provider's error wrapping). Drives the full HTTP pipeline via `newOAuthTestEnv`, obtains a valid nonce via `/start`, then calls `/callback`. Asserts:
+- Response is HTTP 400 (not 503 dep-class)
+- No `Retry-After` header (retry is futile — user must verify email with provider)
+- `body["error"] == "oauth.unverified_email"`
+- `body["message"]` is non-empty
+
+All new tests pass. Both packages build and run cleanly via `go test ./internal/portal/oauth/ ./internal/portal/auth/`. A pre-existing build failure in `rate_limit_integration_test.go` (untracked file, not introduced by this story) prevents `./...` from resolving the auth package when used with the recursive glob — the explicit package path resolves it without issue.

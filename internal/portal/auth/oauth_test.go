@@ -602,6 +602,62 @@ func TestOauthCallback_BadGrant_DoesNotWrapDepSentinel(t *testing.T) {
 	}
 }
 
+// TestOauthCallback_UnverifiedEmail_Returns400WithOauthUnverifiedEmailCode
+// verifies the full handler pipeline when Provider.Exchange returns an error
+// wrapping portaloauth.ErrUnverifiedEmail. The flow must surface as HTTP 400
+// with envelope `oauth.unverified_email` — NOT the dep-class 503, and NOT a
+// bare 500. This is the security boundary against account-confusion attacks
+// where an attacker attaches a victim's address as an unverified primary.
+func TestOauthCallback_UnverifiedEmail_Returns400WithOauthUnverifiedEmailCode(t *testing.T) {
+	// Wrap ErrUnverifiedEmail the same way the real GitHub provider does:
+	// inside *ErrExchange so the errors.Is chain resolves correctly.
+	unverifiedErr := &portaloauth.ErrExchange{
+		Provider: "github",
+		Cause:    portaloauth.ErrUnverifiedEmail,
+	}
+	provider := &stubProvider{
+		name: "github",
+		err:  unverifiedErr,
+	}
+	env := newOAuthTestEnv(t, "github", provider)
+
+	// Obtain a valid nonce via /start so the callback reaches the Exchange call.
+	startResp := postJSONBody(t, env.srv, "/api/auth/oauth/start", map[string]string{"provider": "github"})
+	defer startResp.Body.Close()
+	var startBody struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}
+	if err := json.NewDecoder(startResp.Body).Decode(&startBody); err != nil {
+		t.Fatalf("decode start: %v", err)
+	}
+	nonce := extractStateFromURL(t, startBody.AuthorizeURL)
+
+	resp := postJSONBody(t, env.srv, "/api/auth/oauth/callback", map[string]string{
+		"provider": "github",
+		"code":     "code-with-unverified-email",
+		"state":    nonce,
+	})
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (unverified email must be user-side 400, not dep-class 503)",
+			resp.StatusCode)
+	}
+	// 400 responses must NOT carry a Retry-After header — the user needs to
+	// verify their email with the provider, not retry the same request.
+	if ra := resp.Header.Get("Retry-After"); ra != "" {
+		t.Errorf("Retry-After = %q on 400 unverified-email response; want empty", ra)
+	}
+
+	body := decodeJSONResponse(t, resp)
+	if code, _ := body["error"].(string); code != "oauth.unverified_email" {
+		t.Errorf("error code: want %q, got %q", "oauth.unverified_email", code)
+	}
+	if msg, _ := body["message"].(string); msg == "" {
+		t.Error("response envelope must include a non-empty message")
+	}
+}
+
 // TestOAuthCallback_ExpiredState verifies that a manually-expired nonce
 // returns 400. We test this by checking the expiry guard path using the store
 // directly (injecting a past time is not practical via the HTTP surface
