@@ -417,13 +417,9 @@ routing.
    the router checks the pod is still in the ring before using the hint, to
    recover cleanly from pod replacement.
 
-Pod discovery is pluggable:
-- **Static mode** (`JAMSESH_ROUTER_DISCOVERY_MODE=static`) — a fixed list of
-  addresses, probed on a configurable interval.
-- **Kubernetes mode** (`JAMSESH_ROUTER_DISCOVERY_MODE=kubernetes`) — watches
-  the pod IPs backing a named Kubernetes Service via client-go informers, probes
-  each Running pod's `/readyz`, and publishes only the healthy subset to the
-  ring.
+Pod discovery uses a static configured list of backend pods (`JAMSESH_ROUTER_STATIC_PODS`),
+probed on a configurable interval. The discovery loop calls each pod's `/readyz`
+and publishes only the healthy subset to the ring.
 
 The router is intentionally decoupled from session semantics; it does not read
 the database and holds no durable state.
