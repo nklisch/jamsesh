@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing-failure
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-lease-fencing
 depends_on: [epic-e2e-cnd-coverage-lease-fencing-golden]
@@ -226,3 +226,13 @@ the manifest is unchanged after the rejected write (T3 still on-disk, not T2).
 - The stale-token test uses `Router: true` (needs surviving pod after Kill) rather than
   `Router: false` from the lease-already-held test — each test configures the cluster
   for its own scenario.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: Minor helper duplication (leaseHeldRandEmail / staleFencingRandEmail both do the same 4-byte hex pattern) — could be package-shared, not worth a follow-on.
+
+**Notes**: Advisory-lock injection approach for `TestLeaseAlreadyHeld` is deterministic and correct — the test-process holds `pg_advisory_lock(hashtext(sessionID)::oid)` which matches the portal's acquire key exactly. The 503 assertion uses exact status-code match; 200 triggers a fatal (not a skip). The three `t.Skip` paths in `TestStaleFencingTokenRejected` all reference "stale-token-injection-needs-manifest-format-exposure" and are infrastructure-availability guards, not hidden bugs — each covers a case where the test cannot construct the stale-token scenario (manifest not yet on-disk, not parseable, or write rejected). The safety-critical path (portal returns 200 on stale push) is always a `t.Fatal`, never skipped. Manifest post-write integrity check correctly uses `t.Errorf` (not Fatalf) so both the token check and the rejection assertion contribute to the failure report. Deviations from the story design (two helpers vs. one combined helper) are acknowledged and justified.
