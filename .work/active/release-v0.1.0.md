@@ -59,3 +59,23 @@ self-host docs).
   - 8 pattern files written to `.claude/skills/patterns/`
   - `.claude/rules/patterns.md` index created; `.claude/skills/patterns/SKILL.md` catalog created
   - Tracking item `gate-patterns-v0.1.0` at `stage: done`
+
+## Readiness halt (2026-05-18)
+
+All 5 gates ran. Release is at `stage: quality-gate` and cannot advance to
+`released` until every bound item reaches `stage: done`.
+
+- 272 items at `stage: done` (the foundation work)
+- 44 items at `stage: implementing` (Critical/High gate findings — must
+  fix before ship)
+- 19 items at `stage: drafting` (Medium gate findings — should fix
+  before ship, may be deferred with explicit acknowledgement)
+- 6 Low-severity gate findings unbound to `.work/backlog/` (deferred to
+  a later release; audit trail preserved via `gate_origin`)
+
+To resume: drive pending items to `done` via
+`/agile-workflow:implement-orchestrator` (recommended for the
+mechanical gate-cruft and gate-docs items, which can parallelize well)
+or `/agile-workflow:implement` per-item, then re-run
+`/agile-workflow:release-deploy v0.1.0`. The release file is the state;
+the resume picks up at Phase 5 readiness check.
