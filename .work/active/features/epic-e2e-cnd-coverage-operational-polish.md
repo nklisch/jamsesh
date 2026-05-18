@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish
 kind: feature
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage
 depends_on: []
@@ -823,3 +823,21 @@ coverage end-to-end. Ready for review.
 ## Next
 
 `/agile-workflow:e2e-test-design epic-e2e-cnd-coverage-operational-polish`
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All 5 child stories approved individually (readyz, metrics, file-secrets,
+migration-lock, shutdown-deadline) plus the bug fix story
+`review-file-secret-unreadable-subtest-bug`. Capability completeness confirmed: all
+five operational surfaces from the brief have e2e coverage at both golden and failure
+layers. Production code change (`slog.InfoContext` in `internal/db/migrate.go`) is
+minimal, correctly gated, and does not invalidate any foundation-doc assertion.
+Fixture extensions (`ContainerFiles`, `Logs()`, `SendSignal`) are backward-compatible
+and were anticipated in the design. No foundation-doc drift. Feature delivered as
+briefed.
