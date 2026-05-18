@@ -268,9 +268,12 @@ POST https://<your-portal-host>/api/auth/oauth/callback
 ### Registering the GitHub OAuth app
 
 1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App**.
-2. Set **Authorization callback URL** to the SPA origin your users visit
-   (the browser lands there after GitHub redirects; the SPA then POSTs the
-   authorization code to the portal's callback endpoint above).
+2. Set **Authorization callback URL** to:
+   ```
+   https://<your-portal-host>/api/auth/oauth/callback
+   ```
+   GitHub redirects the user's browser directly to this portal endpoint
+   (server-side exchange — there is no SPA-side redirect hop).
 3. Copy the **Client ID** and **Client Secret**, then set them in the portal
    config:
 

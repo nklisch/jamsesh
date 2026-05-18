@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-oauth-callback-url
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -40,3 +40,19 @@ Replace the example callback URL with the actual SPA redirect URL
 the SPA's redirect route is) and explain that the SPA forwards to
 `POST /api/auth/oauth/callback` to exchange the code. Confirm against
 the SPA before editing.
+
+## Implementation notes
+
+The prior rewrite (`gate-docs-selfhost-oauth-future-release`) updated §4 to
+reference `POST /api/auth/oauth/callback`, but step 2 of "Registering the
+GitHub OAuth app" still described a non-existent SPA-hop flow: it told
+operators to enter the SPA origin and implied the SPA would POST the code
+to the portal. Inspecting `frontend/src/lib/router.svelte.ts` confirmed
+there is no `/auth/callback` SPA route; `Login.svelte` comments confirm
+the OAuth exchange is a full-page server-side redirect chain — GitHub
+redirects the browser directly to `POST /api/auth/oauth/callback` with no
+SPA intermediary.
+
+Fix applied: step 2 now shows the exact URL to paste into GitHub
+(`https://<your-portal-host>/api/auth/oauth/callback`) and notes the
+server-side exchange explicitly.
