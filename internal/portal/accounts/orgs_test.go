@@ -108,6 +108,9 @@ func newOrgsMembersTestEnv(t *testing.T) *orgsMembersTestEnv {
 
 		// Accept invite: Bearer only.
 		r.Post("/api/orgs/{orgID}/invites/{inviteID}/accept", apiWrapper.AcceptOrgInvite)
+
+		// Patch org: auth + creator-role check is performed inside the handler.
+		r.Patch("/api/orgs/{orgID}", apiWrapper.PatchOrg)
 	})
 
 	srv := httptest.NewServer(r)
@@ -421,6 +424,190 @@ func TestAcceptOrgInvite_WrongRecipientEmail_Returns403(t *testing.T) {
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PATCH /api/orgs/{orgID}
+// ---------------------------------------------------------------------------
+
+func TestPatchOrg_NoBearer_Returns401(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	org := seedOrg(t, env.s, "PatchOrg401Org", "patchorg-401")
+	resp := patchJSON(t, env.srv, "/api/orgs/"+org.ID, "",
+		map[string]any{"session_invite_policy": "open"})
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestPatchOrg_NotOrgMember_Returns403(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	outsider := seedAccount(t, env.s, "outsider-patch@example.com")
+	org := seedOrg(t, env.s, "PatchOrg403Org", "patchorg-403")
+
+	tok := env.bearerToken(t, outsider.ID)
+	resp := patchJSON(t, env.srv, "/api/orgs/"+org.ID, tok,
+		map[string]any{"session_invite_policy": "open"})
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestPatchOrg_NonCreatorMember_Returns403(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	member := seedAccount(t, env.s, "regular-patch@example.com")
+	org := seedOrg(t, env.s, "PatchOrg403MemberOrg", "patchorg-403m")
+	seedMember(t, env.s, org.ID, member.ID, "member")
+
+	tok := env.bearerToken(t, member.ID)
+	resp := patchJSON(t, env.srv, "/api/orgs/"+org.ID, tok,
+		map[string]any{"session_invite_policy": "open"})
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+	if code, _ := body["error"].(string); code != "auth.insufficient_permission" {
+		t.Errorf("error code: want auth.insufficient_permission, got %q", code)
+	}
+}
+
+func TestPatchOrg_CreatorSuccess_PolicePersists(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	creator := seedAccount(t, env.s, "creator-patch@example.com")
+	org := seedOrg(t, env.s, "PatchOrg200Org", "patchorg-200")
+	seedMember(t, env.s, org.ID, creator.ID, "creator")
+
+	// Default policy is members_only; flip to open.
+	tok := env.bearerToken(t, creator.ID)
+	resp := patchJSON(t, env.srv, "/api/orgs/"+org.ID, tok,
+		map[string]any{"session_invite_policy": "open"})
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+
+	if body["id"] != org.ID {
+		t.Errorf("id: got %v, want %s", body["id"], org.ID)
+	}
+	if body["session_invite_policy"] != "open" {
+		t.Errorf("session_invite_policy: got %v, want open", body["session_invite_policy"])
+	}
+
+	// Verify persistence via the store.
+	updated, err := env.s.GetOrgByID(context.Background(), org.ID)
+	if err != nil {
+		t.Fatalf("get org: %v", err)
+	}
+	if updated.SessionInvitePolicy != "open" {
+		t.Errorf("store: session_invite_policy: got %q, want open", updated.SessionInvitePolicy)
+	}
+}
+
+func TestPatchOrg_InvalidPolicyValue_Returns400(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	creator := seedAccount(t, env.s, "creator-bad@example.com")
+	org := seedOrg(t, env.s, "PatchOrg400Org", "patchorg-400")
+	seedMember(t, env.s, org.ID, creator.ID, "creator")
+
+	tok := env.bearerToken(t, creator.ID)
+	// Use a raw JSON body with an invalid enum value; oapi-codegen rejects it
+	// at the request-parsing layer via RequestErrorHandlerFunc → 400.
+	resp := patchJSON(t, env.srv, "/api/orgs/"+org.ID, tok,
+		map[string]any{"session_invite_policy": "garbage"})
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+// TestPatchOrg_Grandfather verifies the grandfather invariant: flipping
+// session_invite_policy from "open" to "members_only" does NOT remove
+// session_members rows for accounts that already joined as guests. Their
+// membership is preserved by design.
+func TestPatchOrg_Grandfather(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	creator := seedAccount(t, env.s, "creator-gf@example.com")
+	guest := seedAccount(t, env.s, "guest-gf@example.com")
+	org := seedOrg(t, env.s, "GrandfatherOrg", "grandfather-org")
+	seedMember(t, env.s, org.ID, creator.ID, "creator")
+
+	// Set policy to open.
+	if err := env.s.UpdateOrgSessionInvitePolicy(context.Background(), store.UpdateOrgSessionInvitePolicyParams{
+		ID:                  org.ID,
+		SessionInvitePolicy: "open",
+	}); err != nil {
+		t.Fatalf("set policy open: %v", err)
+	}
+
+	// Seed a session and add the guest as a session member (simulating an
+	// open-policy join that already happened).
+	sess, err := env.s.CreateSession(context.Background(), store.CreateSessionParams{
+		ID:            uuid.New().String(),
+		OrgID:         org.ID,
+		Name:          "grandfather-session",
+		Goal:          "test",
+		WritableScope: "[]",
+		DefaultMode:   "sync",
+		Status:        "active",
+		CreatedAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := env.s.AddSessionMember(context.Background(), store.AddSessionMemberParams{
+		OrgID:     org.ID,
+		SessionID: sess.ID,
+		AccountID: guest.ID,
+		Role:      "member",
+		JoinedAt:  time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("add session member: %v", err)
+	}
+
+	// Now creator flips policy back to members_only.
+	tok := env.bearerToken(t, creator.ID)
+	resp := patchJSON(t, env.srv, "/api/orgs/"+org.ID, tok,
+		map[string]any{"session_invite_policy": "members_only"})
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Verify policy was updated.
+	updated, err := env.s.GetOrgByID(context.Background(), org.ID)
+	if err != nil {
+		t.Fatalf("get org: %v", err)
+	}
+	if updated.SessionInvitePolicy != "members_only" {
+		t.Errorf("policy: got %q, want members_only", updated.SessionInvitePolicy)
+	}
+
+	// Verify the guest's session_members row was NOT removed (grandfather).
+	sm, err := env.s.GetSessionMember(context.Background(), store.GetSessionMemberParams{
+		OrgID:     org.ID,
+		SessionID: sess.ID,
+		AccountID: guest.ID,
+	})
+	if err != nil {
+		t.Fatalf("get session member (grandfather check): %v", err)
+	}
+	if sm.AccountID != guest.ID {
+		t.Errorf("grandfather: expected session member to persist, got account %s", sm.AccountID)
 	}
 }
 

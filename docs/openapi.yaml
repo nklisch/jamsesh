@@ -595,6 +595,35 @@ components:
           description: URL-safe org slug
           example: "acme"
 
+    OrgSessionInvitePolicy:
+      type: string
+      enum: [members_only, open]
+      description: |
+        Controls who may accept session invites in this org.
+        `members_only` (default) requires the invitee to already be an
+        `org_member`. `open` allows email-invitees to join as
+        session-scoped guests without org membership.
+      example: members_only
+
+    Org:
+      type: object
+      required: [id, name, slug, session_invite_policy]
+      properties:
+        id:
+          type: string
+          description: Org UUID
+          example: "01926e42-0000-7000-a000-000000000001"
+        name:
+          type: string
+          description: Org display name
+          example: "acme"
+        slug:
+          type: string
+          description: URL-safe org slug
+          example: "acme"
+        session_invite_policy:
+          $ref: '#/components/schemas/OrgSessionInvitePolicy'
+
     CreateOrgBody:
       type: object
       required: [name]
@@ -1595,6 +1624,49 @@ paths:
                 $ref: '#/components/schemas/OrgRef'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /api/orgs/{orgID}:
+    patch:
+      operationId: PatchOrg
+      summary: Update org-level settings. Admin role (creator) required.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                session_invite_policy:
+                  $ref: '#/components/schemas/OrgSessionInvitePolicy'
+      responses:
+        '200':
+          description: Org updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Org'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/orgs/{orgID}/members:
     get:

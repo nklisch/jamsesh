@@ -136,6 +136,9 @@ func (c *commentsOnlyStrict) MarkSessionShipped(_ context.Context, _ openapi.Mar
 func (c *commentsOnlyStrict) GetSessionInvite(_ context.Context, _ openapi.GetSessionInviteRequestObject) (openapi.GetSessionInviteResponseObject, error) {
 	panic("not wired")
 }
+func (c *commentsOnlyStrict) PatchOrg(_ context.Context, _ openapi.PatchOrgRequestObject) (openapi.PatchOrgResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*commentsOnlyStrict)(nil)
 

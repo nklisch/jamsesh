@@ -134,6 +134,9 @@ func (t *tokensOnlyHandler) MarkSessionShipped(_ context.Context, _ openapi.Mark
 func (t *tokensOnlyHandler) GetSessionInvite(_ context.Context, _ openapi.GetSessionInviteRequestObject) (openapi.GetSessionInviteResponseObject, error) {
 	panic("GetSessionInvite: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) PatchOrg(_ context.Context, _ openapi.PatchOrgRequestObject) (openapi.PatchOrgResponseObject, error) {
+	panic("PatchOrg: not implemented in token handler tests")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

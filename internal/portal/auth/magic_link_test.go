@@ -216,6 +216,9 @@ func (m *magicLinkOnlyStrict) MarkSessionShipped(_ context.Context, _ openapi.Ma
 func (m *magicLinkOnlyStrict) GetSessionInvite(_ context.Context, _ openapi.GetSessionInviteRequestObject) (openapi.GetSessionInviteResponseObject, error) {
 	panic("GetSessionInvite: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) PatchOrg(_ context.Context, _ openapi.PatchOrgRequestObject) (openapi.PatchOrgResponseObject, error) {
+	panic("PatchOrg: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

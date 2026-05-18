@@ -140,6 +140,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orgs/{orgID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update org-level settings. Admin role (creator) required. */
+        patch: operations["PatchOrg"];
+        trace?: never;
+    };
     "/api/orgs/{orgID}/members": {
         parameters: {
             query?: never;
@@ -917,6 +934,33 @@ export interface components {
              * @example acme
              */
             slug: string;
+        };
+        /**
+         * @description Controls who may accept session invites in this org.
+         *     `members_only` (default) requires the invitee to already be an
+         *     `org_member`. `open` allows email-invitees to join as
+         *     session-scoped guests without org membership.
+         * @example members_only
+         * @enum {string}
+         */
+        OrgSessionInvitePolicy: "members_only" | "open";
+        Org: {
+            /**
+             * @description Org UUID
+             * @example 01926e42-0000-7000-a000-000000000001
+             */
+            id: string;
+            /**
+             * @description Org display name
+             * @example acme
+             */
+            name: string;
+            /**
+             * @description URL-safe org slug
+             * @example acme
+             */
+            slug: string;
+            session_invite_policy: components["schemas"]["OrgSessionInvitePolicy"];
         };
         CreateOrgBody: {
             /**
@@ -1777,6 +1821,47 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    PatchOrg: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    session_invite_policy?: components["schemas"]["OrgSessionInvitePolicy"];
+                };
+            };
+        };
+        responses: {
+            /** @description Org updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Org"];
+                };
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listOrgMembers: {

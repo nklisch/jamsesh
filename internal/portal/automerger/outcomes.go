@@ -340,7 +340,7 @@ func (a *Applier) applyConflict(ctx context.Context, in ApplyInput) (ApplyOutput
 		Conflicts:   openapiConflicts,
 		CreatedAt:   now,
 		DraftTipSha: in.DraftTip.String(),
-		Status:      openapi.Open,
+		Status:      openapi.ConflictDetectedPayloadStatusOpen,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

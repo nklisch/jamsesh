@@ -254,6 +254,22 @@ func postJSON(t *testing.T, srv *httptest.Server, path, bearer string, body any)
 	return resp
 }
 
+func patchJSON(t *testing.T, srv *httptest.Server, path, bearer string, body any) *http.Response {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest(http.MethodPatch, srv.URL+path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH %s: %v", path, err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/me tests
 // ---------------------------------------------------------------------------

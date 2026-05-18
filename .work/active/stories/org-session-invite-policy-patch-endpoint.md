@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-patch-endpoint
 kind: story
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: org-session-invite-policy
 depends_on: [org-session-invite-policy-schema]
@@ -134,6 +134,41 @@ oversight — capture in the handler-doc comment.
       after a policy flip
 - [ ] `go build ./...` clean
 - [ ] `go test ./internal/portal/accounts/...` passes
+
+## Implementation notes
+
+**Schema discovery:** `OrgSessionInvitePolicy` was added as a new named enum
+schema in `components/schemas`. Adding it caused oapi-codegen to scope the
+previously unscoped `ConflictDetectedPayloadStatus` constants (e.g. `Open`
+became `ConflictDetectedPayloadStatusOpen`). Updated `automerger/outcomes.go`
+to use the new constant name.
+
+**Handler placement:** `PatchOrg` and `orgToOpenAPI` added to
+`internal/portal/accounts/orgs.go`. The `PatchOrgJSONBody.SessionInvitePolicy`
+field is a non-pointer enum (zero value = empty string); presence is detected
+by checking `!= ""` rather than `!= nil`.
+
+**Router wiring:** added `r.Patch("/orgs/{orgID}", apiWrapper.PatchOrg)` in the
+bearer-authenticated group in `cmd/portal/main.go` (no extra middleware group
+needed — auth is handled inside the handler). `combinedHandler.PatchOrg` added
+to delegate to `AccountsHandler`.
+
+**Test stubs:** Adding `PatchOrg` to `StrictServerInterface` required adding a
+stub to every `*OnlyStrict` test double in the codebase:
+`sessions/handler_test.go`, `auth/magic_link_test.go`, `auth/oauth_test.go`,
+`comments/service_test.go`, `tokens/handlers_test.go`, and
+`accounts/handlers_test.go` (this last one gets it for free via the embedded
+`*accounts.Handler`).
+
+**Tests written:**
+- `TestPatchOrg_NoBearer_Returns401`
+- `TestPatchOrg_NotOrgMember_Returns403`
+- `TestPatchOrg_NonCreatorMember_Returns403`
+- `TestPatchOrg_CreatorSuccess_PolicePersists`
+- `TestPatchOrg_InvalidPolicyValue_Returns400`
+- `TestPatchOrg_Grandfather`
+
+All pass. `go build ./...` clean. `go test ./...` all green.
 
 ## Risk
 

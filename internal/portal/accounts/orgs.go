@@ -24,6 +24,75 @@ const (
 	orgInviteTokenBytes = 32
 )
 
+// PatchOrg implements PATCH /api/orgs/{orgID}.
+//
+// Only the org creator may call this endpoint. Flipping session_invite_policy
+// from "open" to "members_only" does NOT retroactively eject accounts that
+// already joined as session-scoped guests (session_members rows). Those rows
+// are untouched — grandfather behavior by design.
+func (h *Handler) PatchOrg(ctx context.Context, req openapi.PatchOrgRequestObject) (openapi.PatchOrgResponseObject, error) {
+	_, member, fail, ok := handlerauth.RequireOrgMember(ctx, h.store, req.OrgID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, fmt.Errorf("accounts: patch org: %w", fail.Err)
+		}
+		return patchOrgFail(fail), nil
+	}
+
+	if member.Role != "creator" {
+		return openapi.PatchOrg403JSONResponse{
+			ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
+				Error:   "auth.insufficient_permission",
+				Message: "only the org creator can modify org settings",
+			},
+		}, nil
+	}
+
+	if req.Body.SessionInvitePolicy != "" {
+		val := string(req.Body.SessionInvitePolicy)
+		// Belt-and-suspenders: the OpenAPI enum should have already rejected
+		// invalid values via RequestErrorHandlerFunc, but we validate again
+		// defensively so the handler is correct even if called directly.
+		if val != "members_only" && val != "open" {
+			return openapi.PatchOrg400JSONResponse{
+				Error:   "org.invalid_policy",
+				Message: "session_invite_policy must be members_only or open",
+			}, nil
+		}
+		if err := h.store.UpdateOrgSessionInvitePolicy(ctx, store.UpdateOrgSessionInvitePolicyParams{
+			ID:                  req.OrgID,
+			SessionInvitePolicy: val,
+		}); err != nil {
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: update org session invite policy: %w", err))
+		}
+	}
+
+	org, err := h.store.GetOrgByID(ctx, req.OrgID)
+	if err != nil {
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: get org (org=%s): %w", req.OrgID, err))
+	}
+
+	return openapi.PatchOrg200JSONResponse(orgToOpenAPI(org)), nil
+}
+
+// orgToOpenAPI converts a store.Org to the openapi.Org wire type.
+func orgToOpenAPI(o store.Org) openapi.Org {
+	return openapi.Org{
+		Id:                  o.ID,
+		Name:                o.Name,
+		Slug:                o.Slug,
+		SessionInvitePolicy: openapi.OrgSessionInvitePolicy(o.SessionInvitePolicy),
+	}
+}
+
+// patchOrgFail converts an AuthFail into the appropriate PatchOrg error response.
+func patchOrgFail(f handlerauth.AuthFail) openapi.PatchOrgResponseObject {
+	if f.Status == 401 {
+		return openapi.PatchOrg401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.PatchOrg403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
 // ListOrgMembers implements GET /api/orgs/{orgID}/members.
 // RequireOrgRole(creator, member) middleware must be upstream.
 func (h *Handler) ListOrgMembers(ctx context.Context, req openapi.ListOrgMembersRequestObject) (openapi.ListOrgMembersResponseObject, error) {
