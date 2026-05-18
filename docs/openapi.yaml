@@ -81,6 +81,7 @@ components:
         email:
           type: string
           format: email
+          maxLength: 254
           example: user@example.com
 
     OAuthStartBody:
@@ -630,6 +631,7 @@ components:
       properties:
         name:
           type: string
+          maxLength: 200
           description: Desired org name; used to derive the slug
           example: "acme"
 
@@ -666,6 +668,7 @@ components:
         email:
           type: string
           format: email
+          maxLength: 254
           description: Email address to invite
           example: invitee@example.com
 
@@ -784,10 +787,12 @@ components:
       properties:
         name:
           type: string
+          maxLength: 200
           description: Short display name for the session
           example: "Fix auth bug"
         goal:
           type: string
+          maxLength: 4096
           description: Free-text description of the session's objective
           example: "Resolve the token refresh race condition in auth middleware"
         scope:
@@ -808,6 +813,7 @@ components:
       properties:
         goal:
           type: string
+          maxLength: 4096
           description: Updated session goal
           example: "Also fix the logout path"
         scope:
@@ -903,6 +909,7 @@ components:
         email:
           type: string
           format: email
+          maxLength: 254
           description: Email address of the invitee
           example: peer@example.com
 
@@ -1053,6 +1060,7 @@ components:
       properties:
         resolution_note:
           type: string
+          maxLength: 4096
           nullable: true
           description: Optional resolution note
 
@@ -1078,6 +1086,7 @@ components:
           description: 1-indexed end line; null for file-level or commit-level comments
         body:
           type: string
+          maxLength: 4096
           description: Comment body in markdown
         addressed_to:
           type: string
@@ -1234,12 +1243,14 @@ components:
             type: string
         target_branch:
           type: string
+          maxLength: 200
         base_sha:
           type: string
         mode:
           $ref: '#/components/schemas/PlanMode'
         commit_message:
           type: string
+          maxLength: 4096
           nullable: true
           description: Required when mode=squash; ignored when mode=preserve.
 

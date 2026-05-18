@@ -162,9 +162,26 @@ func ErrBadRequest(cause error) *Error {
 	}
 }
 
+// ErrBodyTooLarge is emitted when the request body exceeds the configured
+// limit (set by the BodyLimit middleware via http.MaxBytesReader).
+// Returns 413 Request Entity Too Large with a stable error code.
+func ErrBodyTooLarge() *Error {
+	return &Error{
+		Code:       "request.body_too_large",
+		Message:    "request body exceeds the maximum allowed size",
+		HTTPStatus: http.StatusRequestEntityTooLarge,
+	}
+}
+
 // WriteBadRequest is a convenience wrapper around Write that constructs
 // an ErrBadRequest envelope. Intended as a RequestErrorHandlerFunc on
-// the oapi-codegen strict handler.
+// the oapi-codegen strict handler. If err wraps *http.MaxBytesError (set by
+// the BodyLimit middleware), it replies 413 instead of 400.
 func WriteBadRequest(w http.ResponseWriter, r *http.Request, err error) {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		Write(w, r, ErrBodyTooLarge())
+		return
+	}
 	Write(w, r, ErrBadRequest(err))
 }

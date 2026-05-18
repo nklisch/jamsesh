@@ -47,6 +47,16 @@ type Deps struct {
 	// Must be registered last so API/git/mcp/ws routes take precedence.
 	MountUI http.Handler // owned by epic-portal-ui-foundation
 
+	// APIBodyLimitBytes is the maximum number of bytes the server will read
+	// from any request body on /api/* routes. Requests whose bodies exceed
+	// this limit are rejected with 413 Request Entity Too Large before the
+	// handler can decode them.
+	// Default (when zero): 1 MiB (1 << 20).
+	// Set via JAMSESH_API_BODY_LIMIT_BYTES or config.APIBodyLimitBytes.
+	// Git smart-HTTP routes (/git/*) are NOT affected — they manage their
+	// own per-route limits.
+	APIBodyLimitBytes int64
+
 	// MountTest is a nilable hook for test-only routes under /test/*.
 	// Populated only by the e2etest-tagged binary (see
 	// cmd/portal/test_clock_advance.go); production builds leave it nil
@@ -88,7 +98,9 @@ type Deps struct {
 //  5. Recoverer       — converts panics to the JSON envelope
 //
 // Route groups mount after the global middleware and may declare their own
-// per-group middleware (auth, etc.) inside their mount hooks.
+// per-group middleware (auth, etc.) inside their mount hooks. The /api group
+// additionally applies BodyLimit (default 1 MiB) as its first middleware so
+// oversized bodies are rejected before any handler decoding occurs.
 func New(d Deps) http.Handler {
 	r := chi.NewRouter()
 
@@ -133,7 +145,15 @@ func New(d Deps) http.Handler {
 
 	// /api — REST API, Bearer auth. Hook is responsible for attaching
 	// auth middleware and mounting oapi-codegen handlers.
+	// BodyLimit is applied here so every /api/* handler is capped at
+	// APIBodyLimitBytes (default 1 MiB). Git smart-HTTP (/git/*) has its own
+	// per-route limits and is NOT affected.
+	apiBodyLimit := d.APIBodyLimitBytes
+	if apiBodyLimit <= 0 {
+		apiBodyLimit = 1 << 20 // 1 MiB default
+	}
 	r.Route("/api", func(r chi.Router) {
+		r.Use(BodyLimit(apiBodyLimit))
 		if d.MountAPI != nil {
 			d.MountAPI(r)
 		}

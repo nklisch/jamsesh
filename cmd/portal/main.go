@@ -684,6 +684,7 @@ func main() {
 		MetricsHandler:    metricsReg.Handler(),
 		MetricsToken:      cfg.MetricsToken,
 		MetricsRegistry:   metricsReg,
+		APIBodyLimitBytes: cfg.APIBodyLimitBytes,
 		ReadyzChecks: []probes.Check{
 			{
 				Name: "db",

@@ -19,12 +19,14 @@
 //	object_storage_sync_queue_size,
 //	hydration_idle_timeout_s, hydration_cache_max_bytes,
 //	hydration_idle_check_period_s, hydration_workers,
-//	metrics_token
+//	metrics_token,
+//	api_body_limit_bytes
 //
 // Env vars:   JAMSESH_AUTH_RATE_LIMIT_ENABLED,
 //
 //	JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
+//	JAMSESH_API_BODY_LIMIT_BYTES,
 //	JAMSESH_METRICS_TOKEN,
 //	JAMSESH_PORTAL_URL,
 //	JAMSESH_TLS_MODE, JAMSESH_TLS_CERT, JAMSESH_TLS_KEY,
@@ -208,6 +210,12 @@ type Config struct {
 	// tokens receive 401.
 	// Env: JAMSESH_METRICS_TOKEN
 	MetricsToken string `yaml:"metrics_token"`
+
+	// APIBodyLimitBytes is the maximum number of bytes the server will read
+	// from any request body on /api/* routes before returning 413. Zero means
+	// use the built-in default of 1 MiB (1 << 20 = 1048576).
+	// Env: JAMSESH_API_BODY_LIMIT_BYTES
+	APIBodyLimitBytes int64 `yaml:"api_body_limit_bytes"`
 }
 
 // DBConfig holds database connection pool settings.
@@ -534,6 +542,7 @@ func applyEnv(c *Config) error {
 	applyHydrationEnv(c)
 	applyAuthRateLimitEnv(c)
 	applyMetricsEnv(c)
+	applyAPIBodyLimitEnv(c)
 	return nil
 }
 
@@ -671,6 +680,17 @@ func applyAuthRateLimitEnv(c *Config) {
 func applyMetricsEnv(c *Config) {
 	if v := os.Getenv("JAMSESH_METRICS_TOKEN"); v != "" {
 		c.MetricsToken = v
+	}
+}
+
+// applyAPIBodyLimitEnv overlays the REST body-cap environment variable.
+// JAMSESH_API_BODY_LIMIT_BYTES, when set to a positive integer, overrides the
+// default 1 MiB cap applied to all /api/* routes.
+func applyAPIBodyLimitEnv(c *Config) {
+	if v := os.Getenv("JAMSESH_API_BODY_LIMIT_BYTES"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			c.APIBodyLimitBytes = n
+		}
 	}
 }
 
