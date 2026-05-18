@@ -1,9 +1,10 @@
 // Package wsgateway implements the WebSocket gateway for the jamsesh portal.
 // It serves GET /ws/sessions/{sessionID} — one connection per session
 // subscription. Authentication happens at upgrade time via the
-// Sec-WebSocket-Protocol header carrying the bearer token
-// ("jamsesh.bearer.<token>"), which is the only reliable mechanism available
-// to browser WebSocket clients.
+// Sec-WebSocket-Protocol header carrying a short-lived single-use ticket
+// ("jamsesh-ticket.<ticket>"). The SPA obtains the ticket via
+// POST /api/auth/ws-ticket immediately before opening the socket, so the
+// long-lived bearer token is never placed in the Sec-WebSocket-Protocol header.
 //
 // After a successful upgrade the handler:
 //  1. Registers the connection in the per-session subscription set.
@@ -28,7 +29,6 @@ import (
 
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/events"
-	"jamsesh/internal/portal/tokens"
 )
 
 // Gateway is the WebSocket fan-out hub. Construct it with all exported fields
@@ -37,8 +37,9 @@ import (
 type Gateway struct {
 	// Store is used for membership checks at upgrade time.
 	Store store.Store
-	// Tokens validates the bearer token extracted from the subprotocol header.
-	Tokens tokens.Service
+	// Tickets is the short-lived ticket store. The handler consumes a ticket
+	// from the Sec-WebSocket-Protocol header to authenticate the upgrade.
+	Tickets *TicketStore
 	// Log is the event log; the Gateway subscribes to all events on Start.
 	Log *events.Log
 	// AllowOrigins is passed to websocket.AcceptOptions.OriginPatterns for
@@ -138,17 +139,21 @@ func (g *Gateway) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionID")
 
-		// --- Auth: extract bearer token from subprotocol header ---
+		// --- Auth: consume single-use ticket from subprotocol header ---
+		// The client presents "jamsesh-ticket.<ticket>" in Sec-WebSocket-Protocol.
+		// The ticket was issued by POST /api/auth/ws-ticket moments before the
+		// upgrade and is valid for 60 seconds, single-use. Using a ticket here
+		// means the long-lived bearer token is never placed in this header.
 		proto := r.Header.Get("Sec-WebSocket-Protocol")
-		token, ok := strings.CutPrefix(proto, "jamsesh.bearer.")
+		ticketVal, ok := strings.CutPrefix(proto, "jamsesh-ticket.")
 		if !ok {
-			http.Error(w, "missing subprotocol token", http.StatusUnauthorized)
+			http.Error(w, "missing subprotocol ticket", http.StatusUnauthorized)
 			return
 		}
 
-		account, err := g.Tokens.Validate(r.Context(), token)
-		if err != nil {
-			http.Error(w, "invalid token", http.StatusUnauthorized)
+		account := g.Tickets.Consume(ticketVal)
+		if account == nil {
+			http.Error(w, "invalid or expired ticket", http.StatusUnauthorized)
 			return
 		}
 

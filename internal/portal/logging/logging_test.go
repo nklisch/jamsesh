@@ -113,9 +113,11 @@ func TestAccessMiddlewareDefaultStatus(t *testing.T) {
 	}
 }
 
-// TestAccessLogNoWSBearerLeak verifies that the access-log middleware does NOT
-// include the Sec-WebSocket-Protocol header (which carries bearer tokens in the
-// jamsesh.bearer.<token> subprotocol scheme) in any logged field. This pins the
+// TestAccessLogNoWSSubprotocolLeak verifies that the access-log middleware does
+// NOT include the Sec-WebSocket-Protocol header in any logged field. The
+// subprotocol header carries the short-lived upgrade ticket
+// ("jamsesh-ticket.<ticket>"); while tickets are single-use and short-lived,
+// the middleware should never log request headers at all. This pins the
 // invariant that the middleware only logs path/method/status/duration/bytes/route
 // so a future regression that adds header logging is caught immediately.
 func TestAccessLogNoWSBearerLeak(t *testing.T) {

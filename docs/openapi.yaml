@@ -1385,6 +1385,21 @@ components:
         base_sha:
           type: string
 
+    WsTicketResponse:
+      type: object
+      required: [ticket, expires_in_seconds]
+      description: |
+        Short-lived single-use ticket for WebSocket upgrade authentication.
+        The ticket is valid for 60 seconds and can be consumed exactly once.
+        Pass it in `Sec-WebSocket-Protocol` as `jamsesh-ticket.<ticket>`.
+      properties:
+        ticket:
+          type: string
+          description: Opaque base64url-encoded ticket value.
+        expires_in_seconds:
+          type: integer
+          description: Number of seconds until the ticket expires (always 60).
+
     FetchTokenResponse:
       type: object
       required: [token, remote_url, expires_at]
@@ -1470,6 +1485,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/ws-ticket:
+    post:
+      summary: Issue a short-lived single-use WebSocket upgrade ticket
+      operationId: issueWsTicket
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Ticket issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WsTicketResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
 

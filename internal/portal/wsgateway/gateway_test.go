@@ -47,13 +47,14 @@ func openStore(t *testing.T) store.Store {
 }
 
 type testEnv struct {
-	store  store.Store
-	log    *events.Log
-	tokens tokens.Service
-	gw     *wsgateway.Gateway
-	srv    *httptest.Server
-	ctx    context.Context
-	cancel context.CancelFunc
+	store   store.Store
+	log     *events.Log
+	tokens  tokens.Service
+	tickets *wsgateway.TicketStore
+	gw      *wsgateway.Gateway
+	srv     *httptest.Server
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 // newTestEnv wires up an httptest server with the WS gateway mounted at
@@ -63,10 +64,12 @@ func newTestEnv(t *testing.T) *testEnv {
 	s := openStore(t)
 	log := events.New(s)
 	tokenSvc := tokens.New(s)
+	ticketStore := wsgateway.NewTicketStore()
+	ticketStore.Start()
 
 	gw := &wsgateway.Gateway{
 		Store:        s,
-		Tokens:       tokenSvc,
+		Tickets:      ticketStore,
 		Log:          log,
 		AllowOrigins: []string{"*"}, // permissive for tests
 	}
@@ -83,18 +86,20 @@ func newTestEnv(t *testing.T) *testEnv {
 	srv := httptest.NewServer(r)
 	t.Cleanup(func() {
 		gw.Stop()
+		ticketStore.Stop()
 		cancel()
 		srv.Close()
 	})
 
 	return &testEnv{
-		store:  s,
-		log:    log,
-		tokens: tokenSvc,
-		gw:     gw,
-		srv:    srv,
-		ctx:    ctx,
-		cancel: cancel,
+		store:   s,
+		log:     log,
+		tokens:  tokenSvc,
+		tickets: ticketStore,
+		gw:      gw,
+		srv:     srv,
+		ctx:     ctx,
+		cancel:  cancel,
 	}
 }
 
@@ -166,20 +171,20 @@ func wsURL(srv *httptest.Server, sessionID string) string {
 	return u
 }
 
-// issueToken issues a bearer token for the given account.
-func issueToken(t *testing.T, svc tokens.Service, accountID string) string {
+// issueTicket issues a ticket for the given account in the ticket store.
+func issueTicket(t *testing.T, ts *wsgateway.TicketStore, acc *store.Account) string {
 	t.Helper()
-	pair, err := svc.Issue(context.Background(), accountID)
+	tok, _, err := ts.Issue(acc)
 	if err != nil {
-		t.Fatalf("Issue token: %v", err)
+		t.Fatalf("Issue ticket: %v", err)
 	}
-	return pair.AccessToken
+	return tok
 }
 
-// dialWS dials the WS endpoint with the bearer token in Sec-WebSocket-Protocol.
-func dialWS(t *testing.T, url, token string) (*websocket.Conn, *http.Response) {
+// dialWSWithTicket dials the WS endpoint with a ticket in Sec-WebSocket-Protocol.
+func dialWSWithTicket(t *testing.T, url, ticket string) (*websocket.Conn, *http.Response) {
 	t.Helper()
-	proto := "jamsesh.bearer." + token
+	proto := "jamsesh-ticket." + ticket
 	c, resp, err := websocket.Dial(context.Background(), url, &websocket.DialOptions{
 		Subprotocols: []string{proto},
 	})
@@ -205,14 +210,14 @@ func readEnvelope(t *testing.T, ctx context.Context, c *websocket.Conn) map[stri
 // ---------------------------------------------------------------------------
 
 // TestHandler_SuccessfulUpgrade_LiveEvent verifies the happy-path: a valid
-// token + membership allows upgrade; emitting an event on the session delivers
+// ticket + membership allows upgrade; emitting an event on the session delivers
 // it to the connected client.
 func TestHandler_SuccessfulUpgrade_LiveEvent(t *testing.T) {
 	tenv := newTestEnv(t)
 	acc, sess := seed(t, tenv.store)
-	token := issueToken(t, tenv.tokens, acc.ID)
+	ticket := issueTicket(t, tenv.tickets, &acc)
 
-	c, _ := dialWS(t, wsURL(tenv.srv, sess.ID), token)
+	c, _ := dialWSWithTicket(t, wsURL(tenv.srv, sess.ID), ticket)
 	defer c.CloseNow()
 
 	// Emit an event on the session.
@@ -237,19 +242,19 @@ func TestHandler_SuccessfulUpgrade_LiveEvent(t *testing.T) {
 	}
 }
 
-// TestHandler_BadToken_Returns401 verifies that an invalid bearer token causes
+// TestHandler_InvalidTicket_Returns401 verifies that an unknown ticket causes
 // the upgrade to be rejected with HTTP 401.
-func TestHandler_BadToken_Returns401(t *testing.T) {
+func TestHandler_InvalidTicket_Returns401(t *testing.T) {
 	tenv := newTestEnv(t)
 	_, sess := seed(t, tenv.store)
 
 	url := wsURL(tenv.srv, sess.ID)
-	proto := "jamsesh.bearer.not-a-real-token"
+	proto := "jamsesh-ticket.not-a-real-ticket"
 	_, resp, err := websocket.Dial(context.Background(), url, &websocket.DialOptions{
 		Subprotocols: []string{proto},
 	})
 	if err == nil {
-		t.Fatal("expected dial to fail for bad token, but it succeeded")
+		t.Fatal("expected dial to fail for invalid ticket, but it succeeded")
 	}
 	if resp == nil {
 		t.Fatal("expected an HTTP response, got nil")
@@ -259,7 +264,84 @@ func TestHandler_BadToken_Returns401(t *testing.T) {
 	}
 }
 
-// TestHandler_NonMember_Returns403 verifies that a valid token for an account
+// TestHandler_MissingSubprotocol_Returns401 verifies that a request with no
+// jamsesh-ticket. prefix in the subprotocol is rejected with HTTP 401.
+func TestHandler_MissingSubprotocol_Returns401(t *testing.T) {
+	tenv := newTestEnv(t)
+	_, sess := seed(t, tenv.store)
+
+	url := wsURL(tenv.srv, sess.ID)
+	_, resp, err := websocket.Dial(context.Background(), url, &websocket.DialOptions{
+		Subprotocols: []string{"not-the-right-protocol"},
+	})
+	if err == nil {
+		t.Fatal("expected dial to fail with wrong protocol, but it succeeded")
+	}
+	if resp == nil {
+		t.Fatal("expected an HTTP response, got nil")
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status: want 401, got %d", resp.StatusCode)
+	}
+}
+
+// TestHandler_RawBearer_Returns401 verifies that the old bearer-in-protocol
+// format is rejected. There is no backwards-compat path.
+func TestHandler_RawBearer_Returns401(t *testing.T) {
+	tenv := newTestEnv(t)
+	acc, sess := seed(t, tenv.store)
+	tokenSvc := tokens.New(tenv.store)
+	pair, err := tokenSvc.Issue(context.Background(), acc.ID)
+	if err != nil {
+		t.Fatalf("Issue token: %v", err)
+	}
+
+	url := wsURL(tenv.srv, sess.ID)
+	// The old format — must be rejected.
+	proto := "jamsesh.bearer." + pair.AccessToken
+	_, resp, err := websocket.Dial(context.Background(), url, &websocket.DialOptions{
+		Subprotocols: []string{proto},
+	})
+	if err == nil {
+		t.Fatal("expected dial to fail for raw bearer (no backwards-compat path), but it succeeded")
+	}
+	if resp == nil {
+		t.Fatal("expected an HTTP response, got nil")
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status: want 401, got %d", resp.StatusCode)
+	}
+}
+
+// TestHandler_ReusedTicket_Returns401 verifies that a ticket can only be
+// consumed once — a second upgrade attempt with the same ticket is rejected.
+func TestHandler_ReusedTicket_Returns401(t *testing.T) {
+	tenv := newTestEnv(t)
+	acc, sess := seed(t, tenv.store)
+	ticket := issueTicket(t, tenv.tickets, &acc)
+
+	// First dial — should succeed.
+	c, _ := dialWSWithTicket(t, wsURL(tenv.srv, sess.ID), ticket)
+	defer c.CloseNow()
+
+	// Second dial with the same ticket — must fail.
+	url := wsURL(tenv.srv, sess.ID)
+	proto := "jamsesh-ticket." + ticket
+	_, resp, err := websocket.Dial(context.Background(), url, &websocket.DialOptions{
+		Subprotocols: []string{proto},
+	})
+	if err == nil {
+		t.Fatal("expected second dial with same ticket to fail, but it succeeded")
+	}
+	if resp == nil {
+		t.Fatal("expected an HTTP response, got nil")
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status: want 401 for reused ticket, got %d", resp.StatusCode)
+	}
+}
+
+// TestHandler_NonMember_Returns403 verifies that a valid ticket for an account
 // that is NOT a session member is rejected with HTTP 403.
 func TestHandler_NonMember_Returns403(t *testing.T) {
 	tenv := newTestEnv(t)
@@ -275,10 +357,10 @@ func TestHandler_NonMember_Returns403(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
-	token := issueToken(t, tenv.tokens, outsider.ID)
+	ticket := issueTicket(t, tenv.tickets, &outsider)
 
 	url := wsURL(tenv.srv, sess.ID)
-	proto := "jamsesh.bearer." + token
+	proto := "jamsesh-ticket." + ticket
 	_, resp, err := websocket.Dial(context.Background(), url, &websocket.DialOptions{
 		Subprotocols: []string{proto},
 	})
@@ -299,7 +381,7 @@ func TestHandler_NonMember_Returns403(t *testing.T) {
 func TestHandler_ReplayFromCursor(t *testing.T) {
 	tenv := newTestEnv(t)
 	acc, sess := seed(t, tenv.store)
-	token := issueToken(t, tenv.tokens, acc.ID)
+	ticket := issueTicket(t, tenv.tickets, &acc)
 
 	ctx := context.Background()
 	// Emit 3 events so we have seq 1, 2, 3 in the DB.
@@ -310,7 +392,7 @@ func TestHandler_ReplayFromCursor(t *testing.T) {
 		}
 	}
 
-	c, _ := dialWS(t, wsURL(tenv.srv, sess.ID), token)
+	c, _ := dialWSWithTicket(t, wsURL(tenv.srv, sess.ID), ticket)
 	defer c.CloseNow()
 
 	// Send the replay-from frame: replay_from=1 means we want seq > 1 (seq 2, 3).
@@ -346,9 +428,9 @@ func TestHandler_ReplayFromCursor(t *testing.T) {
 func TestHandler_SlowConsumer_ClosedWith1008(t *testing.T) {
 	tenv := newTestEnv(t)
 	acc, sess := seed(t, tenv.store)
-	token := issueToken(t, tenv.tokens, acc.ID)
+	ticket := issueTicket(t, tenv.tickets, &acc)
 
-	c, _ := dialWS(t, wsURL(tenv.srv, sess.ID), token)
+	c, _ := dialWSWithTicket(t, wsURL(tenv.srv, sess.ID), ticket)
 	defer c.CloseNow()
 
 	ctx := context.Background()

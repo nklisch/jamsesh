@@ -335,20 +335,14 @@ Conflict events appear in agent digests for the addressed users.
 ## WebSocket event types
 
 The portal pushes events to subscribed UI clients over WebSocket. The upgrade
-request at `/ws/sessions/{sessionID}` is authenticated via the
-`Sec-WebSocket-Protocol` header, which carries the bearer token as
-`jamsesh.bearer.<token>`. Because browsers do not support setting arbitrary
-request headers on WebSocket upgrades, this is the only transport-compatible
-mechanism for upgrade-time auth.
-
-**Security note for operators.** The `Sec-WebSocket-Protocol` header encodes a
-long-lived bearer token. Reverse proxies and load balancers that log request
-headers (NGINX `$http_*`, Envoy default logs, CloudFront, ALB) will capture
-this token in their access logs. Anyone with read access to those logs can
-replay the token and hijack a session. Operators MUST redact or strip this
-header from proxy logs. See [docs/SELF_HOST.md](SELF_HOST.md) §10 for specific
-configuration options (strip at proxy, omit from log format, or terminate WS
-directly at the portal).
+request at `/ws/sessions/{sessionID}` is authenticated via a short-lived
+single-use ticket presented in the `Sec-WebSocket-Protocol` header as
+`jamsesh-ticket.<ticket>`. The SPA obtains the ticket by calling
+`POST /api/auth/ws-ticket` (authenticated with the regular bearer) immediately
+before opening the socket. The ticket is valid for 60 seconds and is consumed
+atomically on upgrade — it cannot be replayed. Because the long-lived bearer
+token is never placed in `Sec-WebSocket-Protocol`, proxy log exposure of a
+long-lived credential is not a concern.
 
 All events share a common envelope:
 

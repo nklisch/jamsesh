@@ -68,6 +68,7 @@ type combinedHandler struct {
 	SessionsHandler  *sessions.Handler
 	CommentsHandler  *comments.Handler
 	FinalizeHandler  *finalize.Handler
+	WsTicketHandler  *wsgateway.WsTicketHandler
 }
 
 // GetMe delegates to the accounts handler.
@@ -218,6 +219,11 @@ func (c *combinedHandler) IssueFetchToken(ctx context.Context, req openapi.Issue
 // MarkSessionShipped delegates to the finalize handler.
 func (c *combinedHandler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
 	return c.FinalizeHandler.MarkSessionShipped(ctx, req)
+}
+
+// IssueWsTicket delegates to the ws-ticket handler.
+func (c *combinedHandler) IssueWsTicket(ctx context.Context, req openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
+	return c.WsTicketHandler.IssueWsTicket(ctx, req)
 }
 
 // compile-time assertion that combinedHandler satisfies the full interface.
@@ -592,10 +598,17 @@ func main() {
 	// AllowOrigins is parsed from JAMSESH_WS_ALLOW_ORIGINS (comma-separated
 	// origins). Defaults to empty (deny all cross-origin upgrades) when unset.
 	// See docs/SELF_HOST.md for the configuration table.
+	//
+	// The ticket store issues short-lived (60-second) single-use upgrade tickets
+	// via POST /api/auth/ws-ticket. The SPA fetches a ticket immediately before
+	// opening the WebSocket so the long-lived bearer token never appears in
+	// Sec-WebSocket-Protocol.
 	wsAllowOrigins := parseAllowOrigins(os.Getenv("JAMSESH_WS_ALLOW_ORIGINS"))
+	wsTicketStore := wsgateway.NewTicketStore()
+	wsTicketStore.Start()
 	wsGateway := &wsgateway.Gateway{
 		Store:        dbStore,
-		Tokens:       tokenSvc,
+		Tickets:      wsTicketStore,
 		Log:          eventLog,
 		AllowOrigins: wsAllowOrigins,
 	}
@@ -620,6 +633,7 @@ func main() {
 		SessionsHandler:  sessionsHandler,
 		CommentsHandler:  commentsHandler,
 		FinalizeHandler:  finalizeHandler,
+		WsTicketHandler:  &wsgateway.WsTicketHandler{Tickets: wsTicketStore},
 	}, nil, openapi.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  httperr.WriteBadRequest,
 		ResponseErrorHandlerFunc: httperr.WriteFromError,
@@ -723,6 +737,7 @@ func main() {
 			r.Group(func(r chi.Router) {
 				r.Use(tokens.BearerMiddleware(tokenSvc))
 				r.Post("/auth/revoke", apiWrapper.RevokeToken)
+				r.Post("/auth/ws-ticket", apiWrapper.IssueWsTicket)
 				r.Get("/me", apiWrapper.GetMe)
 				r.Post("/orgs", apiWrapper.CreateOrg)
 

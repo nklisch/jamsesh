@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/ws-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a short-lived single-use WebSocket upgrade ticket */
+        post: operations["issueWsTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/revoke": {
         parameters: {
             query?: never;
@@ -1519,22 +1536,33 @@ export interface components {
             base_sha: string;
         };
         /**
+         * @description Short-lived single-use ticket for WebSocket upgrade authentication.
+         *     The ticket is valid for 60 seconds and can be consumed exactly once.
+         *     Pass it in `Sec-WebSocket-Protocol` as `jamsesh-ticket.<ticket>`.
+         */
+        WsTicketResponse: {
+            /** @description Opaque base64url-encoded ticket value. */
+            ticket: string;
+            /** @description Number of seconds until the ticket expires (always 60). */
+            expires_in_seconds: number;
+        };
+        /**
          * @description Ephemeral fetch-only credential issued for the plugin's HTTPS-
          *     fallback path. The token is a regular access token bound to the
-         *     caller with a short TTL (5 min). The remote_url already carries
-         *     the token spliced into the userinfo segment so the plugin can
-         *     hand it straight to `git fetch`.
+         *     caller with a short TTL (5 min). The plugin passes the token via
+         *     `git -c http.extraHeader="Authorization: Bearer <token>"` so it
+         *     never appears in the remote URL or `.git/config`.
          */
         FetchTokenResponse: {
             /**
-             * @description Raw access token. Use as the HTTP Basic password against the
-             *     portal git smart-HTTP endpoint with username `x-access-token`.
+             * @description Raw access token. Pass via `Authorization: Bearer` HTTP header
+             *     (using `git -c http.extraHeader`). Do not splice into the URL.
              */
             token: string;
             /**
-             * @description Pre-composed git remote URL with the token spliced into the
-             *     userinfo segment, ready to pass to `git fetch`:
-             *     `https://x-access-token:<token>@<portal-host>/git/<orgID>/<sessionID>.git`.
+             * @description Plain git remote URL with no credentials:
+             *     `https://<portal-host>/git/<orgID>/<sessionID>.git`.
+             *     Credentials are passed separately via http.extraHeader.
              */
             remote_url: string;
             /**
@@ -1619,6 +1647,27 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    issueWsTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ticket issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WsTicketResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     revokeToken: {
         parameters: {
             query?: never;
@@ -1644,6 +1693,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     startOAuth: {

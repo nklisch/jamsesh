@@ -222,6 +222,9 @@ func (m *magicLinkOnlyStrict) PatchOrg(_ context.Context, _ openapi.PatchOrgRequ
 func (m *magicLinkOnlyStrict) GetOrg(_ context.Context, _ openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
 	panic("GetOrg: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) IssueWsTicket(_ context.Context, _ openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
+	panic("IssueWsTicket: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

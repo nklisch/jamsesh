@@ -1,13 +1,17 @@
 // Tests for the WebSocket subscription manager.
 //
 // Mocks the global WebSocket constructor so tests run without a live
-// server. Verifies:
-//   - subscribe() opens exactly one socket per sessionId
+// server. Mocks client.POST so ticket fetches resolve without a network.
+//
+// Verifies:
+//   - subscribe() POSTs to /api/auth/ws-ticket to get a ticket before opening
+//   - subscribe() opens a socket with jamsesh-ticket.<ticket> sub-protocol
 //   - A second subscribe() for the same sessionId reuses the socket
 //   - Messages of a matching type fire the handler
 //   - Messages of a non-matching type do NOT fire the handler
 //   - The unsubscribe closure removes the handler
 //   - close() tears down the socket and handler registry
+//   - Reconnect fetches a fresh ticket (never reuses the original)
 
 import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
 
@@ -103,6 +107,28 @@ class MockWebSocket {
 }
 
 // ------------------------------------------------------------------
+// Helpers: mock client.POST for ticket fetches
+// ------------------------------------------------------------------
+
+/**
+ * Install a mock for client.POST that returns the given ticket string.
+ * Must be called after vi.resetModules() so the module under test sees
+ * the same client instance.
+ *
+ * We stub the `client` object from '$lib/api/client' so that
+ *   client.POST('/api/auth/ws-ticket', {})
+ * resolves with { data: { ticket, expires_in_seconds } }.
+ */
+async function installTicketMock(ticket: string): Promise<void> {
+  const { client } = await import('$lib/api/client');
+  vi.spyOn(client, 'POST').mockResolvedValue({
+    data: { ticket, expires_in_seconds: 60 },
+    error: undefined,
+    response: new Response(),
+  } as any);
+}
+
+// ------------------------------------------------------------------
 // Fixtures
 // ------------------------------------------------------------------
 
@@ -113,6 +139,13 @@ function installMockWebSocket() {
 
 function uninstallMockWebSocket() {
   vi.unstubAllGlobals();
+}
+
+// Helper: flush the microtask queue so that async open()/reopen() complete.
+// The ticket fetch resolves via a mocked Promise, so a single await tick is
+// enough to let the socket be created.
+function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 // ------------------------------------------------------------------
@@ -128,6 +161,8 @@ describe('ws — subscribe / lifecycle', () => {
     // Prime auth with a token so open() doesn't throw.
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('test-token', 'test-refresh');
+
+    await installTicketMock('test-ticket-abc');
   });
 
   afterEach(() => {
@@ -139,6 +174,7 @@ describe('ws — subscribe / lifecycle', () => {
     const { subscribe } = await import('$lib/ws.svelte');
 
     const unsub = subscribe('sess-1', 'commit.arrived', vi.fn());
+    await flushMicrotasks();
 
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(MockWebSocket.instances[0].url).toBe('/ws/sessions/sess-1');
@@ -146,24 +182,43 @@ describe('ws — subscribe / lifecycle', () => {
     unsub();
   });
 
-  test('subscribe() uses jamsesh.bearer.<token> sub-protocol', async () => {
+  test('subscribe() uses jamsesh-ticket.<ticket> sub-protocol (not bearer)', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
 
     const unsub = subscribe('sess-2', 'any', vi.fn());
+    await flushMicrotasks();
 
-    expect(MockWebSocket.instances[0].protocol).toBe('jamsesh.bearer.test-token');
+    expect(MockWebSocket.instances[0].protocol).toBe('jamsesh-ticket.test-ticket-abc');
+    // Verify the bearer token is NOT in the protocol.
+    expect(MockWebSocket.instances[0].protocol).not.toContain('bearer');
 
     unsub();
   });
 
-  test('second subscribe() to same sessionId reuses the socket', async () => {
+  test('subscribe() POSTs to /api/auth/ws-ticket to obtain the ticket', async () => {
+    const { client } = await import('$lib/api/client');
+    const { subscribe } = await import('$lib/ws.svelte');
+
+    const unsub = subscribe('sess-2b', 'any', vi.fn());
+    await flushMicrotasks();
+
+    expect(client.POST).toHaveBeenCalledWith('/api/auth/ws-ticket', {});
+
+    unsub();
+  });
+
+  test('second subscribe() to same sessionId reuses the socket (no second ticket fetch)', async () => {
+    const { client } = await import('$lib/api/client');
     const { subscribe } = await import('$lib/ws.svelte');
 
     const unsub1 = subscribe('sess-3', 'event.a', vi.fn());
+    await flushMicrotasks();
     const unsub2 = subscribe('sess-3', 'event.b', vi.fn());
+    await flushMicrotasks();
 
-    // Still only one WebSocket instance opened.
+    // Still only one WebSocket instance opened, and ticket fetched once.
     expect(MockWebSocket.instances).toHaveLength(1);
+    expect(client.POST).toHaveBeenCalledTimes(1);
 
     unsub1();
     unsub2();
@@ -172,10 +227,20 @@ describe('ws — subscribe / lifecycle', () => {
   test('second subscribe() to different sessionId opens a new socket', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
 
+    // Install ticket mock to return distinct tickets per call.
+    const { client } = await import('$lib/api/client');
+    vi.mocked(client.POST)
+      .mockResolvedValueOnce({ data: { ticket: 'ticket-4a', expires_in_seconds: 60 }, error: undefined, response: new Response() } as any)
+      .mockResolvedValueOnce({ data: { ticket: 'ticket-4b', expires_in_seconds: 60 }, error: undefined, response: new Response() } as any);
+
     const unsub1 = subscribe('sess-4a', 'ev', vi.fn());
+    await flushMicrotasks();
     const unsub2 = subscribe('sess-4b', 'ev', vi.fn());
+    await flushMicrotasks();
 
     expect(MockWebSocket.instances).toHaveLength(2);
+    expect(MockWebSocket.instances[0].protocol).toBe('jamsesh-ticket.ticket-4a');
+    expect(MockWebSocket.instances[1].protocol).toBe('jamsesh-ticket.ticket-4b');
 
     unsub1();
     unsub2();
@@ -186,6 +251,7 @@ describe('ws — subscribe / lifecycle', () => {
 
     const handler = vi.fn();
     const unsub = subscribe('sess-5', 'commit.arrived', handler);
+    await flushMicrotasks();
 
     const ws = MockWebSocket.instances[0];
     ws.emit('message', { type: 'commit.arrived', sha: 'abc123' });
@@ -201,6 +267,7 @@ describe('ws — subscribe / lifecycle', () => {
 
     const handler = vi.fn();
     const unsub = subscribe('sess-6', 'commit.arrived', handler);
+    await flushMicrotasks();
 
     const ws = MockWebSocket.instances[0];
     ws.emit('message', { type: 'merge.succeeded', draft_sha: 'def456' });
@@ -215,6 +282,7 @@ describe('ws — subscribe / lifecycle', () => {
 
     const handler = vi.fn();
     const unsub = subscribe('sess-7', 'some.event', handler);
+    await flushMicrotasks();
 
     const ws = MockWebSocket.instances[0];
     ws.emit('message', { type: 'some.event', payload: 1 });
@@ -234,6 +302,7 @@ describe('ws — subscribe / lifecycle', () => {
     const h2 = vi.fn();
     const unsub1 = subscribe('sess-8', 'tick', h1);
     const unsub2 = subscribe('sess-8', 'tick', h2);
+    await flushMicrotasks();
 
     MockWebSocket.instances[0].emit('message', { type: 'tick' });
 
@@ -249,6 +318,7 @@ describe('ws — subscribe / lifecycle', () => {
 
     const handler = vi.fn();
     subscribe('sess-9', 'ev', handler);
+    await flushMicrotasks();
 
     const ws = MockWebSocket.instances[0];
     close('sess-9');
@@ -260,18 +330,26 @@ describe('ws — subscribe / lifecycle', () => {
   });
 
   test('clean close (code 1000) drops the record and next subscribe opens fresh', async () => {
+    const { client } = await import('$lib/api/client');
+    vi.mocked(client.POST)
+      .mockResolvedValueOnce({ data: { ticket: 'ticket-10a', expires_in_seconds: 60 }, error: undefined, response: new Response() } as any)
+      .mockResolvedValueOnce({ data: { ticket: 'ticket-10b', expires_in_seconds: 60 }, error: undefined, response: new Response() } as any);
+
     const { subscribe } = await import('$lib/ws.svelte');
 
     const unsub1 = subscribe('sess-10', 'ev', vi.fn());
+    await flushMicrotasks();
     expect(MockWebSocket.instances).toHaveLength(1);
 
     // Simulate the server closing cleanly — reconnect is suppressed
     // for code 1000, so the record is dropped.
     MockWebSocket.instances[0].close(1000);
 
-    // Now subscribe again — should open a fresh socket.
+    // Now subscribe again — should open a fresh socket with a new ticket.
     const unsub2 = subscribe('sess-10', 'ev', vi.fn());
+    await flushMicrotasks();
     expect(MockWebSocket.instances).toHaveLength(2);
+    expect(MockWebSocket.instances[1].protocol).toBe('jamsesh-ticket.ticket-10b');
 
     unsub1();
     unsub2();
@@ -282,6 +360,7 @@ describe('ws — subscribe / lifecycle', () => {
 
     const handler = vi.fn();
     const unsub = subscribe('sess-11', 'ev', handler);
+    await flushMicrotasks();
 
     const ws = MockWebSocket.instances[0];
     // Emit a raw MessageEvent with invalid JSON directly.
@@ -306,6 +385,7 @@ describe('ws — shouldReconnect predicate', () => {
     vi.resetModules();
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('test-token', 'test-refresh');
+    await installTicketMock('test-ticket');
   });
 
   afterEach(() => {
@@ -356,6 +436,7 @@ describe('ws — reconnect loop / exponential backoff', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('test-token', 'test-refresh');
+    await installTicketMock('test-ticket');
   });
 
   afterEach(() => {
@@ -364,11 +445,18 @@ describe('ws — reconnect loop / exponential backoff', () => {
     vi.restoreAllMocks();
   });
 
-  test('unexpected close (1006) schedules reconnect at ~1000ms; opens a fresh socket', async () => {
+  test('unexpected close (1006) schedules reconnect at ~1000ms; opens a fresh socket with a new ticket', async () => {
+    const { client } = await import('$lib/api/client');
+    vi.mocked(client.POST)
+      .mockResolvedValueOnce({ data: { ticket: 'ticket-r1-first', expires_in_seconds: 60 }, error: undefined, response: new Response() } as any)
+      .mockResolvedValueOnce({ data: { ticket: 'ticket-r1-second', expires_in_seconds: 60 }, error: undefined, response: new Response() } as any);
+
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-r1', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(MockWebSocket.instances).toHaveLength(1);
+    expect(MockWebSocket.instances[0].protocol).toBe('jamsesh-ticket.ticket-r1-first');
 
     // Network drop — code 1006.
     MockWebSocket.instances[0].emit('close', 1006);
@@ -379,18 +467,23 @@ describe('ws — reconnect loop / exponential backoff', () => {
 
     // At ~1000ms, the reconnect timer fires and opens a fresh socket.
     vi.advanceTimersByTime(2);
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances).toHaveLength(2);
     expect(MockWebSocket.instances[1].url).toBe('/ws/sessions/sess-r1');
-    expect(MockWebSocket.instances[1].protocol).toBe('jamsesh.bearer.test-token');
+    // Reconnect fetches a NEW ticket — never reuses the first.
+    expect(MockWebSocket.instances[1].protocol).toBe('jamsesh-ticket.ticket-r1-second');
+    expect(MockWebSocket.instances[1].protocol).not.toBe(MockWebSocket.instances[0].protocol);
   });
 
   test('second consecutive failure backs off at ~1600ms', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-r2', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     // First drop → ~1000ms wait, then reopen.
     MockWebSocket.instances[0].emit('close', 1006);
     vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances).toHaveLength(2);
 
     // Second drop on the new socket — attempt is now 1, so
@@ -399,33 +492,39 @@ describe('ws — reconnect loop / exponential backoff', () => {
     vi.advanceTimersByTime(1599);
     expect(MockWebSocket.instances).toHaveLength(2);
     vi.advanceTimersByTime(2);
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances).toHaveLength(3);
   });
 
   test('clean close (1000) does NOT trigger reconnect', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-r3', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     MockWebSocket.instances[0].emit('close', 1000);
 
     // Advance well past any plausible backoff — no reconnect.
     vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances).toHaveLength(1);
   });
 
   test('policy-violation close (1008) does NOT trigger reconnect', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-r4', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     MockWebSocket.instances[0].emit('close', 1008);
 
     vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances).toHaveLength(1);
   });
 
   test('explicit close() while reconnect timer pending cancels the loop', async () => {
     const { subscribe, close } = await import('$lib/ws.svelte');
     subscribe('sess-r5', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     // Trigger a reconnect-eligible close.
     MockWebSocket.instances[0].emit('close', 1006);
@@ -435,6 +534,7 @@ describe('ws — reconnect loop / exponential backoff', () => {
 
     // Advance past the backoff window — no new socket should be created.
     vi.advanceTimersByTime(5_000);
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances).toHaveLength(1);
   });
 
@@ -442,9 +542,11 @@ describe('ws — reconnect loop / exponential backoff', () => {
     const { subscribe } = await import('$lib/ws.svelte');
     const handler = vi.fn();
     subscribe('sess-r6', 'tick', handler);
+    await vi.advanceTimersByTimeAsync(0);
 
     MockWebSocket.instances[0].emit('close', 1006);
     vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(MockWebSocket.instances).toHaveLength(2);
     MockWebSocket.instances[1].emit('message', { type: 'tick', n: 1 });
@@ -455,6 +557,7 @@ describe('ws — reconnect loop / exponential backoff', () => {
   test('backoff is capped at 30_000ms', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-r7', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     // Force the attempt counter high by chaining reconnects. After
     // 8 failures the raw exponent (1000 * 1.6^8 ≈ 42 949) exceeds the
@@ -465,6 +568,7 @@ describe('ws — reconnect loop / exponential backoff', () => {
       // Each successive timer fires at min(1000*1.6^i, 30000) — push
       // way past so the loop always advances.
       vi.advanceTimersByTime(31_000);
+      await vi.advanceTimersByTimeAsync(0);
     }
     expect(MockWebSocket.instances.length).toBeGreaterThan(8);
 
@@ -472,8 +576,10 @@ describe('ws — reconnect loop / exponential backoff', () => {
     MockWebSocket.instances[i].emit('close', 1006);
     const before = MockWebSocket.instances.length;
     vi.advanceTimersByTime(29_999);
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances.length).toBe(before);
     vi.advanceTimersByTime(2);
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances.length).toBe(before + 1);
   });
 
@@ -481,6 +587,7 @@ describe('ws — reconnect loop / exponential backoff', () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-a', 'ev', vi.fn());
     subscribe('sess-b', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(MockWebSocket.instances).toHaveLength(2);
 
@@ -489,6 +596,7 @@ describe('ws — reconnect loop / exponential backoff', () => {
     aSocket.emit('close', 1006);
 
     vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
     const aSockets = MockWebSocket.instances.filter((w) => w.url.endsWith('sess-a'));
     const bSockets = MockWebSocket.instances.filter((w) => w.url.endsWith('sess-b'));
     expect(aSockets.length).toBe(2); // original + reconnect
@@ -509,6 +617,7 @@ describe('ws — wsStatus rune store', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('test-token', 'test-refresh');
+    await installTicketMock('test-ticket');
   });
 
   afterEach(() => {
@@ -525,6 +634,7 @@ describe('ws — wsStatus rune store', () => {
   test("first subscribe sets 'connecting', then 'open' on open event", async () => {
     const { subscribe, wsStatus } = await import('$lib/ws.svelte');
     subscribe('sess-s1', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
     expect(wsStatus.for('sess-s1')).toBe('connecting');
 
     MockWebSocket.instances[0].emit('open');
@@ -534,6 +644,7 @@ describe('ws — wsStatus rune store', () => {
   test("unexpected close transitions status to 'reconnecting' until next open", async () => {
     const { subscribe, wsStatus } = await import('$lib/ws.svelte');
     subscribe('sess-s2', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
     MockWebSocket.instances[0].emit('open');
     expect(wsStatus.for('sess-s2')).toBe('open');
 
@@ -541,6 +652,7 @@ describe('ws — wsStatus rune store', () => {
     expect(wsStatus.for('sess-s2')).toBe('reconnecting');
 
     vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
     // New socket is created but has not yet emitted 'open'.
     expect(wsStatus.for('sess-s2')).toBe('reconnecting');
 
@@ -551,6 +663,7 @@ describe('ws — wsStatus rune store', () => {
   test('explicit close() clears the status to null', async () => {
     const { subscribe, close, wsStatus } = await import('$lib/ws.svelte');
     subscribe('sess-s3', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
     MockWebSocket.instances[0].emit('open');
     expect(wsStatus.for('sess-s3')).toBe('open');
 
@@ -561,6 +674,7 @@ describe('ws — wsStatus rune store', () => {
   test('clean close (1000) clears status to null (no reconnect)', async () => {
     const { subscribe, wsStatus } = await import('$lib/ws.svelte');
     subscribe('sess-s4', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
     MockWebSocket.instances[0].emit('open');
     expect(wsStatus.for('sess-s4')).toBe('open');
 
@@ -582,6 +696,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('test-token', 'test-refresh');
+    await installTicketMock('test-ticket');
   });
 
   afterEach(() => {
@@ -593,6 +708,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
   test('fresh subscribe does not send a replay_from frame on open', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-c1', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     const ws = MockWebSocket.instances[0];
     ws.emit('open');
@@ -604,6 +720,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
   test('reconnect after seeing events sends {"replay_from":<max-seq>} as the first frame', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-c2', 'tick', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     const first = MockWebSocket.instances[0];
     first.emit('open');
@@ -617,6 +734,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
 
     // Advance past backoff so the timer fires and a new socket opens.
     vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances).toHaveLength(2);
     const second = MockWebSocket.instances[1];
 
@@ -631,6 +749,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
   test('cursor only moves forward — out-of-order / duplicate seq is a no-op', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-c3', 'tick', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     const first = MockWebSocket.instances[0];
     first.emit('open');
@@ -643,6 +762,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
     // Drop + reconnect to surface the cursor on the wire.
     first.emit('close', 1006);
     vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
     const second = MockWebSocket.instances[1];
     second.emit('open');
 
@@ -652,6 +772,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
   test('envelopes without a numeric seq do not advance the cursor and do not throw', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-c4', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     const first = MockWebSocket.instances[0];
     first.emit('open');
@@ -665,6 +786,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
 
     first.emit('close', 1006);
     vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
     const second = MockWebSocket.instances[1];
     second.emit('open');
 
@@ -673,8 +795,14 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
   });
 
   test('explicit close() invalidates the cursor — next subscribe sends no replay frame', async () => {
+    const { client } = await import('$lib/api/client');
+    vi.mocked(client.POST)
+      .mockResolvedValueOnce({ data: { ticket: 'ticket-c5a', expires_in_seconds: 60 }, error: undefined, response: new Response() } as any)
+      .mockResolvedValueOnce({ data: { ticket: 'ticket-c5b', expires_in_seconds: 60 }, error: undefined, response: new Response() } as any);
+
     const { subscribe, close } = await import('$lib/ws.svelte');
     subscribe('sess-c5', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     const first = MockWebSocket.instances[0];
     first.emit('open');
@@ -685,6 +813,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
 
     // Fresh subscribe — cursor must start at 0.
     subscribe('sess-c5', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
     expect(MockWebSocket.instances).toHaveLength(2);
     const second = MockWebSocket.instances[1];
     second.emit('open');
@@ -695,6 +824,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
   test('multiple consecutive reconnects continue to send the latest cursor', async () => {
     const { subscribe } = await import('$lib/ws.svelte');
     subscribe('sess-c6', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
 
     // First socket: see seq 1,2,3 then drop.
     const a = MockWebSocket.instances[0];
@@ -706,6 +836,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
 
     // Reconnect → second socket sends replay_from:3.
     vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
     const b = MockWebSocket.instances[1];
     b.emit('open');
     expect(b.sent).toEqual([JSON.stringify({ replay_from: 3 })]);
@@ -717,6 +848,7 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
 
     // Second backoff is 1600ms (attempt=1).
     vi.advanceTimersByTime(1600);
+    await vi.advanceTimersByTimeAsync(0);
     const c = MockWebSocket.instances[2];
     c.emit('open');
     expect(c.sent).toEqual([JSON.stringify({ replay_from: 5 })]);

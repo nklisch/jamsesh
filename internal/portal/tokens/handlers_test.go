@@ -140,6 +140,9 @@ func (t *tokensOnlyHandler) PatchOrg(_ context.Context, _ openapi.PatchOrgReques
 func (t *tokensOnlyHandler) GetOrg(_ context.Context, _ openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
 	panic("GetOrg: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) IssueWsTicket(_ context.Context, _ openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
+	panic("IssueWsTicket: not implemented in token handler tests")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

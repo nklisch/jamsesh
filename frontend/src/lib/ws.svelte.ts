@@ -4,10 +4,12 @@
 // underlying WebSocket. Messages are routed to handlers filtered by
 // event `type`. subscribe() returns an unsubscribe closure.
 //
-// Auth: the socket is opened with
-//   Sec-WebSocket-Protocol: jamsesh.bearer.<token>
-// per docs/research/core-go-server-stack.md (the portal WS gateway
-// authenticates via sub-protocol header, not a cookie).
+// Auth: before opening a WebSocket the module POSTs to
+//   POST /api/auth/ws-ticket
+// to obtain a short-lived (60 s) single-use ticket, then presents it as
+//   Sec-WebSocket-Protocol: jamsesh-ticket.<ticket>
+// This keeps the long-lived bearer token out of the Sec-WebSocket-Protocol
+// header entirely. On reconnect a fresh ticket is fetched each time.
 //
 // Reconnect: on an unexpected close (see shouldReconnect() below), the
 // module schedules a reopen with exponential backoff (1.0s base, 30s
@@ -40,6 +42,7 @@
 // the API surface stays stable across that transition.
 
 import { auth } from '$lib/auth.svelte';
+import { client } from '$lib/api/client';
 
 // Open-ended until EventEnvelope lands in the spec.
 type EventEnvelope = { type: string; [key: string]: unknown };
@@ -133,6 +136,22 @@ function backoffDelay(attempt: number): number {
   return base * jitterFactor;
 }
 
+/**
+ * Fetch a single-use WS upgrade ticket from the portal.
+ *
+ * Returns the opaque ticket string on success, or null if the request
+ * fails (network error, 401, etc.). A null result causes the open/reopen
+ * paths to abort the connection attempt and drop the record.
+ */
+async function fetchTicket(): Promise<string | null> {
+  try {
+    const { data } = await client.POST('/api/auth/ws-ticket', {});
+    return data?.ticket ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function attachListeners(sessionId: string, ws: WebSocket): void {
   ws.addEventListener('message', (ev: MessageEvent) => {
     let env: EventEnvelope;
@@ -192,37 +211,57 @@ function attachListeners(sessionId: string, ws: WebSocket): void {
     rec.reconnectTimer = setTimeout(() => {
       rec.reconnectTimer = null;
       rec.attempt += 1;
-      reopen(sessionId);
+      void reopen(sessionId);
     }, delay);
   });
 }
 
-function reopen(sessionId: string): void {
+async function reopen(sessionId: string): Promise<void> {
   const rec = records.get(sessionId);
   if (!rec) return;
 
-  const token = auth.token;
-  if (!token) {
-    // No token to reconnect with — give up and drop the record.
+  if (!auth.token) {
+    // No bearer token — can't obtain a ticket. Give up and drop the record.
     records.delete(sessionId);
     setStatus(sessionId, null);
     return;
   }
 
-  const proto = `jamsesh.bearer.${token}`;
+  const ticket = await fetchTicket();
+  if (!ticket) {
+    // Ticket fetch failed (auth expired, network error). Drop the record.
+    records.delete(sessionId);
+    setStatus(sessionId, null);
+    return;
+  }
+
+  // Check the record is still valid after the async ticket fetch — the user
+  // may have called close() while we were awaiting the ticket.
+  if (!records.has(sessionId)) return;
+
+  const proto = `jamsesh-ticket.${ticket}`;
   const ws = new WebSocket(`/ws/sessions/${sessionId}`, proto);
   rec.ws = ws;
   attachListeners(sessionId, ws);
 }
 
-function open(sessionId: string): WebSocket {
+async function open(sessionId: string): Promise<WebSocket | null> {
   const existing = records.get(sessionId);
   if (existing && existing.ws) return existing.ws;
 
-  const token = auth.token;
-  if (!token) throw new Error('ws: cannot open socket — no auth token');
+  if (!auth.token) throw new Error('ws: cannot open socket — no auth token');
 
-  const proto = `jamsesh.bearer.${token}`;
+  const ticket = await fetchTicket();
+  if (!ticket) {
+    // Ticket fetch failed — can't open the socket.
+    return null;
+  }
+
+  // Re-check after async gap: a concurrent subscribe() may have opened already.
+  const maybeExisting = records.get(sessionId);
+  if (maybeExisting && maybeExisting.ws) return maybeExisting.ws;
+
+  const proto = `jamsesh-ticket.${ticket}`;
   const ws = new WebSocket(`/ws/sessions/${sessionId}`, proto);
 
   const rec: ConnectionRecord = {
@@ -244,15 +283,18 @@ function open(sessionId: string): WebSocket {
  * Subscribe to events of a specific `type` for the given `sessionId`.
  *
  * Opens a new WebSocket if one is not already open for this session;
- * otherwise reuses the existing connection. Returns an unsubscribe
- * closure that removes only this handler.
+ * otherwise reuses the existing connection. A ticket is fetched from
+ * POST /api/auth/ws-ticket before each new socket is opened — the
+ * bearer token is never placed in Sec-WebSocket-Protocol.
+ *
+ * Returns an unsubscribe closure that removes only this handler.
  */
 export function subscribe(
   sessionId: string,
   type: string,
   handler: Handler,
 ): () => void {
-  open(sessionId);
+  void open(sessionId);
 
   if (!handlers.has(sessionId)) handlers.set(sessionId, new Map());
   const byType = handlers.get(sessionId)!;

@@ -154,6 +154,9 @@ func (stubStrict) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeReques
 func (stubStrict) ListSessionRefs(_ context.Context, _ openapi.ListSessionRefsRequestObject) (openapi.ListSessionRefsResponseObject, error) {
 	return nil, nil
 }
+func (stubStrict) IssueWsTicket(_ context.Context, _ openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Helper: build a test router wired with the real strict handler pipeline.

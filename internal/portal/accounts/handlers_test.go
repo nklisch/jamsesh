@@ -178,6 +178,9 @@ func (a *accountsOnlyStrict) GetSessionInvite(_ context.Context, _ openapi.GetSe
 func (a *accountsOnlyStrict) GetOrg(ctx context.Context, req openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
 	return a.Handler.GetOrg(ctx, req)
 }
+func (a *accountsOnlyStrict) IssueWsTicket(_ context.Context, _ openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
+	panic("IssueWsTicket: not implemented in accounts handler tests")
+}
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 

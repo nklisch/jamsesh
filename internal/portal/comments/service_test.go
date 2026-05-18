@@ -142,6 +142,9 @@ func (c *commentsOnlyStrict) PatchOrg(_ context.Context, _ openapi.PatchOrgReque
 func (c *commentsOnlyStrict) GetOrg(_ context.Context, _ openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
 	panic("not wired")
 }
+func (c *commentsOnlyStrict) IssueWsTicket(_ context.Context, _ openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*commentsOnlyStrict)(nil)
 
