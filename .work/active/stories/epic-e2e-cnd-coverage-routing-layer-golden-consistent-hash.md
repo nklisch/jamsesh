@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-golden-consistent-hash
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -69,6 +69,36 @@ to obtain a token and attach a Bearer header.
 - [ ] No in-process mocks introduced; real router + real portals.
 - [ ] Test does NOT assert on response body or internal call traces — only on
       routing identity (LeaseHolder) and response status code.
+
+## Implementation notes
+
+**File**: `tests/e2e/golden/router_consistent_hash_test.go`
+
+**Pattern**: Both subtests spin up a full 3-pod cluster with `Router: true`,
+authenticate via magic link through pod 0, then drive all session-scoped
+requests through `cluster.RouterURL`. The `LeaseHolder` oracle (pg_locks
+advisory lock query) is used as the sole routing-identity assertion — no
+response-body inspection, no per-pod headers.
+
+**Subtest `same_session_pins_to_same_pod`**: Creates one session (POST through
+router, which itself exercises consistent-hash routing), then issues 20 GET
+requests for that session through the router. After each GET, `LeaseHolder` is
+queried and asserted equal to the first observed holder. Any deviation would
+indicate non-deterministic routing.
+
+**Subtest `different_sessions_distribute`**: Creates 10 distinct sessions
+(each named with a timestamp suffix for uniqueness), issues one GET per session
+through the router, and collects the `LeaseHolder` index for each. Asserts that
+at least 2 of 3 pods appear in the holder set — the "at least 2" bar is
+conservative to avoid brittleness from minor ring-balance skew, while still
+proving that distribution is happening.
+
+**Auth**: MailHog required (portal's email provider must be SMTP for magic
+link sign-in). PortalExtraEnv wires MailHog's container SMTP address into
+all pods, matching the smoke test pattern.
+
+**Build/vet**: `go build ./golden/...` and `go vet ./golden/...` both pass
+clean.
 
 ## Test-integrity rules
 
