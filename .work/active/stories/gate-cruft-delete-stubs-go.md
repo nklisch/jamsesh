@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-stubs-go
 kind: story
-stage: review
+stage: done
 tags: [cleanup, plugin]
 parent: null
 depends_on: []
@@ -40,3 +40,16 @@ and a stale comment — no exported symbols. Grep across `cmd/`, `internal/`,
 and `tests/` found no references to any symbol from this file. Deleted via
 `git rm`. Build (`go build ./cmd/jamsesh/hooks/...`) and tests
 (`go test ./cmd/jamsesh/hooks/...`) both pass after removal.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: The `git rm` commit also swept in `internal/db/store/timefmt.go` —
+a known PostToolUse hook quirk (see `posttooluse-hook-over-stages-untracked-files`).
+The timefmt deletion was sanctioned by the sibling `gate-cruft-delete-timefmt-go`
+story, so no harm. Hook-cleanup is a separate concern tracked elsewhere.
+
+**Notes**: Build + targeted tests pass.
