@@ -2,7 +2,7 @@
 // SessionsLanding renders itself (no children prop needed); Chrome is composed
 // internally with a fixed snippet, so we can render it directly.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import SessionsLanding from './SessionsLanding.svelte';
 

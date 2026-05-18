@@ -4,7 +4,7 @@
 // (The `children: () => 'string'` pattern used in sibling design-system tests
 // is a known bug; our tests use the correct approach.)
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import ChromeTestHarness from './ChromeTestHarness.svelte';
 

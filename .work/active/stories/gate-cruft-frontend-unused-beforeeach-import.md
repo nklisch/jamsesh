@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-frontend-unused-beforeeach-import
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, ui]
 parent: null
 depends_on: []
@@ -31,3 +31,13 @@ from vitest but no setup hook is actually defined.
 
 ## Removal
 Drop `beforeEach` from the vitest import list in each file.
+
+## Implementation notes
+
+Removed `beforeEach` from the vitest import destructuring in each of the three files:
+
+- `frontend/src/lib/components/Chrome.test.ts`: `{ describe, it, expect, vi, afterEach }` (kept `afterEach`)
+- `frontend/src/lib/router.test.ts`: `{ describe, test, expect }` (only import in file)
+- `frontend/src/lib/screens/SessionsLanding.test.ts`: `{ describe, it, expect, vi, afterEach }` (kept `afterEach`)
+
+Verified: `tsc --noUnusedLocals --noUnusedParameters --noEmit` no longer reports `beforeEach` errors in any of the three files. All 24 tests across the three suites pass.
