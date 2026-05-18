@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing-chaos
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-lease-fencing
 depends_on: [epic-e2e-cnd-coverage-lease-fencing-golden]
@@ -310,3 +310,13 @@ Both tests implemented and verified with `go build ./chaos/... && go vet ./chaos
 - **`testing.Short()` guard on the skew test.** The wait period
   (`skewSeconds + 2×heartbeat` = ~12s) plus cluster startup makes this
   test slow. `-short` skips it for fast local iteration.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: Clock-skew test uses `time.Sleep(waitDur)` in test process — acceptable here since this is measuring real wall-clock effects, not a polling loop that could use Monitor.
+
+**Notes**: `TestLeaseHolderKilled` correctly targets the actual holder pod (via `RequireLeaseHolder`) rather than assuming pod 0 wins, which is a concrete improvement over the story design sketch. Monotonicity assertion is `t2 <= t1` (strict). Defensive `t.Cleanup` for best-effort container kill is present. `TestCrossPodClockSkew` includes detailed, actionable escape-hatch instructions (park + t.Skip with backlog-id) directly in the source. The clock-skew assertion correctly uses `newHolderA < 0 || newHolderB < 0` to catch either session losing its holder. No t.Skip calls without documented reasons. The `testing.Short()` guard is appropriate for the ~12s wall-clock wait. No assertion gamification found.
