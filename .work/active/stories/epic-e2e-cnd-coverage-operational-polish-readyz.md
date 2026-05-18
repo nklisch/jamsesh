@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-readyz
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -61,3 +61,38 @@ timeout).
 - `tests/e2e/failure/config_and_deps_test.go:198-265,517-560` —
   toxiproxy `reset_peer` pattern to mirror
 - `tests/e2e/fixtures/toxiproxy/` — Toxiproxy fixture API
+
+## Implementation notes
+
+### Golden test (`tests/e2e/golden/readyz_healthy_test.go`)
+
+Full stack: postgres + mailhog + portal. Uses `pg.ContainerDSN` and
+`mh.ContainerSMTPHost`/`ContainerSMTPPort` so the portal container
+reaches dependencies via Docker bridge IPs (host-mapped ports are not
+reachable from inside Docker). Asserts HTTP 200, `application/json;
+charset=utf-8` Content-Type, `status:"ready"`, non-empty checks array,
+and `ok:true` on every check.
+
+### Failure test (`tests/e2e/failure/readyz_db_down_test.go`)
+
+Toxiproxy sits between the portal and Postgres containers. The proxy
+listens on `0.0.0.0:5433` inside the toxiproxy container; the portal's
+`DBDSN` points at `tp.ContainerIP:5433`. After a pre-fault 200 sanity
+check, a `reset_peer` toxic (timeout:0) is injected; `require.Eventually`
+polls for 503 within 3s (2s per-check timeout + 1s margin). A final
+request asserts on the full body shape: `status:"not_ready"` and at least
+one check with `ok:false`.
+
+### Package collision avoidance
+
+`config_and_deps_test.go` in the same `failure_test` package already
+defines `toxiproxyCreateProxy`, `toxiproxyAddToxic`, and
+`toxiproxyDeleteToxic` — so those helpers are available without
+redeclaring them. DSN helpers are prefixed (`readyzExtractHost`,
+`readyzExtractDBName`) to avoid collision with `extractHostFromDSN` and
+`extractDBName` already declared in the same package.
+
+### Build + vet
+
+`go build ./golden/... ./failure/...` and `go vet ./golden/... ./failure/...`
+both pass cleanly.
