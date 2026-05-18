@@ -10,6 +10,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log/slog"
 
 	"github.com/pressly/goose/v3"
 )
@@ -91,6 +92,16 @@ func MigrateUp(ctx context.Context, db *sql.DB, dialect string) error {
 		if r.Error != nil {
 			return fmt.Errorf("db: migration %s failed: %w", r.Source.Path, r.Error)
 		}
+	}
+	// Log when migrations were actually applied (non-empty results means DDL
+	// ran). A no-op run (already-current DB) produces an empty slice and is
+	// deliberately silent — callers that wait for this line in container logs
+	// can reliably count which pods ran DDL vs which skipped due to idempotency.
+	if len(results) > 0 {
+		slog.InfoContext(ctx, "db migrations applied",
+			"dialect", dialect,
+			"count", len(results),
+		)
 	}
 	return nil
 }

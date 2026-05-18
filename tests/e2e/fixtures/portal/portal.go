@@ -23,6 +23,7 @@ package portal
 import (
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -105,6 +106,26 @@ func (p *Portal) ContainerName(ctx context.Context) string {
 		return ""
 	}
 	return strings.TrimPrefix(name, "/")
+}
+
+// Logs returns the combined stdout+stderr output of the portal container as a
+// string. It reads the full log stream synchronously from the container runtime
+// and is suitable for post-hoc inspection (e.g. grepping for a log phrase after
+// the container has started healthy).
+//
+// For failure-mode log dumps use the containerlog.DumpAndTerminate helper wired
+// by t.Cleanup in Start — Logs is for explicit, test-initiated captures.
+func (p *Portal) Logs(ctx context.Context) (string, error) {
+	rc, err := p.container.Logs(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 // Start spins up a fresh portal container with the given configuration,

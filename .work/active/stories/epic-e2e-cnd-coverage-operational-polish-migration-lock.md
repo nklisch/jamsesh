@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-migration-lock
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -66,3 +66,39 @@ version.
   proof of advisory-lock behavior (useful background but not the e2e
   assertion target)
 - `tests/e2e/fixtures/postgres/postgres.go` — per-test DB pattern
+
+## Implementation notes
+
+**Pinned log phrase**: `"db migrations applied"`
+
+The portal + goose library do not log migration activity by default
+(`goose.NewProvider` is called with no verbose option, defaulting
+`verbose=false`). To give the test a reliable log hook, a
+`slog.InfoContext(ctx, "db migrations applied", "dialect", ..., "count", ...)`
+line was added to `MigrateUp` in `internal/db/migrate.go`, firing only when
+`len(results) > 0` (actual DDL ran). An idempotent no-op run is silent — this
+is what lets the test distinguish the one migrator pod from the two waiting pods.
+
+In JSON slog format (the default in the e2e image) the phrase appears as:
+`{"msg":"db migrations applied",...}`. The test matches on the `msg` substring
+using `strings.Contains` without JSON-parsing, which is stable across slog's
+key ordering.
+
+**Migrations table**: `goose_db_version`
+
+Confirmed by: (1) `internal/db/migrate.go` imports `github.com/pressly/goose/v3`
+and calls `goose.NewProvider`; (2) the inline comment in `MigrateUp` states
+"goose tracks applied versions in the goose_db_version table"; (3) the
+post-condition query targets `goose_db_version WHERE is_applied = true` to
+avoid counting rollback rows.
+
+**`Logs()` method on `*Portal`**: added to
+`tests/e2e/fixtures/portal/portal.go`. Reads the full container log stream via
+`testcontainers.Container.Logs(ctx)` and returns it as a string. The existing
+`containerlog.DumpAndTerminate` is for failure-mode dumps; `Logs()` is for
+explicit, test-initiated inspection.
+
+**Parallel startup**: `errgroup.Group` — no Testcontainers ordering issues
+observed. `portal.Start` calls `t.Fatalf` on container failure, which
+terminates the goroutine, so `g.Wait()` always returns nil when all portals
+start successfully.
