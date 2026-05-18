@@ -431,6 +431,17 @@ func TestGetFinalizePlan_LockSuperseded_409(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed first: %v", err)
 	}
+	// Release first before inserting second: the unique partial index on
+	// (session_id) WHERE superseded_by_lock_id IS NULL AND released_at IS NULL
+	// prevents two simultaneously-active rows. Release first (removing it from
+	// the index's scope), then insert second, then set superseded_by_lock_id on
+	// first to preserve the audit trail. This mirrors what AcquireFinalizeLock
+	// does in the override branch.
+	if err := pe.env.store.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
+		ID: first, ReleasedAt: now,
+	}); err != nil {
+		t.Fatalf("release first: %v", err)
+	}
 	if err := pe.env.store.InsertFinalizeLock(ctx, store.InsertFinalizeLockParams{
 		ID: second, OrgID: pe.env.orgID, SessionID: pe.env.sessID,
 		AcquiredByAccountID: pe.env.otherID,

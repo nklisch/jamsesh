@@ -159,6 +159,15 @@ func TestPatchFinalizeLock_Superseded_409(t *testing.T) {
 	ctx := context.Background()
 
 	oldID := seedCallerLock(t, env)
+	// Release oldID before inserting the new lock: the unique partial index on
+	// (session_id) WHERE superseded_by_lock_id IS NULL AND released_at IS NULL
+	// prevents two active rows for the same session. Release first, insert
+	// second, then set superseded_by_lock_id to preserve the audit trail.
+	if err := env.store.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
+		ID: oldID, ReleasedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("release old lock: %v", err)
+	}
 	newID := ulid.Make().String()
 	if err := env.store.InsertFinalizeLock(ctx, store.InsertFinalizeLockParams{
 		ID:                  newID,

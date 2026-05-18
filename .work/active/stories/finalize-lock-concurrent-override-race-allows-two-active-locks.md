@@ -1,7 +1,7 @@
 ---
 id: finalize-lock-concurrent-override-race-allows-two-active-locks
 kind: story
-stage: implementing
+stage: review
 tags: [bug, security, portal]
 parent: null
 depends_on: []
@@ -61,3 +61,75 @@ authorization).
 When picking this up: re-enable the test by removing the `t.Skip` referencing
 this story id in `lock_acquire_test.go`. The test already encodes the
 correct invariant check (count of non-superseded non-released rows ≤ 1).
+
+## Implementation notes
+
+### Schema change
+
+Added migration `00015_finalize_locks_unique_active` for both dialects:
+
+- `internal/db/migrations/postgres/00015_finalize_locks_unique_active.sql`
+- `internal/db/migrations/sqlite/00015_finalize_locks_unique_active.sql`
+
+Both create:
+
+```sql
+CREATE UNIQUE INDEX finalize_locks_one_active_per_session_idx
+    ON finalize_locks (session_id)
+    WHERE superseded_by_lock_id IS NULL AND released_at IS NULL;
+```
+
+Mirror entries added to `db/schema/postgres.sql` and `db/schema/sqlite.sql`.
+
+### Error type chosen
+
+`ErrOverrideRaceLost` — declared in `internal/portal/finalize/lock_acquire.go`.
+
+Contract: when `AcquireFinalizeLock(override=true)` returns a 409 with error
+code `finalize.override_race_lost`, the caller's INSERT was rejected by the
+unique index (another caller's row is now active). No row was inserted for
+the loser. The caller should re-query `GetActiveFinalizeLockForSession` to
+discover who holds the lock. Do not retry blindly — the winner already holds
+the lock.
+
+### Application-code change summary
+
+**Branch 5 (override) in `lock_acquire.go`** was changed to:
+
+1. Call `ReleaseFinalizeLock(existing.ID, now)` BEFORE inserting the new row.
+   This removes the existing lock from the unique index's scope (by setting
+   `released_at`), allowing the INSERT to proceed.
+2. INSERT the new lock row (unique index now allows it since the previous row
+   is released).
+3. On `ErrUniqueViolation` from the INSERT (concurrent race loser): return a
+   409 `finalize.override_race_lost` response with nil Go error.
+4. Call `SupersedeFinalizeLock(existing.ID, newLockID)` AFTER the INSERT
+   succeeds, preserving the supersede audit trail on the released row.
+
+**Self-FK note**: The self-FK on `superseded_by_lock_id` blocked the
+"supersede before insert" ordering. Releasing first breaks the cycle: once
+the old row is released (`released_at IS NOT NULL`), it is removed from the
+unique partial index's scope, allowing the INSERT. The old row ends up with
+both `released_at` and `superseded_by_lock_id` set, which is semantically
+correct — it was released AND superseded.
+
+**`lock_patch.go`**: Reordered `released_at` vs `superseded_by_lock_id`
+checks so that "superseded" (more actionable) is returned before "released"
+when a lock has both fields set.
+
+**Stale test fixtures fixed**:
+- `plan_test.go` `TestGetFinalizePlan_LockSuperseded_409`: updated to
+  release the first lock before inserting the second.
+- `lock_patch_test.go` `TestPatchFinalizeLock_Superseded_409`: same fix.
+
+### Test re-enablement
+
+`t.Skip` removed from `TestAcquireFinalizeLock_ConcurrentOverrides_OnlyOneWins`
+in `internal/portal/finalize/lock_acquire_test.go`. Test now passes.
+
+### Verification
+
+- `go build ./...` — clean
+- `go test ./internal/portal/finalize/...` — all pass including
+  `TestAcquireFinalizeLock_ConcurrentOverrides_OnlyOneWins`
+- `go test ./internal/...` — all pass

@@ -110,12 +110,11 @@ func (h *Handler) PatchFinalizeLock(ctx context.Context, req openapi.PatchFinali
 	}
 
 	// Already released / superseded — clients should re-acquire.
-	if lock.ReleasedAt != nil {
-		return openapi.PatchFinalizeLock409JSONResponse(openapi.ErrorEnvelope{
-			Error:   "finalize.lock_released",
-			Message: "finalize lock has been released",
-		}), nil
-	}
+	// Check superseded before released: a lock that was overridden in the
+	// concurrent-override path will have both fields set (released_at is set
+	// first to remove it from the unique-active-index scope, then
+	// superseded_by_lock_id is set for audit). "Superseded" is the more
+	// actionable signal for callers — they should re-query to find who won.
 	if lock.SupersededByLockID != nil {
 		details := map[string]interface{}{
 			"superseded_by_lock_id": *lock.SupersededByLockID,
@@ -124,6 +123,12 @@ func (h *Handler) PatchFinalizeLock(ctx context.Context, req openapi.PatchFinali
 			Error:   "finalize.lock_superseded",
 			Message: "finalize lock has been superseded",
 			Details: details,
+		}), nil
+	}
+	if lock.ReleasedAt != nil {
+		return openapi.PatchFinalizeLock409JSONResponse(openapi.ErrorEnvelope{
+			Error:   "finalize.lock_released",
+			Message: "finalize lock has been released",
 		}), nil
 	}
 

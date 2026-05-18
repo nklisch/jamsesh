@@ -272,8 +272,6 @@ func TestAcquireFinalizeLock_OverrideSupersedes(t *testing.T) {
 // The test deliberately avoids asserting which racer wins (A or C); either
 // outcome is acceptable. What is NOT acceptable is both rows being active.
 func TestAcquireFinalizeLock_ConcurrentOverrides_OnlyOneWins(t *testing.T) {
-	t.Skip("documents finalize-lock-concurrent-override-race-allows-two-active-locks (backlog); remove skip when the race is fixed. The test correctly fails today: two concurrent override=true callers leave two non-superseded active rows.")
-
 	// MaxOpenConns=1 forces all goroutines through the single in-memory SQLite
 	// connection, so they all see the same schema/data.  SQLite is effectively
 	// single-writer anyway; the constraint is intentional, not a workaround.

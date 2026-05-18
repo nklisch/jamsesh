@@ -243,6 +243,11 @@ CREATE TABLE finalize_locks (
 CREATE INDEX finalize_locks_session_idx ON finalize_locks(session_id);
 CREATE INDEX finalize_locks_active_idx ON finalize_locks(session_id)
     WHERE released_at IS NULL AND superseded_by_lock_id IS NULL;
+-- Unique partial index (00015_finalize_locks_unique_active): at most one active
+-- (non-superseded, non-released) lock may exist per session at any time.
+CREATE UNIQUE INDEX finalize_locks_one_active_per_session_idx
+    ON finalize_locks (session_id)
+    WHERE superseded_by_lock_id IS NULL AND released_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- leases table (00013_leases migration)

@@ -15,6 +15,15 @@ import (
 	"jamsesh/internal/portal/tokens"
 )
 
+// ErrOverrideRaceLost is returned (wrapped) when two callers simultaneously
+// attempt AcquireFinalizeLock(override=true) and this caller's INSERT lost the
+// unique-index race. The other caller's row is now the active lock; callers
+// should re-query rather than retry blindly.
+//
+// Contract: when this error is returned, NO new lock row was inserted for the
+// loser. The session's active lock is held by whichever caller won the race.
+var ErrOverrideRaceLost = errors.New("finalize: override race lost — another caller inserted the active lock first")
+
 // AcquireFinalizeLock implements POST
 // /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock.
 //
@@ -141,9 +150,32 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 				Details: details,
 			}), nil
 		} else {
-			// Branch 5: fresh, held by another member, override — defer
-			// the supersede until the new row exists (self-FK on
-			// superseded_by_lock_id requires the target to exist first).
+			// Branch 5: fresh, held by another member, override.
+			//
+			// The unique partial index on (session_id) WHERE
+			// superseded_by_lock_id IS NULL AND released_at IS NULL means we
+			// cannot INSERT the new row while the existing row is still "active"
+			// (both columns NULL). The self-FK on superseded_by_lock_id prevents
+			// setting it before the new row exists. Resolution: release the
+			// existing row first (removes it from the unique index's scope), then
+			// INSERT, then set superseded_by_lock_id on the released row so the
+			// audit trail is preserved. The existing row ends up with both
+			// released_at and superseded_by_lock_id set; the active-lock query
+			// (released_at IS NULL AND superseded_by_lock_id IS NULL) correctly
+			// excludes it.
+			//
+			// Concurrency: if two callers race here, whichever reaches
+			// ReleaseFinalizeLock first wins the "release" (the second caller's
+			// ReleaseFinalizeLock is a no-op because the WHERE released_at IS NULL
+			// guard fires). Then whichever reaches InsertFinalizeLock first wins
+			// the INSERT (the second caller hits the unique-index violation and
+			// returns ErrOverrideRaceLost below).
+			if err := h.store.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
+				ID:         existing.ID,
+				ReleasedAt: now,
+			}); err != nil {
+				return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: release existing lock for override: %w", err))
+			}
 			supersedeOldID = existing.ID
 		}
 	}
@@ -164,6 +196,19 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 		BaseSHA:             "",
 		Mode:                "squash",
 	}); err != nil {
+		if errors.Is(err, store.ErrUniqueViolation) && supersedeOldID != "" {
+			// The unique partial index on (session_id) WHERE
+			// superseded_by_lock_id IS NULL AND released_at IS NULL rejected
+			// this INSERT because a concurrent override caller already inserted
+			// their row. The winner is now the active lock; the loser (this
+			// caller) did not insert a row. Surface a 409 so the caller can
+			// re-query and discover the winner. This is not a transient dep
+			// failure — return nil Go error; the 409 body carries the signal.
+			return openapi.AcquireFinalizeLock409JSONResponse(openapi.ErrorEnvelope{
+				Error:   "finalize.override_race_lost",
+				Message: "another caller acquired the finalize lock simultaneously; re-query to see the current lock holder",
+			}), nil
+		}
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: insert lock: %w", err))
 	}
 
