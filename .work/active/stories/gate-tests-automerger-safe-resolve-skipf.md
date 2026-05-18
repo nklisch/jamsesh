@@ -1,7 +1,7 @@
 ---
 id: gate-tests-automerger-safe-resolve-skipf
 kind: story
-stage: backlog
+stage: implementing
 tags: [testing, portal]
 parent: null
 depends_on: []

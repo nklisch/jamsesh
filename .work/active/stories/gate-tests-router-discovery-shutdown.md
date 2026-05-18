@@ -1,7 +1,7 @@
 ---
 id: gate-tests-router-discovery-shutdown
 kind: story
-stage: backlog
+stage: implementing
 tags: [testing, infra]
 parent: null
 depends_on: []

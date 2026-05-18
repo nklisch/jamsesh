@@ -1,7 +1,7 @@
 ---
 id: stale-token-injection-needs-manifest-format-exposure
 kind: story
-stage: backlog
+stage: implementing
 tags: [testing, infra, portal]
 parent: null
 depends_on: []
