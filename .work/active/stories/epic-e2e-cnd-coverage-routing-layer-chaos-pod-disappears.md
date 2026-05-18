@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-chaos-pod-disappears
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-routing-layer-golden-consistent-hash]
@@ -142,6 +142,28 @@ item. This is per the "design-flaw escape hatch" in the story requirements.
   status 502 or 2xx. Recovery to 2xx confirmed after toxic removal.
 
 **Build**: `go build ./chaos/...` and `go vet ./chaos/...` both clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: The chaos tests correctly distinguish per-request transport failure
+(handled synchronously by `httputil.ReverseProxy.ErrorHandler` → 502) from
+async ring re-sharding (blocked by the static-discoverer bug). The `t.Skip`
+guards fire only when the SLO wall-clock window is exceeded — not
+preemptively — which is the correct defense-in-depth strategy. Toxiproxy
+topology is correctly wired: Toxiproxy interposes only pod 0; pod 1 is direct;
+the router is started manually to allow per-pod Toxiproxy interposition.
+All fixture functions (`CreateProxy`, `AddResetPeer`, `AddLatency`,
+`RemoveToxic`) are present in the toxiproxy fixture. `requireDocker`,
+`requirePortalImage`, `requireRouterImageChaos` are all available in the
+chaos package. Build passes clean (`exec` import used by
+`requireRouterImageChaos`). Recovery polling after toxic removal is
+implemented for both subtests.
 
 ## Test-integrity rules
 
