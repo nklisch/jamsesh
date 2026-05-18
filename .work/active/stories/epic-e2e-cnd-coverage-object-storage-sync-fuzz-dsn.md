@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-fuzz-dsn
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -110,3 +110,27 @@ reachable. Other seeds should cause fast-fail.
 - The `startFailingPortal` helper from `failure/config_and_deps_test.go`
   may need to be moved to a shared location if used by both `failure/` and
   `fuzz/` packages. Extract to `tests/e2e/fixtures/portalhelper/` if needed.
+
+## Implementation notes
+
+Implemented `tests/e2e/fuzz/object_storage_dsn_test.go` and
+`tests/e2e/fuzz/testdata/object-storage-dsn-corpus.json`.
+
+**Design decisions:**
+
+- `startDSNPortal` is inlined (not shared with `failure/`) — the packages
+  are independent and the helper is small. Avoids premature extraction.
+- `requireDSNDockerAvailable` and `requireDSNPortalImagePresent` are
+  inlined in the new file to avoid cross-file naming collisions with the
+  shared `requireDocker` / `requirePortalImage` helpers in `portal/portal.go`
+  (which are package-private and not accessible from `fuzz_test`).
+- Seeds run with `t.Parallel()` for faster wall-clock time (each is an
+  independent container).
+- `checkDSNOutcome` distinguishes three outcomes: fast-fail (expected for
+  most seeds), clean boot (only for well-formed URLs), and zombie/hang
+  (logged as warning, not hard-fail — a dedicated longer-timeout run is
+  needed to confirm a true hang before parking as Critical).
+- Random iteration count controlled via `OBJ_DSN_FUZZ_COUNT` (default 50),
+  matching the `MCP_FUZZ_COUNT` pattern for MCP fuzz.
+- Corpus has 25 entries covering all categories in the story body (≥15 required).
+- `go build ./fuzz/... && go vet ./fuzz/...` pass cleanly.
