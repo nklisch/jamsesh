@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-failure-backend-dead
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -99,3 +99,40 @@ c   := portalcluster.Start(ctx, t, portalcluster.Options{
   the SLO assertion.
 - **Never game an assertion.** Do not swap the SLO check for `time.Sleep(20s)`
   followed by a single status check — the polling loop IS the SLO contract.
+
+## Implementation notes
+
+**File landed**: `tests/e2e/failure/router_backend_dead_test.go`
+
+**Design finding surfaced**: The static discoverer Run loop is never started
+in `cmd/jamsesh-router/main.go`. The ring is seeded once at startup and never
+updated. When a backend pod dies, the router continues routing to the dead pod's
+address; clients receive 502 Bad Gateway indefinitely with no re-sharding.
+
+**Root cause**: `main.go` explicitly defers the discovery wiring ("the discovery
+story / Unit 3 will overlay this") with `_ = publishWithMetrics` and `_ = probe`
+suppressions. The discoverer implementation (`internal/router/discovery/static.go`)
+is correct and its default ProbeInterval is 5s (well within the 15s SLO), but
+the goroutine is never started.
+
+**Impact**: The 502 path (transport error → `ErrorHandler`) does NOT trigger the
+503 retry path in `proxy.go`. There is no re-sharding. Sessions hashing to the
+dead pod are permanently unavailable until the router restarts.
+
+**Action taken**:
+- Test landed with `t.Skip("bug-router-static-discoverer-not-started: ...")`
+  documenting the invariant in full — polling loop, SLO assertion, lease-holder
+  cross-check, and post-eviction verification are all present and correct.
+- Backlog item filed: `.work/backlog/bug-router-static-discoverer-not-started.md`
+  (tagged Important) with the fix: start the discovery goroutine in `main.go`
+  and rebuild the router image, then remove the `t.Skip`.
+- The test is classified Important (not Critical) because the fix is a one-line
+  goroutine start; no panic or infinite loop was observed.
+
+**SLO analysis**:
+- Default `ProbeInterval`: 5s (from `internal/router/config/config.go` defaults).
+- ProbeInterval is YAML-only (no env-var binding in v1); the router fixture
+  cannot override it via `Options`. Since 5s < 15s SLO window, no config
+  override story needs to be filed — the default is fine once wiring is added.
+- The fix should produce consistent test passage: dead pod detected within
+  5–10s (1–2 probe cycles), well within the 15s window.
