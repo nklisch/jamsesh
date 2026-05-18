@@ -74,6 +74,7 @@ func finalizeLocal(ctx context.Context, portalURL, sessionID string) error {
 		return err
 	}
 	pc := &portalclient.Client{BaseURL: portalURL}
+	portalclient.WireRefresh(pc)
 	plan, err := fetchPlan(ctx, pc, orgID, sessionID, "")
 	if err != nil {
 		if strings.Contains(err.Error(), "409") {

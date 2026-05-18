@@ -79,6 +79,7 @@ func joinAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	pc := &portalclient.Client{BaseURL: portalURL}
+	portalclient.WireRefresh(pc)
 
 	// 2. Parse the arg — may be a bare session ID, orgID/sessionID, or invite URL.
 	sessionID, orgID, inviteID, inviteToken := parseSessionArg(arg, portalURL)

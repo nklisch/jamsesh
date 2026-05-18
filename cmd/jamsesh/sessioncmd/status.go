@@ -58,6 +58,7 @@ func statusAction(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("resolving portal URL: %w", err)
 	}
 	pc := &portalclient.Client{BaseURL: portalURL}
+	portalclient.WireRefresh(pc)
 
 	// Fetch me (for account ID used to filter comments).
 	me, err := portalclient.GetJSON[openapi.MeResponse](ctx, pc, "/api/me")

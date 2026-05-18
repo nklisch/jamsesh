@@ -59,6 +59,7 @@ func finalizeRunAction(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("resolving portal URL: %w", err)
 	}
 	pc := &portalclient.Client{BaseURL: portalURL}
+	portalclient.WireRefresh(pc)
 
 	// Step 2: mid-pick detection — BEFORE pre-flight, BEFORE anything
 	// mutating. If the user is mid-pick we report state and exit clean.

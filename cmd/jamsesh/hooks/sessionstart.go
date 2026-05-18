@@ -120,13 +120,17 @@ func resolveSessionID() (string, error) {
 	return "", fmt.Errorf("no sessions found; run `jamsesh join` first")
 }
 
-// buildPortalClient constructs a portalclient.Client from local state.
+// buildPortalClient constructs a portalclient.Client from local state with
+// the token-refresh path wired in so that 401 responses trigger a singleflight
+// refresh before the request is retried.
 func buildPortalClient() (*portalclient.Client, error) {
 	portalURL, err := state.ReadPortalURL()
 	if err != nil {
 		return nil, fmt.Errorf("resolving portal URL: %w", err)
 	}
-	return &portalclient.Client{BaseURL: portalURL}, nil
+	pc := &portalclient.Client{BaseURL: portalURL}
+	portalclient.WireRefresh(pc)
+	return pc, nil
 }
 
 // handleSessionStart implements the session-start hook logic.
