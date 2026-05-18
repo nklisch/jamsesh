@@ -152,7 +152,62 @@ describe('ActivityFeed', () => {
     });
   });
 
-  // XSS payload assertions (e.g. <img onerror=...> in comment body must not execute)
-  // are covered by the companion story: gate-tests-xss-activityfeed-component
-  it.todo('component XSS coverage — landed in gate-tests-xss-activityfeed-component');
+  // ── XSS coverage (gate-tests-xss-activityfeed-component) ───────────────────
+
+  it('does not execute <img onerror> payload injected via comment.added body', async () => {
+    // Arrange: delete any stale marker from a prior run
+    delete (window as unknown as Record<string, unknown>).__pwned;
+
+    const { container } = render(ActivityFeed, { props: { sessionId: 'sess-1' } });
+
+    // Act: fire a comment whose body is a classic XSS probe
+    fire('comment.added', {
+      author_id: 'attacker',
+      body: '<img src=x onerror="window.__pwned=1">',
+    });
+
+    await waitFor(() => {
+      // The feed item must have appeared — verify "commented:" text is present
+      // so we know the event was actually rendered (not silently dropped).
+      expect(container.querySelector('.feed-item')).not.toBeNull();
+    });
+
+    // Assert 1: no live <img> element in the DOM (would only exist if {@html} was used)
+    expect(container.querySelector('img')).toBeNull();
+
+    // Assert 2: the payload was not silently dropped — the literal text "<img" must
+    // appear somewhere in the rendered output as an escaped text node (not an element).
+    // innerHTML encodes "<" as "&lt;", so the safe escaped form is what we expect.
+    expect(container.innerHTML).toMatch(/&lt;img/i);
+
+    // Assert 3: the injected script did not run
+    expect((window as unknown as Record<string, unknown>).__pwned).toBeUndefined();
+  });
+
+  it('does not inject a <script> element via comment.added body', async () => {
+    delete (window as unknown as Record<string, unknown>).__pwned;
+
+    const { container } = render(ActivityFeed, { props: { sessionId: 'sess-1' } });
+
+    fire('comment.added', {
+      author_id: 'attacker',
+      body: '<script>window.__pwned=2;<\/script>',
+    });
+
+    await waitFor(() => {
+      expect(container.querySelector('.feed-item')).not.toBeNull();
+    });
+
+    // No live <script> element must be present in the component tree
+    expect(container.querySelector('script')).toBeNull();
+
+    // The raw payload must not appear as an unescaped script tag
+    expect(container.innerHTML).not.toMatch(/<script/i);
+
+    // The text content was not silently dropped — escaped form must be present
+    expect(container.innerHTML).toMatch(/&lt;script/i);
+
+    // The injected script did not run
+    expect((window as unknown as Record<string, unknown>).__pwned).toBeUndefined();
+  });
 });
