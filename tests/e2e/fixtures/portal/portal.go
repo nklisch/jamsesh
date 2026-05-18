@@ -172,6 +172,32 @@ func (p *Portal) SendSignal(ctx context.Context, sig syscall.Signal) error {
 	return nil
 }
 
+// Exec runs an arbitrary command inside the portal container and returns the
+// exit code and combined stdout+stderr output. Use this for test-side
+// inspection (e.g. checking whether a directory exists on the container's
+// filesystem) without modifying production code.
+//
+// The exit code is 0 on success. Non-zero exit codes are NOT treated as errors
+// by this method — the caller decides whether a non-zero code is a failure.
+//
+// A non-nil error indicates a Docker API failure, not a command failure.
+func (p *Portal) Exec(ctx context.Context, cmd []string) (exitCode int, output string, err error) {
+	if p.container == nil {
+		return -1, "", fmt.Errorf("portal: Exec: container is nil")
+	}
+	code, reader, execErr := p.container.Exec(ctx, cmd)
+	if execErr != nil {
+		return -1, "", fmt.Errorf("portal: Exec %v: %w", cmd, execErr)
+	}
+	if reader != nil {
+		data, readErr := io.ReadAll(reader)
+		if readErr == nil {
+			output = string(data)
+		}
+	}
+	return code, output, nil
+}
+
 // signalName maps common signals to their symbolic names as understood by
 // BusyBox kill on alpine. Falls back to the numeric string for unknown signals.
 func signalName(sig syscall.Signal) string {
