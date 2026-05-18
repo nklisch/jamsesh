@@ -1,7 +1,7 @@
 ---
 id: gate-security-ws-bearer-token-leakage
 kind: story
-stage: review
+stage: done
 tags: [security, portal, documentation]
 parent: null
 depends_on: []
@@ -65,3 +65,13 @@ Docs changed:
 Follow-on parked at `.work/backlog/gate-security-ws-bearer-token-ticket-flow.md`
 — short-lived ticket endpoint (`/api/auth/ws-ticket`) to replace the
 long-lived-token-in-header flow entirely.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Documentation-tier remediation applied. SECURITY.md gained a 'Self-host security posture' bullet; SELF_HOST.md §10 has prominent 'WebSocket bearer token in proxy logs' guidance with proxy-specific recipes (NGINX, Caddy, Envoy, CloudFront/ALB, native termination). PROTOCOL.md WS section explains the subprotocol-header mechanism and links to SELF_HOST.md §10. The long-term ticket-flow refactor is parked at .work/backlog/gate-security-ws-bearer-token-ticket-flow.md for v0.2+. Decision rationale: option (a) docs path is correct for v0.1.0; ticket flow is a bigger refactor that the story acknowledged as not strictly required if operators redact.

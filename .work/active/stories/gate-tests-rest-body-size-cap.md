@@ -1,7 +1,7 @@
 ---
 id: gate-tests-rest-body-size-cap
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-rest-body-size-limits]
@@ -67,3 +67,13 @@ on `*http.MaxBytesError` before reaching the business logic.
 with `request.body_too_large` when the body exceeded the 1 MiB cap.
 
 **All tests pass:** `go test -run TestREST_BodySizeCap -v ./internal/portal/router/...` → PASS
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Coverage of the body-size cap across 5 real API endpoints (RequestMagicLink, CreateSession, CreateComment, CreateOrgInvite, PatchFinalizeLock) — all 413 with request.body_too_large envelope. Config-knob test exercises the APIBodyLimitBytes plumbing. Smart-HTTP-unaffected test confirms /git/* routes don't get the /api cap. No bypass detected on any of the 5 endpoints. Uses the same strict-handler wiring as production (httperr.WriteBadRequest as RequestErrorHandlerFunc).

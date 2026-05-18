@@ -1,7 +1,7 @@
 ---
 id: gate-tests-receive-pack-concurrent-semaphore
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-receive-pack-stream-body]
@@ -70,3 +70,13 @@ correctly. `busy_timeout(5000)` is injected automatically by `db.Open`.
 release is inside the semaphore acquire branch; it runs even on all
 subsequent error paths (400, 413, 500). The race detector did not flag any
 concurrent semaphore access. No blocking issued.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Concurrency test verifies cap=2 admits 2, rejects 3 with 503+Retry-After. Solid engineering: uses io.Pipe (not a client-side blocking reader) to produce server-side contention, since Go's HTTP client transport reads the body before server processing. File-based SQLite + WAL to handle concurrent middleware reads; DisableKeepAlives:true so each request hits a separate server goroutine. -race clean. No semaphore leak observed — defer release runs on all error paths (400/413/500).
