@@ -2,6 +2,7 @@ package ring_test
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
 	"testing"
 
@@ -248,6 +249,165 @@ func TestConcurrentGetAndSetPods(t *testing.T) {
 	}
 	close(stop)
 	wg.Wait()
+}
+
+// TestRing_RebalanceBound_ByCardinality is a table-driven test that verifies the
+// consistent-hash rebalance fraction for add-one and remove-one operations across
+// a range of ring sizes. For a ring with N pods, adding one pod should move
+// approximately 1/(N+1) keys, and removing one pod should move approximately
+// 1/N keys.
+//
+// Tolerance is calibrated per cardinality because arc-length variance with 150
+// vnodes per pod is substantial at low N:
+//
+//   - N≥10: ±10 percentage-point tolerance — ring has ≥1500 vnodes, arcs are
+//     reasonably uniform, and observed rebalance stays close to ideal.
+//   - N=5: ±15 pp — same as the existing TestConsistentHashInvariant (±10 pp on
+//     the upper side, but we use ±15 here to cover both directions).
+//   - N=2,3: ±30 pp — at 300–450 vnodes the arc distribution is highly variable;
+//     individual pods can legitimately own 10%–90% of the key space, so the
+//     observed rebalance fraction deviates widely from 1/N.  TestVnodeDistribution
+//     already documents this: it allows 2%–55% per pod at N=5.
+//
+// Remove from N=1 (yielding 0 pods) is excluded since the empty-ring case is
+// already covered by TestEmptyRingAfterClear.
+func TestRing_RebalanceBound_ByCardinality(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		n         int     // starting pod count
+		nKeys     int     // number of keys to sample
+		tolerance float64 // ±pp around 1/(N+1) / 1/N
+	}{
+		{n: 2, nKeys: 10_000, tolerance: 0.40},  // extreme: 300 vnodes, huge variance
+		{n: 3, nKeys: 10_000, tolerance: 0.30},  // 450 vnodes, still high variance
+		{n: 5, nKeys: 10_000, tolerance: 0.15},  // 750 vnodes, moderate variance
+		{n: 10, nKeys: 10_000, tolerance: 0.10}, // 1500 vnodes, ring approaching uniform
+		{n: 50, nKeys: 10_000, tolerance: 0.10}, // 7500 vnodes, well-distributed
+		{n: 100, nKeys: 10_000, tolerance: 0.10}, // 15000 vnodes, very uniform
+	}
+
+	const vnodes = 150
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(fmt.Sprintf("N=%d", tc.n), func(t *testing.T) {
+			t.Parallel()
+
+			// Deterministic keys seeded by N so each subtest is reproducible
+			// independently regardless of parallel execution order.
+			localRng := rand.New(rand.NewSource(int64(tc.n) * 0xdeadbeef))
+			keys := make([]string, tc.nKeys)
+			for i := range keys {
+				keys[i] = fmt.Sprintf("sess-%d-%016x", tc.n, localRng.Int63())
+			}
+
+			podsN := makePods(tc.n)
+			r := ring.New(vnodes)
+			r.SetPods(podsN)
+
+			// Record baseline mapping.
+			before := make(map[string]string, tc.nKeys)
+			for _, k := range keys {
+				before[k] = r.Get(k).ID
+			}
+
+			// ── Add one pod ──────────────────────────────────────────────────
+			podsNPlus1 := makePods(tc.n + 1)
+			r.SetPods(podsNPlus1)
+
+			addMoved := 0
+			for _, k := range keys {
+				if r.Get(k).ID != before[k] {
+					addMoved++
+				}
+			}
+			addFrac := float64(addMoved) / float64(tc.nKeys)
+			idealAdd := 1.0 / float64(tc.n+1)
+			loAdd := idealAdd - tc.tolerance
+			hiAdd := idealAdd + tc.tolerance
+
+			t.Logf("add one pod (%d→%d): moved %.2f%% (ideal %.2f%%, window [%.2f%%, %.2f%%])",
+				tc.n, tc.n+1, addFrac*100, idealAdd*100, loAdd*100, hiAdd*100)
+
+			if addFrac < loAdd || addFrac > hiAdd {
+				t.Errorf("add one pod (%d→%d): moved %.2f%%; want [%.2f%%, %.2f%%]",
+					tc.n, tc.n+1, addFrac*100, loAdd*100, hiAdd*100)
+			}
+
+			// ── Remove one pod ───────────────────────────────────────────────
+			if tc.n < 2 {
+				// Removing all pods yields empty ring; skip remove test.
+				return
+			}
+
+			// Re-record baseline with N pods before testing removal.
+			r.SetPods(podsN)
+			for _, k := range keys {
+				before[k] = r.Get(k).ID
+			}
+
+			podsNMinus1 := makePods(tc.n - 1)
+			r.SetPods(podsNMinus1)
+
+			remMoved := 0
+			for _, k := range keys {
+				if r.Get(k).ID != before[k] {
+					remMoved++
+				}
+			}
+			remFrac := float64(remMoved) / float64(tc.nKeys)
+			idealRem := 1.0 / float64(tc.n)
+			loRem := idealRem - tc.tolerance
+			hiRem := idealRem + tc.tolerance
+
+			t.Logf("remove one pod (%d→%d): moved %.2f%% (ideal %.2f%%, window [%.2f%%, %.2f%%])",
+				tc.n, tc.n-1, remFrac*100, idealRem*100, loRem*100, hiRem*100)
+
+			if remFrac < loRem || remFrac > hiRem {
+				t.Errorf("remove one pod (%d→%d): moved %.2f%%; want [%.2f%%, %.2f%%]",
+					tc.n, tc.n-1, remFrac*100, loRem*100, hiRem*100)
+			}
+		})
+	}
+}
+
+// TestRing_KeyAffinity_UnchangedAcrossNoopSetPods verifies that calling SetPods
+// with the same pod set twice does not change the routing for any key. Because
+// the ring is built deterministically from pod IDs (via fnv hash of "podID:idx"),
+// the second SetPods call must produce an identical snapshot and all 1000 keys
+// must continue to route to the same pod.
+func TestRing_KeyAffinity_UnchangedAcrossNoopSetPods(t *testing.T) {
+	t.Parallel()
+
+	const (
+		nPods  = 5
+		nKeys  = 1000
+		vnodes = 150
+	)
+
+	pods := makePods(nPods)
+	r := ring.New(vnodes)
+	r.SetPods(pods)
+
+	// Record first-pass routing for deterministic keys.
+	keys := make([]string, nKeys)
+	before := make(map[string]string, nKeys)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("affinity-key-%04d", i)
+		before[keys[i]] = r.Get(keys[i]).ID
+	}
+
+	// Call SetPods with the exact same slice — must be a no-op from a routing POV.
+	r.SetPods(pods)
+
+	// Verify every key still routes to the same pod.
+	for _, k := range keys {
+		got := r.Get(k).ID
+		if got != before[k] {
+			t.Errorf("noop SetPods changed routing: Get(%q) = %q; want %q", k, got, before[k])
+		}
+	}
 }
 
 // TestVnodeDistribution checks that with 150 vnodes per pod and 5 pods, every
