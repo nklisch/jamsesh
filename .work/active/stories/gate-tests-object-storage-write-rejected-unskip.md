@@ -1,7 +1,7 @@
 ---
 id: gate-tests-object-storage-write-rejected-unskip
 kind: story
-stage: implementing
+stage: review
 tags: [testing, infra, portal]
 parent: null
 depends_on: []
@@ -37,3 +37,30 @@ it into an explicit failure assertion:
 
 ## Test location (suggested)
 `tests/e2e/failure/object_storage_write_rejected_test.go`
+
+## Implementation notes
+
+Removed the `t.Skip(...)` at PATH B (lines 245–254 in the original) in
+`tests/e2e/failure/object_storage_write_rejected_test.go` and replaced it with
+a `t.Fatalf(...)` assertion.
+
+### What the old skip said
+The `t.Skip` fired when `git push` exited 0 (2xx), documenting that the portal
+had silently swallowed the `NoSuchBucket` error — an RPO=0 violation at the
+time the skip was written. It served as the audit trail for the bug.
+
+### What the new assertion says
+`t.Fatalf` fires on the same condition (`pushErr == nil`), but now treats it as
+an **unambiguous test failure** rather than a known-acceptable gap. The message
+names the invariant, explains why 2xx is wrong, and explicitly instructs
+maintainers not to re-add a `t.Skip`. The fix
+(`object-storage-write-rejected-silent-acceptance`) ensures `EmitForUpdates`
+errors are propagated as HTTP 500 before any response bytes are committed, so
+this path must not be reachable in a correct build.
+
+### No fixture changes needed
+The `minio.ListObjects` and `writeRejectedAssertBucketEmpty` helpers were
+already in place. No new fixture methods were required.
+
+### Build verification
+`go build -tags e2e ./...` from `tests/e2e/` — clean, no errors.

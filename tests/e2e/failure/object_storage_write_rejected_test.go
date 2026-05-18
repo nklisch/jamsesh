@@ -228,31 +228,24 @@ func TestObjectStorageWriteRejected(t *testing.T) {
 	}
 
 	if pushErr == nil {
-		// Push succeeded (2xx) — check if any objects landed in the real bucket.
-		// If the bucket is empty AND the push returned 2xx, that is a silent RPO=0
-		// violation: the portal accepted the write but the object was lost.
+		// Push succeeded (2xx) on a missing S3 bucket — this is an RPO=0
+		// violation. The portal accepted the write but the object cannot have
+		// been persisted to the non-existent bucket: the NoSuchBucket error
+		// from PutObject was silently swallowed instead of surfaced to the
+		// git client as a non-2xx response.
 		//
-		// If the bucket is non-empty, something unusual happened (e.g., the
-		// portal wrote to the real bucket instead of the missing one due to a
-		// config resolution bug) — still a bug, but a different one.
-		//
-		// Either way: park the bug and skip the hard assertion.
-		//
-		// NOTE for future: if this skip fires, file a backlog item tagged
-		// durability/critical and reference it here. The correct fix is for the
-		// portal to propagate the NoSuchBucket error from the S3 PutObject call
-		// up through the pack-storage layer and return a non-2xx to the git client.
-		t.Skip(
-			"write_rejected: push returned 0 (2xx) on a missing S3 bucket — " +
-				"the portal accepted the write but the object cannot have been " +
-				"persisted to the non-existent bucket. This is an RPO=0 violation: " +
-				"the S3 write error is silently swallowed rather than surfaced to the " +
-				"git client. The correct fix is to propagate NoSuchBucket from the " +
-				"pack-storage layer through the receive-pack handler. " +
-				"Park this as a critical durability bug. " +
-				"See backlog: object-storage-write-rejected-silent-acceptance",
+		// The fix (object-storage-write-rejected-silent-acceptance) ensures
+		// that EmitForUpdates errors are propagated as HTTP 500 before any
+		// response bytes are committed. If this assertion fires, the fix has
+		// regressed and must be investigated immediately — do NOT re-add a
+		// t.Skip here.
+		t.Fatalf(
+			"write_rejected: git push exited 0 (2xx) with a missing S3 bucket — "+
+				"RPO=0 violation: the portal silently accepted a write it could not "+
+				"persist. The receive-pack handler must return a non-2xx response "+
+				"when the object-storage write fails. "+
+				"Push output: %s", pushOut,
 		)
-		return
 	}
 
 	// Push failed (non-zero exit) — the invariant is satisfied.
