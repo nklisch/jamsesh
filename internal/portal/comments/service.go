@@ -28,10 +28,6 @@ type Clock interface {
 	Now() time.Time
 }
 
-type realClock struct{}
-
-func (realClock) Now() time.Time { return time.Now().UTC() }
-
 // Service is the business-logic layer for comments.
 //
 // Service is struct-literal-initialized in cmd/portal/main.go. The Clock field
@@ -44,7 +40,7 @@ type Service struct {
 	Clock Clock
 }
 
-// now returns the Service's current time. Falls back to realClock when
+// now returns the Service's current time. Falls back to time.Now().UTC() when
 // Clock is nil so test code can construct Service literals without
 // initializing the field.
 func (s *Service) now() time.Time {

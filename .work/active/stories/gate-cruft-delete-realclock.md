@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-realclock
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, portal]
 parent: null
 depends_on: []
@@ -41,3 +41,16 @@ Delete both `realClock` type declarations. The `now()` fallback path
 calls `time.Now().UTC()` directly without going through `realClock{}`,
 so the type is unreachable. Update the doc-comment on `now()` to drop
 the reference to `realClock`.
+
+## Implementation notes
+
+Chose option (a): deleted both `realClock` struct + method declarations from
+`internal/portal/comments/service.go` and `internal/portal/mcpendpoint/handler.go`.
+Confirmed via grep that `realClock` was referenced only in its own declaration
+and in the stale `now()` doc-comments — it was never instantiated anywhere.
+
+The `now()` helper already calls `time.Now().UTC()` directly, so behavior is
+unchanged. Doc-comments on `now()` in both files updated to reference
+`time.Now().UTC()` rather than the now-deleted `realClock` type.
+
+Build and tests pass: `go build` and `go test` both clean for both packages.

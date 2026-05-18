@@ -30,10 +30,6 @@ type Clock interface {
 	Now() time.Time
 }
 
-type realClock struct{}
-
-func (realClock) Now() time.Time { return time.Now().UTC() }
-
 // Endpoint is the MCP endpoint for the jamsesh portal. Construct it once and
 // call Handler to get the http.Handler ready for mounting.
 //
@@ -50,7 +46,7 @@ type Endpoint struct {
 	Clock    Clock
 }
 
-// now returns the Endpoint's current time. Falls back to realClock when
+// now returns the Endpoint's current time. Falls back to time.Now().UTC() when
 // Clock is nil so test code can construct Endpoint literals without
 // initializing the field.
 func (e *Endpoint) now() time.Time {
