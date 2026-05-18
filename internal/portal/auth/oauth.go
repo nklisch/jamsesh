@@ -123,16 +123,23 @@ func (h *OAuthHandler) OauthCallback(
 
 	// Exchange the authorization code for an Identity via the provider.
 	//
-	// Two error classes possible:
+	// Three error classes possible:
 	//
-	//  1. Business: the provider explicitly rejected the authorization
-	//     code (RFC 6749 `invalid_grant` / GitHub
+	//  1. Business (bad grant): the provider explicitly rejected the
+	//     authorization code (RFC 6749 `invalid_grant` / GitHub
 	//     `bad_verification_code` — code expired, reused, malformed).
 	//     The error chain carries `oauth.ErrBadGrant`. Surface as 400
 	//     `oauth.invalid_grant` — retrying is futile, the user must
 	//     re-initiate sign-in.
 	//
-	//  2. Dep: token-exchange non-2xx, transport failure, /user or
+	//  2. Business (unverified email): the provider's email list contains
+	//     no verified primary email. The error chain carries
+	//     `oauth.ErrUnverifiedEmail`. Surface as 400
+	//     `oauth.unverified_email` — the user must verify their email
+	//     address with the provider before OAuth sign-in will succeed.
+	//     This is a security boundary against account-confusion attacks.
+	//
+	//  3. Dep: token-exchange non-2xx, transport failure, /user or
 	//     /user/emails lookup failure, decode failure, empty access
 	//     token. Wrap with deperr.WrapOAuthProvider so the strict-handler
 	//     translator emits 503 `dep.oauth_provider_unavailable`
@@ -142,6 +149,10 @@ func (h *OAuthHandler) OauthCallback(
 		if errors.Is(err, portaloauth.ErrBadGrant) {
 			return oauthBadRequest("oauth.invalid_grant",
 				"authorization code was rejected by the provider"), nil
+		}
+		if errors.Is(err, portaloauth.ErrUnverifiedEmail) {
+			return oauthBadRequest("oauth.unverified_email",
+				"your GitHub account has no verified primary email address; please verify your email on GitHub and try again"), nil
 		}
 		return nil, deperr.WrapOAuthProvider(
 			fmt.Errorf("oauth callback: exchange: %w", err))

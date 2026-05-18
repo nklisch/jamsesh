@@ -1,7 +1,7 @@
 ---
 id: gate-security-github-oauth-reject-unverified-email
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -55,3 +55,35 @@ Refuse the OAuth flow when no verified primary email is available — return
 `oauth.unverified_email` 400 instead of silently falling back. Optionally
 cross-check at provisioning time that an existing `accounts.email` row's
 verification status matches the new identity proof.
+
+## Implementation notes
+
+### Changes
+
+**`internal/portal/oauth/provider.go`** — added `ErrUnverifiedEmail` sentinel
+at package level alongside `ErrBadGrant`. Both are plain `errors.New` values
+that travel up through `*ErrExchange.Unwrap()` so callers can use
+`errors.Is`.
+
+**`internal/portal/oauth/github.go`** — `fetchPrimaryEmail` now returns
+`ErrUnverifiedEmail` when the email list contains no verified primary entry.
+The two fallback loops (unverified primary, then first-entry) are removed.
+The function comment is updated to document the new contract.
+
+**`internal/portal/auth/oauth.go`** — `OauthCallback` now checks
+`errors.Is(err, portaloauth.ErrUnverifiedEmail)` before the dep-class
+fallback and returns 400 `oauth.unverified_email` with an actionable message
+directing the user to verify their email on GitHub. The exchange error
+comment block is updated to document three (not two) error classes.
+
+### Provisioning cross-check
+`internal/portal/auth/provision.go` does not track `email_verified` per
+account row (no such column in the schema). The defense-in-depth cross-check
+described in the remediation direction is therefore deferred. The primary fix
+(rejecting the flow before an unverified email ever reaches provisioning) is
+in place.
+
+### Tests
+All existing tests pass unchanged. `TestGitHub_Exchange_PicksPrimaryVerifiedEmail`
+continues to exercise the happy path. The companion story
+`gate-tests-github-oauth-unverified-email` will add the negative-path tests.

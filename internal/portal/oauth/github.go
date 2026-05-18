@@ -228,8 +228,9 @@ type githubEmail struct {
 }
 
 // fetchPrimaryEmail fetches /user/emails and returns the primary+verified
-// email address. Falls back to the first entry if no primary+verified one
-// is found (defensive — GitHub always provides one).
+// email address. Returns ErrUnverifiedEmail if no verified primary email is
+// found — callers must not fall back to unverified addresses (doing so
+// enables account-confusion / takeover via unverified email attachment).
 func (g *GitHub) fetchPrimaryEmail(ctx context.Context, accessToken string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		g.apiBase()+"/user/emails", nil)
@@ -255,20 +256,12 @@ func (g *GitHub) fetchPrimaryEmail(ctx context.Context, accessToken string) (str
 		return "", fmt.Errorf("decode emails response: %w", err)
 	}
 
-	// Primary + verified is the canonical pick.
+	// Only a verified primary email is accepted. Unverified emails enable
+	// account-confusion attacks; see ErrUnverifiedEmail for details.
 	for _, e := range emails {
 		if e.Primary && e.Verified {
 			return e.Email, nil
 		}
 	}
-	// Fall back to first primary (unverified) or just the first entry.
-	for _, e := range emails {
-		if e.Primary {
-			return e.Email, nil
-		}
-	}
-	if len(emails) > 0 {
-		return emails[0].Email, nil
-	}
-	return "", fmt.Errorf("github returned no email addresses")
+	return "", ErrUnverifiedEmail
 }

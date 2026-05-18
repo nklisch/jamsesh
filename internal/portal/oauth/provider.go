@@ -72,3 +72,16 @@ func (e *ErrExchange) Unwrap() error { return e.Cause }
 // 503 `dep.oauth_provider_unavailable` (which would suggest a futile
 // retry).
 var ErrBadGrant = errors.New("oauth: provider rejected the authorization code")
+
+// ErrUnverifiedEmail is returned (wrapped in *ErrExchange via Cause) when
+// the provider's email list contains no verified primary email address.
+// This is a security boundary: accepting an unverified email enables
+// account-confusion / takeover attacks where an attacker attaches a
+// victim's address as an unverified primary and gains access to the
+// victim's account on first provisioning.
+//
+// Callers (auth/oauth.go > OauthCallback) classify with
+// errors.Is(err, oauth.ErrUnverifiedEmail) and return 400
+// `oauth.unverified_email` — the user must verify their email with
+// the provider before OAuth sign-in will succeed.
+var ErrUnverifiedEmail = errors.New("github: no verified primary email available")
