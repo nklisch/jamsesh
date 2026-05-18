@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing-golden
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-lease-fencing
 depends_on: [epic-e2e-cnd-coverage-lease-fencing-infra]
@@ -201,3 +201,13 @@ The failure-mode test `lease_already_held_test.go` covers the 503 scenario if
 and when a synchronous lease-rejection layer is added to the portal.
 
 **Build + vet:** `go build ./golden/... && go vet ./golden/...` — clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: `randEmail` is pulled from `onboarding_test.go` in the same package — no concern, just noting it's package-shared.
+
+**Notes**: All three subtests implemented as designed. Monotonicity assertion is a real strict comparison (`tokenT2 <= tokenT1`), not a tautology. Token-zero guard uses `token <= 0` as required. The `testTwoPodsRaceAcquire` 503-escape-hatch is handled via `t.Logf` not `t.Skip` — the advisory-lock exclusivity assertion remains the safety-critical check and is not bypassed. The lazy-lease-acquisition architectural finding is documented clearly in implementation notes and in test comments. No `t.Skip` calls — the test always exercises the safety-critical assertions. Deviations from design are fully acknowledged.
