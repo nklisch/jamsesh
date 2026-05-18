@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-golden-rpo0
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -96,6 +96,25 @@ Compiles and vets clean: `go build ./golden/... && go vet ./golden/...`.
       tag_creation)
 - [ ] Any production bugs (RPO=0 violations) are parked, not silenced
 - [ ] No in-process mocks introduced
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Direct bucket inspection via `mn.ListObjects` is the primary assertion
+in all four subtests — HTTP status is never the sole assertion. Assertion order is
+correct: bucket check fires immediately after push returns, no sleep or polling.
+The `multi_pack_push` subtest correctly avoids asserting specific sub-path structure
+(pack vs loose), only that objects land in bucket — appropriate given pack decisions
+are server-internal. Force-push and tag subtests both verify the bucket after their
+respective operations. All helpers prefixed `rpo0` to avoid package collisions.
+`randEmail` correctly sourced from the shared `golden_test` package. Implementation
+fully matches the design and RPO=0 invariant documented in SPEC.md §232-237 and
+ARCHITECTURE.md §476-477.
 
 ## Setup pattern
 
