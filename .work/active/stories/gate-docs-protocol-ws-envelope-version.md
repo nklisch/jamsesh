@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-ws-envelope-version
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -40,3 +40,9 @@ envelope.
 ## Required edit
 Add `"version": 1` to the envelope sample and a short note that the
 field is the envelope-schema version (currently always `1`).
+
+## Implementation notes
+
+- Added `"version": 1` to the WebSocket envelope JSON sample in `docs/PROTOCOL.md` (lines 340-348), placed adjacent to `seq` as the envelope-level metadata fields group naturally together.
+- Added a one-sentence prose note after the sample explaining that `version` is the envelope-schema version (currently always `1`) and that it allows future envelope format changes without breaking existing clients.
+- Schema cross-checked against `docs/openapi.yaml:143-170`: `EventEnvelope` has `required: [seq, version, type, payload, timestamp, session_id]` with `version: enum: [1]` — the sample now matches.

@@ -340,12 +340,15 @@ share a common envelope:
 ```
 {
   "seq": <int>,                         // monotonic per session
+  "version": 1,                         // envelope-schema version, always 1
   "session_id": "<session-id>",
   "type": "<event-type>",
   "payload": { ... },
   "timestamp": "<iso-8601>"
 }
 ```
+
+`version` is the envelope-schema version (currently always `1`); it allows future envelope format changes to be signalled without breaking existing clients.
 
 **Event types:**
 
