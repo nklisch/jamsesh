@@ -1,7 +1,7 @@
 ---
 id: graceful-shutdown-shutdownstart-race
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, infra]
 parent: null
 depends_on: []
@@ -116,3 +116,21 @@ pattern with a `chan time.Time` (buffered, size 1). Key decisions:
   receive delivers a valid timestamp) and
   `TestShutdownStartChannelListenErrorPath` (listen-error path, verifies
   default branch taken immediately). Both pass under `go test -race`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Fix exactly matches the story's recommended approach — buffered
+`chan time.Time` size 1 + select-with-default for the listen-error path.
+The misleading comment ("server.Run blocks creating the HB edge") is
+corrected to accurately describe the new channel-receive HB edge. Two
+`-race`-tagged tests cover both the graceful path and the listen-error
+path. Channel buffer of 1 correctly prevents the writer goroutine from
+blocking when ctx is never cancelled. No production-behavior change
+beyond the synchronization fix; existing graceful-shutdown integration
+remains intact.
