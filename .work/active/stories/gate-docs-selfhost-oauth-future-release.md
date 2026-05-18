@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-oauth-future-release
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -39,3 +39,23 @@ Remove the "future release" NOTE. Replace the placeholder text with the
 live env var names (already documented in §2) and the actual callback
 URL the portal exposes. Drop the "Google and OIDC … lands in a future
 release" sentence or move it to an explicitly-deferred bullet.
+
+## Implementation notes
+
+- Removed the "future release" NOTE block entirely.
+- Replaced the placeholder callback URL `/auth/github/callback` with the
+  canonical portal endpoint `POST /api/auth/oauth/callback` (confirmed in
+  `docs/openapi.yaml:1521`).
+- Replaced the "see auth-flows release notes for exact variable names"
+  placeholder with an explicit env var table mirroring the style and names
+  from §2 (`SELF_HOST.md:112-115`).
+- Added a note clarifying the SPA-side redirect URL vs. the portal callback
+  endpoint, as these are distinct hops in the OAuth flow.
+- Dropped the "Google and OIDC lands in a future release" line per
+  rolling-foundation principle; the sibling story
+  `gate-docs-selfhost-oauth-callback-url` covers further callback URL drift
+  investigation and remains at stage:drafting.
+- `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE` confirmed in
+  `internal/portal/config/config.go:60` (_FILE variant).
+- `JAMSESH_PORTAL_URL` is already documented in §2 and its role in
+  constructing OAuth callback URLs is noted in that row; §4 now cross-links it.

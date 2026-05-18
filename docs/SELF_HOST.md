@@ -258,29 +258,33 @@ reload support; using Caddy in `behind_proxy` mode sidesteps this entirely.
 
 ## 4. OAuth callback URLs
 
-> **NOTE:** OAuth provider configuration lands with
-> `epic-portal-foundation-auth-flows` in a future release. This section
-> describes the expected callback shape based on the auth-flows feature design;
-> the exact env vars and registration steps will be filled in when that feature
-> ships.
+**GitHub OAuth** is the supported provider. The portal exposes a
+provider-agnostic callback endpoint at:
 
-**GitHub OAuth** (the initial supported provider):
+```
+POST https://<your-portal-host>/api/auth/oauth/callback
+```
+
+### Registering the GitHub OAuth app
 
 1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App**.
-2. Set **Authorization callback URL** to:
-   ```
-   https://<your-portal-host>/auth/github/callback
-   ```
-3. Copy the **Client ID** and **Client Secret** and set them in the portal
-   config (env vars for the OAuth provider — see the auth-flows release notes
-   for the exact variable names).
+2. Set **Authorization callback URL** to the SPA origin your users visit
+   (the browser lands there after GitHub redirects; the SPA then POSTs the
+   authorization code to the portal's callback endpoint above).
+3. Copy the **Client ID** and **Client Secret**, then set them in the portal
+   config:
 
-The portal discovers its own callback URL from its configured bind address and
-TLS mode. If you're behind a reverse proxy, ensure `X-Forwarded-Proto` and
-`Host` headers are forwarded correctly (both Caddy and nginx examples above
-do this).
+   | Env var | YAML key | Description |
+   |---|---|---|
+   | `JAMSESH_OAUTH_GITHUB_CLIENT_ID` | `oauth.github.client_id` | GitHub OAuth application client ID |
+   | `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET` | `oauth.github.client_secret` | GitHub OAuth application client secret |
+   | `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE` | _(env-only)_ | Path to a file containing the secret; takes precedence over the env var when set |
+   | `JAMSESH_OAUTH_GITHUB_BASE_URL` | `oauth.github.base_url` | Override GitHub OAuth base URL for testing; leave unset in production |
 
-Google and OIDC provider support lands in a future release.
+If you're behind a reverse proxy, ensure `X-Forwarded-Proto` and `Host`
+headers are forwarded correctly (both Caddy and nginx examples above do this).
+The portal uses `JAMSESH_PORTAL_URL` to construct absolute OAuth callback
+URLs in outbound requests — set it to your public portal base URL.
 
 ---
 
