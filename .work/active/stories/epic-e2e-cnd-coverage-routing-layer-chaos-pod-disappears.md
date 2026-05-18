@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-chaos-pod-disappears
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-routing-layer-golden-consistent-hash]
@@ -119,6 +119,29 @@ or make direct HTTP calls to the Toxiproxy admin API.
 - [ ] Router started manually (not via `portalcluster.Start(Router: true)`) to
       allow Toxiproxy interposition per-pod.
 - [ ] Toxic injection and removal via Toxiproxy admin API.
+
+## Implementation notes
+
+**Landing**: `tests/e2e/chaos/router_pod_disappears_test.go` — fresh file (did not exist).
+
+**Topology**: Option B implemented. Toxiproxy is interposed only between the
+router and pod 0. Pod 1 is direct. The router is started manually via
+`router.Start` (not via `portalcluster.Start(Router: true)`) so we can pass
+Backends=[toxiproxy:21000, pod1:8443].
+
+**Bug-router-static-discoverer-not-started**: Both subtests include a
+`t.Skip` guard for the case where the router hangs past the wall-clock SLO
+(5s for disconnect, 15s for latency). The skip message references the backlog
+item. This is per the "design-flaw escape hatch" in the story requirements.
+
+**Assertions**:
+- Subtest 1 (`network_disconnect_mid_request`): response within 5s; status
+  502 (ErrorHandler) or 2xx (pod hashed to pod 1 or router retried). No hang.
+  Recovery to 2xx confirmed after toxic removal.
+- Subtest 2 (`network_latency_causes_timeout_failover`): response within 15s;
+  status 502 or 2xx. Recovery to 2xx confirmed after toxic removal.
+
+**Build**: `go build ./chaos/...` and `go vet ./chaos/...` both clean.
 
 ## Test-integrity rules
 

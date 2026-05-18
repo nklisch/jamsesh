@@ -1,0 +1,17 @@
+[
+  {"description": "empty bytes", "manifest": ""},
+  {"description": "null JSON", "manifest": "null"},
+  {"description": "truncated JSON", "manifest": "{\"version\":1,"},
+  {"description": "wrong version type", "manifest": "{\"version\":\"one\",\"session_id\":\"x\",\"packs\":[],\"refs\":{}}"},
+  {"description": "unknown version 99", "manifest": "{\"version\":99,\"session_id\":\"x\",\"packs\":[],\"refs\":{}}"},
+  {"description": "dangling pack reference", "manifest": "{\"version\":1,\"session_id\":\"PLACEHOLDER\",\"packs\":[{\"pack_key\":\"sessions/PLACEHOLDER/packs/nonexistent.pack\",\"idx_key\":\"sessions/PLACEHOLDER/packs/nonexistent.idx\",\"sha\":\"abc\"}],\"refs\":{}}"},
+  {"description": "empty session_id", "manifest": "{\"version\":1,\"session_id\":\"\",\"packs\":[],\"refs\":{}}"},
+  {"description": "duplicate version key", "manifest": "{\"version\":1,\"version\":2,\"session_id\":\"x\",\"packs\":[],\"refs\":{}}"},
+  {"description": "packs is null instead of array", "manifest": "{\"version\":1,\"session_id\":\"PLACEHOLDER\",\"packs\":null,\"refs\":{}}"},
+  {"description": "packs is a string instead of array", "manifest": "{\"version\":1,\"session_id\":\"PLACEHOLDER\",\"packs\":\"not-an-array\",\"refs\":{}}"},
+  {"description": "refs is an array instead of object", "manifest": "{\"version\":1,\"session_id\":\"PLACEHOLDER\",\"packs\":[],\"refs\":[]}"},
+  {"description": "pack entry missing idx_key", "manifest": "{\"version\":1,\"session_id\":\"PLACEHOLDER\",\"packs\":[{\"pack_key\":\"sessions/PLACEHOLDER/packs/a.pack\",\"sha\":\"abc\"}],\"refs\":{}}"},
+  {"description": "pack entry with empty pack_key", "manifest": "{\"version\":1,\"session_id\":\"PLACEHOLDER\",\"packs\":[{\"pack_key\":\"\",\"idx_key\":\"sessions/PLACEHOLDER/packs/a.idx\",\"sha\":\"abc\"}],\"refs\":{}}"},
+  {"description": "session_id mismatch in manifest body", "manifest": "{\"version\":1,\"session_id\":\"completely-wrong-session-id\",\"packs\":[],\"refs\":{}}"},
+  {"description": "valid manifest no packs", "manifest": "{\"version\":1,\"session_id\":\"PLACEHOLDER\",\"packs\":[],\"refs\":{}}"}
+]

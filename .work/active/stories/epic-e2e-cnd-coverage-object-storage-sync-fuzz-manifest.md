@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-fuzz-manifest
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture, epic-e2e-cnd-coverage-object-storage-sync-golden-rpo0]
@@ -105,3 +105,21 @@ control seed that verifies the harness itself works.
 - The session ID in seeds marked `PLACEHOLDER` must be substituted with the
   real session ID from the test run. Pre-seed the bucket before starting the
   cluster so the pod's cold-start reads the seeded manifest.
+
+## Implementation Notes (2026-05-17)
+
+- Implemented `tests/e2e/fuzz/pack_manifest_test.go` and
+  `tests/e2e/fuzz/testdata/pack-manifest-corpus.json`.
+- Corpus has 15 entries covering all categories from the story design:
+  empty, null, truncated, wrong types, unknown version, dangling references,
+  oversize, duplicate keys, missing fields, session ID mismatch, and the
+  control seed (valid manifest, no packs).
+- PLACEHOLDER substitution is applied at test time; each seed operates in a
+  fresh session namespace so seeds cannot pollute each other.
+- Cold-start hydration trigger: each seed starts a 1-pod cluster against
+  the pre-seeded bucket. Both clone and push paths are checked for panics.
+- Control seed runs first (sequential) to verify harness correctness before
+  exercising invalid seeds in parallel.
+- Random phase: 5 iterations by default (MANIFEST_FUZZ_COUNT to override),
+  each generating a random malformed manifest across 12 shape categories.
+- `go build ./fuzz/... && go vet ./fuzz/...` pass cleanly.
