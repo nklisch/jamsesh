@@ -224,14 +224,6 @@ func (m *LifecycleManager) watchLost(handle lease.Handle, sessionID string) {
 	_ = m.releaseWithReason(context.Background(), sessionID, "lost")
 }
 
-// Release relinquishes the lease and evicts the local cache for sessionID.
-// It is a thin wrapper around releaseWithReason with reason "explicit".
-// Safe to call multiple times; subsequent calls on the same sessionID are
-// no-ops once the entry has been evicted.
-func (m *LifecycleManager) Release(ctx context.Context, sessionID string) error {
-	return m.releaseWithReason(ctx, sessionID, "explicit")
-}
-
 // releaseWithReason performs the full release sequence:
 //  1. CAS releasing flag false → true (idempotent guard).
 //  2. Drain in-flight Syncer uploads (bounded 10s).

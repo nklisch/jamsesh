@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-lifecycle-release-wired-or-deleted
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, portal, infra]
 parent: null
 depends_on: []
@@ -37,3 +37,13 @@ etc. are invoked internally). The "explicit" reason is therefore never
 recorded. Either delete `Release` (and its three test call sites) or
 wire it into the planned external-release entry point. If the intent is
 for an upcoming caller, file as a tracking gap.
+
+## Implementation notes
+
+Took option (a): deleted `LifecycleManager.Release` from `lifecycle.go`.
+The three test call sites (`TestLifecycle_DrainBeforeRelease`,
+`TestLifecycle_ReleaseEvictsRepo`, `TestLifecycle_ConcurrentReleaseAcquire`)
+were each using `Release` as a convenience to invoke `releaseWithReason`
+internally; replaced each with a direct call to
+`mgr.releaseWithReason(ctx, sessionID, "explicit")`.
+`go test ./internal/portal/storage/objectstore/...` passes cleanly.

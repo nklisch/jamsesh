@@ -451,7 +451,7 @@ func TestLifecycle_Release_WaitsForUploads(t *testing.T) {
 	// Release in a goroutine — it will block until the counter drains.
 	released := make(chan struct{})
 	go func() {
-		_ = mgr.Release(ctx, sessionID)
+		_ = mgr.releaseWithReason(ctx, sessionID, "explicit")
 		close(released)
 	}()
 
@@ -506,8 +506,8 @@ func TestLifecycle_Release_EvictsLocalCache(t *testing.T) {
 		t.Fatalf("precondition failed: repo directory was never created (hydrator skipped CreateRepo) — eviction test not meaningful")
 	}
 
-	if err := mgr.Release(ctx, sessionID); err != nil {
-		t.Fatalf("Release: %v", err)
+	if err := mgr.releaseWithReason(ctx, sessionID, "explicit"); err != nil {
+		t.Fatalf("releaseWithReason: %v", err)
 	}
 
 	// Repo directory must have been removed.
@@ -652,12 +652,12 @@ func TestLifecycle_AcquireWhileReleasing(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		_ = mgr.Release(ctx, sessionID)
+		_ = mgr.releaseWithReason(ctx, sessionID, "explicit")
 	}()
 
 	go func() {
 		defer wg.Done()
-		// Give the Release goroutine a tiny head-start to flip the releasing flag.
+		// Give the releaseWithReason goroutine a tiny head-start to flip the releasing flag.
 		time.Sleep(1 * time.Millisecond)
 		_, _ = mgr.AcquireForRequest(ctx, sessionID)
 	}()
