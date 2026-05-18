@@ -1,7 +1,7 @@
 ---
 id: gate-tests-mcp-fork-ref-traversal
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-mcp-fork-ref-name-validation]
@@ -74,3 +74,13 @@ rejected by `validateForkTargetRef`. No amendments to `tools.go` were needed.
 - 10,000-char `a`-string — overlong name stress test
 - `.hidden` — leading dot
 - `foo bar` — space in name
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Critical test verified. Two tests added: outcome-assertion test that pre-seeds base ref then attempts traversal (asserts both IsError=true AND base ref unchanged after the rejected call); table-driven 10-subtest adversarial set covering all known traversal vectors. All 10 payloads correctly rejected by validateForkTargetRef — no holes found, no production amendments needed. 8 new fork seed corpus entries added for the fuzzer.

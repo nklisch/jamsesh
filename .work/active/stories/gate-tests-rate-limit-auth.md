@@ -1,7 +1,7 @@
 ---
 id: gate-tests-rate-limit-auth
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-rate-limit-auth-endpoints]
@@ -51,3 +51,13 @@ returns no production hits.
 3. `TestAuthRateLimit_DisabledKnob_NeverReturns429` — wires with `enabled=false`, fires 20 requests from the same IP, asserts none return 429.
 
 **No bugs found** in the middleware during testing. All assertions pass against the production `ratelimit` package as-shipped.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Critical rate-limit integration coverage verified. Three tests against a real chi router + real ratelimit.Store + real MagicLinkHandler: burst-cap → 429 with Retry-After + envelope JSON; per-IP independence; disabled-knob pass-through. r.RemoteAddr controlled per-request via httptest.NewRequest (no real TCP). Reused existing auth_test helpers (openStore, captureSender) for fixture parity. No middleware bugs found.

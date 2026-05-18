@@ -1,7 +1,7 @@
 ---
 id: gate-tests-github-oauth-unverified-email
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal, refactor]
 parent: null
 depends_on: [gate-security-github-oauth-reject-unverified-email]
@@ -73,3 +73,13 @@ The doc comment was updated to state: "this is the only path that returns a non-
 - `body["message"]` is non-empty
 
 All new tests pass. Both packages build and run cleanly via `go test ./internal/portal/oauth/ ./internal/portal/auth/`. A pre-existing build failure in `rate_limit_integration_test.go` (untracked file, not introduced by this story) prevents `./...` from resolving the auth package when used with the recursive glob — the explicit package path resolves it without issue.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Critical OAuth account-confusion coverage verified. Three new negative-path tests (unverified primary, only non-primary verified, empty list) all assert errors.Is(err, ErrUnverifiedEmail). Tautological-test rework: existing TestGitHub_Exchange_PicksPrimaryVerifiedEmail extended with secondary-verified and primary-unverified entries alongside the valid one — any fallback re-introduction would return the wrong email and fail the assertion. Handler-level integration test confirms the 400 oauth.unverified_email envelope (no Retry-After since retry is futile).

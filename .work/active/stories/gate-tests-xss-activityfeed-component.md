@@ -1,7 +1,7 @@
 ---
 id: gate-tests-xss-activityfeed-component
 kind: story
-stage: review
+stage: done
 tags: [testing, security, ui]
 parent: null
 depends_on: [gate-security-xss-html-render-ws-events]
@@ -60,3 +60,13 @@ Fires a `comment.added` event with `body: '<script>window.__pwned=2;</script>'`.
 - The tests use synchronous DOM assertions after `waitFor` confirms the feed item rendered. No timing dependency on script execution — if the element is absent from the DOM it cannot run.
 - The `onerror=` substring was intentionally NOT asserted to be absent from `innerHTML`, because it lawfully appears inside the escaped text string `&lt;img src=x onerror=...&gt;`. The DOM-element query (`querySelector('img')`) is the authoritative check.
 - A regression to `{@html}` would fail Test 1 immediately: `querySelector('img')` would return a live element and the `&lt;img` escaped-text assertion would also likely fail (the raw `<img` would be a tag, not a text node).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Critical XSS regression guard verified. Two tests with <img onerror> and <script> payloads against comment.added events. Primary assertion is querySelector('img')/querySelector('script') === null — the authoritative DOM-level check. Secondary assertion confirms the payload was actually rendered as escaped text (&lt;img / &lt;script in innerHTML) — guards against silent drop. window.__pwned undefined as belt-and-braces. Tests run against the real ActivityFeed.svelte end-to-end, no mocking.

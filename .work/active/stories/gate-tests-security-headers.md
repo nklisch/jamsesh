@@ -1,7 +1,7 @@
 ---
 id: gate-tests-security-headers
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-security-headers-middleware]
@@ -54,3 +54,13 @@ Two top-level test functions, eight subtests total:
 - `TLSMode "behind_proxy" + TrustProxyHeaders=false` → no HSTS
 
 All production middleware was found correct; no production bugs surfaced.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Critical security-headers coverage verified. Two top-level functions, 8 subtests. Middleware-level: baseline header presence (CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy), HSTS gating, default CSP directive spot-checks via strings.Contains (not brittle literal-match), caller-override path. Router-integration: all four TLSMode × TrustProxyHeaders combinations exercised via httptest. All assertions pass against the existing middleware — no production bugs surfaced.
