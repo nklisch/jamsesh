@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture-router-image
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage-cluster-fixture
 depends_on: []
@@ -89,6 +89,22 @@ id in the test. Do not silence.
   `Options.Router: true`)
 - Eventually consumed by every test in
   `epic-e2e-cnd-coverage-routing-layer`
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: `io.ReadAll` error silently ignored in test (`body, _ = io.ReadAll(resp.Body)`);
+  `requireDocker`/`requireRouterImage` duplicated between `router.go` and `router_test.go`
+  (package boundary prevents reuse — acceptable).
+
+**Notes**: All five deliverables shipped and verified. `Dockerfile.router` mirrors portal
+pattern (alpine:3.21, ca-certificates, USER nobody). Makefile targets added to `.PHONY`
+and positioned correctly. CI step inserted in the right order. `requireRouterImage` skip
+is actionable. Self-test asserts a real nginx response body — not tautological.
+`HintCacheTTL` omission is documented with a follow-on note. No foundation-doc drift.
 
 ## Implementation notes
 
