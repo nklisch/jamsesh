@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage
 kind: epic
-stage: implementing
+stage: review
 tags: [e2e-test, testing, infra, portal]
 parent: null
 depends_on: []
@@ -234,3 +234,18 @@ Or run `/agile-workflow:autopilot epic-e2e-cnd-coverage` to drive the
 program end-to-end (autopilot will respect the dependency graph: cluster-
 fixture first, then the three middle-band features in parallel, then
 hydration-handoff; operational-polish runs independently throughout).
+
+## Children complete (2026-05-17)
+
+All 6 child features advanced to `stage: done`:
+
+| Feature | Stage |
+|---|---|
+| `epic-e2e-cnd-coverage-cluster-fixture` | done |
+| `epic-e2e-cnd-coverage-operational-polish` | done |
+| `epic-e2e-cnd-coverage-lease-fencing` | done |
+| `epic-e2e-cnd-coverage-routing-layer` | done |
+| `epic-e2e-cnd-coverage-object-storage-sync` | done |
+| `epic-e2e-cnd-coverage-hydration-handoff` | done |
+
+Advancing epic `implementing → review`.
