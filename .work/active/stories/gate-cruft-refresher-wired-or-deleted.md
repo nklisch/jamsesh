@@ -31,12 +31,17 @@ func (r *Refresher) doRefresh(ctx context.Context) error { ... }
 ```
 
 ## Removal
-Either (a) wire `Refresher.Refresh` into the production
-`portalclient.Client.Refresh` field at every call site
-(`finalize.go:76`, `sessioncmd/join.go:81`, `sessioncmd/status.go:60`,
-`hooks/sessionstart.go:129`, `finalizerun.go:61`) so 401s actually
-trigger refresh, or (b) delete `refresh.go`, `state.ReadRefreshToken`,
-and `state.WriteRefreshToken` if auto-refresh is intentionally deferred.
-The current state — sophisticated singleflight refresh logic tested but
-never wired — is the worst of both worlds and contradicts the
-epic-cc-plugin notes that claim refresh ships in binary-foundation.
+
+**User directive (2026-05-18): wire it.** Path (a) is the chosen
+resolution.
+
+Wire `Refresher.Refresh` into the production
+`portalclient.Client.Refresh` field at every call site:
+- `cmd/jamsesh/finalizecmd/finalize.go:76`
+- `cmd/jamsesh/sessioncmd/join.go:81`
+- `cmd/jamsesh/sessioncmd/status.go:60`
+- `cmd/jamsesh/hooks/sessionstart.go:129`
+- `cmd/jamsesh/finalizecmd/finalizerun.go:61`
+
+After this, 401s from the portal trigger the singleflight refresh path,
+honoring the refresh token persisted via `state.{Read,Write}RefreshToken`.
