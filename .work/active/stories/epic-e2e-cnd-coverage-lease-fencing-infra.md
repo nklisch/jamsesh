@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing-infra
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-lease-fencing
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -197,3 +197,13 @@ both exit 0 cleanly (run from `tests/e2e/`).
 None required. The "design-flaw escape hatch" was not triggered — all three
 helpers are feasible against the existing Postgres surface without any new
 production endpoint.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: Minor — `err == sql.ErrNoRows` in FencingTokenForSession could use `errors.Is(err, sql.ErrNoRows)` for idiomatic Go, but `database/sql` documents `ErrNoRows` as a sentinel value and the comparison is safe here.
+
+**Notes**: All three helpers match the design spec exactly. `RequireLeaseHolder` fatals on timeout (not softened to t.Log). `FencingTokenForSession` returns -1 on no-row (not 0, which is the "bug" sentinel). `ReleaseLeaseForcibly` logs a warning on zero rows affected instead of fataling, as designed. The advisory-lock ordering concern is clearly documented. No production code was changed. `lib/pq` already in go.mod. All helpers are actively used by downstream tests across golden, failure, chaos suites.
