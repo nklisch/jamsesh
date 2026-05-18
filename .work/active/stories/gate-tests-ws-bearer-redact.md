@@ -1,7 +1,7 @@
 ---
 id: gate-tests-ws-bearer-redact
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-ws-bearer-token-leakage]
@@ -53,3 +53,13 @@ Result: test passes — the access-log middleware logs only `method`, `path`, `r
 `status`, `duration_ms`, and `bytes`. No request headers are logged; no bearer token
 leakage occurs. This confirms the docs-only mitigation in `gate-security-ws-bearer-token-leakage`
 is sufficient for the current implementation.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: TestAccessLogNoWSBearerLeak added. Captures slog JSON output, fires GET with Sec-WebSocket-Protocol: jamsesh.bearer.SECRET_TOKEN_123, asserts SECRET_TOKEN_123 substring is absent. Confirms access-log middleware logs only method/path/route/status/duration_ms/bytes — no request headers, no token leakage. The docs-only mitigation in gate-security-ws-bearer-token-leakage is sufficient for the current implementation.

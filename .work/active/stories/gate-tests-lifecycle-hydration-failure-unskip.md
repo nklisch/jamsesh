@@ -1,7 +1,7 @@
 ---
 id: gate-tests-lifecycle-hydration-failure-unskip
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, infra]
 parent: null
 depends_on: []
@@ -47,3 +47,13 @@ Both `TestLifecycle_AcquireForRequest_HydrationFailure` and
 `TestLifecycle_Release_EvictsLocalCache` pass after the change — the fixture
 was fine all along and the skips were over-defensive. No production bug
 surfaced; no backlog item needed.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Both t.Skip calls at lifecycle_test.go:387 and :506 converted to t.Fatalf. Both tests now run their assertions on every invocation. PASS — the fixtures were correct all along; the skips were purely over-defensive. No production bug surfaced. Future fixture flake will now fail loud.

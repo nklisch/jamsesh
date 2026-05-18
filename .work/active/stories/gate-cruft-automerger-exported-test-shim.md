@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-automerger-exported-test-shim
 kind: story
-stage: review
+stage: done
 tags: [cleanup, portal, refactor]
 parent: null
 depends_on: []
@@ -44,3 +44,13 @@ boundary for tests.
 - Created `testhelpers_test.go` (`package automerger`) with copies of `initRepo`, `commitFiles`, `commitFilesWithMessage`, and `run` — these are distinct from the same-named helpers in `merge_test.go`/`outcomes_test.go` which remain in `package automerger_test` (separate compile unit, no collision).
 - Deleted the `ExportedComputeAddressedTo` shim and its doc comment from `addressing.go`.
 - `go test ./internal/portal/automerger/...` passes.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: ExportedComputeAddressedTo shim deleted. addressing_test.go moved from package automerger_test → package automerger; three call sites switched from automerger.ExportedComputeAddressedTo(...) to computeAddressedTo(...); self-import dropped. New testhelpers_test.go (package automerger) provides initRepo/commitFiles/run for the internal test file (no collision with same-named helpers in package automerger_test files). All automerger tests pass.
