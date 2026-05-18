@@ -76,7 +76,7 @@ The portal's REST API. All routes are HTTPS, Bearer-auth via user OAuth
 token (or org admin token for management endpoints). Routes are org-scoped
 implicitly via the token; session-scoped routes take `session_id` in the path.
 
-**Authoritative spec**: `docs/openapi.yaml` is the canonical OpenAPI 3.1
+**Authoritative spec**: `docs/openapi.yaml` is the canonical OpenAPI 3.0.3
 description of every route below. The route catalog in this document is a
 human-readable summary; the YAML carries the precise request/response
 schemas, error codes, and parameter validation. Go server stubs are

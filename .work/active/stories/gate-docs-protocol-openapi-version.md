@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-openapi-version
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -32,3 +32,6 @@ on the 3.0-compatible subset until oapi-codegen v2.8.0 tags.
 ## Required edit
 Change "canonical OpenAPI 3.1" to "canonical OpenAPI 3.0.3" in
 PROTOCOL.md.
+
+## Implementation notes
+Changed `docs/PROTOCOL.md:79` from "canonical OpenAPI 3.1" to "canonical OpenAPI 3.0.3". Verified `docs/openapi.yaml` declares `openapi: 3.0.3`.
