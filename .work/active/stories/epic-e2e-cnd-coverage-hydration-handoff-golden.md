@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff-golden
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-hydration-handoff
 depends_on: [epic-e2e-cnd-coverage-hydration-handoff-infra]
@@ -161,3 +161,25 @@ test lever; left as a risk item.
   id + inline comment naming the safety property violated.
 - Never game an assertion. No asserting on whatever the pod currently returns;
   the assertion target is `draftTipBefore` (known value from pre-drain baseline).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- In `TestSessionHandoffCleanDrain` step 9, both `pod1RefTip` (REST) and
+  `expectedTip` (git clone) are sourced from the same pod 1 — so the equality
+  check is a cross-layer consistency check (REST vs git-protocol), not a
+  cross-pod state comparison. This is correctly documented in the implementation
+  notes (pod 0 is exited so cross-pod compare is impossible). The non-empty
+  assertion is the actual durability signal. No action required.
+
+**Notes**: Both golden tests use non-tautological assertions. `draftTipAfter !=
+draftTipBefore` in the idle eviction test is a real invariant (commit 4 advanced
+the ref). REST-vs-git-clone cross-check confirms both layers agree post-hydration.
+`VerifyCacheEvicted` is the direct FS check (non-tautological). MinIO
+`ListObjects` checks bucket NOT deleted by eviction/drain — correct per scope
+notes. No `t.Skip` without backlog items; no in-process mocks. `go build` and
+`go vet` clean.
