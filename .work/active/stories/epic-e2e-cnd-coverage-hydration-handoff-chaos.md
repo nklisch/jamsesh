@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff-chaos
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-hydration-handoff
 depends_on: [epic-e2e-cnd-coverage-hydration-handoff-golden]
@@ -222,3 +222,21 @@ Both test files implemented and verified clean with `go build ./chaos/...` and
   avoid cross-test coupling.
 - Proxy port 9101 used (not 9001) to avoid collision with the existing
   `object_storage_partition_test.go` proxy on 9001.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Both chaos tests use `git merge-base --is-ancestor` for state
+preservation assertions — non-tautological commit ancestry, not HTTP status.
+Design boundary comment (lease-fencing coordination) present in both file headers
+and test bodies; no fencing-token assertions appear. bug-router-static-discoverer
+pattern correct: pod-kill test addresses survivor directly post-kill (with logged
+warning); object-storage chaos uses Router: false throughout.
+Defensive `t.Cleanup` removes Toxiproxy toxic on early exit (chaos test).
+No `t.Skip` without backlog items. No in-process mocks. `go build` and `go vet`
+clean.
