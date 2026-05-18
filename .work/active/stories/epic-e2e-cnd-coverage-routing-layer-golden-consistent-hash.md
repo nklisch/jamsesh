@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-golden-consistent-hash
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -99,6 +99,26 @@ all pods, matching the smoke test pattern.
 
 **Build/vet**: `go build ./golden/...` and `go vet ./golden/...` both pass
 clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation fully satisfies the design. LeaseHolder oracle
+(pg_locks advisory-lock query) is the sole routing-identity assertion — no
+response-body inspection or per-pod header assertions. Both subtests meet
+the acceptance criteria: `same_session_pins_to_same_pod` issues 20 GETs
+and asserts holder stability; `different_sessions_distribute` creates 10
+distinct sessions and asserts ≥2 distinct pod indices. MailHog SMTP wiring
+via `PortalExtraEnv` matches the smoke test pattern. `randEmail` shared from
+`onboarding_test.go` in the same package. Error messages are diagnostic and
+specific. The conservative "at least 2 pods" distribution bar is correct for
+avoiding ring-balance brittleness. No in-process mocks; real router + real
+portals.
 
 ## Test-integrity rules
 
