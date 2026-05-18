@@ -91,7 +91,16 @@ type FinalizeLock struct {
 	Mode                string         `json:"mode"`
 	CommitMessage       sql.NullString `json:"commit_message"`
 	SupersededByLockID  sql.NullString `json:"superseded_by_lock_id"`
-	ReleasedAt          sql.NullTime   `json:"released_at"`
+	ReleasedAt          *time.Time     `json:"released_at"`
+}
+
+type Lease struct {
+	SessionID    string     `json:"session_id"`
+	PodID        string     `json:"pod_id"`
+	FencingToken int64      `json:"fencing_token"`
+	AcquiredAt   time.Time  `json:"acquired_at"`
+	ReleasedAt   *time.Time `json:"released_at"`
+	HeartbeatAt  time.Time  `json:"heartbeat_at"`
 }
 
 type MagicLinkToken struct {
@@ -123,10 +132,11 @@ type OauthToken struct {
 }
 
 type Org struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Slug      string    `json:"slug"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	Slug                string    `json:"slug"`
+	CreatedAt           time.Time `json:"created_at"`
+	SessionInvitePolicy string    `json:"session_invite_policy"`
 }
 
 type OrgInvite struct {
@@ -155,15 +165,6 @@ type Presence struct {
 	Ref          string    `json:"ref"`
 	CurrentSha   string    `json:"current_sha"`
 	LastActiveAt time.Time `json:"last_active_at"`
-}
-
-type Lease struct {
-	SessionID    string       `json:"session_id"`
-	PodID        string       `json:"pod_id"`
-	FencingToken int64        `json:"fencing_token"`
-	AcquiredAt   time.Time    `json:"acquired_at"`
-	ReleasedAt   sql.NullTime `json:"released_at"`
-	HeartbeatAt  time.Time    `json:"heartbeat_at"`
 }
 
 type RefMode struct {

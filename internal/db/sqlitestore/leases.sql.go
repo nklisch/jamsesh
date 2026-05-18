@@ -62,4 +62,3 @@ func (q *Queries) UpdateLeaseHeartbeat(ctx context.Context, sessionID string) er
 	_, err := q.db.ExecContext(ctx, updateLeaseHeartbeat, sessionID)
 	return err
 }
-

@@ -87,10 +87,11 @@ type Store interface {
 
 // Org represents an organisation row.
 type Org struct {
-	ID        string
-	Name      string
-	Slug      string
-	CreatedAt time.Time
+	ID                  string
+	Name                string
+	Slug                string
+	CreatedAt           time.Time
+	SessionInvitePolicy string // "members_only" or "open"
 }
 
 // Account represents a user account.
@@ -222,6 +223,11 @@ type CreateOrgParams struct {
 	Name      string
 	Slug      string
 	CreatedAt time.Time
+}
+
+type UpdateOrgSessionInvitePolicyParams struct {
+	ID                  string
+	SessionInvitePolicy string // "members_only" or "open"
 }
 
 type CreateAccountParams struct {
@@ -425,6 +431,9 @@ type OrgStore interface {
 	CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, error)
 	GetOrgByID(ctx context.Context, id string) (Org, error)
 	GetOrgBySlug(ctx context.Context, slug string) (Org, error)
+	// UpdateOrgSessionInvitePolicy sets the session invite policy for an org.
+	// Valid values are "members_only" (default) and "open".
+	UpdateOrgSessionInvitePolicy(ctx context.Context, arg UpdateOrgSessionInvitePolicyParams) error
 }
 
 // AccountStore covers account CRUD.

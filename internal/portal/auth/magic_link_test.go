@@ -213,6 +213,9 @@ func (m *magicLinkOnlyStrict) IssueFetchToken(_ context.Context, _ openapi.Issue
 func (m *magicLinkOnlyStrict) MarkSessionShipped(_ context.Context, _ openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
 	panic("MarkSessionShipped: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) GetSessionInvite(_ context.Context, _ openapi.GetSessionInviteRequestObject) (openapi.GetSessionInviteResponseObject, error) {
+	panic("GetSessionInvite: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

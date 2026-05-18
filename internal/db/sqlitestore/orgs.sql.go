@@ -13,7 +13,7 @@ import (
 const createOrg = `-- name: CreateOrg :one
 INSERT INTO orgs (id, name, slug, created_at)
 VALUES (?, ?, ?, ?)
-RETURNING id, name, slug, created_at
+RETURNING id, name, slug, created_at, session_invite_policy
 `
 
 type CreateOrgParams struct {
@@ -36,12 +36,13 @@ func (q *Queries) CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, erro
 		&i.Name,
 		&i.Slug,
 		&i.CreatedAt,
+		&i.SessionInvitePolicy,
 	)
 	return i, err
 }
 
 const getOrgByID = `-- name: GetOrgByID :one
-SELECT id, name, slug, created_at
+SELECT id, name, slug, created_at, session_invite_policy
 FROM orgs
 WHERE id = ?
 `
@@ -54,12 +55,13 @@ func (q *Queries) GetOrgByID(ctx context.Context, id string) (Org, error) {
 		&i.Name,
 		&i.Slug,
 		&i.CreatedAt,
+		&i.SessionInvitePolicy,
 	)
 	return i, err
 }
 
 const getOrgBySlug = `-- name: GetOrgBySlug :one
-SELECT id, name, slug, created_at
+SELECT id, name, slug, created_at, session_invite_policy
 FROM orgs
 WHERE slug = ?
 `
@@ -72,6 +74,32 @@ func (q *Queries) GetOrgBySlug(ctx context.Context, slug string) (Org, error) {
 		&i.Name,
 		&i.Slug,
 		&i.CreatedAt,
+		&i.SessionInvitePolicy,
 	)
 	return i, err
+}
+
+const getOrgSessionInvitePolicy = `-- name: GetOrgSessionInvitePolicy :one
+SELECT session_invite_policy FROM orgs WHERE id = ?
+`
+
+func (q *Queries) GetOrgSessionInvitePolicy(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getOrgSessionInvitePolicy, id)
+	var session_invite_policy string
+	err := row.Scan(&session_invite_policy)
+	return session_invite_policy, err
+}
+
+const updateOrgSessionInvitePolicy = `-- name: UpdateOrgSessionInvitePolicy :exec
+UPDATE orgs SET session_invite_policy = ? WHERE id = ?
+`
+
+type UpdateOrgSessionInvitePolicyParams struct {
+	SessionInvitePolicy string `json:"session_invite_policy"`
+	ID                  string `json:"id"`
+}
+
+func (q *Queries) UpdateOrgSessionInvitePolicy(ctx context.Context, arg UpdateOrgSessionInvitePolicyParams) error {
+	_, err := q.db.ExecContext(ctx, updateOrgSessionInvitePolicy, arg.SessionInvitePolicy, arg.ID)
+	return err
 }

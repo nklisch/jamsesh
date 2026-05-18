@@ -41,6 +41,7 @@ type Querier interface {
 	GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error)
 	GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error)
 	GetOrgMember(ctx context.Context, arg GetOrgMemberParams) (OrgMember, error)
+	GetOrgSessionInvitePolicy(ctx context.Context, id string) (string, error)
 	GetRefMode(ctx context.Context, arg GetRefModeParams) (RefMode, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error)
@@ -92,8 +93,9 @@ type Querier interface {
 	TouchFinalizeLock(ctx context.Context, arg TouchFinalizeLockParams) error
 	TouchOAuthTokenLastUsed(ctx context.Context, arg TouchOAuthTokenLastUsedParams) error
 	UpdateAccountDisplayName(ctx context.Context, arg UpdateAccountDisplayNameParams) error
-	UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error
 	UpdateFinalizeLockCuration(ctx context.Context, arg UpdateFinalizeLockCurationParams) error
+	UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error
+	UpdateOrgSessionInvitePolicy(ctx context.Context, arg UpdateOrgSessionInvitePolicyParams) error
 	UpdateSessionGoalScopeMode(ctx context.Context, arg UpdateSessionGoalScopeModeParams) error
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	UpsertPresence(ctx context.Context, arg UpsertPresenceParams) error

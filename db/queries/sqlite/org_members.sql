@@ -8,7 +8,7 @@ FROM org_members
 WHERE org_id = ? AND account_id = ?;
 
 -- name: ListOrgsForAccount :many
-SELECT o.id, o.name, o.slug, o.created_at
+SELECT o.id, o.name, o.slug, o.created_at, o.session_invite_policy
 FROM orgs o
 JOIN org_members om ON om.org_id = o.id
 WHERE om.account_id = ?

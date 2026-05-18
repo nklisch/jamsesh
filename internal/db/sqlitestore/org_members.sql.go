@@ -107,7 +107,7 @@ func (q *Queries) ListOrgMembers(ctx context.Context, orgID string) ([]ListOrgMe
 }
 
 const listOrgsForAccount = `-- name: ListOrgsForAccount :many
-SELECT o.id, o.name, o.slug, o.created_at
+SELECT o.id, o.name, o.slug, o.created_at, o.session_invite_policy
 FROM orgs o
 JOIN org_members om ON om.org_id = o.id
 WHERE om.account_id = ?
@@ -128,6 +128,7 @@ func (q *Queries) ListOrgsForAccount(ctx context.Context, accountID string) ([]O
 			&i.Name,
 			&i.Slug,
 			&i.CreatedAt,
+			&i.SessionInvitePolicy,
 		); err != nil {
 			return nil, err
 		}

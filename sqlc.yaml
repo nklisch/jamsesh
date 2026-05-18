@@ -45,6 +45,16 @@ sql:
             go_type:
               type: time.Time
               pointer: true
+          - column: "*.acquired_at"
+            go_type: time.Time
+          - column: "*.heartbeat_at"
+            go_type: time.Time
+          - column: "*.last_activity_at"
+            go_type: time.Time
+          - column: "*.released_at"
+            go_type:
+              type: time.Time
+              pointer: true
   - engine: postgresql
     schema: db/schema/postgres.sql
     queries: db/queries/postgres/
@@ -88,6 +98,16 @@ sql:
               type: string
               pointer: true
           - column: "*.accepted_at"
+            go_type:
+              type: time.Time
+              pointer: true
+          - column: "*.acquired_at"
+            go_type: time.Time
+          - column: "*.heartbeat_at"
+            go_type: time.Time
+          - column: "*.last_activity_at"
+            go_type: time.Time
+          - column: "*.released_at"
             go_type:
               type: time.Time
               pointer: true

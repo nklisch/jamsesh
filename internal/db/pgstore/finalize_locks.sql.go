@@ -7,6 +7,7 @@ package pgstore
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -85,19 +86,19 @@ INSERT INTO finalize_locks (
 `
 
 type InsertFinalizeLockParams struct {
-	ID                  string             `json:"id"`
-	OrgID               string             `json:"org_id"`
-	SessionID           string             `json:"session_id"`
-	AcquiredByAccountID string             `json:"acquired_by_account_id"`
-	AcquiredAt          pgtype.Timestamptz `json:"acquired_at"`
-	LastActivityAt      pgtype.Timestamptz `json:"last_activity_at"`
-	SelectedCommitShas  []byte             `json:"selected_commit_shas"`
-	TargetBranch        string             `json:"target_branch"`
-	BaseSha             *string            `json:"base_sha"`
-	Mode                string             `json:"mode"`
-	CommitMessage       pgtype.Text        `json:"commit_message"`
-	SupersededByLockID  pgtype.Text        `json:"superseded_by_lock_id"`
-	ReleasedAt          pgtype.Timestamptz `json:"released_at"`
+	ID                  string      `json:"id"`
+	OrgID               string      `json:"org_id"`
+	SessionID           string      `json:"session_id"`
+	AcquiredByAccountID string      `json:"acquired_by_account_id"`
+	AcquiredAt          time.Time   `json:"acquired_at"`
+	LastActivityAt      time.Time   `json:"last_activity_at"`
+	SelectedCommitShas  []byte      `json:"selected_commit_shas"`
+	TargetBranch        string      `json:"target_branch"`
+	BaseSha             *string     `json:"base_sha"`
+	Mode                string      `json:"mode"`
+	CommitMessage       pgtype.Text `json:"commit_message"`
+	SupersededByLockID  pgtype.Text `json:"superseded_by_lock_id"`
+	ReleasedAt          *time.Time  `json:"released_at"`
 }
 
 func (q *Queries) InsertFinalizeLock(ctx context.Context, arg InsertFinalizeLockParams) error {
@@ -126,8 +127,8 @@ WHERE id = $2 AND released_at IS NULL
 `
 
 type ReleaseFinalizeLockParams struct {
-	ReleasedAt pgtype.Timestamptz `json:"released_at"`
-	ID         string             `json:"id"`
+	ReleasedAt *time.Time `json:"released_at"`
+	ID         string     `json:"id"`
 }
 
 func (q *Queries) ReleaseFinalizeLock(ctx context.Context, arg ReleaseFinalizeLockParams) error {
@@ -158,8 +159,8 @@ WHERE id = $2
 `
 
 type TouchFinalizeLockParams struct {
-	LastActivityAt pgtype.Timestamptz `json:"last_activity_at"`
-	ID             string             `json:"id"`
+	LastActivityAt time.Time `json:"last_activity_at"`
+	ID             string    `json:"id"`
 }
 
 func (q *Queries) TouchFinalizeLock(ctx context.Context, arg TouchFinalizeLockParams) error {
@@ -179,13 +180,13 @@ WHERE id = $7
 `
 
 type UpdateFinalizeLockCurationParams struct {
-	SelectedCommitShas []byte             `json:"selected_commit_shas"`
-	TargetBranch       string             `json:"target_branch"`
-	BaseSha            *string            `json:"base_sha"`
-	Mode               string             `json:"mode"`
-	CommitMessage      pgtype.Text        `json:"commit_message"`
-	LastActivityAt     pgtype.Timestamptz `json:"last_activity_at"`
-	ID                 string             `json:"id"`
+	SelectedCommitShas []byte      `json:"selected_commit_shas"`
+	TargetBranch       string      `json:"target_branch"`
+	BaseSha            *string     `json:"base_sha"`
+	Mode               string      `json:"mode"`
+	CommitMessage      pgtype.Text `json:"commit_message"`
+	LastActivityAt     time.Time   `json:"last_activity_at"`
+	ID                 string      `json:"id"`
 }
 
 func (q *Queries) UpdateFinalizeLockCuration(ctx context.Context, arg UpdateFinalizeLockCurationParams) error {

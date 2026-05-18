@@ -8,19 +8,17 @@ package pgstore
 import (
 	"context"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const issueLeaseFencingToken = `-- name: IssueLeaseFencingToken :one
-SELECT nextval('jamsesh_lease_fencing_tokens')::bigint AS token
+const deleteReleasedLeasesOlderThan = `-- name: DeleteReleasedLeasesOlderThan :exec
+DELETE FROM leases
+WHERE released_at IS NOT NULL
+  AND released_at < $1
 `
 
-func (q *Queries) IssueLeaseFencingToken(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, issueLeaseFencingToken)
-	var token int64
-	err := row.Scan(&token)
-	return token, err
+func (q *Queries) DeleteReleasedLeasesOlderThan(ctx context.Context, releasedAt *time.Time) error {
+	_, err := q.db.Exec(ctx, deleteReleasedLeasesOlderThan, releasedAt)
+	return err
 }
 
 const insertLease = `-- name: InsertLease :one
@@ -55,6 +53,17 @@ func (q *Queries) InsertLease(ctx context.Context, arg InsertLeaseParams) (Lease
 	return i, err
 }
 
+const issueLeaseFencingToken = `-- name: IssueLeaseFencingToken :one
+SELECT nextval('jamsesh_lease_fencing_tokens')::bigint AS token
+`
+
+func (q *Queries) IssueLeaseFencingToken(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, issueLeaseFencingToken)
+	var token int64
+	err := row.Scan(&token)
+	return token, err
+}
+
 const markLeaseReleased = `-- name: MarkLeaseReleased :exec
 UPDATE leases
 SET released_at = now()
@@ -74,18 +83,5 @@ WHERE session_id = $1
 
 func (q *Queries) UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error {
 	_, err := q.db.Exec(ctx, updateLeaseHeartbeat, sessionID)
-	return err
-}
-
-const deleteReleasedLeasesOlderThan = `-- name: DeleteReleasedLeasesOlderThan :exec
-DELETE FROM leases
-WHERE released_at IS NOT NULL
-  AND released_at < $1
-`
-
-func (q *Queries) DeleteReleasedLeasesOlderThan(ctx context.Context, before time.Time) error {
-	_, err := q.db.Exec(ctx, deleteReleasedLeasesOlderThan,
-		pgtype.Timestamptz{Time: before, Valid: true},
-	)
 	return err
 }

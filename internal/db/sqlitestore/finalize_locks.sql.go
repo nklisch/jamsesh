@@ -97,7 +97,7 @@ type InsertFinalizeLockParams struct {
 	Mode                string         `json:"mode"`
 	CommitMessage       sql.NullString `json:"commit_message"`
 	SupersededByLockID  sql.NullString `json:"superseded_by_lock_id"`
-	ReleasedAt          sql.NullTime   `json:"released_at"`
+	ReleasedAt          *time.Time     `json:"released_at"`
 }
 
 func (q *Queries) InsertFinalizeLock(ctx context.Context, arg InsertFinalizeLockParams) error {
@@ -126,8 +126,8 @@ WHERE id = ? AND released_at IS NULL
 `
 
 type ReleaseFinalizeLockParams struct {
-	ReleasedAt sql.NullTime `json:"released_at"`
-	ID         string       `json:"id"`
+	ReleasedAt *time.Time `json:"released_at"`
+	ID         string     `json:"id"`
 }
 
 func (q *Queries) ReleaseFinalizeLock(ctx context.Context, arg ReleaseFinalizeLockParams) error {

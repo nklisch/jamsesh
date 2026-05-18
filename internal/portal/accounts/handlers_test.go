@@ -170,6 +170,9 @@ func (a *accountsOnlyStrict) IssueFetchToken(_ context.Context, _ openapi.IssueF
 func (a *accountsOnlyStrict) MarkSessionShipped(_ context.Context, _ openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
 	panic("MarkSessionShipped: not wired in accounts tests")
 }
+func (a *accountsOnlyStrict) GetSessionInvite(_ context.Context, _ openapi.GetSessionInviteRequestObject) (openapi.GetSessionInviteResponseObject, error) {
+	panic("GetSessionInvite: not wired in accounts tests")
+}
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 

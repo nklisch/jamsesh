@@ -34,6 +34,9 @@ func (s *stubStore) GetOrgByID(_ context.Context, _ string) (store.Org, error) {
 func (s *stubStore) GetOrgBySlug(_ context.Context, _ string) (store.Org, error) {
 	panic("not implemented")
 }
+func (s *stubStore) UpdateOrgSessionInvitePolicy(_ context.Context, _ store.UpdateOrgSessionInvitePolicyParams) error {
+	panic("not implemented")
+}
 
 // --- AccountStore ---
 

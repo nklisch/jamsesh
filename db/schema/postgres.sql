@@ -2,7 +2,9 @@ CREATE TABLE orgs (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    session_invite_policy TEXT NOT NULL DEFAULT 'members_only'
+        CHECK (session_invite_policy IN ('members_only', 'open'))
 );
 
 CREATE TABLE accounts (

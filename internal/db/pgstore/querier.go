@@ -25,6 +25,7 @@ type Querier interface {
 	CreateOAuthToken(ctx context.Context, arg CreateOAuthTokenParams) (OauthToken, error)
 	CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
+	DeleteReleasedLeasesOlderThan(ctx context.Context, releasedAt *time.Time) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
 	EnsureEventSeqRow(ctx context.Context, sessionID string) error
 	GetAccountByEmail(ctx context.Context, email string) (Account, error)
@@ -42,22 +43,22 @@ type Querier interface {
 	GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error)
 	GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error)
 	GetOrgMember(ctx context.Context, arg GetOrgMemberParams) (OrgMember, error)
+	GetOrgSessionInvitePolicy(ctx context.Context, id string) (string, error)
 	GetRefMode(ctx context.Context, arg GetRefModeParams) (RefMode, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error)
 	GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error)
 	GetSessionMember(ctx context.Context, arg GetSessionMemberParams) (SessionMember, error)
-	DeleteReleasedLeasesOlderThan(ctx context.Context, before time.Time) error
 	InsertArchivedSession(ctx context.Context, arg InsertArchivedSessionParams) error
 	InsertComment(ctx context.Context, arg InsertCommentParams) error
 	InsertConflictEvent(ctx context.Context, arg InsertConflictEventParams) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) error
 	InsertFinalizeLock(ctx context.Context, arg InsertFinalizeLockParams) error
 	InsertLease(ctx context.Context, arg InsertLeaseParams) (Lease, error)
-	IssueLeaseFencingToken(ctx context.Context) (int64, error)
 	InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error
 	InsertOrgInvite(ctx context.Context, arg InsertOrgInviteParams) (OrgInvite, error)
 	InsertSessionInvite(ctx context.Context, arg InsertSessionInviteParams) (SessionInvite, error)
+	IssueLeaseFencingToken(ctx context.Context) (int64, error)
 	ListCommentsForSession(ctx context.Context, arg ListCommentsForSessionParams) ([]Comment, error)
 	ListEventsSince(ctx context.Context, arg ListEventsSinceParams) ([]Event, error)
 	ListEventsSinceForDigest(ctx context.Context, arg ListEventsSinceForDigestParams) ([]Event, error)
@@ -95,8 +96,9 @@ type Querier interface {
 	TouchFinalizeLock(ctx context.Context, arg TouchFinalizeLockParams) error
 	TouchOAuthTokenLastUsed(ctx context.Context, arg TouchOAuthTokenLastUsedParams) error
 	UpdateAccountDisplayName(ctx context.Context, arg UpdateAccountDisplayNameParams) error
-	UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error
 	UpdateFinalizeLockCuration(ctx context.Context, arg UpdateFinalizeLockCurationParams) error
+	UpdateLeaseHeartbeat(ctx context.Context, sessionID string) error
+	UpdateOrgSessionInvitePolicy(ctx context.Context, arg UpdateOrgSessionInvitePolicyParams) error
 	UpdateSessionGoalScopeMode(ctx context.Context, arg UpdateSessionGoalScopeModeParams) error
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	UpsertPresence(ctx context.Context, arg UpsertPresenceParams) error
