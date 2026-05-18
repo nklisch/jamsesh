@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-golden-manifest
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture, epic-e2e-cnd-coverage-object-storage-sync-golden-rpo0]
@@ -59,3 +59,24 @@ bucket. No dangling references, no missing entries.
   real production struct.
 - The depends_on on `golden-rpo0` is for shared push helpers (e.g.
   `createSessionAndToken`, `gitPush`), not a functional ordering requirement.
+
+## Implementation Notes (2026-05-17)
+
+- `tests/e2e` is a separate Go module (`jamsesh/tests/e2e`) with no go.work
+  workspace and no replace directive pointing at the main module. Direct import
+  of `jamsesh/internal/portal/storage/objectstore` is not possible across the
+  module boundary. The production struct's JSON tags are the stable contract;
+  `manifestJSON` and `packEntryJSON` are inlined mirrors with identical json
+  tags. Build + vet guard against drift.
+- `manifestKey()` local helper replicates `objectstore.ManifestKey()` (same
+  formula: `"sessions/" + sessionID + "/manifest.json"`).
+- Infrastructure stack: 2-pod `portalcluster` + MinIO + Postgres + MailHog
+  (SMTP for magic-link auth), mirroring the rpo0 test exactly.
+- Shared helpers from `object_storage_rpo0_test.go` used: `randEmail`,
+  `rpo0GetMe`, `rpo0CreateSession` (all in package `golden_test`).
+- Subtest `manifest_matches_bucket_after_push`: reads manifest, checks every
+  PackEntry's .pack and .idx exist in bucket, and checks every bucket pack
+  object appears in the manifest (bidirectional consistency).
+- Subtest `manifest_session_id_and_version`: asserts `SessionID == sessionID`
+  and `Version == 1`.
+- No production bugs encountered during implementation; no subtests skipped.
