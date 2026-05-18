@@ -60,6 +60,10 @@ func AccountFromContext(ctx context.Context) (*store.Account, bool) {
 // ContextWithAccount attaches the given account to ctx using the same key
 // BearerMiddleware uses. Intended for tests and in-process callers that
 // already authenticated by another path (e.g. MCP session auth).
+//
+// This is an intentionally exported helper: multiple packages' test suites
+// use it to inject authenticated accounts without going through HTTP middleware.
+// It is not called from production code paths.
 func ContextWithAccount(ctx context.Context, acct *store.Account) context.Context {
 	return context.WithValue(ctx, ctxKey{}, acct)
 }

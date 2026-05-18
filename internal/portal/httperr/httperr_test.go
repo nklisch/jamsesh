@@ -111,20 +111,6 @@ func TestWriteNonHTTPError(t *testing.T) {
 	}
 }
 
-func TestWriteHTTPError(t *testing.T) {
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-
-	httperr.Write(w, r, httperr.ErrSessionNotFound())
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("want 404, got %d", w.Code)
-	}
-	env := decodeEnvelope(t, w.Body.String())
-	if env.Error != "session.not_found" {
-		t.Errorf("want session.not_found, got %q", env.Error)
-	}
-}
 
 func TestCanonicalConstructors(t *testing.T) {
 	tests := []struct {
@@ -136,7 +122,6 @@ func TestCanonicalConstructors(t *testing.T) {
 		{"ErrInvalidToken", httperr.ErrInvalidToken(), "auth.invalid_token", http.StatusUnauthorized},
 		{"ErrExpiredToken", httperr.ErrExpiredToken(), "auth.expired_token", http.StatusUnauthorized},
 		{"ErrInsufficientPermission", httperr.ErrInsufficientPermission(), "auth.insufficient_permission", http.StatusForbidden},
-		{"ErrSessionNotFound", httperr.ErrSessionNotFound(), "session.not_found", http.StatusNotFound},
 		{"ErrInternal", httperr.ErrInternal(nil), "internal", http.StatusInternalServerError},
 	}
 	for _, tt := range tests {

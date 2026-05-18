@@ -571,13 +571,13 @@ func (s *Syncer) lazyDeletePacks(keys []string) {
 }
 
 // ---------------------------------------------------------------------------
-// packed-refs parsing helper (used in tests; exported for clarity)
+// packed-refs parsing helper
 // ---------------------------------------------------------------------------
 
-// ParsePackedRefsContent parses the content of a packed-refs file and returns
+// parsePackedRefsContent parses the content of a packed-refs file and returns
 // a map of ref name → SHA. Lines starting with '#' are skipped. Lines with a
 // peeled tag entry ('^') are also skipped.
-func ParsePackedRefsContent(content string) map[string]string {
+func parsePackedRefsContent(content string) map[string]string {
 	refs := make(map[string]string)
 	sc := bufio.NewScanner(strings.NewReader(content))
 	for sc.Scan() {

@@ -92,24 +92,6 @@ func TestWriteFromError(t *testing.T) {
 	}
 }
 
-// TestWriteFromError_PreservesWrappedTypedError verifies that a
-// *httperr.Error wrapped via fmt.Errorf("%w: ...") is still recognized
-// by errors.As and not misclassified as a fallthrough.
-func TestWriteFromError_PreservesWrappedTypedError(t *testing.T) {
-	wrapped := errors.Join(httperr.ErrSessionNotFound(), errors.New("extra context"))
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	httperr.WriteFromError(w, r, wrapped)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("want 404, got %d", w.Code)
-	}
-	env := decodeEnvelope(t, w.Body.String())
-	if env.Error != "session.not_found" {
-		t.Errorf("want session.not_found, got %q", env.Error)
-	}
-}
 
 // TestWriteBadRequest emits the request.malformed envelope at 400.
 func TestWriteBadRequest(t *testing.T) {

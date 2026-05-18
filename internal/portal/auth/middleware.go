@@ -13,11 +13,11 @@ import (
 
 type orgMemberCtxKey struct{}
 
-// OrgMemberFromContext retrieves the *store.OrgMember injected by
+// orgMemberFromContext retrieves the *store.OrgMember injected by
 // RequireOrgRole. The second return value reports whether one was present.
 // Handlers downstream of RequireOrgRole can use this to avoid a redundant
 // store lookup.
-func OrgMemberFromContext(ctx context.Context) (*store.OrgMember, bool) {
+func orgMemberFromContext(ctx context.Context) (*store.OrgMember, bool) {
 	v, ok := ctx.Value(orgMemberCtxKey{}).(*store.OrgMember)
 	return v, ok
 }
@@ -29,7 +29,7 @@ func OrgMemberFromContext(ctx context.Context) (*store.OrgMember, bool) {
 //
 // On failure it writes the canonical auth.insufficient_permission 403 envelope
 // and halts the handler chain. On success the resolved OrgMember is injected
-// into the context (accessible via OrgMemberFromContext).
+// into the context (accessible via orgMemberFromContext).
 func RequireOrgRole(s store.Store, roles ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]struct{}, len(roles))
 	for _, r := range roles {

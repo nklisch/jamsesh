@@ -717,7 +717,7 @@ func countKeysWithPrefix(b Backend, ctx context.Context, prefix string) int {
 }
 
 // ---------------------------------------------------------------------------
-// ParsePackedRefsContent tests
+// parsePackedRefsContent tests
 // ---------------------------------------------------------------------------
 
 func TestParsePackedRefsContent(t *testing.T) {
@@ -726,7 +726,7 @@ deadbeef refs/heads/main
 cafebabe refs/heads/feature
 ^abc123
 `
-	refs := ParsePackedRefsContent(content)
+	refs := parsePackedRefsContent(content)
 	if refs["refs/heads/main"] != "deadbeef" {
 		t.Errorf("refs/heads/main = %q; want deadbeef", refs["refs/heads/main"])
 	}

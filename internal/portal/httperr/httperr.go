@@ -92,7 +92,7 @@ func ErrInsufficientPermission() *Error {
 	}
 }
 
-func ErrSessionNotFound() *Error {
+func errSessionNotFound() *Error {
 	return &Error{
 		Code:       "session.not_found",
 		Message:    "session not found",

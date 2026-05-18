@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-test-only-exports-cluster
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, portal, refactor]
 parent: null
 depends_on: []
@@ -48,3 +48,13 @@ whether the test exists only because the export does. Candidates:
 
 For each, either delete (and drop its test) or document the
 externally-supported contract.
+
+## Implementation notes
+
+| Symbol | Decision | Rationale |
+|---|---|---|
+| `OrgMemberFromContext` (auth) | **B** — move internal, lowercase | `TestRequireOrgRole_OrgMemberInContext` exercises real middleware context injection. Moved to `middleware_internal_test.go` (`package auth`); symbol renamed `orgMemberFromContext`. |
+| `ContextWithAccount` (tokens) | **C** — keep, add doc comment | Used by `_test.go` files across 4 packages (`finalize`, `handlerauth`, `tokens`). Genuine cross-package test utility; not worth internalizing since it would require each package to duplicate the injection logic. Doc comment added. |
+| `ErrSessionNotFound` (httperr) | **B** — move internal, lowercase | Tests exercise real constructor shape and `WriteFromError` pass-through behaviour. Moved 3 tests to `httperr_internal_test.go` (`package httperr`); symbol renamed `errSessionNotFound`. |
+| `FirstParentLeafCommits` (finalize) | **B** — move internal, lowercase | Tests exercise complex DAG traversal logic (auto-merger merge commit skipping, chronological ordering). Moved to `script_internal_test.go` (`package finalize`); symbol renamed `firstParentLeafCommits`. |
+| `ParsePackedRefsContent` (objectstore) | **B** — lowercase only | `sync_test.go` was already `package objectstore` (internal), so only the symbol rename was needed: `parsePackedRefsContent`. |

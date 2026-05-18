@@ -171,7 +171,7 @@ func writeCheckoutStep(b *strings.Builder, targetBranch, baseSHA string) {
 	b.WriteString(fmt.Sprintf("git checkout -b %s %s\n", shellquote(targetBranch), shellquote(baseSHA)))
 }
 
-// FirstParentLeafCommits walks the first-parent chain from draftTipSHA and
+// firstParentLeafCommits walks the first-parent chain from draftTipSHA and
 // returns the underlying leaf agent commits in DAG-natural chronological
 // order (oldest first). Auto-merger merge commits are NOT included — only
 // the commits they integrated.
@@ -193,7 +193,7 @@ func writeCheckoutStep(b *strings.Builder, targetBranch, baseSHA string) {
 // Order semantics: example A → B(am-merge of X, Y) → C with C being the
 // tip. The function returns [A, X, Y] — A is the oldest first-parent
 // leaf, X and Y are the integrated leaves in chronological order.
-func FirstParentLeafCommits(repo *gogit.Repository, draftTipSHA string) ([]*object.Commit, error) {
+func firstParentLeafCommits(repo *gogit.Repository, draftTipSHA string) ([]*object.Commit, error) {
 	tip, err := repo.CommitObject(plumbing.NewHash(draftTipSHA))
 	if err != nil {
 		return nil, fmt.Errorf("finalize: resolve draft tip %s: %w", draftTipSHA, err)
