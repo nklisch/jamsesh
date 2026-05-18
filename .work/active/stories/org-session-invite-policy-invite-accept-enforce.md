@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-invite-accept-enforce
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: org-session-invite-policy
 depends_on: [org-session-invite-policy-schema]
@@ -128,3 +128,28 @@ would be worse than no doc.
 - `TestAcceptSessionInvite_OpenPolicy_Member` — 200 (belt-and-suspenders)
 
 **Verification**: `go build ./...` clean; `go test ./internal/portal/sessions/... -count=1` — 62 tests, all PASS.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- OpenAPI spec change was skipped (judgment call documented in commit body)
+  because no other operation in `docs/openapi.yaml` enumerates specific 403
+  error codes. Reasonable — adding a one-off pattern is worse than no doc.
+  The 403 `auth.org_membership_required` code is internal-only convention.
+- Comment "Check is intentionally after email-match so that a wrong-email
+  request never learns about the org's policy" is excellent documentation of
+  a subtle security choice.
+
+**Notes**: Cross-product tests pin all four cells of {policy} × {membership}.
+The gate is correctly placed AFTER email match (cannot probe policy with
+random emails) and BEFORE WithTx (no partial work if rejected). The
+`auth.org_membership_required` error code and "ask an org admin" hint give
+the user-facing UI a clean rejection path. Stale-fixture fixes in
+`TestAcceptSessionInvite_HappyPath` and `TestGetSessionInvite_NoMutation`
+were necessary because those tests previously relied on the now-enforced
+default policy not gating non-members; adding `seedOrgMember` for the
+invitee preserves their original intent.
