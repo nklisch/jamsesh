@@ -43,4 +43,6 @@ self-host docs).
 
 ## Gate runs
 
-(populated in Phase 4)
+- **gate-security** (2026-05-18) — 15 findings (2 Critical, 3 High, 6 Medium, 4 Low)
+  - 11 items into `.work/active/stories/` (gate-security-*) — Critical/High at `implementing`, Medium at `drafting`
+  - 4 items into `.work/backlog/` (Low severity)
