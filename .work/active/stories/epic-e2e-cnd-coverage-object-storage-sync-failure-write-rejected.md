@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-failure-write-rejected
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture, epic-e2e-cnd-coverage-object-storage-sync-failure-startup]
@@ -103,3 +103,20 @@ write and pretend it succeeded.
   empty under `sessions/<sessionID>/` after any failure path — no partial
   writes leaked to the reachable bucket.
 - `go build ./failure/... && go vet ./failure/...` passes clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none — `.work/backlog/object-storage-write-rejected-silent-acceptance.md`
+created during this review. The `t.Skip` at line 246 names the ID correctly;
+the substrate item now exists as the audit trail.
+
+**Important**: none
+**Nits**: none
+
+**Notes**: PATH A / PATH B branching is correct and honest: no tautology,
+no silent acceptance of 2xx. Direct bucket inspection via `writeRejectedAssertBucketEmpty`
+in both paths verifies no objects leaked to the reachable bucket. The lazy-init
+escape hatch skips with a real backlog item (`object-storage-write-rejected-silent-acceptance`)
+rather than masking the gap. No in-process mocks.
