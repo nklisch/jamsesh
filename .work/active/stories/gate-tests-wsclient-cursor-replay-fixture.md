@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wsclient-cursor-replay-fixture
 kind: story
-stage: review
+stage: done
 tags: [testing, portal]
 parent: null
 depends_on: []
@@ -65,3 +65,13 @@ Changes made:
 
 Test result: `PASS` (`TestInterruptedOps/ws_reconnect_after_drop`, 2.02s)
 against the full Docker-backed e2e stack.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: The wsclient.ConnectFromSeq helper was already in place; this story was effectively a test-body rewrite. TestInterruptedOps/ws_reconnect_after_drop now: creates session (seq 1), emits 5 mode.changed events (seqs 2-6), captures lastSeenSeq=3, drops connection, reconnects with ConnectFromSeq(fromSeq=3), asserts gateway replays seqs 4/5/6 in order, then asserts live delivery of one more emitted event. Runs against the full Docker e2e stack — PASS in 2.02s.

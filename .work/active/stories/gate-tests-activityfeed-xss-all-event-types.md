@@ -1,7 +1,7 @@
 ---
 id: gate-tests-activityfeed-xss-all-event-types
 kind: story
-stage: review
+stage: done
 tags: [testing, security, ui]
 parent: null
 depends_on: [gate-security-xss-html-render-ws-events]
@@ -88,3 +88,13 @@ user-controlled payload; no XSS case needed.
 - 2 focused XSS tests from gate-tests-xss-activityfeed-component
 - 20 new table-driven XSS cases (this story)
 - Total: 29 passing
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: 20-case it.each table covering every (event_type, injectable_field) combination across 9 event types with payload fields. For who/txt fields: injects <img src=x onerror=...> and asserts querySelector('img') is null + marker undefined + &lt;img in innerHTML (escaped). For sha fields: uses a safe 7-char probe (sha() truncates so img payload can't survive) and asserts no img + truncated text present. session.finalizing/session.ended have no user fields (skipped). default branch only renders env.type (closed union, not user payload). 29 tests pass.
