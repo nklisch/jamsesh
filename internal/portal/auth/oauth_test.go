@@ -159,6 +159,9 @@ func (o *oauthOnlyStrict) GetSessionInvite(_ context.Context, _ openapi.GetSessi
 func (o *oauthOnlyStrict) PatchOrg(_ context.Context, _ openapi.PatchOrgRequestObject) (openapi.PatchOrgResponseObject, error) {
 	panic("PatchOrg: not wired in OAuth tests")
 }
+func (o *oauthOnlyStrict) GetOrg(_ context.Context, _ openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
+	panic("GetOrg: not wired in OAuth tests")
+}
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 

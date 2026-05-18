@@ -219,6 +219,9 @@ func (m *magicLinkOnlyStrict) GetSessionInvite(_ context.Context, _ openapi.GetS
 func (m *magicLinkOnlyStrict) PatchOrg(_ context.Context, _ openapi.PatchOrgRequestObject) (openapi.PatchOrgResponseObject, error) {
 	panic("PatchOrg: not wired in this test")
 }
+func (m *magicLinkOnlyStrict) GetOrg(_ context.Context, _ openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
+	panic("GetOrg: not wired in this test")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

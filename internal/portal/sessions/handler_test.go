@@ -164,6 +164,9 @@ func (h *sessionsOnlyStrict) MarkSessionShipped(_ context.Context, _ openapi.Mar
 func (h *sessionsOnlyStrict) PatchOrg(_ context.Context, _ openapi.PatchOrgRequestObject) (openapi.PatchOrgResponseObject, error) {
 	panic("not wired")
 }
+func (h *sessionsOnlyStrict) GetOrg(_ context.Context, _ openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*sessionsOnlyStrict)(nil)
 
