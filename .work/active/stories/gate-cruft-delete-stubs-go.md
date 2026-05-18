@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-stubs-go
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, plugin]
 parent: null
 depends_on: []
@@ -33,3 +33,10 @@ package hooks
 ## Removal
 Delete the file entirely. Empty placeholder files are pure cruft; if a
 future hook needs stubbing, the file can be created at that time.
+
+## Implementation notes
+Confirmed `cmd/jamsesh/hooks/stubs.go` contained only a package declaration
+and a stale comment — no exported symbols. Grep across `cmd/`, `internal/`,
+and `tests/` found no references to any symbol from this file. Deleted via
+`git rm`. Build (`go build ./cmd/jamsesh/hooks/...`) and tests
+(`go test ./cmd/jamsesh/hooks/...`) both pass after removal.
