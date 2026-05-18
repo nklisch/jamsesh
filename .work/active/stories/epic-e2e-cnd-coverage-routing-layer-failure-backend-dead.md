@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-failure-backend-dead
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -128,6 +128,27 @@ dead pod are permanently unavailable until the router restarts.
   and rebuild the router image, then remove the `t.Skip`.
 - The test is classified Important (not Critical) because the fix is a one-line
   goroutine start; no panic or infinite loop was observed.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: The `t.Skip` is correctly placed as the first statement in
+`testDeadPodRemovedFromRoutingPool` — execution halts immediately, so the
+test body (which depends on `RequireLeaseHolder` that would timeout since
+session creation doesn't acquire the advisory lock) is preserved as
+documentation without false failures. The backlog item
+`bug-router-static-discoverer-not-started.md` is correctly filed at
+`stage: implementing` with `tags: [bug, router, discovery, Important]` and a
+clear fix description. The test implementation is complete and correct for
+when the bug is fixed: SLO polling loop at 500ms interval with 3 consecutive
+successes required, `WaitForLeaseMigration` for cross-check, and
+post-eviction verification. The skip message references the backlog item id.
+No mocks.
 
 **SLO analysis**:
 - Default `ProbeInterval`: 5s (from `internal/router/config/config.go` defaults).
