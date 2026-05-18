@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-failure-503-retry
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -108,6 +108,26 @@ db, _ := sql.Open("postgres", pg.DSN)
 - For `bounded_retry_pathology_surfaces_503`: test holds lock (single session-scoped lock blocks all pods since any pod's `pg_try_advisory_lock` on same key fails), asserts 503 within 5s.
 - The router's retry bound (exactly one retry per `proxy.go`) means 2 pods × 1 attempt each = 503 propagated after 2 total pod attempts.
 - `go build ./failure/...` and `go vet ./failure/...` both pass clean.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Advisory lock cast `hashtext($1)::oid` is consistent throughout and
+matches the `lifecycle.go` pg_locks query convention. The test comment about
+"since no pod currently holds it (session was just created)" is correct: session
+creation (POST /sessions) does not trigger `AcquireForRequest` in the portal —
+the lease is only acquired by the git post-receive emitter path. GET /sessions
+also does not acquire the lease. So `pg_advisory_lock` in the test acquires
+immediately after session creation. `transparent_redispatch_on_503` holds the
+lock and asserts 2xx within 3s (re-dispatch invariant). `bounded_retry_pathology_surfaces_503`
+holds the lock and asserts 503 within 5s (no infinite-retry). Wall-clock bounds
+are appropriate. `requireDockerLocal` and `requirePortalImageLocal` guards are
+present. No mocks.
 
 ## Acceptance criteria
 
