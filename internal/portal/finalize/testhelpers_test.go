@@ -55,10 +55,17 @@ type finalizeEnv struct {
 }
 
 func newFinalizeEnv(t *testing.T) *finalizeEnv {
+	return newFinalizeEnvPool(t, db.PoolConfig{})
+}
+
+// newFinalizeEnvPool is like newFinalizeEnv but accepts an explicit PoolConfig.
+// Use PoolConfig{MaxOpenConns: 1} for concurrency tests so that all goroutines
+// share the single in-memory SQLite connection and see the same schema/data.
+func newFinalizeEnvPool(t *testing.T, pc db.PoolConfig) *finalizeEnv {
 	t.Helper()
 
 	ctx := context.Background()
-	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", pc)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

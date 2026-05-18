@@ -8,8 +8,10 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"jamsesh/internal/api/openapi"
+	"jamsesh/internal/db"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/finalize"
+	"jamsesh/internal/portal/tokens"
 )
 
 func TestAcquireFinalizeLock_NoExistingLock(t *testing.T) {
@@ -258,6 +260,176 @@ func TestAcquireFinalizeLock_OverrideSupersedes(t *testing.T) {
 	sess, _ := env.store.GetSession(ctx, env.orgID, env.sessID)
 	if sess.FinalizeLockedByAccountID == nil || *sess.FinalizeLockedByAccountID != env.caller.ID {
 		t.Errorf("sessions.finalize_locked_by = %v, want %s", sess.FinalizeLockedByAccountID, env.caller.ID)
+	}
+}
+
+// TestAcquireFinalizeLock_ConcurrentOverrides_OnlyOneWins races two callers
+// (A and C) both attempting override=true against B's active lock. It asserts
+// the core safety invariant: after both goroutines return there must be exactly
+// one non-superseded, non-released lock row for the session — two active rows
+// would indicate a concurrency bug in the insert-before-supersede sequencing.
+//
+// The test deliberately avoids asserting which racer wins (A or C); either
+// outcome is acceptable. What is NOT acceptable is both rows being active.
+func TestAcquireFinalizeLock_ConcurrentOverrides_OnlyOneWins(t *testing.T) {
+	// MaxOpenConns=1 forces all goroutines through the single in-memory SQLite
+	// connection, so they all see the same schema/data.  SQLite is effectively
+	// single-writer anyway; the constraint is intentional, not a workaround.
+	env := newFinalizeEnvPool(t, db.PoolConfig{MaxOpenConns: 1})
+	ctx := context.Background()
+
+	// Seed B's lock: fresh, held by otherID (B).  Set session pointer + status
+	// to "finalizing" so the handler takes branch 5 (override) rather than
+	// branch 1 (no lock) or branch 3 (stale).
+	bLockID := ulid.Make().String()
+	now := time.Now().UTC()
+	if err := env.store.InsertFinalizeLock(ctx, store.InsertFinalizeLockParams{
+		ID:                  bLockID,
+		OrgID:               env.orgID,
+		SessionID:           env.sessID,
+		AcquiredByAccountID: env.otherID, // B holds it
+		AcquiredAt:          now,
+		LastActivityAt:      now,
+		SelectedCommitSHAs:  "[]",
+		Mode:                "squash",
+	}); err != nil {
+		t.Fatalf("seed B lock: %v", err)
+	}
+	bID := env.otherID
+	if err := env.store.SetFinalizeLock(ctx, store.SetFinalizeLockParams{
+		OrgID: env.orgID, ID: env.sessID, AccountID: &bID,
+	}); err != nil {
+		t.Fatalf("seed sessions pointer: %v", err)
+	}
+	if err := env.store.UpdateSessionStatus(ctx, store.UpdateSessionStatusParams{
+		OrgID: env.orgID, ID: env.sessID, Status: "finalizing",
+	}); err != nil {
+		t.Fatalf("seed session status: %v", err)
+	}
+
+	// Create account C — a third session member who also wants to override.
+	cID := ulid.Make().String()
+	cAcct, err := env.store.CreateAccount(ctx, store.CreateAccountParams{
+		ID: cID, Email: "c-" + cID[:8] + "@example.com",
+		DisplayName: "AccountC", CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("create account C: %v", err)
+	}
+	if err := env.store.AddOrgMember(ctx, store.AddOrgMemberParams{
+		OrgID: env.orgID, AccountID: cID, Role: "member", CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("add C to org: %v", err)
+	}
+	if err := env.store.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID: env.orgID, SessionID: env.sessID, AccountID: cID, Role: "member", JoinedAt: now,
+	}); err != nil {
+		t.Fatalf("add C to session: %v", err)
+	}
+	cCtx := tokens.ContextWithAccount(ctx, &cAcct)
+
+	// Race A (caller) and C both calling override=true as close together as
+	// possible.  Use a ready channel to synchronise the goroutine launches.
+	type result struct {
+		resp openapi.AcquireFinalizeLockResponseObject
+		err  error
+	}
+	ready := make(chan struct{})
+	aCh := make(chan result, 1)
+	cCh := make(chan result, 1)
+
+	go func() {
+		<-ready
+		resp, err := env.handler.AcquireFinalizeLock(env.callerCtx, openapi.AcquireFinalizeLockRequestObject{
+			OrgID:     env.orgID,
+			SessionID: env.sessID,
+			Body:      &openapi.AcquireFinalizeLockJSONRequestBody{Override: true},
+		})
+		aCh <- result{resp, err}
+	}()
+	go func() {
+		<-ready
+		resp, err := env.handler.AcquireFinalizeLock(cCtx, openapi.AcquireFinalizeLockRequestObject{
+			OrgID:     env.orgID,
+			SessionID: env.sessID,
+			Body:      &openapi.AcquireFinalizeLockJSONRequestBody{Override: true},
+		})
+		cCh <- result{resp, err}
+	}()
+
+	// Fire both goroutines simultaneously.
+	close(ready)
+	aRes := <-aCh
+	cRes := <-cCh
+
+	// Neither call should return a Go error (internal/dep errors), regardless
+	// of which racer "won".
+	if aRes.err != nil {
+		t.Errorf("A returned unexpected error: %v", aRes.err)
+	}
+	if cRes.err != nil {
+		t.Errorf("C returned unexpected error: %v", cRes.err)
+	}
+
+	// Determine A and C's lock IDs (if they got 201).
+	var aLockID, cLockID string
+	if ok, status := asAcquire201(t, aRes.resp); ok {
+		aLockID = status.LockId
+	}
+	if ok, status := asAcquire201(t, cRes.resp); ok {
+		cLockID = status.LockId
+	}
+
+	// At least one of A or C must have succeeded with a 201 (it's possible
+	// both return 201 if their override paths interleave, but one will win
+	// the supersede race).  If both get non-201, that's also a bug.
+	if aLockID == "" && cLockID == "" {
+		t.Errorf("both A and C failed to acquire a lock; at least one must win. A=%T C=%T", aRes.resp, cRes.resp)
+	}
+
+	// --- Core safety invariant ---
+	// Count unsuperseded, unreleased lock rows for the session.
+	// We check every known lock ID (B, A if created, C if created) and tally
+	// rows where SupersededByLockID == nil AND ReleasedAt == nil.
+	allIDs := []string{bLockID}
+	if aLockID != "" {
+		allIDs = append(allIDs, aLockID)
+	}
+	if cLockID != "" && cLockID != aLockID {
+		allIDs = append(allIDs, cLockID)
+	}
+
+	activeCount := 0
+	var activeLockIDs []string
+	for _, id := range allIDs {
+		lock, err := env.store.GetFinalizeLockByID(ctx, id)
+		if err != nil {
+			t.Errorf("GetFinalizeLockByID(%s): %v", id, err)
+			continue
+		}
+		if lock.SupersededByLockID == nil && lock.ReleasedAt == nil {
+			activeCount++
+			activeLockIDs = append(activeLockIDs, id)
+		}
+	}
+
+	if activeCount != 1 {
+		t.Errorf("expected exactly 1 active (unsuperseded, unreleased) lock, got %d: %v", activeCount, activeLockIDs)
+	}
+
+	// sessions.finalize_locked_by_account_id must point at whichever account
+	// owns the surviving active lock.
+	sess, err := env.store.GetSession(ctx, env.orgID, env.sessID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if sess.FinalizeLockedByAccountID == nil {
+		t.Fatal("sessions.finalize_locked_by_account_id is nil; expected a winner account")
+	}
+	winnerAccountID := *sess.FinalizeLockedByAccountID
+	if winnerAccountID != env.caller.ID && winnerAccountID != cID {
+		t.Errorf("sessions.finalize_locked_by_account_id = %s, want one of {A=%s, C=%s}",
+			winnerAccountID, env.caller.ID, cID)
 	}
 }
 
