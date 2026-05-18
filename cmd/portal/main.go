@@ -665,6 +665,7 @@ func main() {
 	//                          /auth/magic-link/exchange
 	//   - Bearer: /auth/revoke (and future authenticated endpoints)
 	handler := router.New(router.Deps{
+		TLSMode:           cfg.TLS.Mode,
 		TrustProxyHeaders: cfg.TLS.Mode == "behind_proxy",
 		MountUI:           uiHandler,
 		MountGit:          gitHandler.Mount,
