@@ -94,7 +94,7 @@ returning JSON on stdout:
   session goal, writable scope, current draft tip, peer ref tips, the user's
   refs and modes, and unresolved addressed comments.
 - `jamsesh hook user-prompt-submit` — `git fetch` from session remote, calls
-  `GET /api/sessions/<id>/digest?since=<seq>` on the portal, formats the
+  `GET /api/orgs/{orgID}/sessions/{sessionID}/digest?since=<seq>` on the portal, formats the
   combined output as `additionalContext`, advances local `last_seen` cursors.
 - `jamsesh hook pre-tool-use` — gates Bash invocations. Returns
   `permissionDecision: deny` for `git push` and `git config remote.*`.
@@ -178,7 +178,7 @@ A single turn from one human-agent pair's perspective.
 2. **`UserPromptSubmit` hook fires.** `jamsesh hook user-prompt-submit`:
    - `git fetch` from the session remote (pulls new commits across all visible
      refs and the current draft tip).
-   - Calls `GET /api/sessions/<id>/digest?since=<seq>` on the portal. Returns
+   - Calls `GET /api/orgs/{orgID}/sessions/{sessionID}/digest?since=<seq>` on the portal. Returns
      new addressed comments (especially those addressed to this agent), new
      conflict events, session-goal updates, mode changes, presence updates.
    - Formats both into a context block: peer commit activity from git log,
@@ -335,7 +335,7 @@ cherry-picks and does not host a conflict resolver.
      (in squash mode) edits the composed commit message
 3. The portal generates a **finalize plan** delivered to the human as a
    one-line command `jamsesh finalize-run <plan-id>`. The binary fetches
-   the plan body via `GET /finalize-plan` and runs it locally. The
+   the plan body via `GET /api/orgs/{orgID}/sessions/{sessionID}/finalize-plan` and runs it locally. The
    plan body is a mode-aware shell sequence; in squash mode:
 
    ```bash

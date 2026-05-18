@@ -1,7 +1,7 @@
 ---
 id: gate-docs-arch-unscoped-routes
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -36,3 +36,13 @@ Replace `/api/sessions/<id>/...` with
 `/api/orgs/{orgID}/sessions/{sessionID}/...` in the data-flow section
 and the finalize section. Drop the bare `/finalize-plan` shortcut; show
 the full path.
+
+## Implementation notes
+
+Three lines edited in `docs/ARCHITECTURE.md`:
+
+- **Line 97** (hook subcommands section): `GET /api/sessions/<id>/digest?since=<seq>` → `GET /api/orgs/{orgID}/sessions/{sessionID}/digest?since=<seq>`
+- **Line 181** (turn data-flow section): `GET /api/sessions/<id>/digest?since=<seq>` → `GET /api/orgs/{orgID}/sessions/{sessionID}/digest?since=<seq>`
+- **Line 338** (finalize section): `GET /finalize-plan` → `GET /api/orgs/{orgID}/sessions/{sessionID}/finalize-plan`
+
+Canonical path shapes confirmed from `docs/openapi.yaml` (lines 2067 and 2714). No prose added, no semantic claims changed, no lines touched by sibling stories `gate-docs-arch-k8s-discovery` or `gate-docs-spec-arch-no-git-http-backend`.
