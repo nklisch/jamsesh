@@ -193,7 +193,7 @@ func TestIssueFetchToken_ExpiresAfter5Minutes(t *testing.T) {
 	}
 }
 
-func TestIssueFetchToken_RemoteURLCarriesTokenInUserinfo_HTTPS(t *testing.T) {
+func TestIssueFetchToken_RemoteURLIsPlainNoCredentials_HTTPS(t *testing.T) {
 	env := newFetchTokenEnv(t, "https://portal.example.com")
 
 	resp, err := env.handler.IssueFetchToken(env.callerCtx, openapi.IssueFetchTokenRequestObject{
@@ -215,23 +215,21 @@ func TestIssueFetchToken_RemoteURLCarriesTokenInUserinfo_HTTPS(t *testing.T) {
 	if u.Host != "portal.example.com" {
 		t.Errorf("host = %s, want portal.example.com", u.Host)
 	}
-	if u.User == nil {
-		t.Fatal("userinfo missing from remote_url")
-	}
-	if u.User.Username() != "x-access-token" {
-		t.Errorf("userinfo username = %s, want x-access-token", u.User.Username())
-	}
-	pw, set := u.User.Password()
-	if !set || pw != r.Token {
-		t.Errorf("userinfo password = (%q,%v), want (%q,true)", pw, set, r.Token)
+	// CRITICAL: remote_url must carry no credentials — token goes via Authorization header.
+	if u.User != nil {
+		t.Errorf("remote_url must not embed credentials, got userinfo = %v", u.User)
 	}
 	wantPath := fmt.Sprintf("/git/%s/%s.git", env.orgID, env.sessID)
 	if u.Path != wantPath {
 		t.Errorf("path = %s, want %s", u.Path, wantPath)
 	}
+	// Token is returned separately and must be non-empty.
+	if r.Token == "" {
+		t.Error("token field is empty")
+	}
 }
 
-func TestIssueFetchToken_RemoteURLCarriesTokenInUserinfo_HTTPLocalhost(t *testing.T) {
+func TestIssueFetchToken_RemoteURLIsPlainNoCredentials_HTTPLocalhost(t *testing.T) {
 	env := newFetchTokenEnv(t, "http://localhost:8080")
 
 	resp, err := env.handler.IssueFetchToken(env.callerCtx, openapi.IssueFetchTokenRequestObject{
@@ -253,12 +251,13 @@ func TestIssueFetchToken_RemoteURLCarriesTokenInUserinfo_HTTPLocalhost(t *testin
 	if u.Host != "localhost:8080" {
 		t.Errorf("host = %s, want localhost:8080", u.Host)
 	}
-	if u.User == nil || u.User.Username() != "x-access-token" {
-		t.Errorf("userinfo missing or wrong username: %v", u.User)
+	// CRITICAL: remote_url must carry no credentials.
+	if u.User != nil {
+		t.Errorf("remote_url must not embed credentials, got userinfo = %v", u.User)
 	}
-	// Sanity: serialized URL begins with http://x-access-token: pattern.
-	if !strings.HasPrefix(r.RemoteUrl, "http://x-access-token:") {
-		t.Errorf("remote_url = %q, want http://x-access-token: prefix", r.RemoteUrl)
+	// Sanity: serialized URL begins with http://localhost: pattern (no x-access-token).
+	if !strings.HasPrefix(r.RemoteUrl, "http://localhost:") {
+		t.Errorf("remote_url = %q, want http://localhost: prefix", r.RemoteUrl)
 	}
 }
 

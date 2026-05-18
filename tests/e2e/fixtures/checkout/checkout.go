@@ -41,17 +41,33 @@ func Start(t *testing.T) *Sandbox {
 // JAMSESH_RUNNER_NAME and JAMSESH_RUNNER_EMAIL are set to stable test
 // values so `git commit --author` works without a configured identity.
 //
+// When fetchToken is non-empty, git's one-shot config mechanism is used
+// to inject `http.extraHeader=Authorization: Bearer <token>` for the
+// duration of the script, matching the plugin's credential-passing
+// strategy (token never stored in .git/config).
+//
 // Returns combined stdout+stderr for debugging. The test is failed
 // immediately if the script exits non-zero.
-func (s *Sandbox) RunPlan(t *testing.T, planBody, fetchRemote string) string {
+func (s *Sandbox) RunPlan(t *testing.T, planBody, fetchRemote, fetchToken string) string {
 	t.Helper()
 	cmd := exec.Command("/bin/sh", "-c", planBody)
 	cmd.Dir = s.Dir
-	cmd.Env = append(sandboxEnv(s.Dir),
+	env := append(sandboxEnv(s.Dir),
 		"JAMSESH_FETCH_REMOTE="+fetchRemote,
 		"JAMSESH_RUNNER_NAME=Finalize Runner",
 		"JAMSESH_RUNNER_EMAIL=finalize-runner@test.example",
 	)
+	if fetchToken != "" {
+		// Inject the bearer token as a one-shot git config via environment
+		// so the script's `git fetch "$JAMSESH_FETCH_REMOTE"` can
+		// authenticate without embedding the token in the URL.
+		env = append(env,
+			"GIT_CONFIG_COUNT=1",
+			"GIT_CONFIG_KEY_0=http.extraHeader",
+			"GIT_CONFIG_VALUE_0=Authorization: Bearer "+fetchToken,
+		)
+	}
+	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("checkout.RunPlan: script failed: %v\noutput:\n%s", err, out)

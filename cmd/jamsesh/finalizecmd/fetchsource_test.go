@@ -104,7 +104,7 @@ func TestChooseFetchSource_LocalPathMissingFallsBackToHTTPS(t *testing.T) {
 		}
 		resp := openapi.FetchTokenResponse{
 			Token:     "ephem-fetch-tok",
-			RemoteUrl: "https://x-access-token:ephem-fetch-tok@portal.example/git/org1/" + sessionID + ".git",
+			RemoteUrl: "https://portal.example/git/org1/" + sessionID + ".git",
 			ExpiresAt: time.Now().Add(5 * time.Minute).UTC(),
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -139,8 +139,16 @@ func TestChooseFetchSource_LocalPathMissingFallsBackToHTTPS(t *testing.T) {
 	if fs.Kind != "https" {
 		t.Errorf("Kind = %q, want https", fs.Kind)
 	}
-	if !strings.Contains(fs.URL, "x-access-token:ephem-fetch-tok@") {
-		t.Errorf("URL missing x-access-token credential: %q", fs.URL)
+	// URL must be plain — no embedded credentials.
+	if strings.Contains(fs.URL, "x-access-token") || strings.Contains(fs.URL, "@") {
+		t.Errorf("URL must not contain embedded credentials: %q", fs.URL)
+	}
+	if !strings.Contains(fs.URL, "portal.example/git/org1/") {
+		t.Errorf("URL missing expected path: %q", fs.URL)
+	}
+	// Token must be stored separately on the fetchSource.
+	if fs.Token != "ephem-fetch-tok" {
+		t.Errorf("Token = %q, want ephem-fetch-tok", fs.Token)
 	}
 	// Should have run: pre-clean remote remove (combined) + remote add.
 	if len(gitArgs) < 2 {
@@ -150,12 +158,12 @@ func TestChooseFetchSource_LocalPathMissingFallsBackToHTTPS(t *testing.T) {
 	if !equalStrSlice(gitArgs[0], []string{"remote", "remove", "jamsesh"}) {
 		t.Errorf("first git call = %v, want pre-clean remote remove", gitArgs[0])
 	}
-	// Second call: `remote add jamsesh <url>`.
-	if len(gitArgs[1]) < 3 || gitArgs[1][0] != "remote" || gitArgs[1][1] != "add" || gitArgs[1][2] != "jamsesh" {
-		t.Errorf("second git call = %v, want remote add jamsesh", gitArgs[1])
+	// Second call: `remote add jamsesh <url>` — URL must be credential-free.
+	if len(gitArgs[1]) < 4 || gitArgs[1][0] != "remote" || gitArgs[1][1] != "add" || gitArgs[1][2] != "jamsesh" {
+		t.Errorf("second git call = %v, want remote add jamsesh <url>", gitArgs[1])
 	}
-	if !strings.Contains(gitArgs[1][3], "x-access-token:ephem-fetch-tok@") {
-		t.Errorf("remote add URL missing token: %v", gitArgs[1])
+	if strings.Contains(gitArgs[1][3], "x-access-token") || strings.Contains(gitArgs[1][3], "@") {
+		t.Errorf("remote add URL must not contain embedded credentials: %v", gitArgs[1])
 	}
 }
 
@@ -179,7 +187,7 @@ func TestChooseFetchSource_LocalPathNotARepoFallsBackToHTTPS(t *testing.T) {
 		httpsHit = true
 		resp := openapi.FetchTokenResponse{
 			Token:     "t",
-			RemoteUrl: "https://x-access-token:t@portal.example/git/org1/" + sessionID + ".git",
+			RemoteUrl: "https://portal.example/git/org1/" + sessionID + ".git",
 			ExpiresAt: time.Now().Add(5 * time.Minute).UTC(),
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -323,10 +331,11 @@ func TestPerformFetch_LocalKind(t *testing.T) {
 	}
 }
 
-// TestPerformFetch_HTTPSKindUsesRemoteName verifies the HTTPS branch
-// fetches by the named `jamsesh` remote rather than echoing the URL
-// (which would leak the credential to the user's verbose log).
-func TestPerformFetch_HTTPSKindUsesRemoteName(t *testing.T) {
+// TestPerformFetch_HTTPSKindPassesTokenViaExtraHeader verifies the HTTPS
+// branch fetches by the named `jamsesh` remote and passes the bearer token
+// via `git -c http.extraHeader=...` rather than embedding it in the remote
+// URL. This prevents the token from persisting into .git/config.
+func TestPerformFetch_HTTPSKindPassesTokenViaExtraHeader(t *testing.T) {
 	var gotArgs []string
 	oldRunGit := runGit
 	t.Cleanup(func() { runGit = oldRunGit })
@@ -337,20 +346,23 @@ func TestPerformFetch_HTTPSKindUsesRemoteName(t *testing.T) {
 
 	fs := &fetchSource{
 		Kind:    "https",
-		URL:     "https://x-access-token:secret@portal.example/git/org1/sess1.git",
+		URL:     "https://portal.example/git/org1/sess1.git",
+		Token:   "secret-token",
 		cleanup: func() error { return nil },
 	}
 	var buf bytes.Buffer
 	if err := performFetch(&buf, fs); err != nil {
 		t.Fatalf("performFetch: %v", err)
 	}
-	want := []string{"fetch", "jamsesh"}
+	// Must pass: -c, http.extraHeader=Authorization: Bearer <token>, fetch, jamsesh
+	want := []string{"-c", "http.extraHeader=Authorization: Bearer secret-token", "fetch", "jamsesh"}
 	if !equalStrSlice(gotArgs, want) {
 		t.Errorf("git args = %v, want %v", gotArgs, want)
 	}
-	// CRITICAL: the verbose log must NOT include the secret-bearing URL.
-	if strings.Contains(buf.String(), "secret") {
-		t.Errorf("verbose log leaked credential:\n%s", buf.String())
+	// CRITICAL: the remote URL passed to git remote add must not contain
+	// the token — the URL in the remote config is credential-free.
+	if strings.Contains(buf.String(), "x-access-token:") {
+		t.Errorf("verbose log contains credential-bearing URL form:\n%s", buf.String())
 	}
 }
 

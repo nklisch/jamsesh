@@ -21,11 +21,13 @@ const fetchTokenTTL = 5 * time.Minute
 // /api/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token.
 //
 // Mints a short-TTL access token bound to the caller, and returns it
-// alongside a pre-composed git remote URL with the token spliced into
-// the userinfo segment. Only session members may mint a token.
+// alongside a plain git remote URL (no credentials embedded). The plugin
+// passes the token via `git -c http.extraHeader="Authorization: Bearer
+// <token>"` so it never appears in .git/config, ps output, or the URL.
+// Only session members may mint a token.
 //
 // The credential is a regular oauth_tokens row with a custom expiry —
-// the basic-auth middleware on /git/... accepts it unchanged because
+// the bearer middleware on /git/... accepts it unchanged because
 // TTL is per-row.
 func (h *Handler) IssueFetchToken(ctx context.Context, req openapi.IssueFetchTokenRequestObject) (openapi.IssueFetchTokenResponseObject, error) {
 	acc, ok := tokens.AccountFromContext(ctx)
@@ -74,7 +76,7 @@ func (h *Handler) IssueFetchToken(ctx context.Context, req openapi.IssueFetchTok
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: issue short-lived token: %w", err))
 	}
 
-	remoteURL, err := composeFetchRemoteURL(h.portalURL, orgID, sessionID, raw)
+	remoteURL, err := composeFetchRemoteURL(h.portalURL, orgID, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("finalize: compose remote URL: %w", err)
 	}
@@ -86,12 +88,13 @@ func (h *Handler) IssueFetchToken(ctx context.Context, req openapi.IssueFetchTok
 	}), nil
 }
 
-// composeFetchRemoteURL splices the raw token into the userinfo segment of
-// the portal git smart-HTTP URL for the given session. Uses url.Parse so
-// the scheme, host, and port from the configured portalURL are preserved
-// regardless of whether it's https://portal.example.com or
-// http://localhost:8080.
-func composeFetchRemoteURL(portalURL, orgID, sessionID, rawToken string) (string, error) {
+// composeFetchRemoteURL builds a plain git smart-HTTP URL for the given
+// session with no credentials embedded. The caller passes credentials
+// separately via `git -c http.extraHeader="Authorization: Bearer <token>"`.
+// Uses url.Parse so the scheme, host, and port from the configured
+// portalURL are preserved regardless of whether it's
+// https://portal.example.com or http://localhost:8080.
+func composeFetchRemoteURL(portalURL, orgID, sessionID string) (string, error) {
 	u, err := url.Parse(portalURL)
 	if err != nil {
 		return "", fmt.Errorf("parse portal URL %q: %w", portalURL, err)
@@ -99,7 +102,7 @@ func composeFetchRemoteURL(portalURL, orgID, sessionID, rawToken string) (string
 	if u.Scheme == "" || u.Host == "" {
 		return "", fmt.Errorf("portal URL %q missing scheme or host", portalURL)
 	}
-	u.User = url.UserPassword("x-access-token", rawToken)
+	u.User = nil
 	u.Path = fmt.Sprintf("/git/%s/%s.git", orgID, sessionID)
 	return u.String(), nil
 }

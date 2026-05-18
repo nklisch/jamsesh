@@ -1391,21 +1391,21 @@ components:
       description: |
         Ephemeral fetch-only credential issued for the plugin's HTTPS-
         fallback path. The token is a regular access token bound to the
-        caller with a short TTL (5 min). The remote_url already carries
-        the token spliced into the userinfo segment so the plugin can
-        hand it straight to `git fetch`.
+        caller with a short TTL (5 min). The plugin passes the token via
+        `git -c http.extraHeader="Authorization: Bearer <token>"` so it
+        never appears in the remote URL or `.git/config`.
       properties:
         token:
           type: string
           description: |
-            Raw access token. Use as the HTTP Basic password against the
-            portal git smart-HTTP endpoint with username `x-access-token`.
+            Raw access token. Pass via `Authorization: Bearer` HTTP header
+            (using `git -c http.extraHeader`). Do not splice into the URL.
         remote_url:
           type: string
           description: |
-            Pre-composed git remote URL with the token spliced into the
-            userinfo segment, ready to pass to `git fetch`:
-            `https://x-access-token:<token>@<portal-host>/git/<orgID>/<sessionID>.git`.
+            Plain git remote URL with no credentials:
+            `https://<portal-host>/git/<orgID>/<sessionID>.git`.
+            Credentials are passed separately via http.extraHeader.
         expires_at:
           type: string
           format: date-time

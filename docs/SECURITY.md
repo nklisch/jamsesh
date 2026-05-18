@@ -237,6 +237,20 @@ Self-host operators are responsible for:
      WS at the portal directly using `JAMSESH_TLS_MODE=native`).
   See [docs/SELF_HOST.md](SELF_HOST.md) §10 for proxy-specific configuration
   examples.
+- **Finalize fetch tokens passed via Authorization header, not git URL** —
+  when the jamsesh plugin fetches session refs during finalize-run, it mints
+  an ephemeral fetch token and passes it as an HTTP `Authorization: Bearer`
+  header via `git -c http.extraHeader=...`. The token is **never** embedded
+  in the git remote URL. This means:
+  - The token does not persist into `.git/config` after the clone/fetch.
+  - The token does not appear in `git remote -v` output.
+  - The token is not logged by git's own credential helper chain.
+  Operators can confirm this behavior matches their threat model by auditing
+  the `http.extraHeader` env var path (the portal's
+  `POST .../finalize/fetch-token` response carries a plain `remote_url` with
+  no userinfo segment, and a separate `token` field). Proxy access logs
+  will show the Authorization header value on requests to `/git/...` during
+  finalize; ensure those logs are scoped appropriately given the 5-minute TTL.
 - **Object storage IAM** — when clustered mode and object-storage are enabled,
   the operator must configure a service principal or IAM role with
   bucket-scoped read/write/list/delete permissions on the bucket named in

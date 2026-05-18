@@ -211,7 +211,15 @@ func TestFinalizeRun_SIGINTSimulated_RemoteRemovedAfterCancel(t *testing.T) {
 	t.Cleanup(func() { runGit = oldRunGit })
 	fetchSeen := false
 	runGit = func(args ...string) error {
-		if !fetchSeen && len(args) >= 2 && args[0] == "fetch" && args[1] == "jamsesh" {
+		// Detect `git -c http.extraHeader=... fetch jamsesh` in any position.
+		isFetchJamsesh := false
+		for i, a := range args {
+			if a == "fetch" && i+1 < len(args) && args[i+1] == "jamsesh" {
+				isFetchJamsesh = true
+				break
+			}
+		}
+		if !fetchSeen && isFetchJamsesh {
 			fetchSeen = true
 			cancel()
 			time.Sleep(150 * time.Millisecond)

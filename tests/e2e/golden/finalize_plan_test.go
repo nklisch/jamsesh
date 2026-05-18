@@ -245,17 +245,21 @@ func TestFinalizePlanSquashFlow(t *testing.T) {
 	if fetchTok.RemoteUrl == "" {
 		t.Fatal("issueFetchToken: empty remote_url")
 	}
+	if fetchTok.Token == "" {
+		t.Fatal("issueFetchToken: empty token")
+	}
 	t.Logf("finalize: fetch token issued; expires_at=%s", fetchTok.ExpiresAt.Format(time.RFC3339))
 
 	// Substitute the $JAMSESH_FETCH_REMOTE / runner placeholders in the script.
 	executableScript := plan.Script
 	// The sandbox sets JAMSESH_FETCH_REMOTE etc. via RunPlan; no substitution
-	// needed here — they stay as shell variables. But the sandbox needs git to
-	// fetch from the live portal URL so we pass fetchTok.RemoteUrl as the
-	// fetchRemote argument to RunPlan.
+	// needed here — they stay as shell variables. The token is injected via
+	// git's GIT_CONFIG_COUNT mechanism (http.extraHeader) so git can
+	// authenticate against the live portal without embedding credentials in
+	// the remote URL or .git/config.
 	sb := checkout.Start(t)
 	t.Logf("finalize: running plan in sandbox %s", sb.Dir)
-	out := sb.RunPlan(t, executableScript, fetchTok.RemoteUrl)
+	out := sb.RunPlan(t, executableScript, fetchTok.RemoteUrl, fetchTok.Token)
 	t.Logf("finalize: plan output:\n%s", out)
 
 	// ── Step 5: Assert single squash commit on target branch ─────────────────
