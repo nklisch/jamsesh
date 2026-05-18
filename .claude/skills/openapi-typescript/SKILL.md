@@ -9,12 +9,11 @@ user-invocable: false
 Generated TypeScript contract for the Svelte 5 SPA. Pairs with
 `oapi-codegen` on the Go side; same `docs/openapi.yaml` drives both.
 
-## Version pins (verified 2026-05-16)
+## Version pins (verified 2026-05-18)
 
-- `openapi-typescript@~7.13.0` (released 2026-02-11)
-- `openapi-fetch@~0.17.0` (released 2026-02-11)
-- Maintained by the `openapi-ts` GitHub org. Use `~` not `^`: 7.x minor
-  bumps occasionally shift emission via new feature flags.
+- `openapi-typescript@~7.13.0` (devDependency in `frontend/package.json`)
+- `openapi-fetch@^0.13.0` (dependency in `frontend/package.json`)
+- Maintained by the `openapi-ts` GitHub org.
 
 ## What the generator emits
 
@@ -31,23 +30,9 @@ Treat these as committed build outputs. CI runs `make generate && git diff --exi
 
 ## Configuration
 
-Use `openapi-typescript.config.ts` (checked in), not scattered CLI flags:
-
-```ts
-import { defineConfig } from "openapi-typescript";
-
-export default defineConfig({
-  input: "docs/openapi.yaml",
-  output: "web/src/generated/api.ts",
-  enumValues: true,        // emit string-literal unions, treeshakeable
-  exportType: true,        // `export type` for IDE perf
-  alphabetize: true,       // stable diffs
-  immutableTypes: true,    // readonly fields
-});
-```
-
-CLI invocation lives in the project Makefile under the unified
-`make generate` target.
+The generator runs via `npm run generate` in `frontend/` — see the script in
+`frontend/package.json` for the canonical CLI invocation
+(`openapi-typescript ../docs/openapi.yaml -o src/lib/api/types.gen.ts`).
 
 ## Discriminated unions (jamsesh `EventEnvelope`)
 
@@ -160,8 +145,10 @@ as REST — no parallel type tree.
 - **3.1 nullable.** OpenAPI 3.1 dropped `nullable: true` in favor of
   `type: [string, "null"]`. Use the 3.1 form throughout; the generator
   emits `string | null`.
-- **Caret pinning.** `^7.13.0` allows 7.99 — feature flags between
-  minor versions have changed default emission. Pin with `~`.
+- **Caret pinning for the generator.** `^7.13.0` allows 7.99 — feature flags
+  between minor versions have changed default emission for `openapi-typescript`.
+  Pin the generator with `~` (as in `frontend/package.json`). `openapi-fetch`
+  is pinned with `^` and follows semver normally.
 - **Custom fetch wrapping.** Wrapping `fetch` for auth headers is fine,
   but don't swallow non-2xx responses — openapi-fetch reads `response.ok`
   to populate `error`. Throwing inside the custom fetch breaks the

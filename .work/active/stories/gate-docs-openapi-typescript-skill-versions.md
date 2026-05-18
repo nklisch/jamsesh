@@ -1,7 +1,7 @@
 ---
 id: gate-docs-openapi-typescript-skill-versions
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, ui]
 parent: null
 depends_on: []
@@ -41,3 +41,19 @@ Update the skill's version pins to match `frontend/package.json` (or
 update package.json if the skill's pin is the intent). Replace the
 "Use `openapi-typescript.config.ts`" passage with a reference to the
 CLI invocation in `frontend/package.json`.
+
+## Implementation notes
+
+Changes made to `.claude/skills/openapi-typescript/SKILL.md`:
+
+1. **Version pin corrected:** `openapi-fetch@~0.17.0` → `openapi-fetch@^0.13.0`
+   to match `frontend/package.json` dependency. `openapi-typescript@~7.13.0`
+   was already correct and left unchanged.
+2. **Configuration section replaced:** Removed the `openapi-typescript.config.ts`
+   block (no such file exists in `frontend/`). Replaced with a reference to
+   `npm run generate` in `frontend/package.json` and the canonical CLI
+   invocation (`openapi-typescript ../docs/openapi.yaml -o src/lib/api/types.gen.ts`).
+3. **Caret-pinning pitfall updated:** Tightened the note to clarify that `~`
+   applies only to the generator (`openapi-typescript`) and `^` applies to
+   `openapi-fetch`, matching actual `frontend/package.json` pins.
+4. **Version pin verification date bumped** from 2026-05-16 to 2026-05-18.
