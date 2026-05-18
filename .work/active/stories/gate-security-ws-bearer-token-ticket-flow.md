@@ -1,7 +1,7 @@
 ---
 id: gate-security-ws-bearer-token-ticket-flow
 kind: story
-stage: backlog
+stage: implementing
 tags: [security, portal, refactor]
 parent: null
 depends_on: []

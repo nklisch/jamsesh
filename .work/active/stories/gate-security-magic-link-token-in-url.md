@@ -1,7 +1,7 @@
 ---
 id: gate-security-magic-link-token-in-url
 kind: story
-stage: backlog
+stage: implementing
 tags: [security, portal]
 parent: null
 depends_on: []

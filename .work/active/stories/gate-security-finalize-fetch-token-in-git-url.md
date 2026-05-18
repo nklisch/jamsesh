@@ -1,7 +1,7 @@
 ---
 id: gate-security-finalize-fetch-token-in-git-url
 kind: story
-stage: backlog
+stage: implementing
 tags: [security, portal, plugin]
 parent: null
 depends_on: []

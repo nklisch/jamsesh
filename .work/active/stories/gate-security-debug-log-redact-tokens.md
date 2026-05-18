@@ -1,7 +1,7 @@
 ---
 id: gate-security-debug-log-redact-tokens
 kind: story
-stage: backlog
+stage: implementing
 tags: [security, portal, documentation]
 parent: null
 depends_on: []
