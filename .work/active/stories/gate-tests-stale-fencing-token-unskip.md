@@ -1,7 +1,7 @@
 ---
 id: gate-tests-stale-fencing-token-unskip
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, infra]
 parent: null
 depends_on: []
@@ -43,3 +43,32 @@ production types (no shadow `staleManifest` struct), (3) use
 `tests/e2e/failure/stale_fencing_token_rejected_test.go` and new
 `.work/backlog/stale-token-injection-needs-manifest-format-exposure.md`
 if approach (a).
+
+## Implementation notes
+
+**Decision: took option (a) — file the follow-on story to backlog.**
+
+Rationale: option (b) is a deep test-architecture refactor (re-wiring
+fixture types, exposing production manifest internals to tests). That's more
+work than this story's scope. Filing the follow-on preserves the audit trail
+of WHY the skips exist and gives a discoverable target for future work.
+
+**New backlog story filed:**
+`.work/backlog/stale-token-injection-needs-manifest-format-exposure.md`
+(id: `stale-token-injection-needs-manifest-format-exposure`)
+
+**Three skip locations updated** in
+`tests/e2e/failure/stale_fencing_token_rejected_test.go` — each `t.Skipf`
+now opens with:
+
+```
+"blocked on stale-token-injection-needs-manifest-format-exposure (backlog); ..."
+```
+
+Lines (post-edit, approximately):
+- Line 186: missing manifest from MinIO
+- Line 201: manifest not parseable JSON
+- Line 226: PutObject unconditional overwrite failure
+
+The backlog story `id:` field and the skip message prefix are an exact
+string match — grep will find all three skips from the story id.

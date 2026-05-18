@@ -184,10 +184,11 @@ func TestStaleFencingTokenRejected(t *testing.T) {
 		// the stale-token scenario cannot be constructed from this test.
 		// This is an architecture-visibility gap, not a portal bug — skip with docs.
 		t.Skipf(
-			"stale_fencing_token_rejected: could not read on-disk manifest from MinIO (key=%q): %v — "+
+			"blocked on stale-token-injection-needs-manifest-format-exposure (backlog); "+
+				"cannot construct stale-token state without exposing objectstore.Manifest — "+
+				"could not read on-disk manifest from MinIO (key=%q): %v — "+
 				"the manifest may not have been written yet (lazy acquisition architecture means "+
 				"no manifest exists until the post-receive phase completes). "+
-				"See follow-on story: stale-token-injection-needs-manifest-format-exposure. "+
 				"The advisory-lock exclusivity assertion (TestLeaseAlreadyHeld) is the primary "+
 				"split-brain guard; this test covers the manifest-layer guard.",
 			manifestKey, err,
@@ -199,9 +200,10 @@ func TestStaleFencingTokenRejected(t *testing.T) {
 	var currentManifest staleManifest
 	if err := json.Unmarshal(manifestBytes, &currentManifest); err != nil {
 		t.Skipf(
-			"stale_fencing_token_rejected: manifest at %q is not parseable JSON: %v — "+
-				"cannot inject T3 without understanding the manifest format. "+
-				"See follow-on story: stale-token-injection-needs-manifest-format-exposure.",
+			"blocked on stale-token-injection-needs-manifest-format-exposure (backlog); "+
+				"cannot construct stale-token state without exposing objectstore.Manifest — "+
+				"manifest at %q is not parseable JSON: %v — "+
+				"cannot inject T3 without understanding the manifest format.",
 			manifestKey, err,
 		)
 	}
@@ -224,9 +226,10 @@ func TestStaleFencingTokenRejected(t *testing.T) {
 	// Overwrite the manifest in MinIO with the forged version (T3).
 	if err := mn.PutObject(ctx, manifestKey, forgedBytes); err != nil {
 		t.Skipf(
-			"stale_fencing_token_rejected: could not write forged manifest to MinIO (key=%q): %v — "+
-				"the MinIO fixture's PutObject does not support unconditional overwrite on this object. "+
-				"See follow-on story: stale-token-injection-needs-manifest-format-exposure.",
+			"blocked on stale-token-injection-needs-manifest-format-exposure (backlog); "+
+				"cannot construct stale-token state without exposing objectstore.Manifest — "+
+				"could not write forged manifest to MinIO (key=%q): %v — "+
+				"the MinIO fixture's PutObject does not support unconditional overwrite on this object.",
 			manifestKey, err,
 		)
 	}
