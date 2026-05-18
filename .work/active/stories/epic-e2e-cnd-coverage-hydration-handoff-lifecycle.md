@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff-lifecycle
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-hydration-handoff
 depends_on: [epic-e2e-cnd-coverage-hydration-handoff-golden]
@@ -138,3 +138,23 @@ Implemented `tests/e2e/golden/lifecycle_evict_on_lease_release_test.go`:
   docker exec is flaky. Fix the flakiness (check the path env var, check
   the container exec API) — a green test that skips the eviction check is
   not a lifecycle test.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Story design spec showed `JAMSESH_STORAGE_PATH=/var/jamsesh`; implementation
+  uses `""` (default `/tmp/jamsesh-repos`) matching `portal.go`'s `buildEnv`.
+  Both are consistent; the design doc was aspirational. No behavioral issue.
+
+**Notes**: `VerifyCachePresent` pre-check guards against trivially-true eviction
+assertion. `VerifyCacheEvicted` uses docker exec `ls` — direct FS inspection, non-
+tautological. `draftTipAfter != draftTipBefore` is a real non-tautological check.
+REST-vs-clone cross-check confirms layer consistency post re-hydration. MinIO
+`ListObjects` confirms bucket not deleted by eviction (RPO=0). Advisory lock
+non-release is logged as Medium non-fatal warning (correct per story spec).
+No actual `t.Skip` calls (escape hatch is a code comment). `go build` and
+`go vet` clean.
