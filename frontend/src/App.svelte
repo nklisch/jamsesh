@@ -5,6 +5,7 @@
   import SessionList from '$lib/screens/SessionList.svelte';
   import SessionViewShell from '$lib/screens/SessionViewShell.svelte';
   import FinalizeView from '$lib/screens/FinalizeView.svelte';
+  import OrgSettings from '$lib/screens/OrgSettings.svelte';
   import NotFound from '$lib/screens/NotFound.svelte';
 
   // Auth gate: any non-login route requires authentication.
@@ -30,6 +31,8 @@
     orgId={current.params.orgId}
     sessionId={current.params.sessionId}
   />
+{:else if current.name === 'org-settings'}
+  <OrgSettings orgId={current.params.orgId} />
 {:else}
   <NotFound />
 {/if}

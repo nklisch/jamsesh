@@ -1626,6 +1626,31 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   /api/orgs/{orgID}:
+    get:
+      operationId: GetOrg
+      summary: Fetch org details. Requires org membership.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org ID
+      responses:
+        '200':
+          description: Org details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Org'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     patch:
       operationId: PatchOrg
       summary: Update org-level settings. Admin role (creator) required.

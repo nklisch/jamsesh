@@ -10,6 +10,7 @@ const routes: Route[] = [
   // pattern wins under first-match semantics.
   { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/finalize$/,         name: 'finalize',     params: ['orgId', 'sessionId'] },
   { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)$/,                   name: 'session-view', params: ['orgId', 'sessionId'] },
+  { pattern: /^\/orgs\/([^/]+)\/settings$/,                             name: 'org-settings', params: ['orgId'] },
 ];
 
 function match(path: string): { name: string; params: Record<string, string> } {

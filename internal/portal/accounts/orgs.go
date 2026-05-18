@@ -24,6 +24,41 @@ const (
 	orgInviteTokenBytes = 32
 )
 
+// GetOrg implements GET /api/orgs/{orgID}.
+// Any org member (creator or member) may call this endpoint.
+func (h *Handler) GetOrg(ctx context.Context, req openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
+	_, _, fail, ok := handlerauth.RequireOrgMember(ctx, h.store, req.OrgID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, fmt.Errorf("accounts: get org: %w", fail.Err)
+		}
+		return getOrgFail(fail), nil
+	}
+
+	org, err := h.store.GetOrgByID(ctx, req.OrgID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return openapi.GetOrg404JSONResponse{
+				NotFoundJSONResponse: openapi.NotFoundJSONResponse{
+					Error:   "org.not_found",
+					Message: "org not found",
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("accounts: get org (org=%s): %w", req.OrgID, err)
+	}
+
+	return openapi.GetOrg200JSONResponse(orgToOpenAPI(org)), nil
+}
+
+// getOrgFail converts an AuthFail into the appropriate GetOrg error response.
+func getOrgFail(f handlerauth.AuthFail) openapi.GetOrgResponseObject {
+	if f.Status == 401 {
+		return openapi.GetOrg401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.GetOrg403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
 // PatchOrg implements PATCH /api/orgs/{orgID}.
 //
 // Only the org creator may call this endpoint. Flipping session_invite_policy

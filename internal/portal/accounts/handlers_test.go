@@ -174,6 +174,11 @@ func (a *accountsOnlyStrict) GetSessionInvite(_ context.Context, _ openapi.GetSe
 	panic("GetSessionInvite: not wired in accounts tests")
 }
 
+// GetOrg is owned by the accounts handler; delegate directly.
+func (a *accountsOnlyStrict) GetOrg(ctx context.Context, req openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
+	return a.Handler.GetOrg(ctx, req)
+}
+
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 
 type accountsTestEnv struct {

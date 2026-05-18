@@ -109,6 +109,9 @@ func newOrgsMembersTestEnv(t *testing.T) *orgsMembersTestEnv {
 		// Accept invite: Bearer only.
 		r.Post("/api/orgs/{orgID}/invites/{inviteID}/accept", apiWrapper.AcceptOrgInvite)
 
+		// Get org: auth + org-membership check is performed inside the handler.
+		r.Get("/api/orgs/{orgID}", apiWrapper.GetOrg)
+
 		// Patch org: auth + creator-role check is performed inside the handler.
 		r.Patch("/api/orgs/{orgID}", apiWrapper.PatchOrg)
 	})
@@ -150,6 +153,78 @@ func seedInvite(t *testing.T, s store.Store, orgID, inviterID, email, rawToken s
 		t.Fatalf("seed invite: %v", err)
 	}
 	return inv
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/orgs/{orgID}
+// ---------------------------------------------------------------------------
+
+func TestGetOrg_NoBearer_Returns401(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	org := seedOrg(t, env.s, "GetOrg401Org", "getorg-401")
+	resp := getJSON(t, env.srv, "/api/orgs/"+org.ID, "")
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetOrg_NotOrgMember_Returns403(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	outsider := seedAccount(t, env.s, "outsider-get@example.com")
+	org := seedOrg(t, env.s, "GetOrg403Org", "getorg-403")
+
+	tok := env.bearerToken(t, outsider.ID)
+	resp := getJSON(t, env.srv, "/api/orgs/"+org.ID, tok)
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetOrg_CreatorSuccess(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	creator := seedAccount(t, env.s, "creator-get@example.com")
+	org := seedOrg(t, env.s, "GetOrgSuccessOrg", "getorg-200")
+	seedMember(t, env.s, org.ID, creator.ID, "creator")
+
+	tok := env.bearerToken(t, creator.ID)
+	resp := getJSON(t, env.srv, "/api/orgs/"+org.ID, tok)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["id"] != org.ID {
+		t.Errorf("id: got %v, want %s", body["id"], org.ID)
+	}
+	if body["session_invite_policy"] != "members_only" {
+		t.Errorf("session_invite_policy: got %v, want members_only", body["session_invite_policy"])
+	}
+}
+
+func TestGetOrg_MemberSuccess(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	creator := seedAccount(t, env.s, "creator-getm@example.com")
+	member := seedAccount(t, env.s, "member-getm@example.com")
+	org := seedOrg(t, env.s, "GetOrgMemberOrg", "getorg-member")
+	seedMember(t, env.s, org.ID, creator.ID, "creator")
+	seedMember(t, env.s, org.ID, member.ID, "member")
+
+	tok := env.bearerToken(t, member.ID)
+	resp := getJSON(t, env.srv, "/api/orgs/"+org.ID, tok)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
 }
 
 // ---------------------------------------------------------------------------

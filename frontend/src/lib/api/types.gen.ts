@@ -147,7 +147,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Fetch org details. Requires org membership. */
+        get: operations["GetOrg"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1821,6 +1822,32 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    GetOrg: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org ID */
+                orgID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Org details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Org"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     PatchOrg: {

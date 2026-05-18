@@ -27,7 +27,7 @@ describe('RefGroupList', () => {
   it('1. empty state: no refs shows empty placeholder, no toggle possible', () => {
     const onToggle = vi.fn();
     render(RefGroupList, {
-      props: { refs: [], selected: new Set(), onToggle },
+      props: { refs: [], selected: new Set<string>(), onToggle },
     });
     expect(screen.getByText(/no refs available yet/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /add/i })).not.toBeInTheDocument();
@@ -38,7 +38,7 @@ describe('RefGroupList', () => {
     const commit = makeCommit('aaaaaaa1111111111111111111111111111111aa', 'Add auth');
     const group = makeGroup('refs/heads/main', 'sync', [commit]);
     render(RefGroupList, {
-      props: { refs: [group], selected: new Set(), onToggle: vi.fn() },
+      props: { refs: [group], selected: new Set<string>(), onToggle: vi.fn() },
     });
     expect(screen.getByText('main')).toBeInTheDocument();
     expect(screen.getByText('sync')).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe('RefGroupList', () => {
     const commit = makeCommit('bbbbbbb2222222222222222222222222222222bb', 'Wire middleware');
     const group = makeGroup('refs/heads/feature/auth', 'isolated', [commit]);
     render(RefGroupList, {
-      props: { refs: [group], selected: new Set(), onToggle: vi.fn() },
+      props: { refs: [group], selected: new Set<string>(), onToggle: vi.fn() },
     });
     expect(screen.getByText('feature/auth')).toBeInTheDocument();
     expect(screen.getByText('isolated')).toBeInTheDocument();
@@ -62,7 +62,7 @@ describe('RefGroupList', () => {
     const syncGroup = makeGroup('refs/heads/main', 'sync', [syncCommit]);
     const isolatedGroup = makeGroup('refs/heads/feature/auth', 'isolated', [isolatedCommit]);
     render(RefGroupList, {
-      props: { refs: [syncGroup, isolatedGroup], selected: new Set(), onToggle: vi.fn() },
+      props: { refs: [syncGroup, isolatedGroup], selected: new Set<string>(), onToggle: vi.fn() },
     });
     expect(screen.getByText('sync')).toBeInTheDocument();
     expect(screen.getByText('isolated')).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe('RefGroupList', () => {
     const commit = makeCommit(sha, 'Add auth');
     const group = makeGroup('refs/heads/main', 'sync', [commit]);
     render(RefGroupList, {
-      props: { refs: [group], selected: new Set(), onToggle },
+      props: { refs: [group], selected: new Set<string>(), onToggle },
     });
     const addBtn = screen.getByRole('button', { name: /add aaaaaaa/i });
     await fireEvent.click(addBtn);
@@ -104,7 +104,7 @@ describe('RefGroupList', () => {
     const commit = makeCommit(sha, 'Add auth');
     const group = makeGroup('refs/heads/main', 'sync', [commit]);
     render(RefGroupList, {
-      props: { refs: [group], selected: new Set(), onToggle, disabled: true },
+      props: { refs: [group], selected: new Set<string>(), onToggle, disabled: true },
     });
     const addBtn = screen.getByRole('button', { name: /add aaaaaaa/i });
     expect(addBtn).toBeDisabled();

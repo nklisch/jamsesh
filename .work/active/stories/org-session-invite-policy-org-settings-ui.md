@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-org-settings-ui
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: org-session-invite-policy
 depends_on: [org-session-invite-policy-patch-endpoint]
@@ -106,3 +106,50 @@ gate of its kind and the implementer should pick a clean approach).
 
 `git revert` the commit. The route disappears; the patch endpoint stays
 (idempotent).
+
+## Implementation notes
+
+### GET /api/orgs/{orgID} — added as part of this story
+
+The design assumed GET existed; it didn't. Added inline:
+
+- `docs/openapi.yaml` — new `get:` operation under `/api/orgs/{orgID}` with
+  `operationId: GetOrg`. Requires bearer + org membership; returns `Org`.
+- `internal/portal/accounts/orgs.go` — `GetOrg` handler using
+  `RequireOrgMember` then `store.GetOrgByID`; mirrors `PatchOrg` shape.
+- `internal/portal/accounts/orgs_test.go` — 4 Go tests:
+  NoBearer→401, NotMember→403, CreatorSuccess→200, MemberSuccess→200.
+- `internal/portal/accounts/handlers_test.go` — `GetOrg` added to
+  `accountsOnlyStrict` (delegates to `accounts.Handler`).
+- `cmd/portal/main.go` — `GetOrg` route + `combinedHandler` delegation.
+- Regenerated `internal/api/openapi/server.gen.go` and
+  `frontend/src/lib/api/types.gen.ts`.
+
+### Admin determination
+
+`auth.currentUser` carries no org role. Used `listOrgMembers` on mount
+(parallel with GetOrg) and matched `account_id === auth.currentUser.id`
+to find `role === 'creator'`. Clean one-round-trip approach.
+
+### OrgSettings.svelte
+
+Svelte 5 runes (`$state`, `$derived`, `onMount`). Layout matches Option 2
+mockup exactly: sidebar nav with 4 items (Session invites active; Members,
+Billing, API keys dimmed with "soon" badge); content pane with radios,
+pane-actions row at bottom-right. Warning-tinted banner for non-admin and
+for save errors. Transient "Saved" success span with 2s auto-dismiss.
+
+### Test debt fixed
+
+`frontend/src/lib/components/finalize/RefGroupList.test.ts` had 6
+pre-existing `svelte-check` errors from `new Set()` being inferred as
+`Set<unknown>` instead of `Set<string>`. Fixed in-session with
+`new Set<string>()` at all call sites. All 343 tests still pass.
+
+### Verification
+
+- `go build ./...` — clean
+- `go test ./internal/portal/accounts/... -count=1` — pass (all prior +
+  4 new GetOrg tests)
+- `npm test -- --run OrgSettings` — 10/10 pass
+- `npm run check` — 0 errors, 2 pre-existing warnings

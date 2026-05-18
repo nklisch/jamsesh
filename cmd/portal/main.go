@@ -94,6 +94,11 @@ func (c *combinedHandler) AcceptOrgInvite(ctx context.Context, req openapi.Accep
 	return c.AccountsHandler.AcceptOrgInvite(ctx, req)
 }
 
+// GetOrg delegates to the accounts handler.
+func (c *combinedHandler) GetOrg(ctx context.Context, req openapi.GetOrgRequestObject) (openapi.GetOrgResponseObject, error) {
+	return c.AccountsHandler.GetOrg(ctx, req)
+}
+
 // PatchOrg delegates to the accounts handler.
 func (c *combinedHandler) PatchOrg(ctx context.Context, req openapi.PatchOrgRequestObject) (openapi.PatchOrgResponseObject, error) {
 	return c.AccountsHandler.PatchOrg(ctx, req)
@@ -695,6 +700,9 @@ func main() {
 				// Accept invite: Bearer only — the user is joining the org,
 				// so no org-role gate applies yet.
 				r.Post("/orgs/{orgID}/invites/{inviteID}/accept", apiWrapper.AcceptOrgInvite)
+
+				// Get org: auth + org-membership check is performed inside the handler.
+				r.Get("/orgs/{orgID}", apiWrapper.GetOrg)
 
 				// Patch org: auth + creator-role check is performed inside the handler.
 				r.Patch("/orgs/{orgID}", apiWrapper.PatchOrg)
