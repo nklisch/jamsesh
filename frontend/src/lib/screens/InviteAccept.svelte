@@ -31,13 +31,20 @@
   // ── Mount: extract token + fetch invite details ───────────────────────────
 
   onMount(() => {
-    const params = new URLSearchParams(window.location.search);
+    // Read the invite token from the URL fragment (#token=...).
+    // Fragments are not sent to the server or recorded in proxy logs,
+    // so moving the token here prevents it leaking via Referer / access logs.
+    const hash = window.location.hash.slice(1); // strip leading '#'
+    const params = new URLSearchParams(hash);
     const t = params.get('token');
     if (!t) {
       errorCode = 'missing_token';
       viewState = 'error';
       return;
     }
+    // Clear the fragment immediately so the token does not persist in
+    // browser history or appear in developer tools after this point.
+    history.replaceState(null, '', window.location.pathname + window.location.search);
     token = t;
     void loadInviteDetails(t);
   });

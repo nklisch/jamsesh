@@ -267,8 +267,8 @@ func requestAndExtractToken(t *testing.T, env *magicLinkTestEnv, email string) s
 		t.Fatalf("request: want 204, got %d", resp.StatusCode)
 	}
 	body := env.sender.lastBody()
-	// Extract token from "?token=<hex>"
-	const prefix = "?token="
+	// Extract token from "#token=<hex>"
+	const prefix = "#token="
 	idx := strings.Index(body, prefix)
 	if idx == -1 {
 		t.Fatalf("body missing token URL: %q", body)
@@ -326,7 +326,7 @@ func TestRequestMagicLink_SentBodyContainsURL(t *testing.T) {
 	}
 
 	body := env.sender.lastBody()
-	if !strings.Contains(body, "https://portal.example.com/auth/magic-link?token=") {
+	if !strings.Contains(body, "https://portal.example.com/auth/magic-link#token=") {
 		t.Errorf("email body missing magic-link URL; got: %q", body)
 	}
 }
@@ -527,7 +527,7 @@ func TestExchangeMagicLink_ExpiredToken_Returns401WithExpiredCode(t *testing.T) 
 // expiry test doesn't have to construct a magicLinkTestEnv.
 func extractTokenFromBody(t *testing.T, body string) string {
 	t.Helper()
-	const prefix = "?token="
+	const prefix = "#token="
 	idx := strings.Index(body, prefix)
 	if idx == -1 {
 		t.Fatalf("body missing token URL: %q", body)

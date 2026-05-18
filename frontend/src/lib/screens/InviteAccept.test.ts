@@ -30,13 +30,14 @@ vi.mock('$lib/router.svelte', () => ({
   navigate: (...args: unknown[]) => mockNavigate(...args),
 }));
 
-// ── Query-string helpers ─────────────────────────────────────────────────────
+// ── Hash helpers ─────────────────────────────────────────────────────────────
 //
 // jsdom's window.location is readonly in some versions — assign via Object.defineProperty.
+// The component reads from window.location.hash and clears it via history.replaceState.
 
-function setSearch(search: string) {
+function setHash(hash: string) {
   Object.defineProperty(window, 'location', {
-    value: { ...window.location, search },
+    value: { ...window.location, hash, pathname: '/orgs/org-1/sessions/sess-1/invites/inv-1/accept', search: '' },
     writable: true,
     configurable: true,
   });
@@ -65,7 +66,7 @@ const DEFAULT_PROPS = { orgId: 'org-1', sessionId: 'sess-1', inviteId: 'inv-1' }
 describe('InviteAccept', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setSearch('?token=tok-abc');
+    setHash('#token=tok-abc');
   });
 
   afterEach(() => {
@@ -83,8 +84,8 @@ describe('InviteAccept', () => {
 
   // ── Token missing ──────────────────────────────────────────────────────────
 
-  it('shows error state when token is missing from query string', async () => {
-    setSearch('');
+  it('shows error state when token is missing from hash', async () => {
+    setHash('');
     render(InviteAccept, { props: DEFAULT_PROPS });
     await waitFor(() => {
       expect(screen.getByText(/this invite is no longer valid/i)).toBeInTheDocument();

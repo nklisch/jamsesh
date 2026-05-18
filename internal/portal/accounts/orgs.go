@@ -188,7 +188,7 @@ func (h *Handler) CreateOrgInvite(ctx context.Context, req openapi.CreateOrgInvi
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: get org (org=%s): %w", req.OrgID, err))
 	}
 
-	acceptURL := h.portalURL + "/orgs/" + req.OrgID + "/invites/" + invite.ID + "/accept?token=" + raw
+	acceptURL := h.portalURL + "/orgs/" + req.OrgID + "/invites/" + invite.ID + "/accept#token=" + raw
 	subject := "You're invited to " + org.Name + " on jamsesh"
 	body := "Hi,\n\n" +
 		inviter.DisplayName + " has invited you to join " + org.Name + " on jamsesh.\n\n" +

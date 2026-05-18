@@ -5,6 +5,7 @@ type Route = { pattern: RegExp; name: string; params: string[] };
 
 const routes: Route[] = [
   { pattern: /^\/login$/,                                              name: 'login',        params: [] },
+  { pattern: /^\/auth\/magic-link$/,                                   name: 'magic-link',   params: [] },
   { pattern: /^\/orgs\/([^/]+)\/sessions$/,                            name: 'sessions',     params: ['orgId'] },
   // `finalize` and `invite-accept` must come BEFORE `session-view` so the
   // more specific patterns win under first-match semantics.

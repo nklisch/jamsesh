@@ -104,7 +104,7 @@ func (h *MagicLinkHandler) RequestMagicLink(
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("magic-link: store token: %w", err))
 	}
 
-	magicURL := h.portalURL + "/auth/magic-link?token=" + raw
+	magicURL := h.portalURL + "/auth/magic-link#token=" + raw
 	body := "Click the link below to sign in to jamsesh:\n\n" + magicURL +
 		"\n\nThis link expires in 15 minutes and can only be used once.\n"
 

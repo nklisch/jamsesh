@@ -112,7 +112,7 @@ func (h *Handler) InviteToSession(ctx context.Context, req openapi.InviteToSessi
 	}
 
 	// Send email via the Sender. Build the accept URL.
-	acceptURL := h.portalURL + "/sessions/" + sessionID + "/invites/" + invite.ID + "/accept?token=" + raw
+	acceptURL := h.portalURL + "/sessions/" + sessionID + "/invites/" + invite.ID + "/accept#token=" + raw
 	subject := "You're invited to a jamsesh session"
 	body := "Hi,\n\n" +
 		acc.DisplayName + " has invited you to join a collaborative coding session on jamsesh.\n\n" +
