@@ -1,9 +1,7 @@
-package automerger_test
+package automerger
 
 import (
 	"testing"
-
-	"jamsesh/internal/portal/automerger"
 )
 
 // ---------------------------------------------------------------------------
@@ -17,7 +15,7 @@ func TestComputeAddressedTo_SourceRefOwner(t *testing.T) {
 	base := commitFiles(t, repo, dir, nil, map[string][]byte{"file.txt": []byte("base\n")}, "base")
 
 	sourceRef := "refs/heads/jam/sess-1/alice/my-feature"
-	addressed, err := automerger.ExportedComputeAddressedTo(repo, base.Hash, nil, sourceRef)
+	addressed, err := computeAddressedTo(repo, base.Hash, nil, sourceRef)
 	if err != nil {
 		t.Fatalf("computeAddressedTo: %v", err)
 	}
@@ -38,10 +36,10 @@ func TestComputeAddressedTo_ConflictedFileAuthor(t *testing.T) {
 	_ = aliceCommit
 
 	// The draftTip is aliceCommit; conflict is in "file.txt".
-	conflicts := []automerger.Conflict{{File: "file.txt"}}
+	conflicts := []Conflict{{File: "file.txt"}}
 	sourceRef := "refs/heads/jam/sess-1/bob/fix"
 
-	addressed, err := automerger.ExportedComputeAddressedTo(repo, aliceCommit.Hash, conflicts, sourceRef)
+	addressed, err := computeAddressedTo(repo, aliceCommit.Hash, conflicts, sourceRef)
 	if err != nil {
 		t.Fatalf("computeAddressedTo: %v", err)
 	}
@@ -72,7 +70,7 @@ func TestComputeAddressedTo_UnknownRef(t *testing.T) {
 	repo, dir := initRepo(t)
 	base := commitFiles(t, repo, dir, nil, map[string][]byte{"file.txt": []byte("base\n")}, "base")
 
-	addressed, err := automerger.ExportedComputeAddressedTo(repo, base.Hash, nil, "refs/heads/not-a-jam-ref")
+	addressed, err := computeAddressedTo(repo, base.Hash, nil, "refs/heads/not-a-jam-ref")
 	if err != nil {
 		t.Fatalf("computeAddressedTo: %v", err)
 	}

@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-automerger-exported-test-shim
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, portal, refactor]
 parent: null
 depends_on: []
@@ -37,3 +37,10 @@ Move `addressing_test.go` from `package automerger_test` to
 lowercase `computeAddressedTo` directly, then delete the export shim.
 Eliminates a function whose only purpose is bypassing the package
 boundary for tests.
+
+## Implementation notes
+
+- Changed `addressing_test.go` from `package automerger_test` to `package automerger`; dropped the `jamsesh/internal/portal/automerger` import; replaced all `automerger.ExportedComputeAddressedTo(...)` calls with `computeAddressedTo(...)` and `automerger.Conflict` with `Conflict`.
+- Created `testhelpers_test.go` (`package automerger`) with copies of `initRepo`, `commitFiles`, `commitFilesWithMessage`, and `run` — these are distinct from the same-named helpers in `merge_test.go`/`outcomes_test.go` which remain in `package automerger_test` (separate compile unit, no collision).
+- Deleted the `ExportedComputeAddressedTo` shim and its doc comment from `addressing.go`.
+- `go test ./internal/portal/automerger/...` passes.

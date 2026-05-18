@@ -117,12 +117,6 @@ func parseSourceRefOwner(sourceRef string) string {
 	return "@" + parts[2] + "/" + parts[3]
 }
 
-// ExportedComputeAddressedTo is the exported shim for testing.
-// Production callers should use computeAddressedTo directly within the package.
-func ExportedComputeAddressedTo(repo *gogit.Repository, draftTip plumbing.Hash, conflicts []Conflict, sourceRef string) ([]string, error) {
-	return computeAddressedTo(repo, draftTip, conflicts, sourceRef)
-}
-
 // sortedKeys returns the keys of a bool map sorted alphabetically.
 func sortedKeys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
