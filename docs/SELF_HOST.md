@@ -1184,21 +1184,14 @@ spec:
                 secretKeyRef:
                   name: jamsesh-secrets
                   key: db_dsn
-            - name: JAMSESH_GITHUB_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: jamsesh-secrets
-                  key: github_client_id
-            - name: JAMSESH_GITHUB_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: jamsesh-secrets
-                  key: github_client_secret
-            - name: JAMSESH_SESSION_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: jamsesh-secrets
-                  key: session_secret
+            - name: JAMSESH_OAUTH_GITHUB_CLIENT_ID
+              value: "your-client-id"
+            - name: JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE
+              value: /run/secrets/github-client-secret
+          volumeMounts:
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /readyz
@@ -1211,6 +1204,10 @@ spec:
               port: 8443
             initialDelaySeconds: 15
             periodSeconds: 30
+      volumes:
+        - name: secrets
+          secret:
+            secretName: jamsesh-secrets
 
 ---
 # Portal Service (ClusterIP — only the router talks to pods directly)

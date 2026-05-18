@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-k8s-wrong-env-vars
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, infra]
 parent: null
 depends_on: []
@@ -42,3 +42,20 @@ with `JAMSESH_OAUTH_GITHUB_CLIENT_ID` and
 at SELF_HOST.md:899-902, which uses the `_FILE` form). Delete the
 `JAMSESH_SESSION_SECRET` block entirely or replace it with an actual
 config knob if a session secret is required.
+
+## Implementation notes
+
+- Replaced `JAMSESH_GITHUB_CLIENT_ID` (secretKeyRef) with
+  `JAMSESH_OAUTH_GITHUB_CLIENT_ID: "your-client-id"` — plain `value:`,
+  matching the §13 single-node k8s recipe pattern.
+- Replaced `JAMSESH_GITHUB_CLIENT_SECRET` (secretKeyRef) with
+  `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE: /run/secrets/github-client-secret`
+  — the `_FILE` form, matching §13.
+- Added `volumeMounts` (`/run/secrets`, readOnly) and `volumes`
+  (`secret: secretName: jamsesh-secrets`) to the portal Deployment so the
+  `_FILE` env var resolves to an actual mounted path.
+- Deleted the `JAMSESH_SESSION_SECRET` block entirely (no code reads it).
+- Verified via `grep` that `internal/portal/config/config.go` has no
+  references to any of the three removed names.
+- Edit is confined to `docs/SELF_HOST.md` lines 1187-1211 (§14 portal
+  Deployment). §13 and all other sections are untouched.
