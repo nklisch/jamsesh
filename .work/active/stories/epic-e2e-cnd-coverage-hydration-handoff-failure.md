@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff-failure
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-hydration-handoff
 depends_on: [epic-e2e-cnd-coverage-hydration-handoff-infra]
@@ -182,3 +182,25 @@ corruption scenario with three top-level assertions and one recovery subtest:
   rather than suppressing the failure.
 - **Medium gap logging** for absent machine-readable error codes: a `t.Logf`
   documents the gap as per story spec (not a park unless HTTP 200).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `mhpAttemptPush` calls `runGitFatal` for the clone step (line 602), so if
+  hydration fails at clone-time (before the push), the test `t.Fatal`s with
+  a generic "git clone failed" message rather than the structured Critical
+  message. The invariant (push fails on corrupt bucket) is still exercised.
+  No action required — the silent-partial-hydration scenario (exit 0) is still
+  caught; the clone-failure path just produces a less informative message.
+
+**Notes**: Safety invariant assertions are non-tautological and do not game the
+outcome. Critical escape hatch comments on the exit-0 path correctly direct to
+`/agile-workflow:park`. Two `t.Skipf` uses are precondition guards (no pack
+objects / no `.pack` file), not bug suppression. Manifest fencing-token check
+confirms pod 1 did not claim a successful hydration. Recovery subtest verifies
+the failure is transient. Router: false avoids bug-router-static-discoverer-not-
+started. `go build` and `go vet` clean.
