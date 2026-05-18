@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage
 kind: epic
-stage: review
+stage: done
 tags: [e2e-test, testing, infra, portal]
 parent: null
 depends_on: []
@@ -249,3 +249,55 @@ All 6 child features advanced to `stage: done`:
 | `epic-e2e-cnd-coverage-hydration-handoff` | done |
 
 Advancing epic `implementing → review`.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve — epic delivered as briefed.
+
+**Blockers**: none
+**Important**: none (3 production bugs surfaced and parked are upstream work, not review blockers)
+**Nits**: none
+
+### Aggregate findings (epic-level lenses)
+
+- **Capability completeness**: ✓ All 6 child features delivered. ~27 stories implemented across cluster-fixture (4), operational-polish (5), lease-fencing (5), object-storage-sync (7), routing-layer (6), hydration-handoff (5). All 16 audit findings (5 Critical / 5 High / 5 Medium / 1 Low) addressed.
+
+- **Decomposition match**: ✓ The DAG promised at scope time materialized exactly — cluster-fixture as keystone, operational-polish independent, lease-fencing/object-storage-sync/routing-layer as parallel middle band, hydration-handoff as capstone.
+
+- **Foundation-doc alignment**: ✓ Rolling-foundation honored. One production code change (`slog.InfoContext("db migrations applied", ...)` in `internal/db/migrate.go`) is purely additive observability — no SPEC.md or ARCHITECTURE.md assertion invalidated. No doc updates required.
+
+- **Breaking changes**: ✓ Six portal-fixture extensions (`ContainerFiles`, `Logs`, `SendSignal`, `ContainerIP`, `State`, `Exec`) all backward-compatible. No public-API shifts; no production behavior changes beyond the additive log line.
+
+- **Mock-boundary discipline**: ✓ Maintained throughout. MinIO Testcontainer (not in-process S3 mock), real Postgres advisory locks, real `cmd/jamsesh-router` binary, Toxiproxy for network injection, docker kill SIGKILL (Pumba pattern explicitly rejected for simplicity). No in-process mocks introduced.
+
+### Production bugs surfaced and parked (the e2e program doing its job)
+
+The audit's premise was that the clustered shape had zero coverage. The first end-to-end exercise of the path surfaced three real production gaps — exactly the class of bugs e2e tests exist to catch:
+
+1. **`bug-router-static-discoverer-not-started`** (Important) — `cmd/jamsesh-router/main.go` has placeholder `_ = publishWithMetrics` / `_ = probe` assignments where `discovery.Static(...).Run(ctx, ring.SetPods)` should be wired. Dead pods stay in the routing ring forever; clients get 502 instead of router-mediated re-sharding. One-goroutine fix. Tracked in `.work/backlog/`.
+
+2. **`object-storage-fail-fast-clustered-startup`** (Important) — AWS SDK v2 S3 client is lazy at construction; portal boots cleanly in clustered mode even with unreachable object storage. Should add a startup `HeadBucket` probe before the HTTP listener starts.
+
+3. **`object-storage-write-rejected-silent-acceptance`** (potentially Critical) — possible silent 2xx on missing-bucket push; needs verification under load.
+
+Tests for all three failure modes are `t.Skip`'d with backlog-id references per the test-integrity rules. None silenced; all documented.
+
+### Architectural findings (not bugs)
+
+- **Lazy lease acquisition**: portal acquires the advisory lock in post-receive, after HTTP 200 is committed. The synchronous "lease held elsewhere" 503 only surfaces through the router's retry path; direct-pod requests don't see it. Tests assert via the LeaseHolder Postgres oracle, not by trusting HTTP response shapes — non-tautological.
+
+### Statistics
+
+- 6 features designed + implemented + reviewed
+- ~27 stories landed
+- ~50+ commits on the main branch
+- 5 backlog items produced (3 bugs + 2 documentation/follow-up gaps)
+- New e2e packages: `fixtures/minio`, `fixtures/router`, `fixtures/portalcluster`
+- New portal extensions (all backward-compatible): `ContainerFiles`, `Logs`, `SendSignal`, `ContainerIP`, `State`, `Exec`
+- New tests across `golden/`, `failure/`, `chaos/`, `fuzz/`, `scaffolding/` — every taxonomy layer has CND coverage
+
+### What's now possible
+
+The cloud-native-deploy epic shipped with zero e2e coverage of its clustered shape. With this epic done, every CND surface has a test that exercises it end-to-end against real service-level mocks (MinIO, real Postgres, real router binary, Toxiproxy). The keystone smoke spec proves a 3-pod cluster + handoff cycle works end-to-end in CI. Future changes to CND code will see test failures when they break documented invariants — that's the whole point.
+
+**Epic delivered as briefed; advancing to done.**
