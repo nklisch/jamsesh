@@ -8,7 +8,7 @@ depends_on:
   - portal-dep-failure-error-codes-auth-smtp
   - portal-dep-failure-error-codes-db
   - portal-dep-failure-error-codes-oauth
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17

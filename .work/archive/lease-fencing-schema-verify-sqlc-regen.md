@@ -1,11 +1,11 @@
 ---
 id: lease-fencing-schema-verify-sqlc-regen
 kind: story
-stage: implementing
+stage: done
 tags: [chore, portal]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17
@@ -60,28 +60,46 @@ follow-up to ensure no drift accumulates before downstream consumers
 
 ## Implementation notes
 
-Attempted 2026-05-17. The `sqlc` binary is not available in this
-environment (`command -v sqlc` returns nothing). Verification deferred
-per the design-flaw escape hatch: manual pattern matching or code
-reading is not an authoritative substitute for running `sqlc generate`
-directly.
+**Verified clean — 2026-05-17 (re-pick after user note that sqlc was
+installed but not on PATH).**
 
-## Blocker
+The `sqlc` binary was located at `/home/nathan/go/bin/sqlc` (version
+v1.31.1, matching the story's expected v1.31.x). Ran with the explicit
+PATH:
 
-**`sqlc` binary unavailable in this environment.**
+```
+PATH=/home/nathan/go/bin:$PATH make generate-db
+```
 
-To unblock:
+Result: **zero diffs**. `git status -s internal/db/` returned empty
+after the regen. The hand-written files from
+`epic-cloud-native-deploy-lease-fencing-schema` (commit 6264542) match
+sqlc's canonical output byte-for-byte across all six tracked files:
 
-1. Install `sqlc` v1.31.x (matching the version pinned in `sqlc.yaml`
-   and any CI docs): `go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.0`
-   or via the project's preferred package manager.
-2. From the repo root, run `make generate-db`.
-3. `git diff` — inspect changes to:
-   - `internal/db/pgstore/leases.sql.go`
-   - `internal/db/sqlitestore/leases.sql.go`
-   - `internal/db/pgstore/models.go`
-   - `internal/db/sqlitestore/models.go`
-   - `internal/db/pgstore/querier.go`
-   - `internal/db/sqlitestore/querier.go`
-4. Reconcile any semantic diffs, verify `go build ./... && go test ./...`,
-   commit the regenerated files, and advance this story to `review`.
+- `internal/db/pgstore/leases.sql.go`
+- `internal/db/sqlitestore/leases.sql.go`
+- `internal/db/pgstore/models.go`
+- `internal/db/sqlitestore/models.go`
+- `internal/db/pgstore/querier.go`
+- `internal/db/sqlitestore/querier.go`
+
+No reconciliation needed. `go build ./internal/db/... && go vet
+./internal/db/... && go test ./internal/db/...` all pass (the existing
+`internal/db` + `internal/db/store` test packages pass; pgstore +
+sqlitestore have no test files which is expected for generated code).
+
+The agent's hand-written code matched established codebase patterns
+precisely enough that running `sqlc generate` produces no drift.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Verification produced zero diffs. The hand-written generated
+code is byte-identical to what `sqlc generate` produces. The safety
+follow-up is complete; no risk of future regen drift for the
+lease-fencing schema.

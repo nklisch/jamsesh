@@ -5,7 +5,7 @@ stage: done
 tags: [infra, portal, documentation]
 parent: epic-cloud-native-deploy-operational-polish
 depends_on: [epic-cloud-native-deploy-operational-polish-readyz, epic-cloud-native-deploy-operational-polish-metrics, epic-cloud-native-deploy-operational-polish-secrets-from-file, epic-cloud-native-deploy-operational-polish-db-pool-and-lock, epic-cloud-native-deploy-operational-polish-graceful-shutdown]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17

@@ -5,7 +5,7 @@ stage: done
 tags: [plugin]
 parent: epic-finalize-flow-plugin-finalize-command
 depends_on: [epic-finalize-flow-plan-generation-plan-fetch-and-script, epic-finalize-flow-plan-generation-fetch-token-and-mark-shipped]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17

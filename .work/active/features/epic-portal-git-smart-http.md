@@ -5,7 +5,7 @@ stage: done
 tags: [portal, security]
 parent: epic-portal-git
 depends_on: [epic-portal-git-storage, epic-portal-git-pre-receive, epic-portal-git-post-receive, epic-portal-foundation-tokens]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-16
 updated: 2026-05-16

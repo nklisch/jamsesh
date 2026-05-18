@@ -5,7 +5,7 @@ stage: done
 tags: [portal, plugin, ui]
 parent: null
 depends_on: [epic-cc-plugin, epic-portal-ui, epic-auto-merger]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-16
 updated: 2026-05-17

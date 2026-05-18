@@ -5,7 +5,7 @@ stage: done
 tags: [testing, testability, portal]
 parent: portal-test-clock-broaden-coverage
 depends_on: []
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17

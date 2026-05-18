@@ -5,7 +5,7 @@ stage: done
 tags: [refactor, portal]
 parent: refactor-handler-auth-guards
 depends_on: []
-release_binding: null
+release_binding: v0.1.0
 gate_origin: refactor-design
 created: 2026-05-17
 updated: 2026-05-17

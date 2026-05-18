@@ -5,7 +5,7 @@ stage: done
 tags: [ui]
 parent: org-session-invite-policy
 depends_on: [org-session-invite-policy-invite-accept-enforce, org-session-invite-policy-get-invite-details]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17

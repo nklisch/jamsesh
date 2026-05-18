@@ -5,7 +5,7 @@ tags: [plugin]
 stage: done
 parent: epic-cc-plugin-binary-foundation
 depends_on: [epic-cc-plugin-binary-foundation-router-state-mcp]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-16
 updated: 2026-05-16

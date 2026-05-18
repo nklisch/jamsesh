@@ -5,7 +5,7 @@ stage: done
 tags: [refactor, ui]
 parent: refactor-split-finalize-view
 depends_on: [refactor-split-finalize-view-lock-banner]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: refactor-design
 created: 2026-05-17
 updated: 2026-05-17

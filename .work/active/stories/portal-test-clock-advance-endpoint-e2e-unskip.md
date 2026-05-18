@@ -5,7 +5,7 @@ stage: done
 tags: [testing, e2e-test]
 parent: portal-test-clock-advance-endpoint
 depends_on: [portal-test-clock-advance-endpoint-test-endpoint]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17

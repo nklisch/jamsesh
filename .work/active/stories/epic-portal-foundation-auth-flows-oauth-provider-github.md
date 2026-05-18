@@ -5,7 +5,7 @@ stage: done
 tags: [portal, security]
 parent: epic-portal-foundation-auth-flows
 depends_on: [epic-portal-foundation-auth-flows-sender-and-magic-link]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-16
 updated: 2026-05-16

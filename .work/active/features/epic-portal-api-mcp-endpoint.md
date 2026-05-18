@@ -5,7 +5,7 @@ stage: done
 tags: [portal]
 parent: epic-portal-api
 depends_on: [epic-portal-api-events-log, epic-portal-api-sessions-rest, epic-portal-api-comments-rest, epic-portal-foundation-tokens, epic-portal-foundation-http-skeleton, epic-portal-git-storage]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-16
 updated: 2026-05-17

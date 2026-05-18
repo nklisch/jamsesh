@@ -5,7 +5,7 @@ stage: done
 tags: [portal, security]
 parent: epic-portal-foundation-data-layer
 depends_on: [epic-portal-foundation-data-layer-store-and-adapters]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-16
 updated: 2026-05-16

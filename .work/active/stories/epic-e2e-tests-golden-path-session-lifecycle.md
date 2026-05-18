@@ -5,7 +5,7 @@ stage: done
 tags: [e2e-test, testing]
 parent: epic-e2e-tests-golden-path
 depends_on: [epic-e2e-tests-golden-path-ccdriver-env-fix, epic-e2e-tests-golden-path-onboarding-auth]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17

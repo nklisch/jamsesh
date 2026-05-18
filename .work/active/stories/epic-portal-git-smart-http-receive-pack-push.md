@@ -5,7 +5,7 @@ stage: done
 tags: [portal, security]
 parent: epic-portal-git-smart-http
 depends_on: [epic-portal-git-smart-http-auth-and-routing]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-16
 updated: 2026-05-16

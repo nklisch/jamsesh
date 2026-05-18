@@ -1,11 +1,11 @@
 ---
 id: org-session-invite-policy
 kind: feature
-stage: review
+stage: done
 tags: [portal, ui, security]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17
@@ -418,3 +418,45 @@ review). The audit's three resolution paths (restore org check / fix invite flow
 explicit guest model) collapsed once we noticed the right framing is per-org
 configuration: every org gets to pick. The audit body has been replaced by this
 feature; git history preserves the audit's original analysis.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**:
+- One finding carried over from `invite-accept-ui` review: commit `550280d`
+  bundled this feature's last child story with unrelated e2e-design work
+  under a misleading title. Filed as backlog
+  `agent-commit-isolation-under-concurrent-autopilot` — not blocking this
+  feature; addresses a meta-process concern for future autopilot runs.
+
+**Nits**:
+- Feature delivered an extra endpoint (`GET /api/orgs/{orgID}`) the design
+  assumed existed. Caught and inlined by the org-settings-ui agent rather
+  than blocking. Implementation discovery handled gracefully.
+- OAuth-flow return-to is a documented follow-up limitation in
+  `Login.svelte` (in-line comment + invite-accept-ui story body). Magic-
+  link return-to works end-to-end via the client-side `$effect`.
+
+**Capability completeness check**:
+- [x] `orgs.session_invite_policy` column + `members_only` default
+- [x] `AcceptSessionInvite` enforces policy at perimeter
+- [x] `PATCH /api/orgs/{orgID}` flips policy with admin gate
+- [x] `OrgSettings.svelte` renders for admin (editable) + non-admin (read-only)
+- [x] `InviteAccept.svelte` renders happy / rejection / error states
+- [x] Grandfather invariant: existing session_members untouched on flip
+- [x] Foundation doc updated (`docs/ARCHITECTURE.md` membership-model section)
+- [x] Mockups committed for both UI surfaces
+
+**End-to-end verification path** (per feature's "Integration check"):
+The cross-product is exercised through `TestAcceptSessionInvite_{MembersOnly,Open}Policy_{Member,NonMember}` plus `TestPatchOrg_Grandfather`. The
+manual-cross-check the feature called out (flip via PATCH → accept from
+non-org-member under `open` → flip back and verify session_member
+grandfathered) is fully covered by automated tests now — no manual check
+needed.
+
+**Notes**: Six stories, five waves, one orchestrator integration fix (the
+GetOrg test-double stubs in `4681f53`). Final state: full suite green
+(go: 27/27 portal packages; frontend: 357/357 tests; `npm run check` 0
+errors). The feature ships as briefed.

@@ -5,7 +5,7 @@ stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-lease-fencing
 depends_on: [epic-e2e-cnd-coverage-lease-fencing-golden]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17

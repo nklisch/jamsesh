@@ -5,7 +5,7 @@ stage: done
 tags: [infra]
 parent: epic-cloud-native-deploy-routing-layer
 depends_on: [epic-cloud-native-deploy-routing-layer-core]
-release_binding: null
+release_binding: v0.1.0
 gate_origin: null
 created: 2026-05-17
 updated: 2026-05-17
