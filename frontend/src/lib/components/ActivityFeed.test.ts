@@ -210,4 +210,300 @@ describe('ActivityFeed', () => {
     // The injected script did not run
     expect((window as unknown as Record<string, unknown>).__pwned).toBeUndefined();
   });
+
+  // ── Table-driven XSS: all event-types × all string fields ─────────────────
+  //
+  // For every branch of formatEvent, each string field that is interpolated
+  // into the DOM is probed with a classic img-onerror payload.  The test
+  // verifies three things:
+  //   1. No live <img> element was injected (i.e. not parsed as HTML).
+  //   2. The onerror handler never ran (window.__pwned_<field> stays undefined).
+  //   3. The payload text was actually rendered — escaped — so the field was
+  //      not silently dropped (innerHTML must contain "&lt;img").
+  //
+  // sha() fields: sha values are sliced to 7 chars before rendering, so the
+  // probe string must be ≤7 chars for it to survive and be visible in the
+  // output.  We use a dedicated short probe for those fields.
+
+  type XssCase = {
+    /** Label shown in test output */
+    label: string;
+    /** EventEnvelope.type value */
+    eventType: string;
+    /** Full payload to fire; the probed field already has the XSS value */
+    payload: Record<string, unknown>;
+    /** Field name used as part of the window marker */
+    field: string;
+    /**
+     * If true, the payload is rendered through sha() which truncates to 7
+     * chars, so we check for the short probe instead of "&lt;img".
+     */
+    isSha?: boolean;
+  };
+
+  // Short probe for sha fields (sha() slices to 7 chars, so we use something
+  // that will still appear after truncation — a plain string that doesn't
+  // look like HTML so the "no img element" assertion still holds while the
+  // "field was rendered" assertion uses a different check).
+  //
+  // NOTE: sha fields cannot carry an img-onerror payload through the 7-char
+  // slice anyway, so for sha fields we only verify:
+  //   a) no img element in the DOM, and
+  //   b) the field value appears (truncated) in the rendered output.
+  //
+  // We use a safe 7-char probe for sha fields and skip the &lt;img check.
+
+  const SHA_PROBE = 'safe-sha'; // 8 chars, sliced to "safe-sha"[0..7] = "safe-sh"
+  const SHA_VISIBLE = 'safe-sh'; // what sha() renders after slicing to 7
+
+  const XSS_PROBE = '<img src=x onerror="window.__pwned_{FIELD}=1">';
+
+  const xssCases: XssCase[] = [
+    // commit.arrived — author_id (who fragment)
+    {
+      label: 'commit.arrived / author_id',
+      eventType: 'commit.arrived',
+      field: 'author_id',
+      payload: {
+        author_id: XSS_PROBE.replace('{FIELD}', 'commit_author_id'),
+        sha: 'abc1234',
+        ref: 'refs/heads/main',
+        summary: 'safe summary',
+      },
+    },
+    // commit.arrived — ref (txt fragment inside template literal)
+    {
+      label: 'commit.arrived / ref',
+      eventType: 'commit.arrived',
+      field: 'commit_ref',
+      payload: {
+        author_id: 'safe-author',
+        sha: 'abc1234',
+        ref: XSS_PROBE.replace('{FIELD}', 'commit_ref'),
+        summary: 'safe summary',
+      },
+    },
+    // commit.arrived — summary (txt fragment inside template literal)
+    {
+      label: 'commit.arrived / summary',
+      eventType: 'commit.arrived',
+      field: 'commit_summary',
+      payload: {
+        author_id: 'safe-author',
+        sha: 'abc1234',
+        ref: 'refs/heads/main',
+        summary: XSS_PROBE.replace('{FIELD}', 'commit_summary'),
+      },
+    },
+    // commit.arrived — sha (sha fragment; truncated to 7 chars)
+    {
+      label: 'commit.arrived / sha',
+      eventType: 'commit.arrived',
+      field: 'commit_sha',
+      isSha: true,
+      payload: {
+        author_id: 'safe-author',
+        sha: SHA_PROBE,
+        ref: 'refs/heads/main',
+        summary: 'safe summary',
+      },
+    },
+    // merge.succeeded — source_sha (sha fragment)
+    {
+      label: 'merge.succeeded / source_sha',
+      eventType: 'merge.succeeded',
+      field: 'merge_source_sha',
+      isSha: true,
+      payload: {
+        source_sha: SHA_PROBE,
+        draft_sha: 'abc1234',
+        merge_commit_sha: 'def5678',
+      },
+    },
+    // conflict.detected — source_ref (who fragment)
+    {
+      label: 'conflict.detected / source_ref',
+      eventType: 'conflict.detected',
+      field: 'conflict_source_ref',
+      payload: {
+        source_ref: XSS_PROBE.replace('{FIELD}', 'conflict_source_ref'),
+        id: 'c1',
+        session_id: 'sess-1',
+        source_commit_sha: 'aaa',
+        draft_tip_sha: 'bbb',
+        ancestor_sha: 'ccc',
+        conflicts: [],
+        addressed_to: [],
+        status: 'open',
+        created_at: new Date().toISOString(),
+      },
+    },
+    // conflict.resolved — resolving_commit_sha (sha fragment)
+    {
+      label: 'conflict.resolved / resolving_commit_sha',
+      eventType: 'conflict.resolved',
+      field: 'conflict_resolving_sha',
+      isSha: true,
+      payload: {
+        resolving_commit_sha: SHA_PROBE,
+      },
+    },
+    // comment.added — author_id (who fragment)  [extends existing focused test]
+    {
+      label: 'comment.added / author_id',
+      eventType: 'comment.added',
+      field: 'comment_author_id',
+      payload: {
+        author_id: XSS_PROBE.replace('{FIELD}', 'comment_author_id'),
+        body: 'safe body',
+      },
+    },
+    // comment.added — body (txt fragment)  [extends existing focused test]
+    {
+      label: 'comment.added / body',
+      eventType: 'comment.added',
+      field: 'comment_body',
+      payload: {
+        author_id: 'safe-author',
+        body: XSS_PROBE.replace('{FIELD}', 'comment_body'),
+      },
+    },
+    // comment.resolved — resolved_by (who fragment)
+    {
+      label: 'comment.resolved / resolved_by',
+      eventType: 'comment.resolved',
+      field: 'comment_resolved_by',
+      payload: {
+        resolved_by: XSS_PROBE.replace('{FIELD}', 'comment_resolved_by'),
+      },
+    },
+    // ref.forked — ref (sha fragment)
+    {
+      label: 'ref.forked / ref',
+      eventType: 'ref.forked',
+      field: 'fork_ref',
+      isSha: true,
+      payload: {
+        ref: SHA_PROBE,
+        parent_sha: 'abc1234',
+      },
+    },
+    // ref.forked — parent_sha (sha fragment)
+    {
+      label: 'ref.forked / parent_sha',
+      eventType: 'ref.forked',
+      field: 'fork_parent_sha',
+      isSha: true,
+      payload: {
+        ref: 'abc1234',
+        parent_sha: SHA_PROBE,
+      },
+    },
+    // mode.changed — ref (sha fragment)
+    {
+      label: 'mode.changed / ref',
+      eventType: 'mode.changed',
+      field: 'mode_ref',
+      isSha: true,
+      payload: {
+        ref: SHA_PROBE,
+        old_mode: 'sync',
+        new_mode: 'isolated',
+      },
+    },
+    // mode.changed — old_mode (txt fragment inside template literal)
+    {
+      label: 'mode.changed / old_mode',
+      eventType: 'mode.changed',
+      field: 'mode_old_mode',
+      payload: {
+        ref: 'abc1234',
+        old_mode: XSS_PROBE.replace('{FIELD}', 'mode_old_mode'),
+        new_mode: 'isolated',
+      },
+    },
+    // mode.changed — new_mode (txt fragment inside template literal)
+    {
+      label: 'mode.changed / new_mode',
+      eventType: 'mode.changed',
+      field: 'mode_new_mode',
+      payload: {
+        ref: 'abc1234',
+        old_mode: 'sync',
+        new_mode: XSS_PROBE.replace('{FIELD}', 'mode_new_mode'),
+      },
+    },
+    // turn.ended — user_id (who fragment)
+    {
+      label: 'turn.ended / user_id',
+      eventType: 'turn.ended',
+      field: 'turn_user_id',
+      payload: {
+        user_id: XSS_PROBE.replace('{FIELD}', 'turn_user_id'),
+        ref: 'refs/heads/main',
+        final_sha: 'abc1234',
+      },
+    },
+    // turn.ended — ref (txt fragment inside template literal)
+    {
+      label: 'turn.ended / ref',
+      eventType: 'turn.ended',
+      field: 'turn_ref',
+      payload: {
+        user_id: 'safe-user',
+        ref: XSS_PROBE.replace('{FIELD}', 'turn_ref'),
+        final_sha: 'abc1234',
+      },
+    },
+    // presence.updated — user_id (who fragment)
+    {
+      label: 'presence.updated / user_id',
+      eventType: 'presence.updated',
+      field: 'presence_user_id',
+      payload: {
+        user_id: XSS_PROBE.replace('{FIELD}', 'presence_user_id'),
+        ref: 'refs/heads/main',
+      },
+    },
+    // presence.updated — ref (txt fragment inside template literal)
+    {
+      label: 'presence.updated / ref',
+      eventType: 'presence.updated',
+      field: 'presence_ref',
+      payload: {
+        user_id: 'safe-user',
+        ref: XSS_PROBE.replace('{FIELD}', 'presence_ref'),
+      },
+    },
+  ];
+
+  it.each(xssCases)(
+    'escapes XSS payload — $label',
+    async ({ eventType, field, payload, isSha }) => {
+      const markerKey = `__pwned_${field}`;
+      delete (window as unknown as Record<string, unknown>)[markerKey];
+
+      const { container } = render(ActivityFeed, { props: { sessionId: 'sess-1' } });
+
+      fire(eventType, payload);
+
+      await waitFor(() => {
+        expect(container.querySelector('.feed-item')).not.toBeNull();
+      });
+
+      // 1. No live <img> element must exist in the DOM
+      expect(container.querySelector('img')).toBeNull();
+
+      // 2. The onerror handler must not have run
+      expect((window as unknown as Record<string, unknown>)[markerKey]).toBeUndefined();
+
+      if (isSha) {
+        // sha() truncates to 7 chars — confirm the truncated value appears
+        expect(container.textContent).toContain(SHA_VISIBLE);
+      } else {
+        // 3. The payload was rendered as escaped text, not silently dropped
+        expect(container.innerHTML).toMatch(/&lt;img/i);
+      }
+    },
+  );
 });
