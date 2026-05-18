@@ -1,7 +1,7 @@
 ---
 id: gate-security-rate-limit-auth-endpoints
 kind: story
-stage: review
+stage: done
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -94,3 +94,13 @@ When false, `Middleware(false)` returns a pass-through no-op. Useful for single-
 self-host where email-bombing is not a concern. Also set this in integration test
 environments that fire many auth requests in quick succession
 (e.g. `JAMSESH_AUTH_RATE_LIMIT_ENABLED=false` in test environment setup).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: High-severity brute-force/email-bomb mitigation in place. New internal/portal/ratelimit package uses golang.org/x/time/rate per-key with sync.Mutex map and idle GC. Per-IP only (per-IP+email keying was considered but adds body re-read fragility). Limits: magic-link/request 3/min+10/hr; oauth/start 5/min+20/hr; exchange 10/min; callback 10/min; refresh 20/min. Wired via r.With(limiter).Post(...) on /api group (NOT global Use), as coordinated with security-headers placement. JAMSESH_AUTH_RATE_LIMIT_ENABLED knob for self-host opt-out. ratelimit/store_test.go provides 8 unit tests; all green.

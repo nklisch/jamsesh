@@ -1,7 +1,7 @@
 ---
 id: gate-security-github-oauth-reject-unverified-email
 kind: story
-stage: review
+stage: done
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -87,3 +87,13 @@ in place.
 All existing tests pass unchanged. `TestGitHub_Exchange_PicksPrimaryVerifiedEmail`
 continues to exercise the happy path. The companion story
 `gate-tests-github-oauth-unverified-email` will add the negative-path tests.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: High-severity account-confusion vector closed. fetchPrimaryEmail now returns ErrUnverifiedEmail when no verified primary is found (no more fallback to first primary or first entry). OauthCallback maps to 400 oauth.unverified_email. ErrUnverifiedEmail declared in oauth/provider.go alongside ErrBadGrant. Provisioning cross-check deferred (no accounts.email_verified column today); the OAuth-side reject is sufficient to close the takeover vector. Existing tests pass.

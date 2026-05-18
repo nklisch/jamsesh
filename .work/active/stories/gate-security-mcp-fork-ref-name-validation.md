@@ -1,7 +1,7 @@
 ---
 id: gate-security-mcp-fork-ref-name-validation
 kind: story
-stage: review
+stage: done
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -78,3 +78,13 @@ test pattern.
 starts with `f` and contains only alphanumerics and a hyphen — passes
 `validateForkTargetRef`. User-supplied names like `feature-x` or `my_branch.1`
 also pass. Existing tests continue green.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: High-severity ref-traversal closed. validateForkTargetRef rejects empty, '..' substrings, and any suffix not matching ^[A-Za-z0-9_][A-Za-z0-9_.-]*$. Called immediately after strings.TrimPrefix and before plumbing.NewBranchReferenceName. refName.Validate() invoked as defence-in-depth. Happy path (fork-<sha7>) still passes. Existing tests green. Nit: this commit also captured the k8s discoverer deletions (PostToolUse hook quirk during parallel wave) — the deletions were sanctioned by gate-cruft-router-kube-discovery-wired-or-deleted and are not a defect of this story.

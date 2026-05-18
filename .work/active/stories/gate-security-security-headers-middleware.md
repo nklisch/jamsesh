@@ -1,7 +1,7 @@
 ---
 id: gate-security-security-headers-middleware
 kind: story
-stage: review
+stage: done
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -84,3 +84,13 @@ enableHSTS = (TLSMode == "native") || (TLSMode == "behind_proxy" && TrustProxyHe
 
 ### Tests
 All existing `go test ./internal/portal/...` tests pass. The golden `/metrics` e2e test (`tests/e2e/golden/metrics_endpoint_test.go`) asserts on Prometheus content-type and family presence — not on header count — so the new security headers on `/metrics` are compatible without assertion changes.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Critical security-headers middleware verified. New internal/portal/router/security_headers.go (65 LoC) sets CSP, X-Frame-Options: DENY, X-Content-Type-Options: nosniff, Referrer-Policy: no-referrer globally; HSTS conditionally on TLSMode == native or behind_proxy + TrustProxyHeaders. Mounted as first middleware so error envelopes carry headers too. CSP policy verified against frontend/internal/portal/assets/dist/index.html (no inline scripts). HSTS gating prevents bricking HTTP-only dev. Global go build + portal tests pass.

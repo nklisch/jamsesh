@@ -1,7 +1,7 @@
 ---
 id: gate-security-xss-html-render-ws-events
 kind: story
-stage: review
+stage: done
 tags: [security, ui, portal]
 parent: null
 depends_on: []
@@ -106,3 +106,13 @@ Existing 8 tests pass unchanged — they assert on text content and DOM
 selectors that remain valid. Added `it.todo` to mark that XSS payload
 assertions are owned by the companion story
 `gate-tests-xss-activityfeed-component`.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Critical XSS fix verified. ActivityFeed.svelte's {@html} sink fully removed; replaced with structured Fragment[] rendering via {#each}/{#if}. Svelte auto-escapes all user-controlled values. All 12 formatEvent branches converted. Existing 8 tests pass; XSS payload assertions deferred to companion test story gate-tests-xss-activityfeed-component.
