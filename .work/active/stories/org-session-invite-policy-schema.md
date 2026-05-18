@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-schema
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: org-session-invite-policy
 depends_on: []
@@ -170,3 +170,25 @@ update is informative, not normative — the code is the source of truth.
 `git revert` the commit. If the migration has already been applied to a
 real DB, run the `.down.sql` manually. For test DBs (created fresh each
 run), no manual rollback needed.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Story changes spread across two commits — schema work landed in 9f668a6 but
+  the postgres_adapter/sqlite_adapter wiring committed in ef09ad0
+  (get-invite-details) because that agent committed first. Final state is
+  correct; just a history wrinkle from parallel orchestration.
+- No dedicated `Store.UpdateOrgSessionInvitePolicy` round-trip test — the
+  method is exercised indirectly via `TestPatchOrg_CreatorSuccess` and
+  `TestPatchOrg_Grandfather` in the downstream patch-endpoint story.
+- The agent's bonus `sqlc.yaml` overrides for lease/finalize-lock timestamp
+  columns are unrelated cleanup; commendable and harmless.
+
+**Notes**: Migration is additive with a DEFAULT, so non-breaking. The CHECK
+constraint provides defense-in-depth at the DB boundary. ARCHITECTURE.md
+membership-model section reads cleanly and describes the system as it now
+behaves. Build + tests pass across the full portal suite.
