@@ -1,7 +1,7 @@
 ---
 id: gate-tests-finalize-lock-concurrent-overrides
 kind: story
-stage: review
+stage: done
 tags: [testing, portal]
 parent: null
 depends_on: []
@@ -76,3 +76,13 @@ no advisory lock, no unique constraint preventing dual-active-lock state).
 
 Bug tracked in backlog: `bug-finalize-lock-concurrent-override-dual-active`
 (to be created by reviewer if not already present).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Concurrency test reproduces a real production bug (100% reproducible): two concurrent AcquireFinalizeLock(override=true) callers both insert lock rows and supersede the original holder, but neither supersedes the other — leaving two active rows. Bug parked as backlog item 'finalize-lock-concurrent-override-race-allows-two-active-locks' with fix-direction notes. Test is t.Skip-anchored to that bug id; remove the skip when the race is fixed. The test invariant (count of non-superseded non-released rows ≤ 1) is correct and ready to enforce post-fix.

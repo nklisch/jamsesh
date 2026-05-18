@@ -1,7 +1,7 @@
 ---
 id: gate-security-metrics-endpoint-auth
 kind: story
-stage: review
+stage: done
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -77,3 +77,13 @@ unauthenticated contract (expects 200 without a token). That test will fail
 against the new behavior. The companion story
 `gate-tests-metrics-endpoint-auth-test` (which depends_on this story) is
 responsible for updating the e2e test to match the new authenticated contract.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Metrics endpoint gated. /metrics is unmounted entirely when JAMSESH_METRICS_TOKEN is unset (default → 404 default-deny). When set: bearer-token compare via subtle.ConstantTimeCompare; mismatch → 401 (standard httperr envelope). Existing e2e test tests/e2e/golden/metrics_endpoint_test.go locks in the old open-/metrics contract and will need updating — companion story gate-tests-metrics-endpoint-auth-test owns that rewrite.

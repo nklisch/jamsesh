@@ -1,7 +1,7 @@
 ---
 id: gate-tests-automerger-apply-commit-format
 kind: story
-stage: review
+stage: done
 tags: [testing, portal]
 parent: null
 depends_on: []
@@ -66,3 +66,13 @@ reaching into go-git internals.
 
 **No ordering drift found:** the test passes against the current production
 code, confirming `composeMergeMessage` emits trailers in the correct order.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Auto-merger clean-merge commit format pinned. New test decodes the merge commit and asserts: author email matches source author; committer is auto-merger@jamsesh.test (with name 'jamsesh auto-merger'); trailers appear in positional order Auto-Merger → Source-Commit → Source-Ref; Resolves-Conflict and Auto-Resolved trailers absent on clean merge. Uses local trailer-extract helper that returns ordered slice (not map) to catch ordering drift. No drift found — composeMergeMessage already emits in correct order.

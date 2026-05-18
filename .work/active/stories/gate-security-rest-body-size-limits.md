@@ -1,7 +1,7 @@
 ---
 id: gate-security-rest-body-size-limits
 kind: story
-stage: review
+stage: done
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -98,3 +98,13 @@ constraint is enforced by the BodyLimit cap before any field is decoded).
 No per-handler changes needed. The overflow path is:
 `BodyLimit middleware wraps body → json.Decode hits limit →
 *http.MaxBytesError → WriteBadRequest detects → 413 envelope`.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Global body cap for API routes. New BodyLimit middleware wraps r.Body with http.MaxBytesReader; mounted on /api subroute (NOT /git/* which has its own larger cap). Configurable via JAMSESH_API_BODY_LIMIT_BYTES (default 1 MiB). httperr.ErrBodyTooLarge (413, request.body_too_large) added; WriteBadRequest detects *http.MaxBytesError via errors.As and routes to 413. openapi.yaml gained maxLength on 11 user-text fields (email 254, branch 200, body/goal 4096, etc.). server.gen.go regenerated. Two unit tests confirm the cap fires.

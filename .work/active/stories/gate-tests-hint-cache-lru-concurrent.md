@@ -1,7 +1,7 @@
 ---
 id: gate-tests-hint-cache-lru-concurrent
 kind: story
-stage: review
+stage: done
 tags: [testing, infra]
 parent: null
 depends_on: []
@@ -72,3 +72,13 @@ Because the implementation is strictly serialized, the test asserts the hard
 invariant: k0 survives the eviction and k9 (the true LRU) is gone. No
 tolerance or flakiness guard is needed. The race detector (`-race`) confirmed
 no data races exist across 1.098 s of execution covering all package tests.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: LRU correctness under concurrent Get verified. 8 goroutines run Get(k0) in a tight loop; one Set(k10) fires after a buffered-channel barrier ensures all goroutines have promoted k0. Strict invariant holds: k0 survives, k9 (oldest) evicts, k10 present. Implementation uses a single mutex around all Get/Set bodies → no race window between LRU promotion and eviction. -race clean. Initial test design (500 evicting Sets) correctly failed (k0 can become LRU after enough eviction churn); the corrected single-Set design captures the spec invariant precisely.

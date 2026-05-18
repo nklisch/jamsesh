@@ -1,7 +1,7 @@
 ---
 id: gate-security-receive-pack-stream-body
 kind: story
-stage: review
+stage: done
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -91,3 +91,13 @@ The semaphore is allocated in `cmd/portal/main.go` with
 - `internal/portal/githttp/handler.go` — `ReceivePackSem` field
 - `internal/portal/config/config.go` — `ReceivePackMaxConcurrent` field, default, env parse, validation
 - `cmd/portal/main.go` — semaphore allocation + wiring
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Memory-bound fix in place. Receive-pack body now streams to a tempfile via io.Copy + os.CreateTemp; defer Close+Remove. Two rewinds (Seek(0,0)) before readCommandList and again before the subprocess pipe. New per-instance semaphore (ReceivePackSem chan struct{}, configurable JAMSESH_RECEIVE_PACK_MAX_CONCURRENT default 4) with non-blocking select — returns 503+Retry-After when all slots taken. Backwards-compatible: nil ReceivePackSem disables the cap (existing tests unchanged).

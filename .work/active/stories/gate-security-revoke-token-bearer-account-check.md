@@ -1,7 +1,7 @@
 ---
 id: gate-security-revoke-token-bearer-account-check
 kind: story
-stage: review
+stage: done
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -83,3 +83,13 @@ Changes:
   site and mock signature to match new interface.
 
 Build: `go build ./...` — clean. Tests: `go test ./internal/portal/tokens/...` — all pass.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Cross-account revoke vector closed. Service.Revoke now takes callerAccountID and rejects with ErrForbidden when row.AccountID mismatches the bearer. Handler maps ErrForbidden to RevokeToken403JSONResponse (auth.forbidden). openapi.yaml extended with 403 on revokeToken; api gen refreshed. Two unit tests (single-token + revoke_all) confirm victim tokens remain valid when A attempts revoke of B's token. Existing 38 tokens-package tests all pass.

@@ -1,7 +1,7 @@
 ---
 id: gate-tests-ring-rebalance-cardinality
 kind: story
-stage: review
+stage: done
 tags: [testing, infra]
 parent: null
 depends_on: []
@@ -67,3 +67,13 @@ called twice with identical input, routing verified to be bit-for-bit stable. Pa
 cleanly: the ring's deterministic FNV vnode construction produces identical snapshots.
 
 No production bugs found. All 10 tests in the package pass.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Consistent-hash rebalance verified across N ∈ {2,3,5,10,50,100}. 10k deterministic keys per cardinality; graduated tolerance (±40pp at N=2 down to ±10pp at N≥10) — calibrated against the existing 150 vnodes/pod resolution (TestVnodeDistribution already documents that single pods can claim ~42% at N=5; the tolerance reflects that vnode-count variance, not a production bug). Membership-stability test confirms identical SetPods produces identical key→pod routing across 1000 keys.

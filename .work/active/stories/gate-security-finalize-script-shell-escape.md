@@ -1,7 +1,7 @@
 ---
 id: gate-security-finalize-script-shell-escape
 kind: story
-stage: review
+stage: done
 tags: [security, portal, plugin]
 parent: null
 depends_on: []
@@ -88,3 +88,13 @@ Existing tests in `lock_patch_test.go` used stub values (`"base"`,
 `"base123"`) that are not valid 40-hex SHAs. These were replaced with
 `validBaseSHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"` so they
 continue exercising the happy path through the new validator.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Shell-injection vector closed. New shellquote helper wraps target_branch and base_sha (single-quoted with internal-quote escape) in writeCheckoutStep / buildSquashScript / buildPreserveScript. PatchFinalizeLock validates target_branch (^[A-Za-z0-9._/][A-Za-z0-9._/-]*$, no leading dash) → 400 session.invalid_target_branch, and base_sha (40 hex) → 400 session.invalid_base_sha. Validators exported for the companion test story. Golden script outputs updated to reflect single-quoted form.
