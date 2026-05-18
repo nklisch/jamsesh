@@ -1,7 +1,7 @@
 ---
 id: review-file-secret-unreadable-subtest-bug
 kind: story
-stage: review
+stage: done
 tags: [bug, e2e-test, testing]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -69,3 +69,16 @@ file entirely.
 - `testcontainers-go@v0.42.0/container.go:110-114` — `ContainerFile` struct
   (Reader field is an alternative to HostFilePath)
 - Parent story: `epic-e2e-cnd-coverage-operational-polish-file-secrets`
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: The fix (`0o600` host mode, `FileMode: 0o000` on `ContainerFile`) was
+applied at commit `a974e2b` and verified during the re-review of the parent story
+`epic-e2e-cnd-coverage-operational-polish-file-secrets`. Bug description, root cause,
+and fix specification are all accurate.
