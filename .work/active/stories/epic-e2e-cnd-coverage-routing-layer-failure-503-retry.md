@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-failure-503-retry
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-routing-layer
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -98,6 +98,16 @@ db, _ := sql.Open("postgres", pg.DSN)
 - Subtest 2: response status == 503; wall-clock time < 5s (not hanging).
 - In both cases: router logs (optionally scraped) show the `retry` decision
   label in `/metrics` incremented.
+
+## Implementation notes
+
+- File: `tests/e2e/failure/router_lease_unavailable_test.go`, package `failure_test`.
+- Both subtests use a real 2-pod cluster with router (`portalcluster.Start` with `Router: true`).
+- Advisory lock pattern: `pg_advisory_lock(hashtext($1)::oid)` / `pg_advisory_unlock(hashtext($1)::oid)` against `pg.DSN` — matches the portal's own `pg_try_advisory_lock` key exactly (per `portalcluster/lifecycle.go`).
+- For `transparent_redispatch_on_503`: test holds lock, sends GET session request, asserts 2xx within 3s, releases lock, asserts follow-up GET is also 2xx.
+- For `bounded_retry_pathology_surfaces_503`: test holds lock (single session-scoped lock blocks all pods since any pod's `pg_try_advisory_lock` on same key fails), asserts 503 within 5s.
+- The router's retry bound (exactly one retry per `proxy.go`) means 2 pods × 1 attempt each = 503 propagated after 2 total pod attempts.
+- `go build ./failure/...` and `go vet ./failure/...` both pass clean.
 
 ## Acceptance criteria
 
