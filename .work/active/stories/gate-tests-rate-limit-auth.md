@@ -1,7 +1,7 @@
 ---
 id: gate-tests-rate-limit-auth
 kind: story
-stage: implementing
+stage: review
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-rate-limit-auth-endpoints]
@@ -36,3 +36,18 @@ returns no production hits.
 
 ## Test location (suggested)
 `internal/portal/auth/magic_link_test.go` (or new `rate_limit_test.go`)
+
+## Implementation notes
+
+**Test file:** `internal/portal/auth/rate_limit_integration_test.go` (package `auth_test`).
+
+**Chosen approach:** Option B — real chi router with the rate-limit middleware wired directly to a real `MagicLinkHandler`. The handler is backed by an in-memory SQLite store (`openStore(t)`) and a `captureSender` stub, reusing the helpers already present in the `auth_test` package. No mocking of the rate-limit middleware.
+
+**Test seam tested:** `ratelimit.NewStore(...).Middleware(enabled)` wired via chi `r.With(...)` on `POST /api/auth/magic-link/request`. Requests are fired via `httptest.NewRequest` + `handler.ServeHTTP(w, r)` so `r.RemoteAddr` can be controlled directly per-IP without a real TCP connection.
+
+**Three tests added:**
+1. `TestAuthRateLimit_MagicLinkRequest_429AfterBurst` — fires burst+1 requests from the same IP; asserts the first burst return 204, the (burst+1)-th returns 429 with `Retry-After` > 0 and `{"error":"rate_limited"}` JSON body.
+2. `TestAuthRateLimit_DifferentIPsAreIndependent` — exhausts IP_A's bucket, then fires one request from IP_B and asserts 204 (independent buckets).
+3. `TestAuthRateLimit_DisabledKnob_NeverReturns429` — wires with `enabled=false`, fires 20 requests from the same IP, asserts none return 429.
+
+**No bugs found** in the middleware during testing. All assertions pass against the production `ratelimit` package as-shipped.
