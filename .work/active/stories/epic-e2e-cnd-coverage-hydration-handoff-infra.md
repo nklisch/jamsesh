@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff-infra
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage-hydration-handoff
 depends_on: []
@@ -155,3 +155,23 @@ must set `JAMSESH_STORAGE=/tmp/jamsesh-repos` in `PortalExtraEnv` to pin the pat
 - A failing helper that surfaces a real protocol gap (e.g. hydration readiness
   signal not exposed) is a backlog item, not a test bug. Land the helper with
   a `t.Skip` + backlog id until the production gap is resolved.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `stripDockerMux` takes only the payload of the first mux frame; multi-frame
+  output (unlikely for `ls`) would be truncated. Best-effort is acceptable for
+  log output; no action required.
+
+**Notes**: Three helper files land cleanly. `CompareSessionState` compares the
+full ref→sha map (stronger than a single `draft_tip` field), querying both pods
+directly without the router — non-tautological by design. `WaitForHydration`
+uses `git ls-remote` against the pod directly, which proves pack files are
+locally present — exactly the post-hydration signal required. `VerifyCacheEvicted`
+uses Testcontainers container exec (`ls <repoPath>`) — direct FS check, non-
+tautological. `containerRepoPath` format matches production `storage.RepoPath`
+exactly. No production code touched. `go build` and `go vet` clean.
