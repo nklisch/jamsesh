@@ -30,19 +30,21 @@ designed. This doc captures intent and flow; mockups capture appearance.
 
 A user wants to start a new jam against their team's repo.
 
-1. From a checkout of the source repo, they run `/jamsesh:create`.
-2. The plugin prompts (or accepts as args):
+1. In the portal UI, click "New session."
+2. Fill in:
    - Session name (e.g., "Auth design refresh")
-   - Goal / manifest (one paragraph: what this session is producing and why)
+   - Goal (one paragraph: what this session is producing and why)
    - Writable scope (required path globs, e.g., `docs/auth/**`, `specs/auth/**`)
    - Default mode (sync or isolated)
    - Optional: invitees (emails or org members)
-3. The local binary calls portal API to create the session.
-4. The local binary pushes the current source-repo `HEAD` to
-   `jam/<session>/base` on the session remote.
-5. Plugin returns a join URL the creator can share with collaborators.
-6. The creator's CC instance is already bound to `jam/<session>/<user>/main`
-   in sync mode — they can start prompting immediately.
+3. Click "Create." The portal creates the session, pushes the designated
+   source-repo `HEAD` to `jam/<session>/base` on the session remote, and
+   returns a join URL the creator can share with collaborators.
+4. From a checkout of the source repo, the creator runs
+   `/jamsesh:join <session-id-or-url>` to bind their local CC instance to
+   `jam/<session>/<user>/main` — the same join flow every collaborator uses.
+5. The creator's CC instance is now bound in sync mode and they can start
+   prompting immediately.
 
 ## Flow: joining a session
 
@@ -116,8 +118,9 @@ A human sees a commit on a peer's ref that they want to build on.
 3. Choose: replace your current ref OR create a new sibling ref.
 4. If sibling, name it and pick mode (sync or isolated).
 5. Confirm.
-6. In CC, run `/jamsesh:sync` or the agent's next prompt — the local checkout
-   is updated to reflect the fork.
+6. The fork is created server-side. On the agent's next turn, the
+   `UserPromptSubmit` hook fetches `session-remote` automatically — the new
+   ref is available locally without any manual step.
 
 **From CC:**
 
