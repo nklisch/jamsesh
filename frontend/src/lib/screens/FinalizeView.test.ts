@@ -210,7 +210,7 @@ describe('FinalizeView', () => {
 
   it('3. override click → calls POST /finalize/lock with override: true → reloads', async () => {
     let firstCall = true;
-    mockPOST.mockImplementation((path: string, opts: { body?: { override?: boolean } }) => {
+    mockPOST.mockImplementation((path: string, _opts: { body?: { override?: boolean } }) => {
       if (path.includes('/finalize/lock')) {
         if (firstCall) {
           firstCall = false;
