@@ -46,3 +46,7 @@ self-host docs).
 - **gate-security** (2026-05-18) — 15 findings (2 Critical, 3 High, 6 Medium, 4 Low)
   - 11 items into `.work/active/stories/` (gate-security-*) — Critical/High at `implementing`, Medium at `drafting`
   - 4 items into `.work/backlog/` (Low severity)
+- **gate-tests** (2026-05-18) — 25 findings (7 Critical, 7 High, 9 Medium, 2 Low)
+  - 23 items into `.work/active/stories/` (gate-tests-*) — Critical/High at `implementing`, Medium at `drafting`
+  - 2 items into `.work/backlog/` (Low severity)
+  - 1 tautological test flagged (`TestGitHub_Exchange_PicksPrimaryVerifiedEmail`) — to be reworked under `gate-tests-github-oauth-unverified-email`
