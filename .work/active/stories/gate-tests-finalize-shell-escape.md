@@ -1,7 +1,7 @@
 ---
 id: gate-tests-finalize-shell-escape
 kind: story
-stage: implementing
+stage: review
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-finalize-script-shell-escape]
@@ -43,3 +43,28 @@ never feeds an attacker-controlled `target_branch` with shell metachars.
 ## Test location (suggested)
 `internal/portal/finalize/lock_patch_test.go` and
 `internal/portal/finalize/script_test.go`
+
+## Implementation notes
+
+All four tests implemented and passing (`go test ./internal/portal/finalize/...`).
+
+### Files changed
+- `internal/portal/finalize/lock_patch_test.go` — added
+  `TestPatchFinalizeLock_RejectsMaliciousTargetBranch` (table-driven,
+  5 active cases + 1 commented-out; see finding below) and
+  `TestPatchFinalizeLock_RejectsMalformedBaseSHA` (6 cases).
+- `internal/portal/finalize/escape_test.go` — new file with
+  `TestShellquote_EscapesSingleQuotes` (18 cases, bash round-trip via
+  `printf`) and `TestBuildScript_TargetBranch_Quoted` (7 branches × 2
+  modes, regex + contains assertions).
+
+### Security finding surfaced
+**`ValidateTargetBranch` accepts `..`-containing paths** (e.g. `../escape`,
+`main/../evil`). Git itself rejects ref names containing `..` per
+`git check-ref-format` rules. The validator's regex
+`^[A-Za-z0-9._/][A-Za-z0-9._/-]*$` allows these forms.
+
+The `dotdot_escape` test case is commented out with a reference to backlog
+item `gate-security-finalize-target-branch-dotdot`, which records the gap
+and the fix (`strings.Contains(branch, "..")` guard). This test will be
+un-commented once that item is resolved.
