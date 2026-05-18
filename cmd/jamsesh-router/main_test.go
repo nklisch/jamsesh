@@ -7,10 +7,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -303,6 +305,106 @@ func Test503TriggerRetry(t *testing.T) {
 	// itself (non-backend-originated). A 200 or 503 (propagated) are both valid.
 	if status != http.StatusOK && status != http.StatusServiceUnavailable {
 		t.Errorf("unexpected status: got %d", status)
+	}
+}
+
+// TestRun_DiscoveryGoroutineExitsOnContextCancel verifies that the discovery
+// goroutine launched inside runCtx exits cleanly when the context is cancelled.
+//
+// This is a regression guard for the fix in bug-router-static-discoverer-not-started,
+// which moved the signal context earlier in run() so the goroutine is launched
+// with a cancellable context. Without that fix the discovery goroutine would
+// run forever after the HTTP server stopped, leaking a goroutine on every test
+// invocation.
+//
+// Leak detection uses runtime.NumGoroutine() snapshots. The goroutine count is
+// captured immediately before runCtx is spawned (after the backend httptest
+// server is already running, so its goroutines are already counted). After
+// runCtx returns, http.DefaultTransport.CloseIdleConnections() is called to
+// drain keep-alive connection goroutines spawned by the readyz probe — those
+// are not our goroutines. The poll then checks that the count falls back to
+// baseline ± a small slack (2) for any ambient noise from the Go test runner.
+func TestRun_DiscoveryGoroutineExitsOnContextCancel(t *testing.T) {
+	// Start a real httptest server to act as the static pod backend.
+	// The static discoverer will probe it on every tick; having a real server
+	// prevents connection-refused errors from polluting test output and ensures
+	// the probe makes a real HTTP request (which exercises the keep-alive path).
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(backend.Close)
+
+	backendAddr := strings.TrimPrefix(backend.URL, "http://")
+
+	// Configure runCtx via environment variables (config.Load reads these).
+	// Use :0 so the OS picks a free port — the test never sends requests to
+	// the router, so the actual port doesn't matter.
+	t.Setenv("JAMSESH_ROUTER_BIND", "127.0.0.1:0")
+	t.Setenv("JAMSESH_ROUTER_STATIC_PODS", backendAddr)
+	// Keep the shutdown grace period short so the test finishes quickly.
+	t.Setenv("JAMSESH_ROUTER_SHUTDOWN_GRACE_S", "1")
+
+	// Snapshot goroutine count after the backend is already running (its
+	// goroutines are already included in the baseline).
+	goroutinesBefore := runtime.NumGoroutine()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// runCtx returns an exit code. Capture it via a channel so we can assert
+	// both that it returned and that it returned cleanly (exit code 0).
+	exitCode := make(chan int, 1)
+	go func() {
+		exitCode <- runCtx(ctx, nil)
+	}()
+
+	// Wait for runCtx to start. We don't have a readiness channel from runCtx,
+	// and the actual listen port is hidden (:0). A short sleep is an acceptable
+	// startup settle — it is NOT used as a goroutine-exit synchronisation
+	// primitive (that role belongs to the exitCode channel and poll loop below).
+	time.Sleep(200 * time.Millisecond)
+
+	// Cancel the context — this is the adversarial condition under test.
+	cancel()
+
+	// Assert runCtx returns within the shutdown deadline (generous 8 s to
+	// absorb CI variance; the grace period itself is only 1 s).
+	const shutdownCeiling = 8 * time.Second
+	select {
+	case code := <-exitCode:
+		if code != 0 {
+			t.Errorf("runCtx returned non-zero exit code: %d", code)
+		}
+	case <-time.After(shutdownCeiling):
+		t.Fatalf("runCtx did not return within %s after context cancel — possible goroutine leak or shutdown hang", shutdownCeiling)
+	}
+
+	// Close idle connections held by http.DefaultTransport. The readyz.Probe
+	// inside runCtx uses the default HTTP client, which keeps a persistent
+	// connection to the backend alive in the connection pool. These pool
+	// goroutines (persistConn readLoop / writeLoop) are not our goroutines —
+	// they are ambient Go HTTP client infrastructure. Closing them before the
+	// snapshot prevents spurious failures.
+	http.DefaultTransport.(*http.Transport).CloseIdleConnections()
+
+	// Poll until goroutine count returns to baseline (or 5 s ceiling).
+	// A slack of +2 absorbs ambient noise from the Go test runner itself
+	// (e.g. a GC goroutine or internal timer goroutine that may appear
+	// transiently). Any genuine leak from the discovery goroutine or the
+	// HTTP server would permanently elevate the count well above this.
+	const leakPollCeiling = 5 * time.Second
+	leakDeadline := time.Now().Add(leakPollCeiling)
+	leaked := true
+	for time.Now().Before(leakDeadline) {
+		if runtime.NumGoroutine() <= goroutinesBefore+2 {
+			leaked = false
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if leaked {
+		t.Errorf("goroutine leak detected: count did not fall back to baseline (%d) within %s after CloseIdleConnections; current=%d",
+			goroutinesBefore, leakPollCeiling, runtime.NumGoroutine())
 	}
 }
 

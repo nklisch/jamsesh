@@ -51,8 +51,25 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
-// run is the testable entrypoint. It returns an exit code.
+// run is the production entrypoint. It wires a signal-cancellable context
+// (SIGTERM / SIGINT) and delegates to runCtx.
 func run(args []string) int {
+	// Parse --help before touching the context so the flag exits cleanly.
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			printUsage()
+			return 0
+		}
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+	return runCtx(ctx, args)
+}
+
+// runCtx is the testable core. It accepts an externally-owned context so that
+// tests can inject a cancellable context without sending OS signals.
+func runCtx(ctx context.Context, args []string) int {
 	// Parse optional config file path from first argument.
 	var cfgPath string
 	for _, arg := range args {
@@ -107,12 +124,6 @@ func run(args []string) int {
 	probe := &readyz.Probe{
 		Metrics: metricsReg,
 	}
-
-	// Context cancelled on SIGTERM or SIGINT.
-	// Created before background goroutines (e.g. the discovery loop) so they
-	// receive cancellation on shutdown.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
 
 	// Seed the ring from static config.
 	pods := make([]ring.Pod, 0, len(cfg.StaticPods))
