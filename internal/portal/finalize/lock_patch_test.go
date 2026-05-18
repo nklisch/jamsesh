@@ -259,12 +259,8 @@ func TestPatchFinalizeLock_RejectsMaliciousTargetBranch(t *testing.T) {
 		{"flag_like", "-rf"},
 		{"space", "foo bar"},
 		{"newline", "foo\nbar"},
-		// "../escape" is currently accepted by ValidateTargetBranch — the
-		// regex allows '.' and '/' in any combination. This is a real gap:
-		// git rejects refs containing '..'. Tracked in backlog item
-		// gate-security-finalize-target-branch-dotdot. The case is kept here
-		// as a skip so the failure is documented rather than silently absent.
-		// {"dotdot_escape", "../escape"},
+		{"dotdot_escape", "../escape"},
+		{"dotdot_middle", "main/../evil"},
 		{"empty", ""},
 	}
 

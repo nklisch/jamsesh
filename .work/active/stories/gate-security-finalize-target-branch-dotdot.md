@@ -1,7 +1,7 @@
 ---
 id: gate-security-finalize-target-branch-dotdot
 kind: story
-stage: implementing
+stage: done
 tags: [security, portal, finalize]
 parent: null
 depends_on: [gate-security-finalize-script-shell-escape]
@@ -46,6 +46,24 @@ Or tighten the regex so that `..` can never appear. Preferred: explicit
 `strings.Contains` guard because it is self-documenting.
 
 ## Test
-`TestPatchFinalizeLock_RejectsMaliciousTargetBranch/dotdot_escape` in
-`internal/portal/finalize/lock_patch_test.go` is currently skipped
-(with a reference to this item id) until this fix is applied.
+`TestPatchFinalizeLock_RejectsMaliciousTargetBranch` includes `dotdot_escape`
+("../escape") and `dotdot_middle` ("main/../evil") cases — both pass with
+the fix applied.
+
+## Implementation notes
+
+Added `strings.Contains(branch, "..")` guard to `ValidateTargetBranch` in
+`internal/portal/finalize/escape.go` ahead of the regex check. The two
+dotdot test cases that were commented out in the companion test story
+are now active and green.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: One-line guard added to `ValidateTargetBranch`. `..` anywhere in
+the branch suffix now rejects. Test coverage active.

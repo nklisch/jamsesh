@@ -45,6 +45,12 @@ func ValidateTargetBranch(branch string) bool {
 	if branch[0] == '-' {
 		return false
 	}
+	if strings.Contains(branch, "..") {
+		// git check-ref-format rejects ".." sequences anywhere in the ref
+		// name; mirror that here so the shape check stays consistent with
+		// the underlying ref store.
+		return false
+	}
 	return reTargetBranch.MatchString(branch)
 }
 
