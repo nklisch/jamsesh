@@ -1,14 +1,14 @@
 ---
 id: bug-router-static-discoverer-not-started
 kind: story
-stage: review
+stage: done
 tags: [bug, router, discovery, Important]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-17
-updated: 2026-05-17
+updated: 2026-05-18
 ---
 
 # Bug: Static Discoverer Run Loop Not Started in Router Main
@@ -120,3 +120,20 @@ The acceptance criterion noted this was optional if simple; it was one line.
 - `go vet ./cmd/jamsesh-router/...` — clean
 - `go test ./internal/router/... -timeout 60s` — all 7 packages pass
 - `make test-router-image` — rebuilt `jamsesh/router:e2e` successfully
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Fix is exactly as designed — ~5 LoC plus one import in `main.go`.
+The signal context (`ctx`) is correctly moved before the static-mode block so
+the discovery goroutine receives cancellation on shutdown. Placeholder
+suppressions (`_ = publishWithMetrics`, `_ = probe`) removed cleanly. The
+goroutine error path correctly ignores `context.Canceled` and logs everything
+else. The `t.Skip` removal in `router_backend_dead_test.go` is surgical (7
+lines, the skip call and its explaining comment, nothing else changed). Router
+image rebuild step confirmed in implementation notes. No foundation-doc drift.

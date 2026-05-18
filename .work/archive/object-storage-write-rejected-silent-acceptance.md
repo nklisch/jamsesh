@@ -1,7 +1,7 @@
 ---
 id: object-storage-write-rejected-silent-acceptance
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, object-storage, durability]
 parent: null
 depends_on: []
@@ -125,3 +125,33 @@ optional and deferred to a follow-on once the e2e harness is wired.
 - [x] `go build ./... && go vet ./...` clean
 - [x] `go test ./internal/portal/... -timeout 90s` passes — no regression
 - [x] Existing successful-push tests still pass
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: This is the most structurally significant of the three fixes and it
+holds up well. The buffering approach for subprocess stdout is sound for
+receive-pack: `git-receive-pack --stateless-rpc` sends only pkt-lines in the
+server→client direction (no pack data), so the buffer is bounded to a small
+report-status payload — no memory concern. The sequencing (buffer stdout →
+Wait → EmitForUpdates → commit 200/500) precisely matches the RPO=0 contract
+described in ARCHITECTURE.md §474-477. Two edge cases are handled that the
+old code missed: (1) the `git.PlainOpen` failure path now returns 500 instead
+of silently returning 200 with no body; (2) `EmitForUpdates` failures now
+increment a `storage_error` label on the metrics counter in addition to
+returning 500. The `cmdErr != nil` path (subprocess exit non-zero) correctly
+flushes the buffered report-status payload with `WriteHeader(200)` — this is
+correct because the git protocol embeds the rejection reason inside the
+pkt-line payload, not the HTTP status. `TestReceivePack_ObjectStorageFailure`
+wires a real `objectstore.Syncer` with an `errBackend`, performs an actual git
+push, and asserts non-zero exit — this is a proper behavioral test, not a
+mock assertion. The compile-time interface check `var _ objectstore.Backend =
+(*errBackend)(nil)` is a nice safety net. The e2e PATH B skip left in place
+is reasonable and documented. No foundation-doc drift — ARCHITECTURE.md
+already described the synchronous fail-stop invariant; the fix brings the code
+into conformance with the documented design.

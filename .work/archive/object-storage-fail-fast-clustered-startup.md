@@ -1,7 +1,7 @@
 ---
 id: object-storage-fail-fast-clustered-startup
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, object-storage]
 parent: null
 depends_on: []
@@ -104,3 +104,26 @@ visible to the SDK's retry logic. On success the probe returns in < 100 ms.
 `go build ./...` and `go vet ./...` clean.
 `go test ./internal/portal/... -timeout 90s` — all 28 packages pass.
 `go test ./cmd/portal/... -timeout 60s` — passes.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: `Probe(ctx) error` is a clean addition to the `Backend` interface —
+all three concrete backends (S3/HeadBucket, GCS/Bucket.Attrs,
+Azure/GetProperties) implement appropriate liveness primitives that return
+quickly on success and time out on unreachable endpoints. The four test-only
+stubs (`memBackend`, `errBackend`, `blockingBackend`, and the new
+`errBackend` in receive_pack_test) all satisfy the interface correctly. The
+call site in `cmd/portal/main.go` is correctly nested inside the
+`cfg.DeployMode == "clustered" && cfg.ObjectStorageURL != ""` guard, uses a
+properly scoped `context.WithTimeout` with explicit `cancel()` call, and
+logs both success and failure before exiting. `ctx` is defined at line 253,
+well above the call site at line 452. The e2e test un-skip changes the skip
+to `t.Fatalf` (not just removal), which is the right shape — it now fails
+hard if the invariant breaks again. No foundation-doc drift; ARCHITECTURE.md
+§389 / SPEC.md §232-237 are satisfied by the implementation.
