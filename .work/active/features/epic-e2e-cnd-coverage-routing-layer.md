@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -506,3 +506,22 @@ after story 1 completes.
 ## Next
 
 `/agile-workflow:implement-orchestrator epic-e2e-cnd-coverage-routing-layer`
+
+## Implementation summary (2026-05-17)
+
+All 6 active child stories landed at `stage: review`. The 7th (`k8s-discovery`) remains deferred in `.work/backlog/` with parent cleared so it doesn't gate this feature.
+
+| Story | Status | Notes |
+|---|---|---|
+| `golden-consistent-hash` | review | 2 subtests (same-session pins, different-sessions distribute); LeaseHolder as routing-identity oracle |
+| `golden-mcp-header` | review | MCP handshake + tool-call routing via `Jam-Session-Id` header (corrected from `Mcp-Session-Id` — both headers set); fixture extension `MCPSessionID()` accessor |
+| `golden-hint-cache` | review | 2 subtests: 503-driven hint invalidation + per-session isolation; uses router `/metrics` for hit-counter assertion |
+| `failure-503-retry` | review | Advisory-lock injection from test process; bounded-retry pathology (router retries once = 2 attempts max) verified |
+| `failure-backend-dead` | review | **Surfaced critical bug**: filed `bug-router-static-discoverer-not-started`. Router's discovery `Run` loop is never started in `cmd/jamsesh-router/main.go` → dead pods stay in ring forever → 502 not 503 (no retry triggered). Test `t.Skip`'d with reference per test-integrity rules. One-goroutine fix documented in backlog item. |
+| `chaos-pod-disappears` | review | Toxiproxy disconnect + latency subtests; bug-guard t.Skip in place for the same static-discoverer bug if it propagates to chaos layer |
+
+Verification: `go build ./...` + `go vet ./...` clean.
+
+**Critical bug surfaced**: `bug-router-static-discoverer-not-started` (Important severity). The discovery infrastructure exists and works (`internal/router/discovery/static.go` with 5s default probe), but the wiring in `cmd/jamsesh-router/main.go` has placeholder `_ = publishWithMetrics` / `_ = probe` assignments that were never replaced with `discovery.Static(...).Run(ctx, ring.SetPods)`. Fix is a 1-goroutine addition.
+
+Ready for review. The k8s-discovery deferral is documented in the design and now lives in `.work/backlog/`.

@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -668,3 +668,21 @@ Stories 1+3 can run in parallel. Stories 2+4+6 depend on their respective predec
 ## Next
 
 `/agile-workflow:implement-orchestrator epic-e2e-cnd-coverage-object-storage-sync`
+
+## Implementation summary (2026-05-17)
+
+All 7 child stories landed at `stage: review`.
+
+| Story | Status | Notes |
+|---|---|---|
+| `golden-rpo0` | review | 4 subtests (small_commit, multi_pack_push, refs_only_update, tag_creation); direct `mn.ListObjects("sessions/<id>/")` assertion — non-tautological |
+| `golden-manifest` | review | Bidirectional manifest↔bucket consistency check; inline JSON struct mirror since tests/e2e module can't import internal/ |
+| `failure-startup` | review | Surfaced real bug: AWS SDK v2 S3 client is lazy → portal boots even with unreachable obj storage in clustered mode. `t.Skip` referencing backlog `object-storage-fail-fast-clustered-startup`. Test-integrity rule honored |
+| `failure-write-rejected` | review | Branched: PATH A (fail-fast at startup) and PATH B (lazy SDK → push fails). Both paths verify bucket has no orphaned writes |
+| `chaos-partition` | review | 3 subtests via Toxiproxy (latency / transient reset_peer / permanent disconnect); explicit RPO=0 violation enumeration in subtest 2 |
+| `fuzz-dsn` | review | 25 seeds + 50 random; controllable via `OBJ_DSN_FUZZ_COUNT`/`OBJ_DSN_FUZZ_SEED`; strict outcome classification (panic = bug, hang = bug, boot+OK or fail-fast = valid) |
+| `fuzz-manifest` | review | 15 seeds + N random; cold-start cluster per seed (slow, requires Docker); panic detection + silent-truncation detection both park-as-bug paths |
+
+Verification: `go build ./...` + `go vet ./...` clean. No silent-acceptance for RPO=0 invariant in any path. Two parked bugs surfaced (lazy-SDK fail-fast gap, optional silent-acceptance variant) — both documented as backlog items rather than silenced.
+
+Ready for review.

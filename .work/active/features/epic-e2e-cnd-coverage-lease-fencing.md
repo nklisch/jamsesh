@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -468,3 +468,21 @@ func TestFencingTokenRejectionIsExplicit(t *testing.T) { ... } // correctness
 ## Next
 
 `/agile-workflow:implement-orchestrator epic-e2e-cnd-coverage-lease-fencing`
+
+## Implementation summary (2026-05-17)
+
+All 5 child stories landed at `stage: review`.
+
+| Story | Status | Notes |
+|---|---|---|
+| `lease-fencing-infra` | review | `lease_inspect.go` helpers: `RequireLeaseHolder`, `FencingTokenForSession`, `ReleaseLeaseForcibly` |
+| `lease-fencing-golden` | review | 3 subtests; documented architectural finding — lease acquisition is lazy (post-receive); the 503-on-direct-pod scenario doesn't apply synchronously |
+| `lease-fencing-failure` | review | `lease_already_held` + `stale_fencing_token_rejected`; uses test-process advisory-lock injection (matches portal's `hashtext(sessionID)::oid`) |
+| `lease-fencing-chaos` | review | F13 lease_holder_killed (Kill + WaitForLeaseMigration + monotonic-token assertion); F14 cross_pod_clock_skew (uses `/test/clock-advance`) |
+| `lease-fencing-fuzz` | review | 17-seed corpus + random; injects forged fencing tokens via manifest.json; includes `TestFencingTokenRejectionIsExplicit` correctness sub-test |
+
+Verification: `go build ./...` + `go vet ./...` clean across both modules. No silent-acceptance bugs detected; all explicit fail-loudly assertions in place. The F14 clock-skew test stands as a real safety net — if cross-pod clock dependence exists, it surfaces.
+
+Cross-cutting finding: lease acquisition is lazy (post-receive sync path acquires advisory lock; HTTP handlers don't). Documented in golden's implementation notes. The router's 503-retry path is the synchronous "lease held elsewhere" surface, exercised by `routing-layer-failure-503-retry`.
+
+Ready for review.

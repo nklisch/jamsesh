@@ -3,7 +3,7 @@ id: epic-e2e-cnd-coverage-routing-layer-k8s-discovery
 kind: story
 stage: implementing
 tags: [e2e-test, testing, portal, infra]
-parent: epic-e2e-cnd-coverage-routing-layer
+parent: null
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
 release_binding: null
 gate_origin: null
