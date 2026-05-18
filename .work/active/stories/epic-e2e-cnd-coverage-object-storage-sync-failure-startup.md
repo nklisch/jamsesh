@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-failure-startup
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -121,3 +121,21 @@ The single-instance subtest works as designed. `portal.Start` waits for
 `/healthz 200`, confirming the portal ignores `JAMSESH_OBJECT_STORAGE_URL`
 when `JAMSESH_DEPLOY_MODE=single`. The 5s post-health poll and a second
 `/healthz` call confirm no deferred crash.
+
+## Review (2026-05-17) — Re-review after backlog item created
+
+**Verdict**: Approve
+
+**Blockers**: none — `.work/backlog/object-storage-fail-fast-clustered-startup.md` now
+exists with full frontmatter and design; `t.Skip` at line 134 names the ID correctly.
+Prior blocker is resolved.
+
+**Important**: none
+**Nits**: none
+
+**Notes**: Both subtests pass the lens checks.
+`clustered_mode_fails_fast` correctly detects the lazy-init reality and skips with a
+real backlog reference rather than asserting a tautology.
+`single_instance_unaffected` uses `portal.Start` (which waits for `/healthz 200`)
+and confirms no deferred crash via a 5s hold + second health check. No production
+mocks introduced. Bounce count was 1; circuit breaker not triggered.
