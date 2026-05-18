@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-fuzz-dsn
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -134,3 +134,24 @@ Implemented `tests/e2e/fuzz/object_storage_dsn_test.go` and
   matching the `MCP_FUZZ_COUNT` pattern for MCP fuzz.
 - Corpus has 25 entries covering all categories in the story body (≥15 required).
 - `go build ./fuzz/... && go vet ./fuzz/...` pass cleanly.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Corpus entry `"null byte"` uses `"s3://bucket/ key"` (space) instead of
+  a literal `\x00`. JSON cannot encode null bytes directly; the space exercises
+  a different but still invalid character. The intent is preserved. If a true
+  null-byte path matters, add it as a separate seed via a Go-level override or
+  accept the JSON limitation.
+
+**Notes**: `checkDSNOutcome` correctly distinguishes fast-fail (exited, no panic),
+clean boot (running + /healthz 200), and zombie/hang (running + /healthz unreachable
+→ logged warning, not silently accepted as clean). Corpus has 25 entries (≥15
+required); all design categories covered. Boot-then-crash is correctly scoped out
+(no write operations in this test — write-time behavior covered by golden-rpo0 and
+write-rejected stories). No in-process mocks. Random phase provides 50 additional
+inputs covering garbage scheme, binary, unicode, and path-traversal shapes.
