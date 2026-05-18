@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy
 kind: epic
-stage: drafting
+stage: review
 tags: [infra, portal]
 parent: null
 depends_on: []
@@ -255,3 +255,19 @@ re-discover them:
   feature design.)
 - Lease heartbeat cadence and timeout. (Resolved in lease-fencing
   feature design.)
+
+## Children complete (2026-05-17)
+
+All 5 child features landed and reviewed:
+
+| Feature | Verdict | Notes |
+|---|---|---|
+| operational-polish | Approve | Phase 1 single-instance polish — `/readyz`, `/metrics`, `_FILE` secrets, migration lock, graceful shutdown, PG pool config |
+| routing-layer | Approve | Phase 2 — standalone `cmd/jamsesh-router/` binary; consistent-hash + soft-coordinator hint cache; k8s + static discovery |
+| lease-fencing | Approve with comments | Phase 2 — per-session Postgres advisory locks with fencing tokens; NoopManager for single-instance compatibility |
+| object-storage-sync | Approve | Phase 2 — S3/GCS/Azure backends; RPO=0 sync; pack manifest for linearizable state; gc.auto=0 on CreateRepo |
+| hydration-handoff (review pending) | — | Phase 2 capstone — lifecycle manager + hydration on acquire + eviction on release; LRU + idle eviction |
+
+Verification: `go build ./...` clean; `go test ./...` green across all packages.
+
+Epic advanced `drafting → review`. The clustered-mode cloud-native deployment capability is end-to-end shipped: single-instance deploys remain the default and gain operational polish; clustered deploys are first-class with horizontal scaling, fail-stop safety, and clean session migration.

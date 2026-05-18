@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-hydration-handoff
 kind: feature
-stage: review
+stage: done
 tags: [portal]
 parent: epic-cloud-native-deploy
 depends_on: [epic-cloud-native-deploy-object-storage-sync, epic-cloud-native-deploy-lease-fencing, epic-cloud-native-deploy-routing-layer]
@@ -336,3 +336,25 @@ All 3 child stories landed and reviewed:
 Verification: `go build ./...` clean; `go test ./...` green across all packages.
 
 Feature advanced `implementing → review`. The capstone — clustered mode now supports clean pod-to-pod session migration via lease-driven hydration + eviction.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes** (aggregate concerns; per-line lenses exercised at story level):
+
+- **Capability completeness**: ✓ Sessions can migrate cleanly between pods. AcquireForRequest on a pod that doesn't have local state triggers hydration from object storage. Lease loss / idle timeout / explicit release / shutdown all drain in-flight uploads and evict local cache. LRU eviction caps local disk usage.
+- **Foundation-doc alignment**: ✓ SELF_HOST §14 reframed — clustered mode is no longer "preview"; all four primitives (routing, leases, durability, hydration) shipped. New hydration env vars documented. ARCHITECTURE Horizontal Scaling section updated. SPEC Deployment shape promotes clustered mode to first-class.
+- **Cross-cutting changes**:
+  - SyncPushPath signature change: `(ctx, sessionID, repoPath)` → `(ctx, sessionID, repoPath, handle lease.Handle)`. Caller now provides the long-held handle. Syncer.Lease field removed.
+  - store.Store interface gained `GetSessionByID(ctx, sessionID)` — cross-org primary-key lookup. Implemented in both adapters + TxStore wrappers; stubStore patched.
+  - 5 new metric handles in metrics.go (3 from hydrator story: HydrationsTotal, HydrationDurationSeconds, HydrationBytesTotal; 2 from lifecycle story: LifecycleActiveSessions, LifecycleEvictionsTotal{reason}).
+  - 4 new config env vars (`JAMSESH_HYDRATION_IDLE_TIMEOUT_S`, `_CACHE_MAX_BYTES`, `_IDLE_CHECK_PERIOD_S`, `_WORKERS`).
+
+The acquire-per-sync lease pattern that the pipeline story documented as "deferred to hydration-handoff" is now resolved — LifecycleManager owns the long-held handle and routes it through to SyncPushPath. The pipeline story's note is now satisfied.
+
+This is the capstone feature of `epic-cloud-native-deploy`. With it landing, the epic is functionally complete.
