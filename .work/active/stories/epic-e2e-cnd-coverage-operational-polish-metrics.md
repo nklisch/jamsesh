@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-metrics
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -56,3 +56,24 @@ and contains at least one well-known metric family.
 - `cmd/jamsesh-router/main.go:145` — router's `/metrics` mount as
   reference for unauth convention
 - `github.com/prometheus/common/expfmt` — Prom textparser
+
+## Implementation notes
+
+- **Endpoint location confirmed**: `/metrics` is mounted unauthenticated in
+  `internal/portal/router/router.go:98` via `r.Mount("/metrics", d.MetricsHandler)`.
+  The router comment explicitly says "unauthenticated; operators secure via
+  network policy" — no auth required.
+- **Metrics always present**: `internal/portal/metrics/metrics.go` calls
+  `collectors.NewGoCollector()` and `collectors.NewProcessCollector()` in
+  `New()`, so `go_goroutines` and `process_*` families are always registered.
+  The spot-check targets `go_goroutines` as the primary well-known family.
+- **Dependencies added to `tests/e2e/go.mod`**: `github.com/prometheus/common
+  v0.66.1` (direct), `github.com/prometheus/client_model v0.6.2` (direct),
+  plus transitive pulls of `google.golang.org/protobuf v1.36.8` and
+  `github.com/munnerz/goautoneg`. Versions match the main module's go.mod to
+  avoid conflicting transitive resolution.
+- **`familyNames` helper**: returns sorted family names for deterministic
+  failure messages — avoids non-deterministic map iteration in t.Fatalf output.
+- **Auth escape hatch**: if `/metrics` ever returns 401, the test fails loudly
+  with the `WWW-Authenticate` header value named explicitly. No silent skip.
+- **`go build ./golden/... && go vet ./golden/...`** both pass clean.
