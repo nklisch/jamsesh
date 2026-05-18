@@ -57,3 +57,31 @@ story's advancement to done — the hand-written code compiles, passes
 tests, and matches established codebase patterns. This is a safety
 follow-up to ensure no drift accumulates before downstream consumers
 (`epic-cloud-native-deploy-lease-fencing-postgres`) build on top.
+
+## Implementation notes
+
+Attempted 2026-05-17. The `sqlc` binary is not available in this
+environment (`command -v sqlc` returns nothing). Verification deferred
+per the design-flaw escape hatch: manual pattern matching or code
+reading is not an authoritative substitute for running `sqlc generate`
+directly.
+
+## Blocker
+
+**`sqlc` binary unavailable in this environment.**
+
+To unblock:
+
+1. Install `sqlc` v1.31.x (matching the version pinned in `sqlc.yaml`
+   and any CI docs): `go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.0`
+   or via the project's preferred package manager.
+2. From the repo root, run `make generate-db`.
+3. `git diff` — inspect changes to:
+   - `internal/db/pgstore/leases.sql.go`
+   - `internal/db/sqlitestore/leases.sql.go`
+   - `internal/db/pgstore/models.go`
+   - `internal/db/sqlitestore/models.go`
+   - `internal/db/pgstore/querier.go`
+   - `internal/db/sqlitestore/querier.go`
+4. Reconcile any semantic diffs, verify `go build ./... && go test ./...`,
+   commit the regenerated files, and advance this story to `review`.
