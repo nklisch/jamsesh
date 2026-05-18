@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-email-future-release
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -63,3 +63,13 @@ a full §6 rewrite. The new section documents:
 No other sections were touched. All env var names, YAML keys, and defaults
 were verified directly from `internal/portal/config/config.go` and
 `internal/portal/senders/`.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

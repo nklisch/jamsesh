@@ -1,7 +1,7 @@
 ---
 id: gate-docs-spec-arch-no-git-http-backend
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -49,3 +49,13 @@ before spawn. Drop the `git http-backend` mention.
 - `docs/SPEC.md` line 20-21: replaced "via subprocess or `git http-backend` CGI" with "`git-upload-pack` and `git-receive-pack` spawned as subprocesses with `--stateless-rpc`".
 - `docs/ARCHITECTURE.md` lines 64-71: replaced the "Wraps the canonical `git http-backend` CGI..." passage with text describing direct subprocess spawning with `--stateless-rpc`, in-process pre-receive validation, and chi-router auth enforcement — consistent with `internal/portal/githttp/` code.
 - Final grep confirms zero remaining `http-backend` or `CGI` references in both files.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

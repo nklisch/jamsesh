@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-frontend-unused-beforeeach-import
 kind: story
-stage: review
+stage: done
 tags: [cleanup, ui]
 parent: null
 depends_on: []
@@ -41,3 +41,13 @@ Removed `beforeEach` from the vitest import destructuring in each of the three f
 - `frontend/src/lib/screens/SessionsLanding.test.ts`: `{ describe, it, expect, vi, afterEach }` (kept `afterEach`)
 
 Verified: `tsc --noUnusedLocals --noUnusedParameters --noEmit` no longer reports `beforeEach` errors in any of the three files. All 24 tests across the three suites pass.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

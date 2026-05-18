@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-withopenurl
 kind: story
-stage: review
+stage: done
 tags: [cleanup, plugin]
 parent: null
 depends_on: []
@@ -43,3 +43,13 @@ tests" but it isn't used at all.
   file and the parent epic doc.
 - `go build ./cmd/jamsesh/auth/...` and `go test ./cmd/jamsesh/auth/...` both
   pass cleanly.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

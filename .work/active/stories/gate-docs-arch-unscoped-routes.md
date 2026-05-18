@@ -1,7 +1,7 @@
 ---
 id: gate-docs-arch-unscoped-routes
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -46,3 +46,13 @@ Three lines edited in `docs/ARCHITECTURE.md`:
 - **Line 338** (finalize section): `GET /finalize-plan` → `GET /api/orgs/{orgID}/sessions/{sessionID}/finalize-plan`
 
 Canonical path shapes confirmed from `docs/openapi.yaml` (lines 2067 and 2714). No prose added, no semantic claims changed, no lines touched by sibling stories `gate-docs-arch-k8s-discovery` or `gate-docs-spec-arch-no-git-http-backend`.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-refresher-wired-or-deleted
 kind: story
-stage: review
+stage: done
 tags: [cleanup, plugin]
 parent: null
 depends_on: []
@@ -88,3 +88,13 @@ path at the `Client` level, and `TestRefresher_Refresh_WritesTokens` verifies
 that `Refresher.Refresh` persists tokens correctly. Together they cover the
 composed behaviour. End-to-end verification via `jamsesh status` with an
 expired access token is left as a manual sanity check.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

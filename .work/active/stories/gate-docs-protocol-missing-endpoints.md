@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-missing-endpoints
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -78,3 +78,13 @@ modified. Endpoints added:
 - `POST /api/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token` — obtain HTTPS fetch token
 
 Path names match openapi.yaml verbatim (e.g. `{commentId}` not `{commentID}`).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

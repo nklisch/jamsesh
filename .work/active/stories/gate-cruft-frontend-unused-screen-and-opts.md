@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-frontend-unused-screen-and-opts
 kind: story
-stage: review
+stage: done
 tags: [cleanup, ui]
 parent: null
 depends_on: []
@@ -40,3 +40,13 @@ FinalizeView.test.ts:213 — 'opts' is declared but its value is never read.
 - `FinalizeView.test.ts:213`: renamed `opts` → `_opts` on the `mockPOST.mockImplementation` callback to satisfy `noUnusedParameters`; arity and type signature preserved.
 - `tsc --noUnusedLocals --noUnusedParameters --noEmit` produces no hits for either symbol.
 - 23/23 tests pass (10 TreeDag + 13 FinalizeView).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

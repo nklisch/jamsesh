@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-disablessl-config
 kind: story
-stage: review
+stage: done
 tags: [cleanup, portal, infra]
 parent: null
 depends_on: []
@@ -48,3 +48,13 @@ Lines removed:
 - `internal/portal/storage/objectstore/s3.go` lines 50–55: deleted the `DisableSSL bool` field and its deprecation comment from `S3Config`
 
 No read references (`if cfg.DisableSSL { ... }`) existed anywhere in the codebase. No test files referenced the field. Build and test suite pass cleanly.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

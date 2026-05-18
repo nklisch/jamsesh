@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-isPermanentCode
 kind: story
-stage: review
+stage: done
 tags: [cleanup, plugin]
 parent: null
 depends_on: []
@@ -47,3 +47,13 @@ unnecessary.
 - Trimmed the package-level doc comment: removed the stale bullet about "4xx with a recognised permanent error code" and the paragraph listing permanent error code prefixes — both described logic that lived only in the dead helper.
 - Updated the package doc to accurately reflect the actual rule: "Any 4xx → Permanent".
 - Build and tests pass (`go build`, `go test` — 0.001s, ok).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

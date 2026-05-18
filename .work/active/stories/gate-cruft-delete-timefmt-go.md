@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-timefmt-go
 kind: story
-stage: review
+stage: done
 tags: [cleanup, portal]
 parent: null
 depends_on: []
@@ -43,3 +43,13 @@ directly.
 - Deleted via `git rm internal/db/store/timefmt.go`.
 - `go build ./internal/db/...` — clean.
 - `go test ./internal/db/...` — all pass (`store` 0.135s, `db` cached).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

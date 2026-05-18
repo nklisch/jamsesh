@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-unscoped-routes
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -58,3 +58,13 @@ Lines edited in `docs/PROTOCOL.md` (original line numbers, Sessions and Session-
 - Line 123: `GET /api/sessions/<id>/finalize-plan` → `GET /api/orgs/{orgID}/sessions/{sessionID}/finalize-plan`
 
 Path parameter naming matches `docs/openapi.yaml` verbatim (`{orgID}`, `{sessionID}`, `{accountID}`). No new endpoints added; no section restructuring. The Orgs & accounts section (lines 101-102) already used org-scoped paths and was left unchanged.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

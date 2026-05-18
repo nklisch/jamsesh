@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-router-kube-discovery-wired-or-deleted
 kind: story
-stage: review
+stage: done
 tags: [cleanup, infra]
 parent: null
 depends_on: []
@@ -78,3 +78,13 @@ Removed 3 direct dependencies and ~13 indirect dependencies. Direct removals:
 
 ### No e2e test impact
 No files under `tests/e2e/` imported k8s discovery symbols. The two k8s mentions in `tests/e2e/` are incidental comments about Kubernetes deployment patterns, not related to the discovery package.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

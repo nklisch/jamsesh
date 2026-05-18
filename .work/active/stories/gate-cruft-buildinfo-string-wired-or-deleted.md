@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-buildinfo-string-wired-or-deleted
 kind: story
-stage: review
+stage: done
 tags: [cleanup, portal]
 parent: null
 depends_on: []
@@ -46,3 +46,13 @@ Chose to wire `buildinfo.String()` into both documented surfaces:
 3. **Test update** (`internal/portal/router/router_test.go`): Added an assertion that `body["version"]` is non-empty in `TestHealthz` — previously the test didn't assert on the new field, which would have let the wire silently regress.
 
 All packages build cleanly (`go build ./...`) and the target test suites pass (`internal/buildinfo`, `internal/portal/router`, `cmd/...`).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

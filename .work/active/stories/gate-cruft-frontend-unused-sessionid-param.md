@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-frontend-unused-sessionid-param
 kind: story
-stage: review
+stage: done
 tags: [cleanup, ui]
 parent: null
 depends_on: []
@@ -50,3 +50,13 @@ Verification:
 - `tsc --noUnusedLocals --noUnusedParameters --noEmit` produced no output for
   these three files (sessionId warnings fully cleared).
 - All 28 tests across the three test files passed (3 test files, 28 tests).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

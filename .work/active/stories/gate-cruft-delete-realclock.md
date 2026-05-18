@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-realclock
 kind: story
-stage: review
+stage: done
 tags: [cleanup, portal]
 parent: null
 depends_on: []
@@ -54,3 +54,13 @@ unchanged. Doc-comments on `now()` in both files updated to reference
 `time.Now().UTC()` rather than the now-deleted `realClock` type.
 
 Build and tests pass: `go build` and `go test` both clean for both packages.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

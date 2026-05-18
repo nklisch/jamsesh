@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-ws-envelope-version
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -46,3 +46,13 @@ field is the envelope-schema version (currently always `1`).
 - Added `"version": 1` to the WebSocket envelope JSON sample in `docs/PROTOCOL.md` (lines 340-348), placed adjacent to `seq` as the envelope-level metadata fields group naturally together.
 - Added a one-sentence prose note after the sample explaining that `version` is the envelope-schema version (currently always `1`) and that it allows future envelope format changes without breaking existing clients.
 - Schema cross-checked against `docs/openapi.yaml:143-170`: `EventEnvelope` has `required: [seq, version, type, payload, timestamp, session_id]` with `version: enum: [1]` — the sample now matches.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

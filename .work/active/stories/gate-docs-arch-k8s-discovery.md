@@ -1,7 +1,7 @@
 ---
 id: gate-docs-arch-k8s-discovery
 kind: story
-stage: review
+stage: done
 tags: [documentation, infra]
 parent: null
 depends_on: []
@@ -58,3 +58,13 @@ lead-in and both mode bullets with a single paragraph describing only the static
 discovery that is actually wired. Dropped `JAMSESH_ROUTER_DISCOVERY_MODE` and
 `JAMSESH_ROUTER_KUBE_*` env var references from the section. No other sections
 touched.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

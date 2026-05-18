@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-k8s-wrong-env-vars
 kind: story
-stage: review
+stage: done
 tags: [documentation, infra]
 parent: null
 depends_on: []
@@ -59,3 +59,13 @@ config knob if a session secret is required.
   references to any of the three removed names.
 - Edit is confined to `docs/SELF_HOST.md` lines 1187-1211 (§14 portal
   Deployment). §13 and all other sections are untouched.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

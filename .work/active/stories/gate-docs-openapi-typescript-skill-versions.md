@@ -1,7 +1,7 @@
 ---
 id: gate-docs-openapi-typescript-skill-versions
 kind: story
-stage: review
+stage: done
 tags: [documentation, ui]
 parent: null
 depends_on: []
@@ -57,3 +57,13 @@ Changes made to `.claude/skills/openapi-typescript/SKILL.md`:
    applies only to the generator (`openapi-typescript`) and `^` applies to
    `openapi-fetch`, matching actual `frontend/package.json` pins.
 4. **Version pin verification date bumped** from 2026-05-16 to 2026-05-18.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

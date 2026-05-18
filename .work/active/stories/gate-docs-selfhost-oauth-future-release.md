@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-oauth-future-release
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -59,3 +59,13 @@ release" sentence or move it to an explicitly-deferred bullet.
   `internal/portal/config/config.go:60` (_FILE variant).
 - `JAMSESH_PORTAL_URL` is already documented in §2 and its role in
   constructing OAuth callback URLs is noted in that row; §4 now cross-links it.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

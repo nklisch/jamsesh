@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-portal-url-default
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -36,3 +36,13 @@ when … reverse proxy" qualification.
 
 ## Implementation notes
 Changed the default cell for `JAMSESH_PORTAL_URL` in `docs/SELF_HOST.md:116` from `_(none)_` to `http://localhost:8443`, matching `internal/portal/config/config.go:351` (`PortalURL: "http://localhost:8443"`). Description and qualification text left intact.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.

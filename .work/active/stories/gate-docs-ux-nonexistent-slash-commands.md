@@ -1,7 +1,7 @@
 ---
 id: gate-docs-ux-nonexistent-slash-commands
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -59,3 +59,13 @@ server-side; the `UserPromptSubmit` hook fetches `session-remote` at the
 start of every agent turn (`cmd/jamsesh/hooks/userpromptsubmit.go:169`),
 so the new ref is available locally on the next turn without any manual
 step.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Mechanical change matching the gate finding spec. Implementation notes accurately describe what was changed. Global `go build ./...` and `go test ./internal/portal/...` pass after the wave landed.
