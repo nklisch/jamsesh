@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-file-secrets
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -73,3 +73,50 @@ follow-up if desired).
 - `tests/e2e/failure/config_and_deps_test.go:296` — existing
   `ContainerFile` mount pattern
 - `tests/e2e/fixtures/portal/portal.go:45-79` — `Options` struct to extend
+
+## Implementation notes
+
+### Fixture extension (`tests/e2e/fixtures/portal/portal.go`)
+
+Added `ContainerFiles []testcontainers.ContainerFile` to `Options` after
+`ExtraEnv`. Wired via `Files: opts.ContainerFiles` in the
+`ContainerRequest`. Zero-value `nil` produces no mounts — full backward
+compatibility with all existing callers confirmed via `go build ./...`.
+
+### Happy-path test (`tests/e2e/golden/file_secret_happy_path_test.go`)
+
+`TestFileSecretHappyPath` starts a Postgres fixture, writes `pg.ContainerDSN`
+to a host-side temp file, and mounts it into the portal at
+`/run/secrets/db_dsn`. `ExtraEnv` sets both `JAMSESH_DB_DSN_FILE` (the
+mounted path) and clears `JAMSESH_DB_DSN` to `""` (overriding `buildEnv`'s
+`:memory:` default). `readEnvOrFile` gives `_FILE` precedence over the plain
+var, so either approach works — clearing the plain var makes the test intent
+unambiguous. `portal.Start`'s `/healthz` wait strategy proves the portal
+fully booted with the Postgres DSN from the secret file.
+
+No extra `OmitDBDSN bool` flag was needed: `ExtraEnv` runs last in `buildEnv`
+and overwrites existing keys (verified at `portal.go:218-221`), so
+`ExtraEnv["JAMSESH_DB_DSN"] = ""` reliably clears the default.
+
+### Failure tests (`tests/e2e/failure/file_secret_missing_test.go`)
+
+`TestFileSecretMissing` reuses the `requireDockerLocal` / `requirePortalImageLocal`
+helpers from `config_and_deps_test.go` (same package). Two subtests:
+
+- `file_missing`: `JAMSESH_DB_DSN_FILE=/no/such/file` — no mount, file never exists.
+- `file_unreadable`: file mounted with `FileMode: 0o000`; container process
+  (nobody) cannot open it.
+
+Both use raw `testcontainers.GenericContainer` (no `WaitingFor`) — the same
+pattern as `startFailingPortal`. `assertFileSecretFailure` polls for
+`status == "exited"` within 30 s, asserts exit code ≠ 0, then reads logs
+and requires a substring matching `_file` (lower-cased), `"read secret"`, or
+`"secret file"`. `config/secrets.go:readEnvOrFile` produces
+`"config: read JAMSESH_DB_DSN_FILE (<path>): <os error>"` — always contains
+`_FILE` — satisfying the assertion.
+
+### Deviations from story spec
+
+None material. The story spec suggested `io.ReadAll` without an import — added
+`"io"` to the failure test imports. The happy-path spec suggested passing
+`DBDriver: "postgres"` with an empty `DBDSN`; implemented exactly that.

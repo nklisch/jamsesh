@@ -76,6 +76,11 @@ type Options struct {
 	// ExtraEnv passes additional JAMSESH_* env vars to the container.
 	// Keys must be the full env-var name, e.g. "JAMSESH_LOG_LEVEL".
 	ExtraEnv map[string]string
+
+	// ContainerFiles mounts host files into the container at fixed paths.
+	// Use for _FILE secrets (e.g. JAMSESH_DB_DSN_FILE=/run/secrets/db_dsn).
+	// Empty slice = no mounts, matching current default behavior.
+	ContainerFiles []testcontainers.ContainerFile
 }
 
 // Portal holds connection info for a running portal container.
@@ -132,6 +137,7 @@ func Start(ctx context.Context, t *testing.T, opts Options) *Portal {
 			Image:        image,
 			ExposedPorts: []string{containerPort},
 			Env:          env,
+			Files:        opts.ContainerFiles,
 			WaitingFor: wait.ForHTTP("/healthz").
 				WithPort(containerPort).
 				WithStatusCodeMatcher(func(code int) bool { return code == 200 }).
