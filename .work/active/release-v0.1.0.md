@@ -50,3 +50,5 @@ self-host docs).
   - 23 items into `.work/active/stories/` (gate-tests-*) — Critical/High at `implementing`, Medium at `drafting`
   - 2 items into `.work/backlog/` (Low severity)
   - 1 tautological test flagged (`TestGitHub_Exchange_PicksPrimaryVerifiedEmail`) — to be reworked under `gate-tests-github-oauth-unverified-email`
+- **gate-cruft** (2026-05-18) — 16 findings (13 High, 3 Medium, 0 Low)
+  - 16 items into `.work/active/stories/` (gate-cruft-*) — High at `implementing`, Medium at `drafting`
