@@ -1,7 +1,7 @@
 ---
 id: gate-tests-lifecycle-hydration-failure-unskip
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, infra]
 parent: null
 depends_on: []
@@ -35,3 +35,15 @@ guaranteed.
 
 ## Test location (suggested)
 `internal/portal/storage/objectstore/lifecycle_test.go`
+
+## Implementation notes
+
+Applied Option A (convert to `t.Fatalf`) at both locations:
+
+- `lifecycle_test.go:387`: `t.Skip` → `t.Fatalf("precondition failed: lease was not even acquired ...")`
+- `lifecycle_test.go:506`: `t.Skip` → `t.Fatalf("precondition failed: repo directory was never created ...")`
+
+Both `TestLifecycle_AcquireForRequest_HydrationFailure` and
+`TestLifecycle_Release_EvictsLocalCache` pass after the change — the fixture
+was fine all along and the skips were over-defensive. No production bug
+surfaced; no backlog item needed.

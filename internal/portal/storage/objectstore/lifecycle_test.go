@@ -384,7 +384,7 @@ func TestLifecycle_AcquireForRequest_HydrationFailure(t *testing.T) {
 	// The lease handle must have been released (Lost() should be closed).
 	h := lm.handleFor("sess-fail")
 	if h == nil {
-		t.Skip("lease was not even acquired (backend error before acquire) — no handle to check")
+		t.Fatalf("precondition failed: lease was not even acquired (backend error before acquire) — no handle to check")
 	}
 	select {
 	case <-h.lost:
@@ -503,7 +503,7 @@ func TestLifecycle_Release_EvictsLocalCache(t *testing.T) {
 	// should exist.
 	repoPath := stor.RepoPath("test-org", sessionID)
 	if _, statErr := os.Stat(repoPath); os.IsNotExist(statErr) {
-		t.Skip("repo directory was never created (hydrator skipped CreateRepo) — eviction test not meaningful")
+		t.Fatalf("precondition failed: repo directory was never created (hydrator skipped CreateRepo) — eviction test not meaningful")
 	}
 
 	if err := mgr.Release(ctx, sessionID); err != nil {
