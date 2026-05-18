@@ -103,24 +103,24 @@ WebSocket.
 
 ### Sessions
 
-- `POST /api/sessions` — create a session; body includes name, goal, scope,
+- `POST /api/orgs/{orgID}/sessions` — create a session; body includes name, goal, scope,
   default_mode
-- `GET /api/sessions` — list sessions visible to the user (active + recent)
-- `GET /api/sessions/<id>` — session metadata
-- `PATCH /api/sessions/<id>` — update goal, scope (widen only), default_mode
-- `POST /api/sessions/<id>/finalize` — mark session as finalizing, acquire
+- `GET /api/orgs/{orgID}/sessions` — list sessions visible to the user (active + recent)
+- `GET /api/orgs/{orgID}/sessions/{sessionID}` — session metadata
+- `PATCH /api/orgs/{orgID}/sessions/{sessionID}` — update goal, scope (widen only), default_mode
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/finalize` — mark session as finalizing, acquire
   a finalize lock for curation (see finalize-plan endpoint for the plan
   body, which is squash-by-default with a preserve-all opt-in)
-- `POST /api/sessions/<id>/abandon` — close session without finalize
-- `POST /api/sessions/<id>/invites` — invite participants
-- `POST /api/sessions/<id>/members/<account_id>/remove` — remove a member
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/abandon` — close session without finalize
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/invites` — invite participants
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove` — remove a member
 
 ### Session state (used by the local binary)
 
-- `GET /api/sessions/<id>/digest?since=<seq>` — formatted digest for the next
+- `GET /api/orgs/{orgID}/sessions/{sessionID}/digest?since=<seq>` — formatted digest for the next
   turn. Returns text suitable for `additionalContext` injection.
-- `GET /api/sessions/<id>/refs` — all refs in the session with mode and tip
-- `GET /api/sessions/<id>/finalize-plan` — the finalize plan: mode-aware
+- `GET /api/orgs/{orgID}/sessions/{sessionID}/refs` — all refs in the session with mode and tip
+- `GET /api/orgs/{orgID}/sessions/{sessionID}/finalize-plan` — the finalize plan: mode-aware
   shell script body (squash via `cherry-pick --no-commit` + composed
   commit, or per-commit `cherry-pick` in preserve mode), plain-English
   summary, composed commit message + `Co-authored-by` list (squash mode),

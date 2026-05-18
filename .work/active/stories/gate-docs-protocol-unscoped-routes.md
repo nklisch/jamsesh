@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-unscoped-routes
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -40,3 +40,21 @@ or in chi.
 Rewrite the PROTOCOL.md REST sections (Auth/Orgs/Sessions/Session-state)
 to use `/api/orgs/{orgID}/sessions/{sessionID}/...` paths and add the
 missing org-scoping. Match the live OpenAPI catalog.
+
+## Implementation notes
+
+Lines edited in `docs/PROTOCOL.md` (original line numbers, Sessions and Session-state sections):
+
+- Line 106: `POST /api/sessions` → `POST /api/orgs/{orgID}/sessions`
+- Line 108: `GET /api/sessions` → `GET /api/orgs/{orgID}/sessions`
+- Line 109: `GET /api/sessions/<id>` → `GET /api/orgs/{orgID}/sessions/{sessionID}`
+- Line 110: `PATCH /api/sessions/<id>` → `PATCH /api/orgs/{orgID}/sessions/{sessionID}`
+- Line 111: `POST /api/sessions/<id>/finalize` → `POST /api/orgs/{orgID}/sessions/{sessionID}/finalize`
+- Line 114: `POST /api/sessions/<id>/abandon` → `POST /api/orgs/{orgID}/sessions/{sessionID}/abandon`
+- Line 115: `POST /api/sessions/<id>/invites` → `POST /api/orgs/{orgID}/sessions/{sessionID}/invites`
+- Line 116: `POST /api/sessions/<id>/members/<account_id>/remove` → `POST /api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove`
+- Line 120: `GET /api/sessions/<id>/digest?since=<seq>` → `GET /api/orgs/{orgID}/sessions/{sessionID}/digest?since=<seq>`
+- Line 122: `GET /api/sessions/<id>/refs` → `GET /api/orgs/{orgID}/sessions/{sessionID}/refs`
+- Line 123: `GET /api/sessions/<id>/finalize-plan` → `GET /api/orgs/{orgID}/sessions/{sessionID}/finalize-plan`
+
+Path parameter naming matches `docs/openapi.yaml` verbatim (`{orgID}`, `{sessionID}`, `{accountID}`). No new endpoints added; no section restructuring. The Orgs & accounts section (lines 101-102) already used org-scoped paths and was left unchanged.
