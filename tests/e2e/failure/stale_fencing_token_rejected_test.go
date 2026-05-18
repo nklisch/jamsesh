@@ -20,9 +20,16 @@
 // that is a Critical split-brain bug — the stale-token guard is broken. This test
 // will t.Fatal in that case, not t.Skip.
 //
-// SKIP path: if the manifest format cannot be injected from the test (e.g., the
-// MinIO ETag-conditional-write rejects our unconditional PutObject), this test
-// skips with a documented reason pointing to a follow-on story.
+// Manifest forging uses map[string]interface{} rather than a typed shadow struct or
+// the production objectstore.Manifest type. This approach:
+//   - Avoids cross-module imports (the e2e suite is a separate Go module and cannot
+//     import jamsesh/internal/... directly without a go.work workspace or replace
+//     directive — neither is in place in this repo).
+//   - Eliminates any field-name / JSON-tag divergence between the shadow struct
+//     and the production type (e.g. time.Time vs string for UpdatedAt).
+//   - Preserves all fields from the real manifest byte-for-byte, mutating only
+//     "fencing_token". A typed struct would re-encode every field, risking subtle
+//     encoding differences.
 package failure_test
 
 import (
@@ -52,24 +59,43 @@ import (
 	"jamsesh/tests/e2e/fixtures/postgres"
 )
 
-// staleManifest mirrors the Manifest struct from internal/portal/storage/objectstore/manifest.go.
-// We only need the FencingToken field to be correct; other fields can carry
-// the values from the last legitimate push.
-type staleManifest struct {
-	Version      int               `json:"version"`
-	SessionID    string            `json:"session_id"`
-	Packs        []stalePack       `json:"packs"`
-	Refs         map[string]string `json:"refs"`
-	PackedRefs   string            `json:"packed_refs"`
-	FencingToken int64             `json:"fencing_token"`
-	UpdatedAt    string            `json:"updated_at"` // RFC3339 string — kept as-is
+// manifestFencingToken extracts the fencing_token field from a raw manifest
+// JSON blob. Returns the value as int64. t.Fatal is called if the blob is
+// not valid JSON or if the field is missing or has the wrong type.
+func manifestFencingToken(t *testing.T, label string, data []byte) int64 {
+	t.Helper()
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("manifestFencingToken(%s): unmarshal: %v", label, err)
+	}
+	v, ok := m["fencing_token"]
+	if !ok {
+		t.Fatalf("manifestFencingToken(%s): field 'fencing_token' not present in manifest", label)
+	}
+	// JSON numbers unmarshal into float64.
+	f, ok := v.(float64)
+	if !ok {
+		t.Fatalf("manifestFencingToken(%s): field 'fencing_token' has type %T, want float64 (JSON number)", label, v)
+	}
+	return int64(f)
 }
 
-// stalePack mirrors PackEntry minimally.
-type stalePack struct {
-	PackKey string `json:"pack_key"`
-	IdxKey  string `json:"idx_key"`
-	SHA     string `json:"sha"`
+// forgeManifestToken returns a new JSON blob identical to data except that
+// the "fencing_token" field is set to newToken. All other fields are
+// preserved as-is (re-encoded from their decoded representation).
+// t.Fatal is called on any JSON error.
+func forgeManifestToken(t *testing.T, data []byte, newToken int64) []byte {
+	t.Helper()
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("forgeManifestToken: unmarshal: %v", err)
+	}
+	m["fencing_token"] = newToken
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("forgeManifestToken: marshal: %v", err)
+	}
+	return out
 }
 
 // TestStaleFencingTokenRejected verifies that the portal's ManifestStore.Save
@@ -177,59 +203,36 @@ func TestStaleFencingTokenRejected(t *testing.T) {
 	t.Logf("stale_fencing_token_rejected: T2 = %d (monotonicity confirmed: T2 > T1)", tokenT2)
 
 	// ── Step 5: Read current on-disk manifest from MinIO ───────────────────────
+	// The manifest is written synchronously by SyncPushPath inside the portal's
+	// post-receive hook before returning 200 OK to the git client, so by the time
+	// staleFencingPush returns the manifest must be present. We poll briefly (up
+	// to 10s) to absorb any sub-second container timing.
 	manifestKey := "sessions/" + sessionID + "/manifest.json"
-	manifestBytes, err := mn.GetObject(ctx, manifestKey)
-	if err != nil {
-		// If the manifest doesn't exist yet (no push happened through object storage),
-		// the stale-token scenario cannot be constructed from this test.
-		// This is an architecture-visibility gap, not a portal bug — skip with docs.
-		t.Skipf(
-			"blocked on stale-token-injection-needs-manifest-format-exposure (backlog); "+
-				"cannot construct stale-token state without exposing objectstore.Manifest — "+
-				"could not read on-disk manifest from MinIO (key=%q): %v — "+
-				"the manifest may not have been written yet (lazy acquisition architecture means "+
-				"no manifest exists until the post-receive phase completes). "+
-				"The advisory-lock exclusivity assertion (TestLeaseAlreadyHeld) is the primary "+
-				"split-brain guard; this test covers the manifest-layer guard.",
-			manifestKey, err,
-		)
-	}
+	manifestBytes := staleFencingWaitForManifest(ctx, t, mn, manifestKey, 10*time.Second)
 	t.Logf("stale_fencing_token_rejected: read manifest from MinIO (%d bytes)", len(manifestBytes))
 
-	// Decode the manifest to get the current on-disk shape.
-	var currentManifest staleManifest
-	if err := json.Unmarshal(manifestBytes, &currentManifest); err != nil {
-		t.Skipf(
-			"blocked on stale-token-injection-needs-manifest-format-exposure (backlog); "+
-				"cannot construct stale-token state without exposing objectstore.Manifest — "+
-				"manifest at %q is not parseable JSON: %v — "+
-				"cannot inject T3 without understanding the manifest format.",
-			manifestKey, err,
-		)
-	}
-	t.Logf("stale_fencing_token_rejected: on-disk manifest has FencingToken=%d (should match T2=%d)",
-		currentManifest.FencingToken, tokenT2)
+	// Validate the manifest is valid JSON and has the expected fencing token.
+	// We parse into map[string]interface{} to stay within the e2e module boundary
+	// (avoids importing jamsesh/internal/... across module boundaries) while
+	// still round-tripping through real production-written JSON bytes.
+	onDiskToken := manifestFencingToken(t, "on-disk after T2 push", manifestBytes)
+	t.Logf("stale_fencing_token_rejected: on-disk manifest has fencing_token=%d (should match T2=%d)",
+		onDiskToken, tokenT2)
 
 	// ── Step 6: Inject T3 (a future-pod's artificially high token) ─────────────
 	// We set the manifest's fencing token to T3 = T2 + 1000, simulating a
 	// scenario where a future pod advanced the token. Any subsequent write from
 	// pod survivorIdx (which has token T2) must be blocked by ErrFenced.
 	tokenT3 := tokenT2 + 1000
-	forgedManifest := currentManifest
-	forgedManifest.FencingToken = tokenT3
-
-	forgedBytes, err := json.Marshal(forgedManifest)
-	if err != nil {
-		t.Fatalf("stale_fencing_token_rejected: marshal forged manifest: %v", err)
-	}
+	forgedBytes := forgeManifestToken(t, manifestBytes, tokenT3)
 
 	// Overwrite the manifest in MinIO with the forged version (T3).
+	// mn.PutObject is an unconditional write — no ETag or conditional-write
+	// semantics — so it must always succeed when MinIO is reachable.
 	if err := mn.PutObject(ctx, manifestKey, forgedBytes); err != nil {
-		t.Skipf(
-			"blocked on stale-token-injection-needs-manifest-format-exposure (backlog); "+
-				"cannot construct stale-token state without exposing objectstore.Manifest — "+
-				"could not write forged manifest to MinIO (key=%q): %v — "+
-				"the MinIO fixture's PutObject does not support unconditional overwrite on this object.",
+		t.Fatalf(
+			"stale_fencing_token_rejected: could not write forged manifest to MinIO (key=%q): %v — "+
+				"mn.PutObject is unconditional; this is a fixture or MinIO infrastructure failure.",
 			manifestKey, err,
 		)
 	}
@@ -240,15 +243,12 @@ func TestStaleFencingTokenRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stale_fencing_token_rejected: read-back forged manifest: %v", err)
 	}
-	var verifyManifest staleManifest
-	if jsonErr := json.Unmarshal(verifyBytes, &verifyManifest); jsonErr != nil {
-		t.Fatalf("stale_fencing_token_rejected: decode read-back manifest: %v", jsonErr)
-	}
-	if verifyManifest.FencingToken != tokenT3 {
+	verifyToken := manifestFencingToken(t, "read-back after forge", verifyBytes)
+	if verifyToken != tokenT3 {
 		t.Fatalf(
-			"stale_fencing_token_rejected: forged manifest read-back has FencingToken=%d, want T3=%d — "+
+			"stale_fencing_token_rejected: forged manifest read-back has fencing_token=%d, want T3=%d — "+
 				"PutObject did not persist the forged token",
-			verifyManifest.FencingToken, tokenT3,
+			verifyToken, tokenT3,
 		)
 	}
 	t.Logf("stale_fencing_token_rejected: forged manifest verified on-disk with T3=%d", tokenT3)
@@ -296,29 +296,25 @@ func TestStaleFencingTokenRejected(t *testing.T) {
 	if err != nil {
 		t.Errorf("stale_fencing_token_rejected: read manifest after stale push: %v", err)
 	} else {
-		var postPushManifest staleManifest
-		if jsonErr := json.Unmarshal(postPushBytes, &postPushManifest); jsonErr != nil {
-			t.Errorf("stale_fencing_token_rejected: decode post-push manifest: %v", jsonErr)
+		postPushToken := manifestFencingToken(t, "post-stale-push", postPushBytes)
+		// The manifest must still carry T3 — the stale write must NOT have
+		// overwritten it. If it carries T2 (< T3), the ErrFenced guard failed
+		// to prevent the write at the ManifestStore level.
+		if postPushToken != tokenT3 {
+			t.Errorf(
+				"stale_fencing_token_rejected: CRITICAL DATA LOSS — on-disk manifest fencing_token is %d "+
+					"after the stale push, but should still be T3=%d; "+
+					"the stale write (T2=%d) overwrote the manifest despite the non-2xx response. "+
+					"This indicates ErrFenced is returned AFTER the write rather than BEFORE — "+
+					"park as Critical.",
+				postPushToken, tokenT3, tokenT2,
+			)
 		} else {
-			// The manifest must still carry T3 — the stale write must NOT have
-			// overwritten it. If it carries T2 (< T3), the ErrFenced guard failed
-			// to prevent the write at the ManifestStore level.
-			if postPushManifest.FencingToken != tokenT3 {
-				t.Errorf(
-					"stale_fencing_token_rejected: CRITICAL DATA LOSS — on-disk manifest FencingToken is %d "+
-						"after the stale push, but should still be T3=%d; "+
-						"the stale write (T2=%d) overwrote the manifest despite the non-2xx response. "+
-						"This indicates ErrFenced is returned AFTER the write rather than BEFORE — "+
-						"park as Critical.",
-					postPushManifest.FencingToken, tokenT3, tokenT2,
-				)
-			} else {
-				t.Logf(
-					"stale_fencing_token_rejected: on-disk manifest still carries T3=%d after rejected stale write — "+
-						"manifest integrity confirmed",
-					tokenT3,
-				)
-			}
+			t.Logf(
+				"stale_fencing_token_rejected: on-disk manifest still carries T3=%d after rejected stale write — "+
+					"manifest integrity confirmed",
+				tokenT3,
+			)
 		}
 	}
 
@@ -332,6 +328,33 @@ func TestStaleFencingTokenRejected(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Per-file helpers
 // ---------------------------------------------------------------------------
+
+// staleFencingWaitForManifest polls MinIO for the manifest at key until it
+// appears or timeout elapses. On timeout the test is fatally failed.
+//
+// The manifest is written synchronously by SyncPushPath inside the portal's
+// post-receive hook before returning 200 OK to the git client, so by the time
+// staleFencingPush returns the manifest should already be present. The poll
+// absorbs any sub-second container timing variance.
+func staleFencingWaitForManifest(ctx context.Context, t *testing.T, mn *minio.MinIO, key string, timeout time.Duration) []byte {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		data, err := mn.GetObject(ctx, key)
+		if err == nil {
+			return data
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf(
+		"stale_fencing_token_rejected: manifest at %q did not appear in MinIO within %v after the push; "+
+			"the portal's SyncPushPath must write the manifest synchronously before returning 200 OK. "+
+			"If the test reached here, either the push itself failed (check earlier log lines), "+
+			"or the portal's clustered-mode object-storage sync is not wired correctly.",
+		key, timeout,
+	)
+	return nil // unreachable; satisfies compiler
+}
 
 // staleFencingRandEmail returns a unique email for isolation.
 func staleFencingRandEmail(prefix string) string {
