@@ -1,7 +1,7 @@
 ---
 id: gate-security-receive-pack-stream-body
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -40,3 +40,54 @@ Stream the body to a tempfile (or `bytes.Buffer` with `io.LimitReader`)
 and rewind for the second pass into `buildValidationRepo`. Add a
 per-instance semaphore counting concurrent receive-pack handlers so
 overall memory is bounded independent of per-pack cap.
+
+## Implementation notes
+
+### Streaming approach (tempfile)
+
+`io.ReadAll` was replaced with `os.CreateTemp("", "jamsesh-pack-*")` +
+`io.Copy`. The tempfile is created early in the handler, deferred for
+`Close` + `os.Remove`, and rewound twice:
+
+1. After streaming the body in: `Seek(0, io.SeekStart)` before
+   `readCommandList(bodyFile)`. The `bufio.Reader` inside
+   `readCommandList` advances the file position through the command-list
+   pkt-lines; the returned `packReader` is already positioned at the start
+   of the pack section and is passed directly to `buildValidationRepo`.
+
+2. Before the subprocess: `Seek(0, io.SeekStart)` to reset to the
+   beginning so the full body (command list + pack) is piped to
+   `git receive-pack --stateless-rpc` stdin.
+
+`buildValidationRepo` still calls `io.ReadAll` on the pack-only reader
+it receives, which keeps the go-git `memory.Storage` in RAM during
+validation. This is unavoidable (go-git needs random access to objects).
+However it is only 1× the pack size during validation, and is released
+once `buildValidationRepo` returns — not held through the subprocess
+phase. Previously the full body was held in a `[]byte` for the entire
+handler lifetime (both passes + subprocess).
+
+### Semaphore policy (503 non-blocking)
+
+`Handler.ReceivePackSem chan struct{}` (buffer = N) is tried with a
+non-blocking `select`. When all N slots are taken the handler returns
+`503 Service Unavailable` with `Retry-After: 5`. The git CLI handles 503
+gracefully (exits non-zero; the user sees a clear error and can re-push).
+A blocking approach was rejected because it holds an HTTP connection open
+under back-pressure and can cascade to exhausted connection pools.
+
+### Config knob
+
+`git.receive_pack_max_concurrent` (YAML) /
+`JAMSESH_RECEIVE_PACK_MAX_CONCURRENT` (env) added to `GitConfig`.
+Default: 4. Validated as positive integer at startup.
+The semaphore is allocated in `cmd/portal/main.go` with
+`make(chan struct{}, cfg.Git.ReceivePackMaxConcurrent)` and wired into
+`githttp.Handler.ReceivePackSem`.
+
+### Files changed
+
+- `internal/portal/githttp/receive_pack.go` — streaming + semaphore
+- `internal/portal/githttp/handler.go` — `ReceivePackSem` field
+- `internal/portal/config/config.go` — `ReceivePackMaxConcurrent` field, default, env parse, validation
+- `cmd/portal/main.go` — semaphore allocation + wiring

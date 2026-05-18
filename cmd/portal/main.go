@@ -634,6 +634,13 @@ func main() {
 		ErrorHandlerFunc: httperr.WriteBadRequest,
 	}
 
+	// Build the per-instance receive-pack concurrency semaphore.
+	// Buffer size = ReceivePackMaxConcurrent (default 4). Handlers acquire a
+	// slot on entry and release on exit; when full, new pushes receive 503
+	// Retry-After. This bounds concurrent-push RSS independent of the per-pack
+	// cap: at most N packs are in-flight at once, each spilling to a tempfile.
+	receivePackSem := make(chan struct{}, cfg.Git.ReceivePackMaxConcurrent)
+
 	gitHandler := &githttp.Handler{
 		Store:   dbStore,
 		Tokens:  tokenSvc,
@@ -642,12 +649,13 @@ func main() {
 			MaxPackBytes: cfg.Git.MaxPackBytes,
 		},
 		Emitter: &postreceive.Emitter{
-				Log:       eventLog,
-				Syncer:    objSyncer,    // nil in single-instance mode; Emitter handles nil as no-op
-				Lifecycle: objLifecycle, // nil in single-instance mode; provides hydration + long-held lease
-				Storage:   storageSvc,  // used only when Syncer is non-nil
-			},
-		Metrics: metricsReg,
+			Log:       eventLog,
+			Syncer:    objSyncer,    // nil in single-instance mode; Emitter handles nil as no-op
+			Lifecycle: objLifecycle, // nil in single-instance mode; provides hydration + long-held lease
+			Storage:   storageSvc,  // used only when Syncer is non-nil
+		},
+		Metrics:        metricsReg,
+		ReceivePackSem: receivePackSem,
 	}
 
 	// Wire the embedded SPA handler. assets.Handler() returns a handler that

@@ -26,6 +26,11 @@ type Handler struct {
 	// Metrics is optional; when non-nil, git push outcomes increment
 	// GitPushesTotal with result labels "ok" or "rejected".
 	Metrics *metrics.Registry
+	// ReceivePackSem is a counting semaphore that limits concurrent
+	// git-receive-pack handlers. When full, new requests are rejected with
+	// 503 Retry-After. If nil, no concurrency limit is enforced.
+	// Initialise with make(chan struct{}, N) where N is the desired cap.
+	ReceivePackSem chan struct{}
 }
 
 // Mount registers the smart-HTTP routes relative to the base path the caller

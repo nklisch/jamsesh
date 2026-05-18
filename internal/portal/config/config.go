@@ -9,7 +9,7 @@
 //	oauth.github.client_id, oauth.github.client_secret,
 //	oauth.github.base_url,
 //	auth_rate_limit_enabled,
-//	git.max_pack_bytes,
+//	git.max_pack_bytes, git.receive_pack_max_concurrent,
 //	db.max_open_conns, db.max_idle_conns, db.conn_max_lifetime,
 //	shutdown_grace_s,
 //	deploy_mode, lease_heartbeat_interval_s,
@@ -39,6 +39,7 @@
 //	JAMSESH_OAUTH_GITHUB_CLIENT_SECRET,
 //	JAMSESH_OAUTH_GITHUB_BASE_URL,
 //	JAMSESH_GIT_MAX_PACK_BYTES,
+//	JAMSESH_RECEIVE_PACK_MAX_CONCURRENT,
 //	JAMSESH_DB_MAX_OPEN_CONNS,
 //	JAMSESH_DB_MAX_IDLE_CONNS,
 //	JAMSESH_DB_CONN_MAX_LIFETIME,
@@ -221,6 +222,12 @@ type GitConfig struct {
 	// Pushes exceeding this limit are rejected with push.size_limit.
 	// Default: 52428800 (50 MiB). Set to 0 to disable the check.
 	MaxPackBytes int64 `yaml:"max_pack_bytes"`
+	// ReceivePackMaxConcurrent is the maximum number of concurrent
+	// git-receive-pack handlers allowed per portal instance. Requests that
+	// arrive when the semaphore is full are rejected with 503 Retry-After
+	// so the git client can retry. Default: 4.
+	// Env: JAMSESH_RECEIVE_PACK_MAX_CONCURRENT
+	ReceivePackMaxConcurrent int `yaml:"receive_pack_max_concurrent"`
 }
 
 // OAuthConfig holds OAuth provider credentials. Only providers with non-empty
@@ -372,7 +379,8 @@ func defaults() Config {
 			},
 		},
 		Git: GitConfig{
-			MaxPackBytes: 52428800, // 50 MiB
+			MaxPackBytes:             52428800, // 50 MiB
+			ReceivePackMaxConcurrent: 4,
 		},
 		DB: DBConfig{
 			MaxOpenConns:    25,
@@ -451,6 +459,9 @@ func (c Config) validate() error {
 	}
 	if c.HydrationCacheMaxBytes < 0 {
 		return fmt.Errorf("config: hydration_cache_max_bytes must be zero or positive, got %d", c.HydrationCacheMaxBytes)
+	}
+	if c.Git.ReceivePackMaxConcurrent <= 0 {
+		return fmt.Errorf("config: git.receive_pack_max_concurrent must be a positive integer, got %d", c.Git.ReceivePackMaxConcurrent)
 	}
 	return nil
 }
@@ -587,6 +598,11 @@ func applyGitEnv(g *GitConfig) {
 	if v := os.Getenv("JAMSESH_GIT_MAX_PACK_BYTES"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			g.MaxPackBytes = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_RECEIVE_PACK_MAX_CONCURRENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			g.ReceivePackMaxConcurrent = n
 		}
 	}
 }

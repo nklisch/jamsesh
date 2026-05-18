@@ -22,17 +22,36 @@ import (
 	"jamsesh/internal/portal/prereceive"
 )
 
+// retryAfterSeconds is the Retry-After value sent with 503 responses when
+// the per-instance receive-pack concurrency semaphore is full.
+const retryAfterSeconds = "5"
+
 // receivePack handles POST /{orgID}/{sessionID}.git/git-receive-pack.
 //
 // Flow:
-//  1. Read body (capped at MaxPackBytes + command-list overhead).
-//  2. Parse the ref-update command list from the pkt-line prefix.
-//  3. Run pre-receive validation against a layered repo (memory pack + disk).
-//  4. On rejection: write the smart-HTTP report-status response and return.
-//  5. On acceptance: spawn `git receive-pack --stateless-rpc`, pipe the full
-//     body to stdin, stream stdout to the client.
-//  6. On receive-pack exit 0: emit post-receive events.
+//  1. Acquire per-instance concurrency semaphore (503 if full).
+//  2. Stream body to a tempfile (capped at MaxPackBytes + command-list overhead).
+//  3. Parse the ref-update command list from the pkt-line prefix.
+//  4. Run pre-receive validation against a layered repo (memory pack + disk).
+//  5. On rejection: write the smart-HTTP report-status response and return.
+//  6. On acceptance: rewind tempfile, spawn `git receive-pack --stateless-rpc`,
+//     pipe the full body to stdin, stream stdout to the client.
+//  7. On receive-pack exit 0: emit post-receive events.
 func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
+	// Acquire concurrency semaphore. If the semaphore is full, reject immediately
+	// with 503 so the git client can retry rather than holding an HTTP connection
+	// open indefinitely (which would cascade under high concurrency).
+	if h.ReceivePackSem != nil {
+		select {
+		case h.ReceivePackSem <- struct{}{}:
+			defer func() { <-h.ReceivePackSem }()
+		default:
+			w.Header().Set("Retry-After", retryAfterSeconds)
+			http.Error(w, "too many concurrent pushes, retry shortly", http.StatusServiceUnavailable)
+			return
+		}
+	}
+
 	orgID := chi.URLParam(r, "orgID")
 	sessionID := chi.URLParam(r, "sessionID")
 
@@ -55,16 +74,40 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		maxBytes = 128 * 1024 * 1024
 	}
 	limitedBody := http.MaxBytesReader(w, r.Body, maxBytes)
-	bodyBytes, err := io.ReadAll(limitedBody)
+
+	// Stream the body to a tempfile rather than io.ReadAll into memory.
+	// This keeps RSS bounded to a single copy of the pack on disk;
+	// concurrent pushes no longer saturate RSS by holding N × 2× the
+	// pack in RAM (once as bytes, once in the memory.Storage during
+	// buildValidationRepo).
+	bodyFile, err := os.CreateTemp("", "jamsesh-pack-*")
 	if err != nil {
-		// MaxBytesReader returns a specific error message; treat any error here
-		// as "too large" because the only likely failure is the byte cap.
+		slog.ErrorContext(r.Context(), "receive-pack: create tempfile", "err", err)
+		httperr.Write(w, r, httperr.ErrInternal(err))
+		return
+	}
+	defer func() {
+		_ = bodyFile.Close()
+		_ = os.Remove(bodyFile.Name())
+	}()
+
+	bodySize, err := io.Copy(bodyFile, limitedBody)
+	if err != nil {
+		// MaxBytesReader returns a specific error when the cap is exceeded;
+		// treat any error as "too large" since that is the only likely failure.
 		http.Error(w, "pack exceeds size limit", http.StatusRequestEntityTooLarge)
 		return
 	}
 
+	// Rewind to the beginning for the command-list parse pass.
+	if _, err := bodyFile.Seek(0, io.SeekStart); err != nil {
+		slog.ErrorContext(r.Context(), "receive-pack: seek tempfile", "err", err)
+		httperr.Write(w, r, httperr.ErrInternal(err))
+		return
+	}
+
 	// Parse the command list from the beginning of the body.
-	updates, packReader, err := readCommandList(bytes.NewReader(bodyBytes))
+	updates, packReader, err := readCommandList(bodyFile)
 	if err != nil {
 		http.Error(w, "malformed push request", http.StatusBadRequest)
 		return
@@ -97,7 +140,7 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		Session:   &session,
 		Account:   account,
 		Updates:   updates,
-		PackBytes: int64(len(bodyBytes)),
+		PackBytes: bodySize,
 	}
 	result, err := h.Validator.Validate(r.Context(), validationIn)
 	if err != nil {
@@ -118,6 +161,14 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		if h.Metrics != nil {
 			h.Metrics.GitPushesTotal.WithLabelValues("rejected").Inc()
 		}
+		return
+	}
+
+	// Rewind the tempfile to the start so the subprocess receives the full
+	// body (command list + pack), not just the pack portion.
+	if _, err := bodyFile.Seek(0, io.SeekStart); err != nil {
+		slog.ErrorContext(r.Context(), "receive-pack: seek tempfile for subprocess", "err", err)
+		httperr.Write(w, r, httperr.ErrInternal(err))
 		return
 	}
 
@@ -152,8 +203,8 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write full body to subprocess stdin in a goroutine to avoid deadlock
-	// while simultaneously draining subprocess stdout into a buffer.
+	// Write full body from the tempfile to subprocess stdin in a goroutine to
+	// avoid deadlock while simultaneously draining subprocess stdout into a buffer.
 	//
 	// We buffer stdout rather than streaming it directly to the client so that
 	// the object-storage sync (EmitForUpdates) can run before any response bytes
@@ -164,7 +215,7 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	stdinErrCh := make(chan error, 1)
 	go func() {
 		defer stdin.Close()
-		_, err := io.Copy(stdin, bytes.NewReader(bodyBytes))
+		_, err := io.Copy(stdin, bodyFile)
 		stdinErrCh <- err
 	}()
 
