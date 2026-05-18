@@ -385,12 +385,9 @@ client memory.
 
 ## Horizontal scaling (clustered mode)
 
-> The router service, per-session Postgres leases, fencing tokens, and
-> object-storage durability are shipped. Hydration handoff (pre-seeding the
-> local cache when a session migrates to a new pod) is still in progress;
-> clustered mode is preview-quality and not yet production-ready for workloads
-> that expect zero push-latency on pod replacement. See §14 of
-> `docs/SELF_HOST.md` for operator details.
+Clustered mode is production-ready. The router service, per-session Postgres
+leases, fencing tokens, object-storage durability, and hydration handoff are
+all shipped. See §14 of `docs/SELF_HOST.md` for operator details.
 
 Single-instance jamsesh is a single portal pod: one Go process, one data store,
 one storage volume. For horizontal scale-out a second binary — `jamsesh-router`
@@ -453,10 +450,11 @@ has actually lost. Fencing tokens — monotonically increasing integers stamped
 on every write — let the storage layer reject stale writes: if a write arrives
 with a token lower than the current stored token, it is rejected.
 
-Fencing token support is designed and awaiting implementation as part of the
-`epic-cloud-native-deploy` epic backlog. Until it lands, write safety depends
-on network reliability and Postgres availability (which is the common case for
-cloud-managed Postgres).
+Fencing tokens are issued by Postgres (monotonically increasing integers stored
+in a dedicated table) and carried by every lease handle. The `objectstore.Syncer`
+embeds the fencing token in object metadata on every upload; a write from a
+stale pod is rejected by the manifest's conditional-write check, which compares
+the token against the stored value.
 
 ### Bare-repo dual-layer storage
 
@@ -483,15 +481,15 @@ stale pod (whose lease was superseded by a newer pod) attempts a write, the
 manifest's conditional-write check detects the stale token and the write is
 rejected. The push then fails and the git client retries.
 
-### Hydration handoff (to come)
+### Hydration handoff
 
-When the consistent-hash ring rebalances and a session moves to a new pod,
-the new pod has no local repo cache. It can serve Postgres-backed read requests
-immediately (events, sessions, members), but the first push to the new pod
-triggers a full re-seed from object storage before accepting the pack. This
-adds a one-push latency on the transition. Future work (hydration-handoff epic)
-will pre-hydrate the local cache on lease acquisition so the pod is push-ready
-before the router directs traffic to it.
+When the consistent-hash ring rebalances and a session moves to a new pod, the
+`objectstore.LifecycleManager` pre-hydrates the local bare-repo cache as part
+of lease acquisition — before the router directs any push traffic to the pod.
+The `Hydrator` fetches all objects and pack files listed in the session manifest
+from object storage and writes them to local disk using a bounded worker pool
+(`JAMSESH_HYDRATION_WORKERS`, default 8). The pod is push-ready before the
+first client request arrives; there is no one-push latency on pod transition.
 
 ## Data layer (multi-tenancy)
 

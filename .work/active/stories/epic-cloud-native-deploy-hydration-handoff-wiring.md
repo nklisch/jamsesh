@@ -1,7 +1,7 @@
 ---
 id: epic-cloud-native-deploy-hydration-handoff-wiring
 kind: story
-stage: implementing
+stage: review
 tags: [portal, documentation]
 parent: epic-cloud-native-deploy-hydration-handoff
 depends_on: [epic-cloud-native-deploy-hydration-handoff-lifecycle]
@@ -74,3 +74,13 @@ Append to Registry + register in New():
 - This is the final story. After it lands, the clustered-mode architecture is COMPLETE: routing + leases + durability + hydration all shipped. Operators can deploy multi-pod clustered with full session migration.
 - SyncPushPath refactor is mechanical — the pipeline story documented this as deferred to hydration-handoff. Update Syncer struct (drop Lease field if no longer used internally) and the test calls.
 - Foundation-doc principle: clustered mode is now SHIPPED, not preview. Update framing throughout (SELF_HOST, ARCHITECTURE, SPEC).
+
+## Implementation notes
+
+- `Syncer.Lease` field removed; `SyncPushPath` now accepts `handle lease.Handle` as its third parameter. The only caller (postreceive `Emitter`) gets the handle from `LifecycleManager.AcquireForRequest` in clustered mode, or a noop handle in single-instance mode.
+- `GetSessionByID` added to `store.Store`, `store.SessionStore`, both adapters (`sqliteAdapter`, `postgresAdapter`) and both TxStore wrappers. Hand-written in `internal/db/sqlitestore/sessions_extra.go` and `internal/db/pgstore/sessions_extra.go` following the existing `*_extra.go` pattern.
+- `handlerauth_test.go` `stubStore` updated with no-op `GetSessionByID` method to satisfy the updated interface.
+- `LifecycleManager` constructed in `cmd/portal/main.go` only when `cfg.DeployMode == "clustered"`; it is `nil` in single-instance mode. `Emitter` handles `nil` gracefully by falling back to a noop lease.
+- ARCHITECTURE.md: removed preview callout; replaced "Hydration handoff (to come)" with shipped description; updated fencing-token paragraph to describe the implementation rather than future plans.
+- SELF_HOST.md §14: removed preview callout and preview-limitations subsection; added hydration env vars subsection with the four new knobs.
+- `go build ./...` and `go test ./...` both clean.

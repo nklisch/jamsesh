@@ -82,6 +82,9 @@ func (s *stubStore) CreateSession(_ context.Context, _ store.CreateSessionParams
 func (s *stubStore) GetSession(_ context.Context, _, _ string) (store.Session, error) {
 	panic("not implemented")
 }
+func (s *stubStore) GetSessionByID(_ context.Context, _ string) (store.Session, error) {
+	panic("not implemented")
+}
 func (s *stubStore) ListSessionsForOrg(_ context.Context, _ string) ([]store.Session, error) {
 	panic("not implemented")
 }

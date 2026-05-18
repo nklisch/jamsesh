@@ -229,7 +229,6 @@ func newTestLifecycleManager(t *testing.T) (*LifecycleManager, *testLeaseManager
 		Backend:                backend,
 		Manifests:              manifests,
 		Storage:                stor,
-		Lease:                  lease.NoopManager{},
 		QueueSize:              256,
 		PerSessionBackpressure: true,
 	}
@@ -363,7 +362,6 @@ func TestLifecycle_AcquireForRequest_HydrationFailure(t *testing.T) {
 			Backend:   newMemBackend(),
 			Manifests: &ManifestStore{Backend: newMemBackend()},
 			Storage:   stor,
-			Lease:     lease.NoopManager{},
 		},
 		Storage: stor,
 		OrgIDLookup: func(_ context.Context, _ string) (string, error) {

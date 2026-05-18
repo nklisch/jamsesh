@@ -451,6 +451,12 @@ type OrgMemberStore interface {
 type SessionStore interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	GetSession(ctx context.Context, orgID, id string) (Session, error)
+	// GetSessionByID looks up a session by its primary key without org scoping.
+	// This is an intentional cross-org exception used by the LifecycleManager's
+	// OrgIDLookup: when a lease is acquired for a session, the org_id is resolved
+	// by ID so that hydration can compute the correct bare-repo path. The caller
+	// receives org_id on the returned Session for subsequent org-scoped queries.
+	GetSessionByID(ctx context.Context, id string) (Session, error)
 	ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error)
 	// ListSessionsForOrgWithCursor returns sessions ordered by created_at DESC
 	// with created_at < before (cursor-based pagination).

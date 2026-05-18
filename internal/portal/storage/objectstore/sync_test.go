@@ -126,7 +126,6 @@ func newTestSyncer(t *testing.T) (*Syncer, *memBackend, string /*root*/, string 
 		Backend:                backend,
 		Manifests:              manifests,
 		Storage:                stor,
-		Lease:                  lease.NoopManager{},
 		Metrics:                metrics.New(),
 		QueueSize:              256,
 		PerSessionBackpressure: true,
@@ -135,10 +134,14 @@ func newTestSyncer(t *testing.T) (*Syncer, *memBackend, string /*root*/, string 
 }
 
 // syncPushSession calls SyncPushPath with the canonical repoPath for the
-// test-org/sessionID pair under root.
+// test-org/sessionID pair under root, using a noop handle.
 func syncPushSession(ctx context.Context, s *Syncer, root, sessionID string) (SyncOutput, error) {
 	repoPath := filepath.Join(root, "orgs", "test-org", "sessions", sessionID+".git")
-	return s.SyncPushPath(ctx, sessionID, repoPath)
+	h, err := (lease.NoopManager{}).Acquire(ctx, sessionID)
+	if err != nil {
+		return SyncOutput{}, fmt.Errorf("syncPushSession: acquire noop handle: %w", err)
+	}
+	return s.SyncPushPath(ctx, sessionID, repoPath, h)
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +432,6 @@ func TestSyncer_Backpressure(t *testing.T) {
 		Backend:                blocker,
 		Manifests:              manifests,
 		Storage:                stor,
-		Lease:                  lease.NoopManager{},
 		Metrics:                metrics.New(),
 		QueueSize:              1,
 		PerSessionBackpressure: true,
@@ -566,7 +568,6 @@ func TestSyncer_MetricsEmission(t *testing.T) {
 			Backend:                backend,
 			Manifests:              store,
 			Storage:                &testStorage{root: root},
-			Lease:                  lease.NoopManager{},
 			Metrics:                nil, // explicitly nil
 			QueueSize:              256,
 			PerSessionBackpressure: false,
@@ -597,7 +598,6 @@ func TestSyncer_NilMetrics_NoOp(t *testing.T) {
 		Backend:                backend,
 		Manifests:              manifests,
 		Storage:                stor,
-		Lease:                  lease.NoopManager{},
 		Metrics:                nil, // intentionally nil
 		QueueSize:              256,
 		PerSessionBackpressure: true,

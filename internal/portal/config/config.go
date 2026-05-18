@@ -15,7 +15,9 @@
 //	lease_retention_days, lease_retention_interval_hours,
 //	object_storage_url, object_storage_region,
 //	object_storage_endpoint_url, object_storage_path_style,
-//	object_storage_sync_queue_size
+//	object_storage_sync_queue_size,
+//	hydration_idle_timeout_s, hydration_cache_max_bytes,
+//	hydration_idle_check_period_s, hydration_workers
 //
 // Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
@@ -46,7 +48,11 @@
 //	JAMSESH_OBJECT_STORAGE_REGION,
 //	JAMSESH_OBJECT_STORAGE_ENDPOINT_URL,
 //	JAMSESH_OBJECT_STORAGE_PATH_STYLE,
-//	JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE
+//	JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE,
+//	JAMSESH_HYDRATION_IDLE_TIMEOUT_S,
+//	JAMSESH_HYDRATION_CACHE_MAX_BYTES,
+//	JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S,
+//	JAMSESH_HYDRATION_WORKERS
 //
 // Secret env vars with _FILE variants (file contents take precedence):
 //
@@ -156,6 +162,30 @@ type Config struct {
 	// Default: 256. Must be positive.
 	// Env: JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE
 	ObjectStorageSyncQueueSize int `yaml:"object_storage_sync_queue_size"`
+
+	// HydrationIdleTimeoutS is how long (in seconds) a session can be inactive
+	// before the LifecycleManager evicts its local cache and releases its lease.
+	// Default: 300 (5 minutes). Must be positive.
+	// Env: JAMSESH_HYDRATION_IDLE_TIMEOUT_S
+	HydrationIdleTimeoutS int `yaml:"hydration_idle_timeout_s"`
+
+	// HydrationCacheMaxBytes is the maximum cumulative bytes of all active
+	// per-session bare repos on local disk. When the total exceeds this value,
+	// the least-recently-active session is evicted (LRU). Zero means unlimited.
+	// Default: 0 (unlimited).
+	// Env: JAMSESH_HYDRATION_CACHE_MAX_BYTES
+	HydrationCacheMaxBytes int64 `yaml:"hydration_cache_max_bytes"`
+
+	// HydrationIdleCheckPeriodS is how often (in seconds) the idle-eviction and
+	// LRU loops run. Default: 30. Must be positive.
+	// Env: JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S
+	HydrationIdleCheckPeriodS int `yaml:"hydration_idle_check_period_s"`
+
+	// HydrationWorkers is the number of parallel download workers used by the
+	// Hydrator when re-seeding a session's bare repo from object storage.
+	// Default: 8. Must be positive.
+	// Env: JAMSESH_HYDRATION_WORKERS
+	HydrationWorkers int `yaml:"hydration_workers"`
 }
 
 // DBConfig holds database connection pool settings.
@@ -344,6 +374,10 @@ func defaults() Config {
 		LeaseRetentionDays:          30,
 		LeaseRetentionIntervalHours: 1,
 		ObjectStorageSyncQueueSize:  256,
+		HydrationIdleTimeoutS:       300,
+		HydrationCacheMaxBytes:      0,
+		HydrationIdleCheckPeriodS:   30,
+		HydrationWorkers:            8,
 	}
 }
 
@@ -393,6 +427,18 @@ func (c Config) validate() error {
 	}
 	if c.LeaseRetentionIntervalHours <= 0 {
 		return fmt.Errorf("config: lease_retention_interval_hours must be a positive integer, got %d", c.LeaseRetentionIntervalHours)
+	}
+	if c.HydrationIdleTimeoutS <= 0 {
+		return fmt.Errorf("config: hydration_idle_timeout_s must be a positive integer, got %d", c.HydrationIdleTimeoutS)
+	}
+	if c.HydrationIdleCheckPeriodS <= 0 {
+		return fmt.Errorf("config: hydration_idle_check_period_s must be a positive integer, got %d", c.HydrationIdleCheckPeriodS)
+	}
+	if c.HydrationWorkers <= 0 {
+		return fmt.Errorf("config: hydration_workers must be a positive integer, got %d", c.HydrationWorkers)
+	}
+	if c.HydrationCacheMaxBytes < 0 {
+		return fmt.Errorf("config: hydration_cache_max_bytes must be zero or positive, got %d", c.HydrationCacheMaxBytes)
 	}
 	return nil
 }
@@ -452,6 +498,7 @@ func applyEnv(c *Config) error {
 	}
 	applyLeaseEnv(c)
 	applyObjectStorageEnv(c)
+	applyHydrationEnv(c)
 	return nil
 }
 
@@ -494,6 +541,30 @@ func applyObjectStorageEnv(c *Config) {
 	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			c.ObjectStorageSyncQueueSize = n
+		}
+	}
+}
+
+// applyHydrationEnv overlays hydration-lifecycle environment variables.
+func applyHydrationEnv(c *Config) {
+	if v := os.Getenv("JAMSESH_HYDRATION_IDLE_TIMEOUT_S"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.HydrationIdleTimeoutS = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_HYDRATION_CACHE_MAX_BYTES"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			c.HydrationCacheMaxBytes = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.HydrationIdleCheckPeriodS = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_HYDRATION_WORKERS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.HydrationWorkers = n
 		}
 	}
 }

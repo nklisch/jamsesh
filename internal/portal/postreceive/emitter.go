@@ -17,6 +17,7 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/lease"
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/storage/objectstore"
@@ -30,17 +31,26 @@ const maxCommitsPerUpdate = 1000
 // Construct via &Emitter{Log: log}.
 //
 // In clustered mode, set Syncer to a non-nil *objectstore.Syncer and
-// RepoRoot to the storage root directory. After event emission, EmitForUpdates
-// calls Syncer.SyncPushPath so the push does not ack until object-storage sync
-// completes (RPO=0 contract).
+// Lifecycle to a non-nil *objectstore.LifecycleManager. EmitForUpdates calls
+// Lifecycle.AcquireForRequest to obtain the long-held lease handle, then
+// passes it to Syncer.SyncPushPath so the push does not ack until object-
+// storage sync completes (RPO=0 contract).
 //
-// In single-instance mode (Syncer == nil), the sync step is skipped entirely
-// and local disk remains the system of record. No other changes are needed.
+// In single-instance mode (Lifecycle == nil, Syncer == nil), the sync step is
+// skipped entirely and local disk remains the system of record.
+//
+// When Syncer is set but Lifecycle is nil (unusual; supported for
+// compatibility), a noop handle is used — fencing token is always zero.
 type Emitter struct {
 	Log *events.Log
 	// Syncer is the object-storage sync pipeline. When non-nil, EmitForUpdates
 	// calls SyncPushPath after emitting events. When nil, no sync is performed.
 	Syncer *objectstore.Syncer
+	// Lifecycle is the session lifecycle manager. When non-nil, EmitForUpdates
+	// calls AcquireForRequest before SyncPushPath to obtain the long-held lease
+	// handle (which performs hydration on first access). In single-instance mode
+	// leave nil — the sync step is skipped if Syncer is also nil.
+	Lifecycle *objectstore.LifecycleManager
 	// Storage is the local-FS storage service used to compute the bare-repo path
 	// for the sync call. Required when Syncer is non-nil; unused otherwise.
 	Storage storage.Service
@@ -83,7 +93,32 @@ func (e *Emitter) EmitForUpdates(
 	// local disk remains the system of record with no additional latency.
 	if e.Syncer != nil {
 		repoPath := e.Storage.RepoPath(session.OrgID, session.ID)
-		if _, err := e.Syncer.SyncPushPath(ctx, session.ID, repoPath); err != nil {
+
+		var handle lease.Handle
+		if e.Lifecycle != nil {
+			// Clustered mode: acquire the long-held lease handle from the
+			// LifecycleManager. This hydrates the local repo if this is the
+			// first request for this session on this pod.
+			h, err := e.Lifecycle.AcquireForRequest(ctx, session.ID)
+			if err != nil {
+				return fmt.Errorf("postreceive: lifecycle acquire: %w", err)
+			}
+			handle = h
+			// Note: do NOT release handle here — LifecycleManager owns the
+			// handle lifetime. Release is triggered by idle eviction, LRU,
+			// lease loss, or shutdown.
+		} else {
+			// Single-instance fallback or Syncer-without-Lifecycle: use a noop
+			// handle (fencing token = 0, Release is a no-op).
+			h, err := (lease.NoopManager{}).Acquire(ctx, session.ID)
+			if err != nil {
+				return fmt.Errorf("postreceive: noop acquire: %w", err)
+			}
+			defer func() { _ = h.Release() }()
+			handle = h
+		}
+
+		if _, err := e.Syncer.SyncPushPath(ctx, session.ID, repoPath, handle); err != nil {
 			return fmt.Errorf("postreceive: object-storage sync: %w", err)
 		}
 	}

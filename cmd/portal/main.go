@@ -357,6 +357,7 @@ func main() {
 	// already guarantees ObjectStorageURL is non-empty in clustered mode, so the
 	// guard below is belt-and-suspenders.
 	var objSyncer *objectstore.Syncer
+	var objLifecycle *objectstore.LifecycleManager
 	if cfg.DeployMode == "clustered" && cfg.ObjectStorageURL != "" {
 		backend, backendErr := objectstore.New(cfg.ObjectStorageURL, objectstore.Config{
 			Region:       cfg.ObjectStorageRegion,
@@ -377,11 +378,56 @@ func main() {
 			Backend:                backend,
 			Manifests:              &objectstore.ManifestStore{Backend: backend},
 			Storage:                storageSvc,
-			Lease:                  leaseMgr,
 			Metrics:                metricsReg,
 			QueueSize:              cfg.ObjectStorageSyncQueueSize,
 			PerSessionBackpressure: true,
 		}
+
+		// Build the LifecycleManager: per-pod session lease + hydration
+		// coordinator. On the first request for a session this pod doesn't hold,
+		// AcquireForRequest acquires the distributed lease and downloads the bare
+		// repo from object storage before the push is processed. On release (idle
+		// timeout, LRU cap, lease loss, or SIGTERM), it drains in-flight uploads
+		// and removes the local cache.
+		hydrator := &objectstore.Hydrator{
+			Backend:   backend,
+			Manifests: &objectstore.ManifestStore{Backend: backend},
+			Storage:   storageSvc,
+			Metrics:   metricsReg,
+			Workers:   cfg.HydrationWorkers,
+		}
+		objLifecycle = &objectstore.LifecycleManager{
+			Lease:     leaseMgr,
+			Hydrator:  hydrator,
+			Syncer:    objSyncer,
+			Storage:   storageSvc,
+			OrgIDLookup: func(ctx context.Context, sessionID string) (string, error) {
+				sess, err := dbStore.GetSessionByID(ctx, sessionID)
+				if err != nil {
+					return "", fmt.Errorf("orgID lookup for session %s: %w", sessionID, err)
+				}
+				return sess.OrgID, nil
+			},
+			IdleTimeout:     time.Duration(cfg.HydrationIdleTimeoutS) * time.Second,
+			CacheMaxBytes:   cfg.HydrationCacheMaxBytes,
+			IdleCheckPeriod: time.Duration(cfg.HydrationIdleCheckPeriodS) * time.Second,
+			Metrics:         metricsReg,
+		}
+
+		// Start the lifecycle goroutine: idle-eviction + LRU loop. Blocks until
+		// ctx is cancelled (SIGTERM), then drains all active sessions.
+		go func() {
+			if err := objLifecycle.Start(ctx); err != nil && err != context.Canceled {
+				slog.Warn("lifecycle manager exited", "err", err)
+			}
+		}()
+
+		slog.Info("lifecycle manager started",
+			"idle_timeout_s", cfg.HydrationIdleTimeoutS,
+			"cache_max_bytes", cfg.HydrationCacheMaxBytes,
+			"idle_check_period_s", cfg.HydrationIdleCheckPeriodS,
+			"workers", cfg.HydrationWorkers,
+		)
 	}
 
 	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
@@ -469,9 +515,10 @@ func main() {
 			MaxPackBytes: cfg.Git.MaxPackBytes,
 		},
 		Emitter: &postreceive.Emitter{
-				Log:     eventLog,
-				Syncer:  objSyncer,  // nil in single-instance mode; Emitter handles nil as no-op
-				Storage: storageSvc, // used only when Syncer is non-nil
+				Log:       eventLog,
+				Syncer:    objSyncer,    // nil in single-instance mode; Emitter handles nil as no-op
+				Lifecycle: objLifecycle, // nil in single-instance mode; provides hydration + long-held lease
+				Storage:   storageSvc,  // used only when Syncer is non-nil
 			},
 		Metrics: metricsReg,
 	}

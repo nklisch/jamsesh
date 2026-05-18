@@ -414,6 +414,17 @@ func (a *postgresAdapter) GetSession(ctx context.Context, orgID, id string) (Ses
 	return pgSession(row), nil
 }
 
+// GetSessionByID looks up a session by its primary key without org scoping.
+// Intentional cross-org exception: the org_id returned on the Session is used
+// by the LifecycleManager to route subsequent org-scoped operations.
+func (a *postgresAdapter) GetSessionByID(ctx context.Context, id string) (Session, error) {
+	row, err := a.q.GetSessionByID(ctx, id)
+	if err != nil {
+		return Session{}, mapPostgresErr(err)
+	}
+	return pgSession(row), nil
+}
+
 func (a *postgresAdapter) ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error) {
 	rows, err := a.q.ListSessionsForOrg(ctx, orgID)
 	if err != nil {
@@ -1172,6 +1183,13 @@ func (s *postgresTxStore) CreateSession(ctx context.Context, p CreateSessionPara
 }
 func (s *postgresTxStore) GetSession(ctx context.Context, orgID, id string) (Session, error) {
 	row, err := s.q.GetSession(ctx, pgstore.GetSessionParams{OrgID: orgID, ID: id})
+	if err != nil {
+		return Session{}, mapPostgresErr(err)
+	}
+	return pgSession(row), nil
+}
+func (s *postgresTxStore) GetSessionByID(ctx context.Context, id string) (Session, error) {
+	row, err := s.q.GetSessionByID(ctx, id)
 	if err != nil {
 		return Session{}, mapPostgresErr(err)
 	}

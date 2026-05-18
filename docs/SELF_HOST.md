@@ -815,9 +815,9 @@ upgrade to the Pro plan for volume support.
 
 ### Kubernetes with PVC
 
-The portal is a single-pod deployment by design; clustered mode (multiple
-replicas sharing a database and storage tier) is a future capability tracked in
-`epic-cloud-native-deploy`. Run `replicas: 1`.
+The portal supports both single-pod and clustered multi-replica deployments.
+For single-instance Kubernetes with a PVC, run `replicas: 1`. For clustered
+mode, see §14.
 
 **`jamsesh-k8s.yaml`:**
 
@@ -1005,17 +1005,7 @@ kubectl -n jamsesh rollout status deployment/jamsesh
 
 ---
 
-## 14. Clustered mode (preview)
-
-> **Preview status.** The router service, per-session Postgres leases, fencing
-> tokens, and object-storage durability are shipped and tested. The one remaining
-> gap before clustered mode is production-ready is **hydration handoff** — the
-> ability to migrate a live session cleanly from one pod to another on demand
-> (tracked in `epic-cloud-native-deploy`). Today, pod replacement causes a brief
-> client-side `git fetch` retry loop until the new pod re-seeds the local repo
-> from object storage. Use clustered mode for evaluation and staging workloads;
-> use it in production only if you can tolerate a short client retry on pod
-> restart.
+## 14. Clustered mode
 
 ### When to use clustered mode
 
@@ -1056,8 +1046,7 @@ avoids all distributed-systems concerns. Clustered mode is appropriate when:
                     │  session-ID-keyed sticky routing
          ┌──────────▼───────────────────────────┐
          │  portal pods (N replicas, :8443)      │
-         │  shared Postgres + (future) object    │
-         │  storage                              │
+         │  shared Postgres + object storage     │
          └───────────────────────────────────────┘
 ```
 
@@ -1305,23 +1294,23 @@ Scraped metric families:
 Standard Go runtime and process metrics (`go_goroutines`, `go_memstats_*`,
 `process_cpu_seconds_total`) are also included.
 
-### What is not yet in place (preview limitations)
+### Hydration env vars
 
-The following capability is planned but not yet landed:
+When the consistent-hash ring rebalances and a session migrates to a new pod,
+the `LifecycleManager` pre-hydrates the local bare-repo cache from object
+storage before the pod accepts push traffic. These knobs control the hydration
+subsystem:
 
-- **Hydration handoff** — when the ring rebalances and a session moves to a
-  new pod, the new pod has no local repo cache yet. It can serve read-only
-  requests (digest, refs, comments) immediately from Postgres, but the first
-  push to the new pod re-seeds the local repo from object storage, which adds
-  a brief one-time latency. Future work will pre-hydrate the cache on lease
-  acquisition so the new pod is push-ready before the router redirects traffic.
+| Env var | Default | Description |
+|---|---|---|
+| `JAMSESH_HYDRATION_WORKERS` | `8` | Parallel object-download workers per hydration job |
+| `JAMSESH_HYDRATION_IDLE_TIMEOUT_S` | `300` | Seconds of idle time before a hydrated session cache is evicted from the working set |
+| `JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S` | `30` | How often the LifecycleManager scans for idle sessions to evict |
+| `JAMSESH_HYDRATION_CACHE_MAX_BYTES` | `0` (unlimited) | Maximum combined disk used by all local bare-repo caches; `0` disables the cap |
 
-Until hydration handoff lands, clustered mode handles pod replacement correctly
-but with a possible one-push latency on first contact with the new pod. Clients
-retry automatically on 503 (the router retries once; git clients retry on the
-next push). For rolling upgrades, drain the old pod (SIGTERM causes a 30s
-graceful shutdown) before the new pod goes live to minimize the transition
-window.
+Hydration is transparent to git clients. The pod acquires its Postgres lease
+and hydrates from object storage before serving any push; the router's 503-retry
+ensures the client retries against the ready pod.
 
 ### Object storage (durability)
 

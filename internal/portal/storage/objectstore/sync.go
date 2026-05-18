@@ -51,19 +51,16 @@ type SyncOutput struct {
 // Syncer is safe for concurrent use across different sessions; per-session
 // backpressure is tracked in sessionInFlight.
 //
-// # Acquire-per-sync lease pattern (v1)
+// # Long-held lease pattern
 //
-// SyncPush internally acquires a fresh lease for the session via Lease.Acquire,
-// then releases it before returning. This means the lease is held only during
-// the sync window — not across the session's lifetime.
+// SyncPushPath accepts a pre-acquired lease.Handle provided by the caller
+// (typically LifecycleManager). The caller holds the lease for the session's
+// full lifetime on this pod; SyncPushPath uses the handle's fencing token
+// without acquiring or releasing the lease itself.
 //
-// The acquire-per-sync pattern is intentional for v1. In single-instance mode
-// (NoopManager) it is a zero-cost no-op. In clustered mode it issues a fresh
-// fencing token on every push, which is safe and correct: each push re-confirms
-// ownership and gets a token at least as large as the previous one. The
-// long-held lease pattern — acquiring once at session start and reusing the
-// handle across many pushes — is the hydration-handoff concern (future epic).
-// At that point the Syncer will accept a pre-held Handle instead.
+// In single-instance mode pass a handle from lease.NoopManager{}.Acquire —
+// it is a zero-cost no-op that provides a zero fencing token. The Emitter
+// handles this transparently.
 //
 // # First-push behaviour
 //
@@ -85,9 +82,6 @@ type Syncer struct {
 	Manifests *ManifestStore
 	// Storage is the local-FS storage service. Used only for RepoPath(). Required.
 	Storage storage.Service
-	// Lease is the lease manager. In single-instance mode pass lease.NoopManager{}.
-	// SyncPush acquires and releases a lease internally on every call. Required.
-	Lease lease.Manager
 	// Metrics is an optional prometheus registry. When nil, metric emission is
 	// skipped. Nil-safe throughout — check before every increment.
 	Metrics *metrics.Registry
@@ -144,9 +138,10 @@ func (s *Syncer) InFlightCount(sessionID string) int64 {
 // repoPath is the absolute path to the bare git repository on local disk.
 // The Emitter derives this via storage.Service.RepoPath(session.OrgID, session.ID).
 //
-// SyncPushPath acquires a lease from s.Lease internally (acquire-per-sync
-// pattern, see Syncer type doc) and releases it before returning. The lease
-// issues a fencing token that gates all writes. If the pod no longer owns the
+// handle is a pre-acquired lease handle whose fencing token gates all writes.
+// The caller (typically LifecycleManager or the Emitter in single-instance
+// mode) owns the handle lifetime; SyncPushPath reads the fencing token from
+// it but does not acquire or release the handle. If the pod no longer owns the
 // session (a newer pod has advanced the manifest's fencing token),
 // ManifestStore.Save returns ErrFenced and SyncPushPath propagates it.
 //
@@ -155,7 +150,7 @@ func (s *Syncer) InFlightCount(sessionID string) int64 {
 //   - ErrPrecondition → 503 Service Unavailable (concurrent writer)
 //   - ErrBackpressure → 503 Service Unavailable + Retry-After
 //   - other errors    → 500 Internal Server Error
-func (s *Syncer) SyncPushPath(ctx context.Context, sessionID, repoPath string) (SyncOutput, error) {
+func (s *Syncer) SyncPushPath(ctx context.Context, sessionID, repoPath string, handle lease.Handle) (SyncOutput, error) {
 	start := time.Now()
 
 	// ── Backpressure check ─────────────────────────────────────────────────
@@ -172,13 +167,6 @@ func (s *Syncer) SyncPushPath(ctx context.Context, sessionID, repoPath string) (
 			return SyncOutput{}, fmt.Errorf("syncpush %s: %w", sessionID, ErrBackpressure)
 		}
 	}
-
-	// ── Acquire lease (acquire-per-sync v1 pattern) ────────────────────────
-	handle, err := s.Lease.Acquire(ctx, sessionID)
-	if err != nil {
-		return SyncOutput{}, fmt.Errorf("syncpush %s: acquire lease: %w", sessionID, err)
-	}
-	defer func() { _ = handle.Release() }()
 
 	fencingToken := handle.FencingToken()
 

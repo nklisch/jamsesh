@@ -439,6 +439,10 @@ func clearEnv(t *testing.T) {
 		"JAMSESH_OBJECT_STORAGE_ENDPOINT_URL",
 		"JAMSESH_OBJECT_STORAGE_PATH_STYLE",
 		"JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE",
+		"JAMSESH_HYDRATION_IDLE_TIMEOUT_S",
+		"JAMSESH_HYDRATION_CACHE_MAX_BYTES",
+		"JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S",
+		"JAMSESH_HYDRATION_WORKERS",
 	}
 	for _, v := range vars {
 		t.Setenv(v, "") // t.Setenv restores on cleanup; set to "" to clear
@@ -751,6 +755,147 @@ func TestValidation_ObjectStorageSyncQueueSizeNegative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for object_storage_sync_queue_size=-1, got nil")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Hydration config tests
+// ---------------------------------------------------------------------------
+
+// TestHydrationConfigDefaults verifies the default values for hydration fields.
+func TestHydrationConfigDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HydrationIdleTimeoutS != 300 {
+		t.Errorf("HydrationIdleTimeoutS default: got %d, want 300", cfg.HydrationIdleTimeoutS)
+	}
+	if cfg.HydrationCacheMaxBytes != 0 {
+		t.Errorf("HydrationCacheMaxBytes default: got %d, want 0 (unlimited)", cfg.HydrationCacheMaxBytes)
+	}
+	if cfg.HydrationIdleCheckPeriodS != 30 {
+		t.Errorf("HydrationIdleCheckPeriodS default: got %d, want 30", cfg.HydrationIdleCheckPeriodS)
+	}
+	if cfg.HydrationWorkers != 8 {
+		t.Errorf("HydrationWorkers default: got %d, want 8", cfg.HydrationWorkers)
+	}
+}
+
+// TestHydrationConfigEnvOverride verifies that all four JAMSESH_HYDRATION_* env
+// vars override the defaults correctly.
+func TestHydrationConfigEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_HYDRATION_IDLE_TIMEOUT_S", "600")
+	t.Setenv("JAMSESH_HYDRATION_CACHE_MAX_BYTES", "5368709120") // 5 GiB
+	t.Setenv("JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S", "60")
+	t.Setenv("JAMSESH_HYDRATION_WORKERS", "16")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HydrationIdleTimeoutS != 600 {
+		t.Errorf("HydrationIdleTimeoutS: got %d, want 600", cfg.HydrationIdleTimeoutS)
+	}
+	if cfg.HydrationCacheMaxBytes != 5368709120 {
+		t.Errorf("HydrationCacheMaxBytes: got %d, want 5368709120", cfg.HydrationCacheMaxBytes)
+	}
+	if cfg.HydrationIdleCheckPeriodS != 60 {
+		t.Errorf("HydrationIdleCheckPeriodS: got %d, want 60", cfg.HydrationIdleCheckPeriodS)
+	}
+	if cfg.HydrationWorkers != 16 {
+		t.Errorf("HydrationWorkers: got %d, want 16", cfg.HydrationWorkers)
+	}
+}
+
+// TestHydrationConfigYAML verifies the hydration_* YAML keys are parsed.
+func TestHydrationConfigYAML(t *testing.T) {
+	clearEnv(t)
+	yamlContent := `
+hydration_idle_timeout_s: 120
+hydration_cache_max_bytes: 1073741824
+hydration_idle_check_period_s: 15
+hydration_workers: 4
+`
+	path := writeTempConfig(t, yamlContent)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HydrationIdleTimeoutS != 120 {
+		t.Errorf("HydrationIdleTimeoutS: got %d, want 120", cfg.HydrationIdleTimeoutS)
+	}
+	if cfg.HydrationCacheMaxBytes != 1073741824 {
+		t.Errorf("HydrationCacheMaxBytes: got %d, want 1073741824", cfg.HydrationCacheMaxBytes)
+	}
+	if cfg.HydrationIdleCheckPeriodS != 15 {
+		t.Errorf("HydrationIdleCheckPeriodS: got %d, want 15", cfg.HydrationIdleCheckPeriodS)
+	}
+	if cfg.HydrationWorkers != 4 {
+		t.Errorf("HydrationWorkers: got %d, want 4", cfg.HydrationWorkers)
+	}
+}
+
+// TestHydrationConfigCacheMaxBytesZero verifies that HydrationCacheMaxBytes=0
+// is accepted (it means unlimited).
+func TestHydrationConfigCacheMaxBytesZero(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_HYDRATION_CACHE_MAX_BYTES", "0")
+
+	_, err := config.Load("")
+	if err != nil {
+		t.Errorf("HydrationCacheMaxBytes=0 (unlimited) should be valid: %v", err)
+	}
+}
+
+// TestHydrationConfigValidation verifies that non-positive values for positive-
+// integer fields are rejected, and that a negative CacheMaxBytes is rejected.
+func TestHydrationConfigValidation(t *testing.T) {
+	t.Run("idle_timeout_s=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_IDLE_TIMEOUT_S", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_IDLE_TIMEOUT_S=0, got nil")
+		}
+	})
+
+	t.Run("idle_timeout_s=-1", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_IDLE_TIMEOUT_S", "-1")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_IDLE_TIMEOUT_S=-1, got nil")
+		}
+	})
+
+	t.Run("idle_check_period_s=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S=0, got nil")
+		}
+	})
+
+	t.Run("workers=0", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_WORKERS", "0")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_WORKERS=0, got nil")
+		}
+	})
+
+	t.Run("cache_max_bytes=-1", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("JAMSESH_HYDRATION_CACHE_MAX_BYTES", "-1")
+		_, err := config.Load("")
+		if err == nil {
+			t.Error("expected error for JAMSESH_HYDRATION_CACHE_MAX_BYTES=-1, got nil")
+		}
+	})
 }
 
 // writeTempConfig writes content to a temp YAML file and returns its path.

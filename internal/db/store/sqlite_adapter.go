@@ -411,6 +411,17 @@ func (a *sqliteAdapter) GetSession(ctx context.Context, orgID, id string) (Sessi
 	return sqliteSession(row), nil
 }
 
+// GetSessionByID looks up a session by its primary key without org scoping.
+// Intentional cross-org exception: the org_id returned on the Session is used
+// by the LifecycleManager to route subsequent org-scoped operations.
+func (a *sqliteAdapter) GetSessionByID(ctx context.Context, id string) (Session, error) {
+	row, err := a.q.GetSessionByID(ctx, id)
+	if err != nil {
+		return Session{}, mapSQLiteErr(err)
+	}
+	return sqliteSession(row), nil
+}
+
 func (a *sqliteAdapter) ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error) {
 	rows, err := a.q.ListSessionsForOrg(ctx, orgID)
 	if err != nil {
@@ -1169,6 +1180,13 @@ func (s *sqliteTxStore) CreateSession(ctx context.Context, p CreateSessionParams
 }
 func (s *sqliteTxStore) GetSession(ctx context.Context, orgID, id string) (Session, error) {
 	row, err := s.q.GetSession(ctx, sqlitestore.GetSessionParams{OrgID: orgID, ID: id})
+	if err != nil {
+		return Session{}, mapSQLiteErr(err)
+	}
+	return sqliteSession(row), nil
+}
+func (s *sqliteTxStore) GetSessionByID(ctx context.Context, id string) (Session, error) {
+	row, err := s.q.GetSessionByID(ctx, id)
 	if err != nil {
 		return Session{}, mapSQLiteErr(err)
 	}
