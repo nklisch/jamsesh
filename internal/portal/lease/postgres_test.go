@@ -399,12 +399,6 @@ func TestPostgresReleaseAfterLostIsIdempotent(t *testing.T) {
 // keeping the row in place, and verifies that a fresh Acquire from a different
 // pod returns ErrAlreadyHeld.
 func TestPostgresCollisionDefensiveCheck(t *testing.T) {
-	// BUG: PostgresManager.Acquire does not detect the stale row correctly
-	// when pod_id != mgr.PodID AND released_at IS NULL — it returns nil instead
-	// of ErrAlreadyHeld. Tracked in backlog:
-	// lease-collision-check-not-returning-erralreadyheld
-	t.Skip("known bug: collision check returns nil instead of ErrAlreadyHeld — see lease-collision-check-not-returning-erralreadyheld")
-
 	dsn := acquireTestPostgres(t)
 	sessionID := uniqueSession(t)
 	t.Cleanup(func() { cleanupLeaseRow(t, dsn, sessionID) })

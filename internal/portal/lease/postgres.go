@@ -85,10 +85,12 @@ func (m *PostgresManager) observeHoldDuration(d time.Duration) {
 // Sequence:
 //  1. Check out a dedicated *sql.Conn (advisory locks are session-scoped).
 //  2. SELECT pg_try_advisory_lock(hashtext($session_id)) — false → ErrAlreadyHeld.
-//  3. Issue a fencing token via the jamsesh_lease_fencing_tokens sequence.
-//  4. Upsert the leases row.
-//  5. Defensive hashtext-collision check: if the leases row has a different
+//  3. Defensive hashtext-collision check: if the leases row has a different
 //     pod_id and released_at IS NULL, release the lock and return ErrAlreadyHeld.
+//     This MUST run before the upsert; the upsert's ON CONFLICT DO UPDATE would
+//     overwrite pod_id, making a post-upsert check permanently vacuous.
+//  4. Issue a fencing token via the jamsesh_lease_fencing_tokens sequence.
+//  5. Upsert the leases row.
 //  6. Spawn heartbeat goroutine; return *pgHandle.
 func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle, error) {
 	// Step 1: dedicate a connection for this lease's lifetime.
@@ -112,33 +114,12 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 		return nil, ErrAlreadyHeld
 	}
 
-	// Step 3: issue fencing token.
-	fencingToken, err := m.Store.IssueLeaseFencingToken(ctx)
-	if err != nil {
-		// Best-effort advisory unlock before returning.
-		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
-		conn.Close() //nolint:errcheck
-		m.incAcquires("error")
-		return nil, fmt.Errorf("lease: issue fencing token: %w", err)
-	}
-
-	// Step 4: upsert the leases row.
-	if _, err := m.Store.InsertLease(ctx, store.InsertLeaseParams{
-		SessionID:    sessionID,
-		PodID:        m.PodID,
-		FencingToken: fencingToken,
-	}); err != nil {
-		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
-		conn.Close() //nolint:errcheck
-		m.incAcquires("error")
-		return nil, fmt.Errorf("lease: upsert lease row: %w", err)
-	}
-
-	// Step 5: hashtext collision defensive check.
-	// After acquiring the advisory lock, read back the row and confirm the
-	// pod_id matches us. A different pod_id with released_at IS NULL means
-	// two different session_id strings happened to hash to the same int32 —
-	// extremely rare but documented.
+	// Step 3: hashtext collision defensive check (before upsert).
+	// Read the existing leases row, if any. A different pod_id with
+	// released_at IS NULL means two different session_id strings happened to
+	// hash to the same int32 — extremely rare but documented. We must check
+	// BEFORE the upsert because the upsert (ON CONFLICT DO UPDATE) would
+	// overwrite the pod_id, making the check permanently vacuous.
 	var rowPodID string
 	var rowReleasedAt *time.Time
 	err = conn.QueryRowContext(ctx,
@@ -148,9 +129,10 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 		// Couldn't verify — conservative fail.
 		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
 		conn.Close() //nolint:errcheck
+		m.incAcquires("error")
 		return nil, fmt.Errorf("lease: collision check query: %w", err)
 	}
-	if rowPodID != m.PodID && rowReleasedAt == nil {
+	if rowPodID != m.PodID && rowReleasedAt == nil && rowPodID != "" {
 		slog.Warn("lease: hashtext collision detected; releasing advisory lock",
 			"session_id", sessionID,
 			"our_pod_id", m.PodID,
@@ -160,6 +142,28 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 		conn.Close() //nolint:errcheck
 		m.incAcquires("conflict")
 		return nil, ErrAlreadyHeld
+	}
+
+	// Step 4: issue fencing token.
+	fencingToken, err := m.Store.IssueLeaseFencingToken(ctx)
+	if err != nil {
+		// Best-effort advisory unlock before returning.
+		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
+		conn.Close() //nolint:errcheck
+		m.incAcquires("error")
+		return nil, fmt.Errorf("lease: issue fencing token: %w", err)
+	}
+
+	// Step 5: upsert the leases row.
+	if _, err := m.Store.InsertLease(ctx, store.InsertLeaseParams{
+		SessionID:    sessionID,
+		PodID:        m.PodID,
+		FencingToken: fencingToken,
+	}); err != nil {
+		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
+		conn.Close() //nolint:errcheck
+		m.incAcquires("error")
+		return nil, fmt.Errorf("lease: upsert lease row: %w", err)
 	}
 
 	// Step 6: emit success metrics and build the handle.
