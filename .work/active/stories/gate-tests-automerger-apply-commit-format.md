@@ -1,7 +1,7 @@
 ---
 id: gate-tests-automerger-apply-commit-format
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal]
 parent: null
 depends_on: []
@@ -38,3 +38,31 @@ on the exact trailer key set, the contract is implicit.
 
 ## Test location (suggested)
 `internal/portal/automerger/outcomes_test.go`
+
+## Implementation notes
+
+Added `TestAutoMerger_Apply_CleanMerge_CommitFormat` to
+`internal/portal/automerger/outcomes_test.go`.
+
+**Trailer assertion strategy:** Rather than using `prereceive.Trailers` (which
+returns a `map[string]string` and loses ordering), the test uses a local
+`extractTrailerLines` helper that walks backward through the commit message to
+isolate the last non-empty paragraph (the trailer block), then parses the lines
+as ordered `(key, value)` pairs. This lets us assert both the key order
+(`Auto-Merger` → `Source-Commit` → `Source-Ref`) and the values without
+reaching into go-git internals.
+
+**Identity assertions:**
+- `Author.Email` and `Author.Name` are asserted equal to the source commit's
+  author (carried through by `composeMergeMessage`).
+- `Committer.Email` is asserted equal to `"auto-merger@jamsesh.test"` and
+  `Committer.Name` to `"jamsesh auto-merger"` — both hardcoded in
+  `applySuccess`.
+
+**Absent-trailer assertions:**
+- `Resolves-Conflict` must not appear on a clean merge where the source commit
+  carries no such trailer.
+- `Auto-Resolved` must not appear (it is only emitted for `SafeAutoResolve`).
+
+**No ordering drift found:** the test passes against the current production
+code, confirming `composeMergeMessage` emits trailers in the correct order.

@@ -547,6 +547,167 @@ func TestApply_ResolvesConflictClosure(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Apply — clean-merge commit format (trailer ordering + identity)
+// ---------------------------------------------------------------------------
+
+// TestAutoMerger_Apply_CleanMerge_CommitFormat decodes the merge commit produced
+// by Apply on a clean-merge scenario and asserts the exact trailer ordering and
+// author/committer identity contract:
+//
+//   - commit.Author.Email == source-author email
+//   - commit.Committer.Email == "auto-merger@<portalHost>"
+//   - commit.Committer.Name  == "jamsesh auto-merger"
+//   - trailers in order: Auto-Merger: true, Source-Commit: <sha>, Source-Ref: <ref>
+//   - Resolves-Conflict trailer is absent (it's only emitted on resolving commits)
+func TestAutoMerger_Apply_CleanMerge_CommitFormat(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t)
+	sess := seedSession(t, s)
+	log := events.New(s)
+
+	repo, sourceH, draftH, ancestorH := buildApplyRepo(t)
+	result := runMerge(t, repo, sourceH, draftH, ancestorH)
+	if result.Kind != automerger.CleanMerge {
+		t.Fatalf("expected CleanMerge, got %s", result.Kind)
+	}
+
+	if err := s.EnsureEventSeqRow(ctx, sess.ID); err != nil {
+		t.Fatalf("ensure event_seq row: %v", err)
+	}
+
+	const portalHost = "jamsesh.test"
+	applier := automerger.NewApplier(s, log)
+	out, err := applier.Apply(ctx, automerger.ApplyInput{
+		Repo:         repo,
+		Session:      sess,
+		SourceRef:    "refs/heads/jam/sess-1/alice/feat",
+		SourceCommit: sourceH,
+		DraftTip:     draftH,
+		Ancestor:     ancestorH,
+		Result:       result,
+		PortalHost:   portalHost,
+	})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if out.MergeCommitSHA == "" {
+		t.Fatal("MergeCommitSHA is empty")
+	}
+
+	// Decode the resulting merge commit.
+	mergeHash := plumbing.NewHash(out.MergeCommitSHA)
+	mc, err := object.GetCommit(repo.Storer, mergeHash)
+	if err != nil {
+		t.Fatalf("get merge commit: %v", err)
+	}
+
+	// --- Author identity ---
+	srcCommit, err := object.GetCommit(repo.Storer, sourceH)
+	if err != nil {
+		t.Fatalf("get source commit: %v", err)
+	}
+	if mc.Author.Email != srcCommit.Author.Email {
+		t.Errorf("author email: got %q, want %q", mc.Author.Email, srcCommit.Author.Email)
+	}
+	if mc.Author.Name != srcCommit.Author.Name {
+		t.Errorf("author name: got %q, want %q", mc.Author.Name, srcCommit.Author.Name)
+	}
+
+	// --- Committer identity ---
+	wantCommitterEmail := "auto-merger@" + portalHost
+	if mc.Committer.Email != wantCommitterEmail {
+		t.Errorf("committer email: got %q, want %q", mc.Committer.Email, wantCommitterEmail)
+	}
+	if mc.Committer.Name != "jamsesh auto-merger" {
+		t.Errorf("committer name: got %q, want %q", mc.Committer.Name, "jamsesh auto-merger")
+	}
+
+	// --- Trailer ordering ---
+	// Extract the trailer block: everything after the blank line that follows
+	// the commit subject. We parse trailers as ordered key:value lines so we
+	// can assert on position, not just presence.
+	trailerLines := extractTrailerLines(mc.Message)
+	if len(trailerLines) == 0 {
+		t.Fatalf("no trailer lines found in commit message:\n%s", mc.Message)
+	}
+
+	// Build (key, value) pairs preserving order.
+	type kv struct{ key, val string }
+	var trailers []kv
+	for _, line := range trailerLines {
+		idx := strings.Index(line, ": ")
+		if idx < 0 {
+			t.Errorf("trailer line %q has no ': ' separator", line)
+			continue
+		}
+		trailers = append(trailers, kv{line[:idx], line[idx+2:]})
+	}
+
+	// Assert exact key ordering for the mandatory clean-merge trailers.
+	wantOrder := []string{"Auto-Merger", "Source-Commit", "Source-Ref"}
+	for i, want := range wantOrder {
+		if i >= len(trailers) {
+			t.Errorf("trailer[%d]: want key %q but trailer block is shorter (%d entries)", i, want, len(trailers))
+			continue
+		}
+		if trailers[i].key != want {
+			t.Errorf("trailer[%d]: got key %q, want %q (ordering mismatch)", i, trailers[i].key, want)
+		}
+	}
+
+	// Assert trailer values.
+	assertTrailerValue := func(key, want string) {
+		t.Helper()
+		for _, tv := range trailers {
+			if tv.key == key {
+				if tv.val != want {
+					t.Errorf("trailer %s: got %q, want %q", key, tv.val, want)
+				}
+				return
+			}
+		}
+		t.Errorf("trailer %q not found in commit message:\n%s", key, mc.Message)
+	}
+	assertTrailerValue("Auto-Merger", "true")
+	assertTrailerValue("Source-Commit", sourceH.String())
+	assertTrailerValue("Source-Ref", "refs/heads/jam/sess-1/alice/feat")
+
+	// --- Resolves-Conflict must be absent on a plain clean merge ---
+	for _, tv := range trailers {
+		if tv.key == "Resolves-Conflict" {
+			t.Errorf("Resolves-Conflict trailer must be absent on a clean merge without a source Resolves-Conflict trailer; found value: %q", tv.val)
+		}
+	}
+
+	// --- Auto-Resolved must be absent on a clean merge ---
+	for _, tv := range trailers {
+		if tv.key == "Auto-Resolved" {
+			t.Errorf("Auto-Resolved trailer must be absent on a clean merge; found value: %q", tv.val)
+		}
+	}
+}
+
+// extractTrailerLines returns the lines in the last non-empty paragraph of msg
+// (i.e., the trailer block), or nil if none exists.
+func extractTrailerLines(msg string) []string {
+	msg = strings.TrimRight(strings.ReplaceAll(msg, "\r\n", "\n"), "\n")
+	lines := strings.Split(msg, "\n")
+
+	// Walk backward to find the last paragraph.
+	blockStart := len(lines)
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			break
+		}
+		blockStart = i
+	}
+	if blockStart >= len(lines) {
+		return nil
+	}
+	return lines[blockStart:]
+}
+
 // TestApply_ResolvesConflictMismatch verifies that an unknown event-id in the
 // Resolves-Conflict trailer produces a silent no-op (no error).
 func TestApply_ResolvesConflictMismatch(t *testing.T) {
