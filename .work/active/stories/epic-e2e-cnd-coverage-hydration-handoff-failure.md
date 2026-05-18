@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff-failure
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-hydration-handoff
 depends_on: [epic-e2e-cnd-coverage-hydration-handoff-infra]
@@ -126,3 +126,59 @@ the failure is transient (not data loss). Mark this subtest as `t.Run("recovery_
 
 - Never game: do not assert `true == true` or remove the assertion because
   "the system didn't return what we expected." The invariant is the point.
+
+## Implementation notes
+
+**File:** `tests/e2e/failure/hydration_with_missing_pack_test.go`
+**Package:** `failure_test`
+
+### What was built
+
+`TestHydrationWithMissingPack` in the `failure_test` package covering the full
+corruption scenario with three top-level assertions and one recovery subtest:
+
+1. **Push 15 commits to pod 0** via direct git exec (moderately-sized content
+   per commit to guarantee a server-side packfile). Uses `mhpSetupAndPushN`.
+
+2. **Discover pack keys** via `mn.ListObjects("sessions/<id>/packs/")`, pick
+   the first `.pack` key; read pack data for the recovery subtest; read the
+   manifest for the pre-corruption baseline.
+
+3. **Delete the pack out-of-band** via `mn.DeleteObject`. Verify via re-list
+   that the key is gone before proceeding.
+
+4. **Attempt push via pod 1** (`mhpAttemptPush`) — never calls t.Fatal on
+   push failure (unlike gitclient helpers). Returns exit code and raw output.
+
+5. **Assertion 1 — push rejected**: if `pushExitCode == 0`, t.Fatal with a
+   Critical-bug message explaining the invariant and instructing the developer
+   to park before landing any workaround. No suppression path.
+
+6. **Assertion 2 — no partial state served**: one-shot `mhpRunLsRemote` against
+   pod 1. If ls-remote succeeds AND returns non-empty refs, t.Fatal (Critical).
+   If ls-remote returns empty refs (session unknown) or an error (session
+   unavailable), both are acceptable — logged for transparency.
+
+7. **Assertion 3 — manifest not updated**: reads manifest after corruption
+   attempt, compares `FencingToken` to the pre-corruption baseline. If the
+   token advanced, t.Errorf (Important/Critical depending on context).
+
+8. **Subtest `recovery_after_repair`**: restores the pack via `mn.PutObject`,
+   polls pod 1 with `c.PollForHydration` (non-fatal variant), then retries
+   the push. Confirms the failure was transient (not data loss).
+
+### Design decisions
+
+- **No gitclient.Clone + repo.Push** for the failure-path push — those helpers
+  always `t.Fatal` on push failure, which would abort the test before the
+  assertions. Instead, direct `exec.Command` with exit code capture.
+- **No GracefulDrain** — the story design moved to a simpler model: pod 1 has
+  simply never served the session. No drain is needed to trigger hydration;
+  any request to pod 1 for the session triggers an acquire + hydrate attempt.
+- **`PollForHydration` (non-fatal variant)** used in recovery subtest so we
+  get a clear timeout diagnostic rather than t.Fatal with no context.
+- **Escape hatch comments** inline in the Critical assertion (push exit 0 case)
+  and the ls-remote assertion direct the developer to `/agile-workflow:park`
+  rather than suppressing the failure.
+- **Medium gap logging** for absent machine-readable error codes: a `t.Logf`
+  documents the gap as per story spec (not a park unless HTTP 200).
