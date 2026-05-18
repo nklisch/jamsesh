@@ -1,7 +1,7 @@
 ---
 id: gate-tests-finalize-shell-escape
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-finalize-script-shell-escape]
@@ -68,3 +68,13 @@ The `dotdot_escape` test case is commented out with a reference to backlog
 item `gate-security-finalize-target-branch-dotdot`, which records the gap
 and the fix (`strings.Contains(branch, "..")` guard). This test will be
 un-commented once that item is resolved.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Four tests added: PatchFinalizeLock rejection of malicious target_branch (5 cases, 400 envelope, no DB mutation), PatchFinalizeLock rejection of malformed base_sha (6 cases), Shellquote escape correctness (18 cases with bash round-trip via printf), generated-script quoting (7 branches × 2 modes regex match). The dotdot finding surfaced during this test pass has been fixed inline as gate-security-finalize-target-branch-dotdot — that story is now at done, and the two dotdot test cases are active and green.

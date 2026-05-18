@@ -1,7 +1,7 @@
 ---
 id: gate-tests-revoke-token-cross-account
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-revoke-token-bearer-account-check]
@@ -53,3 +53,13 @@ production. The handler correctly reaches `Service.Revoke` → `ErrForbidden` �
 `RevokeToken403JSONResponse`; no short-circuit before the service call was observed.
 
 All 44 tests in `./internal/portal/tokens/...` pass.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Handler-level integration coverage added: two tests (single-token + revoke_all) drive a real HTTP request through httptest.Server → chi → strict-handler → tokens.Service. Both assert 403 + auth.forbidden envelope AND B's tokens remain valid post-call. The service-level fix (ErrForbidden) correctly propagates through to the handler response.

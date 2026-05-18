@@ -1,7 +1,7 @@
 ---
 id: gate-tests-metrics-endpoint-auth-test
 kind: story
-stage: review
+stage: done
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-metrics-endpoint-auth]
@@ -64,3 +64,13 @@ Old test asserted `/metrics` was open (actively blocked the security fix). Rewri
 - The 200 subtest preserves the original Prometheus expfmt parse + metric-family-presence assertions.
 
 The e2e test compiles cleanly (`go build -tags e2e ./...` in both modules). The stale portal:e2e image predates the security fix so the test correctly fails against it locally; it will pass once CI rebuilds the image from the current source.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Unit tests at the router layer cover: unmounted (no token) → 404; nil handler → 404; bearer-auth path with no/wrong/correct bearer → 401/401/200; case-sensitivity guard. E2e test at tests/e2e/golden/metrics_endpoint_test.go rewritten with three subtests against a portal fixture that passes JAMSESH_METRICS_TOKEN via portal.Options.ExtraEnv. Stale portal:e2e image predates the security fix so e2e fails locally; CI rebuilds image and will pass.
