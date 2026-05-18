@@ -37,14 +37,23 @@ if cfg.DiscoveryMode == "static" {
 ```
 
 ## Removal
-Either add the kubernetes branch in `main.go` calling
-`discovery.Kubernetes(...)` or remove the `Kubernetes` /
-`KubernetesWithClient` / `k8sDiscoverer` cluster plus the help-text
-mentioning `JAMSESH_ROUTER_DISCOVERY_MODE="kubernetes"`,
-`JAMSESH_ROUTER_KUBE_NAMESPACE`, and `JAMSESH_ROUTER_KUBE_SERVICE_NAME`
-in `main.go:216-219`.
 
-Note: there is an in-flight story
-`epic-e2e-cnd-coverage-routing-layer-k8s-discovery` at stage
-`implementing` that may wire this — coordinate with that work before
-choosing the delete path.
+**Autopilot decision (2026-05-18): delete.** The k8s-discovery wiring is
+tracked at backlog story `epic-e2e-cnd-coverage-routing-layer-k8s-discovery`
+(deferred from v0.1.0). Until that story is scoped active, the unused
+discoverer + help-text are pure cruft.
+
+Remove:
+- The `Kubernetes` / `KubernetesWithClient` constructors and the
+  `k8sDiscoverer` cluster in `internal/router/discovery/k8s.go` (and any
+  related test files for that file).
+- The help-text mentioning `JAMSESH_ROUTER_DISCOVERY_MODE="kubernetes"`,
+  `JAMSESH_ROUTER_KUBE_NAMESPACE`, and `JAMSESH_ROUTER_KUBE_SERVICE_NAME`
+  in `cmd/jamsesh-router/main.go:216-219`.
+- The `DiscoveryMode`-routing logic that gates on the kubernetes branch
+  (since there's now only one branch — static).
+- The corresponding env-var declarations in `cmd/jamsesh-router/config.go`
+  (or wherever the router config lives) for the kubernetes-only knobs.
+
+The ARCHITECTURE.md doc-side drift was already addressed in a sibling
+story (`gate-docs-arch-k8s-discovery`).
