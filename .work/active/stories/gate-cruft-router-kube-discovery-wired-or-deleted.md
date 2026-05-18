@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-router-kube-discovery-wired-or-deleted
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, infra]
 parent: null
 depends_on: []
@@ -57,3 +57,24 @@ Remove:
 
 The ARCHITECTURE.md doc-side drift was already addressed in a sibling
 story (`gate-docs-arch-k8s-discovery`).
+
+## Implementation notes
+
+### Deleted files
+- `internal/router/discovery/k8s.go` — `k8sDiscoverer` type, `Kubernetes` and `KubernetesWithClient` constructors, informer loop, `listRunningAddrs`, `k8sPodsToPods`
+- `internal/router/discovery/k8s_test.go` — 4 tests exercising the k8s discoverer via a fake clientset
+
+### Simplified / edited files
+- `internal/router/discovery/discovery.go` — removed `Kubernetes` constructor function and updated package doc to drop the k8s mode bullet; updated `Discoverer.Run` comment to drop k8s-informer wording
+- `cmd/jamsesh-router/main.go` — removed `if cfg.DiscoveryMode == "static"` guard (static is now unconditional); removed `discovery_mode` from the startup log attrs; removed kube env-var lines from `printUsage`
+- `internal/router/config/config.go` — removed `DiscoveryMode`, `KubeNamespace`, `KubeServiceName` struct fields; removed their env-var parsing in `applyEnv`; simplified `Validate` from a `switch` on DiscoveryMode to a direct `len(StaticPods)==0` check; updated package doc
+- `internal/router/config/config_test.go` — removed `TestEnvKubeFields`; removed `"unknown discovery mode"` test case from `TestValidate`; updated `TestLoadYAML` YAML fixture and assertions to drop `DiscoveryMode`; updated `TestValidate` base config and `TestEnvOverlay` fixture
+
+### go.mod change
+Removed 3 direct dependencies and ~13 indirect dependencies. Direct removals:
+- `k8s.io/api v0.36.1`
+- `k8s.io/apimachinery v0.36.1`
+- `k8s.io/client-go v0.36.1`
+
+### No e2e test impact
+No files under `tests/e2e/` imported k8s discovery symbols. The two k8s mentions in `tests/e2e/` are incidental comments about Kubernetes deployment patterns, not related to the discovery package.

@@ -21,7 +21,6 @@ func TestDefaults(t *testing.T) {
 func TestLoadYAML(t *testing.T) {
 	yaml := `
 bind: ":9090"
-discovery_mode: "static"
 static_pods:
   - "pod1:8080"
   - "pod2:8080"
@@ -38,9 +37,6 @@ shutdown_grace_s: 15
 	}
 	if cfg.Bind != ":9090" {
 		t.Errorf("Bind: got %q, want %q", cfg.Bind, ":9090")
-	}
-	if cfg.DiscoveryMode != "static" {
-		t.Errorf("DiscoveryMode: got %q, want %q", cfg.DiscoveryMode, "static")
 	}
 	if len(cfg.StaticPods) != 2 {
 		t.Fatalf("StaticPods length: got %d, want 2", len(cfg.StaticPods))
@@ -68,7 +64,6 @@ shutdown_grace_s: 15
 func TestEnvOverlay(t *testing.T) {
 	yaml := `
 bind: ":9090"
-discovery_mode: "static"
 static_pods:
   - "yaml-pod:8080"
 shutdown_grace_s: 10
@@ -100,32 +95,10 @@ shutdown_grace_s: 10
 	}
 }
 
-func TestEnvKubeFields(t *testing.T) {
-	yaml := `
-bind: ":8080"
-discovery_mode: "kubernetes"
-shutdown_grace_s: 10
-`
-	path := writeTemp(t, yaml)
-	t.Setenv("JAMSESH_ROUTER_KUBE_NAMESPACE", "prod")
-	t.Setenv("JAMSESH_ROUTER_KUBE_SERVICE_NAME", "jamsesh-portal")
-
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.KubeNamespace != "prod" {
-		t.Errorf("KubeNamespace: got %q, want %q", cfg.KubeNamespace, "prod")
-	}
-	if cfg.KubeServiceName != "jamsesh-portal" {
-		t.Errorf("KubeServiceName: got %q, want %q", cfg.KubeServiceName, "jamsesh-portal")
-	}
-}
 
 func TestValidate(t *testing.T) {
 	base := config.Config{
 		Bind:                 ":8080",
-		DiscoveryMode:        "static",
 		StaticPods:           []string{"pod1:8080"},
 		Vnodes:               150,
 		ProbeInterval:        5 * time.Second,
@@ -145,16 +118,8 @@ func TestValidate(t *testing.T) {
 			wantErr: "bind must not be empty",
 		},
 		{
-			name:    "unknown discovery mode",
-			modify:  func(c *config.Config) { c.DiscoveryMode = "consul" },
-			wantErr: "discovery_mode must be",
-		},
-		{
-			name: "static mode with no pods",
-			modify: func(c *config.Config) {
-				c.DiscoveryMode = "static"
-				c.StaticPods = nil
-			},
+			name:    "no pods",
+			modify:  func(c *config.Config) { c.StaticPods = nil },
 			wantErr: "static_pods must not be empty",
 		},
 		{

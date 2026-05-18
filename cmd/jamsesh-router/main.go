@@ -82,7 +82,6 @@ func run(args []string) int {
 
 	slog.Info("jamsesh-router starting",
 		"bind", cfg.Bind,
-		"discovery_mode", cfg.DiscoveryMode,
 		"vnodes", cfg.Vnodes,
 		"hint_cache_ttl", cfg.HintCacheTTL.String(),
 		"shutdown_grace_s", cfg.ShutdownGraceSeconds,
@@ -115,32 +114,28 @@ func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	// Seed the ring from static config (the discovery story / Unit 3 will
-	// overlay this with live k8s watch results by calling SetPods on the
-	// same ring pointer).
-	if cfg.DiscoveryMode == "static" {
-		pods := make([]ring.Pod, 0, len(cfg.StaticPods))
-		for _, addr := range cfg.StaticPods {
-			pods = append(pods, ring.Pod{
-				ID:      addr, // use address as stable ID for static mode
-				Address: addr,
-			})
-		}
-		r.SetPods(pods)
-		metricsReg.RouterRingRebalancesTotal.Inc()
-		metricsReg.RouterRingSize.Set(float64(len(pods)))
-		slog.Info("ring seeded from static config", "pod_count", len(pods))
-
-		// Start the static discovery loop to evict dead pods from the ring.
-		// The loop probes all configured backends every cfg.ProbeInterval and
-		// calls ring.SetPods atomically when the healthy set changes.
-		disc := discovery.Static(cfg.StaticPods, probe, cfg.ProbeInterval)
-		go func() {
-			if err := disc.Run(ctx, publishWithMetrics(r.SetPods)); err != nil && !errors.Is(err, context.Canceled) {
-				slog.Error("jamsesh-router: discovery loop exited unexpectedly", "err", err)
-			}
-		}()
+	// Seed the ring from static config.
+	pods := make([]ring.Pod, 0, len(cfg.StaticPods))
+	for _, addr := range cfg.StaticPods {
+		pods = append(pods, ring.Pod{
+			ID:      addr, // use address as stable ID for static mode
+			Address: addr,
+		})
 	}
+	r.SetPods(pods)
+	metricsReg.RouterRingRebalancesTotal.Inc()
+	metricsReg.RouterRingSize.Set(float64(len(pods)))
+	slog.Info("ring seeded from static config", "pod_count", len(pods))
+
+	// Start the static discovery loop to evict dead pods from the ring.
+	// The loop probes all configured backends every cfg.ProbeInterval and
+	// calls ring.SetPods atomically when the healthy set changes.
+	disc := discovery.Static(cfg.StaticPods, probe, cfg.ProbeInterval)
+	go func() {
+		if err := disc.Run(ctx, publishWithMetrics(r.SetPods)); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error("jamsesh-router: discovery loop exited unexpectedly", "err", err)
+		}
+	}()
 
 	// Build the hint cache.
 	hint := cache.New(10_000, cfg.HintCacheTTL)
@@ -212,11 +207,8 @@ Optional in single-instance mode.
 Configuration may be provided via YAML file (first positional argument)
 with environment variable overrides:
 
-  JAMSESH_ROUTER_BIND               Listen address (default ":8080")
-  JAMSESH_ROUTER_DISCOVERY_MODE     "static" | "kubernetes" (default "static")
-  JAMSESH_ROUTER_STATIC_PODS        Comma-separated pod addresses (e.g. "10.0.0.1:8443,10.0.0.2:8443")
-  JAMSESH_ROUTER_KUBE_NAMESPACE     Kubernetes namespace (kubernetes mode)
-  JAMSESH_ROUTER_KUBE_SERVICE_NAME  Kubernetes service name (kubernetes mode)
-  JAMSESH_ROUTER_SHUTDOWN_GRACE_S   Graceful drain budget in seconds (default 30)
+  JAMSESH_ROUTER_BIND              Listen address (default ":8080")
+  JAMSESH_ROUTER_STATIC_PODS       Comma-separated pod addresses (e.g. "10.0.0.1:8443,10.0.0.2:8443")
+  JAMSESH_ROUTER_SHUTDOWN_GRACE_S  Graceful drain budget in seconds (default 30)
 `)
 }

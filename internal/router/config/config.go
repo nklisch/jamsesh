@@ -1,19 +1,15 @@
 // Package config loads and validates the jamsesh-router configuration.
 // Config is sourced from an optional YAML file with env-var overrides.
 //
-// YAML keys: bind, discovery_mode, static_pods, kube_namespace,
+// YAML keys: bind, static_pods, probe_interval, probe_timeout,
 //
-//	kube_service_name, probe_interval, probe_timeout, hint_cache_ttl,
-//	vnodes, shutdown_grace_s
+//	hint_cache_ttl, vnodes, shutdown_grace_s
 //
 // Env vars:
 //
-//	JAMSESH_ROUTER_BIND               – listen address, default ":8080"
-//	JAMSESH_ROUTER_DISCOVERY_MODE     – "static" | "kubernetes"
-//	JAMSESH_ROUTER_STATIC_PODS        – comma-separated "host:port" list
-//	JAMSESH_ROUTER_KUBE_NAMESPACE     – k8s namespace (kubernetes mode)
-//	JAMSESH_ROUTER_KUBE_SERVICE_NAME  – k8s service name (kubernetes mode)
-//	JAMSESH_ROUTER_SHUTDOWN_GRACE_S   – seconds for graceful drain
+//	JAMSESH_ROUTER_BIND              – listen address, default ":8080"
+//	JAMSESH_ROUTER_STATIC_PODS       – comma-separated "host:port" list
+//	JAMSESH_ROUTER_SHUTDOWN_GRACE_S  – seconds for graceful drain
 //
 // Remaining knobs (probe_interval, probe_timeout, hint_cache_ttl, vnodes)
 // are YAML-only in v1.
@@ -35,26 +31,9 @@ type Config struct {
 	// Env: JAMSESH_ROUTER_BIND
 	Bind string `yaml:"bind"`
 
-	// DiscoveryMode controls how the pod set is populated.
-	// "static"     — use StaticPods list directly.
-	// "kubernetes" — watch the k8s service (Unit 3, discovery story).
-	// Env: JAMSESH_ROUTER_DISCOVERY_MODE
-	DiscoveryMode string `yaml:"discovery_mode"`
-
-	// StaticPods is the fixed list of pod addresses ("host:port") used when
-	// DiscoveryMode is "static". Required when DiscoveryMode == "static".
+	// StaticPods is the fixed list of pod addresses ("host:port").
 	// Env: JAMSESH_ROUTER_STATIC_PODS (comma-separated)
 	StaticPods []string `yaml:"static_pods"`
-
-	// KubeNamespace is the k8s namespace containing the portal pods.
-	// Required when DiscoveryMode == "kubernetes".
-	// Env: JAMSESH_ROUTER_KUBE_NAMESPACE
-	KubeNamespace string `yaml:"kube_namespace"`
-
-	// KubeServiceName is the k8s service name whose endpoints back the portal.
-	// Required when DiscoveryMode == "kubernetes".
-	// Env: JAMSESH_ROUTER_KUBE_SERVICE_NAME
-	KubeServiceName string `yaml:"kube_service_name"`
 
 	// ProbeInterval is how often the discovery loop polls pod readiness.
 	// Default: 5s. YAML-only in v1.
@@ -105,17 +84,8 @@ func (c Config) Validate() error {
 	if c.Bind == "" {
 		return fmt.Errorf("router config: bind must not be empty")
 	}
-	switch c.DiscoveryMode {
-	case "static":
-		if len(c.StaticPods) == 0 {
-			return fmt.Errorf("router config: static_pods must not be empty when discovery_mode is \"static\"")
-		}
-	case "kubernetes":
-		// KubeNamespace and KubeServiceName are required for k8s mode.
-		// The discovery story (Unit 3) enforces these at Discoverer construction;
-		// we accept blank here so Unit 2 can be tested without k8s.
-	default:
-		return fmt.Errorf("router config: discovery_mode must be \"static\" or \"kubernetes\", got %q", c.DiscoveryMode)
+	if len(c.StaticPods) == 0 {
+		return fmt.Errorf("router config: static_pods must not be empty")
 	}
 	if c.Vnodes <= 0 {
 		return fmt.Errorf("router config: vnodes must be a positive integer, got %d", c.Vnodes)
@@ -139,7 +109,6 @@ func (c Config) Validate() error {
 func defaults() Config {
 	return Config{
 		Bind:                 ":8080",
-		DiscoveryMode:        "static",
 		ProbeInterval:        5 * time.Second,
 		ProbeTimeout:         2 * time.Second,
 		HintCacheTTL:         60 * time.Second,
@@ -154,9 +123,6 @@ func applyEnv(c *Config) {
 	if v := os.Getenv("JAMSESH_ROUTER_BIND"); v != "" {
 		c.Bind = v
 	}
-	if v := os.Getenv("JAMSESH_ROUTER_DISCOVERY_MODE"); v != "" {
-		c.DiscoveryMode = v
-	}
 	if v := os.Getenv("JAMSESH_ROUTER_STATIC_PODS"); v != "" {
 		// Comma-separated list; trim whitespace around each entry.
 		parts := strings.Split(v, ",")
@@ -170,12 +136,6 @@ func applyEnv(c *Config) {
 		if len(pods) > 0 {
 			c.StaticPods = pods
 		}
-	}
-	if v := os.Getenv("JAMSESH_ROUTER_KUBE_NAMESPACE"); v != "" {
-		c.KubeNamespace = v
-	}
-	if v := os.Getenv("JAMSESH_ROUTER_KUBE_SERVICE_NAME"); v != "" {
-		c.KubeServiceName = v
 	}
 	if v := os.Getenv("JAMSESH_ROUTER_SHUTDOWN_GRACE_S"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
