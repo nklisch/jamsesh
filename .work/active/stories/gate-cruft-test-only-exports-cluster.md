@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-test-only-exports-cluster
 kind: story
-stage: review
+stage: done
 tags: [cleanup, portal, refactor]
 parent: null
 depends_on: []
@@ -58,3 +58,13 @@ externally-supported contract.
 | `ErrSessionNotFound` (httperr) | **B** — move internal, lowercase | Tests exercise real constructor shape and `WriteFromError` pass-through behaviour. Moved 3 tests to `httperr_internal_test.go` (`package httperr`); symbol renamed `errSessionNotFound`. |
 | `FirstParentLeafCommits` (finalize) | **B** — move internal, lowercase | Tests exercise complex DAG traversal logic (auto-merger merge commit skipping, chronological ordering). Moved to `script_internal_test.go` (`package finalize`); symbol renamed `firstParentLeafCommits`. |
 | `ParsePackedRefsContent` (objectstore) | **B** — lowercase only | `sync_test.go` was already `package objectstore` (internal), so only the symbol rename was needed: `parsePackedRefsContent`. |
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: 5 test-only exports triaged per case: 4 of 5 (OrgMemberFromContext, ErrSessionNotFound, FirstParentLeafCommits, ParsePackedRefsContent) made package-private with tests moved/renamed to internal test packages. ContextWithAccount kept exported with a doc comment justifying the cross-package test-injection use (referenced by _test.go files in 4 sibling packages). All targeted packages build + test green.
