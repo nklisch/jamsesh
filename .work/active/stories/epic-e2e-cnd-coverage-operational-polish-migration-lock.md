@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-migration-lock
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -102,3 +102,20 @@ explicit, test-initiated inspection.
 observed. `portal.Start` calls `t.Fatalf` on container failure, which
 terminates the goroutine, so `g.Wait()` always returns nil when all portals
 start successfully.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: `slog.InfoContext` placement is correct — after the results loop, gated
+on `len(results) > 0` so idempotent runs (already-current DB) are silent. The
+`migrationLogPhrase` constant exactly matches the slog message key. `pg.ContainerDSN`
+used for portal fixtures (Docker bridge), `pg.DSN` for the post-condition host query —
+both correct. The `errgroup` + `t.Fatalf` interaction is sound (`t.Fatalf` calls
+`runtime.Goexit`). Exact `== 1` assertion with clear messaging for the 0 and 2+
+failure modes. `goose_db_version WHERE is_applied = true` correctly excludes rollback
+rows. All acceptance criteria satisfied.
