@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-lease-fencing, epic-e2e-cnd-coverage-object-storage-sync, epic-e2e-cnd-coverage-routing-layer]
@@ -505,4 +505,28 @@ func TestLifecycleEvictOnLeaseRelease(t *testing.T) {
    The only borderline case is the `git ls-remote` readiness probe in
    `WaitForHydration` — this is a real git operation against a real portal
    container, not a mock.
+
+## Implementation summary (2026-05-17)
+
+All 5 child stories landed at `stage: review`.
+
+| Story | Status | Notes |
+|---|---|---|
+| `hh-infra` | review | `state_compare.go`, `hydration_wait.go`, `cache_inspect.go` helpers; `Portal.Exec` extension to portal fixture |
+| `hh-golden` | review | `clean_drain` (ref-SHA preservation + monotonic-token after handoff) + `idle_eviction` (re-hydration round-trip with tight eviction timeouts) |
+| `hh-failure` | review | `missing_pack` (out-of-band delete + assertion that push fails OR refs unreadable; no silent serving) + `recovery_after_repair` subtest |
+| `hh-chaos` | review | `pod_kill` (SIGKILL + survivor-direct addressing + git-merge-base ancestry check on every acked SHA) + `object_storage_chaos` (4s Toxiproxy latency during graceful drain; 45s SLO) |
+| `hh-lifecycle` | review | `evict_on_lease_release` (single-pod focus; `VerifyCachePresent` pre-check guards against false-positive eviction; direct docker-exec filesystem inspection) |
+
+Cross-cutting: helpers in `tests/e2e/fixtures/portalcluster/` (3 new files); `Portal.Exec` extension to portal fixture. All assertions on real ground truth (ref-SHA equality via `git merge-base --is-ancestor`, filesystem state via docker exec, MinIO bucket integrity via direct S3 SDK calls).
+
+Workarounds for known `bug-router-static-discoverer-not-started`:
+- Pod-kill tests address survivor pod directly (NOT through router)
+- Graceful-drain tests work fine through router (drain triggers normal lease release)
+
+Verification: `go build ./...` + `go vet ./...` clean across both modules at every wave boundary.
+
+The handoff capstone is complete — clustered-mode session migration has end-to-end coverage on golden + failure + chaos + lifecycle layers.
+
+Ready for review.
 
