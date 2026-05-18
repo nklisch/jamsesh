@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff-golden
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-hydration-handoff
 depends_on: [epic-e2e-cnd-coverage-hydration-handoff-infra]
@@ -122,6 +122,24 @@ PortalExtraEnv: map[string]string{
 **LRU note:** This test uses idle eviction only (time-driven). LRU
 (memory-pressure) eviction is not tested — container memory is not a reliable
 test lever; left as a risk item.
+
+## Implementation notes
+
+- `session_handoff_clean_drain_test.go`: 2-pod cluster, 5 commits via pod 0
+  directly (deterministic lease acquisition), GracefulDrain, WaitForHydration
+  on pod 1, push commit 6 via router, T2 > T1 fencing token check, ref-tip
+  comparison via REST + fresh git clone, MinIO bucket non-empty assertion.
+- `session_handoff_idle_eviction_test.go`: 2-pod cluster with
+  `JAMSESH_HYDRATION_IDLE_TIMEOUT_S=5` + `JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S=2`,
+  3 commits via pod 0, 10s sleep for eviction, VerifyCacheEvicted on pod 0,
+  push commit 4 via router, RequireLeaseHolder, REST+clone ref-tip cross-check,
+  MinIO bucket non-empty assertion.
+- Both tests use `handoffRevParseViaPod` (REST refs endpoint) and
+  `handoffGetRefTipFromClone` (real git clone) for non-tautological invariants.
+- `go build ./golden/...` and `go vet ./golden/...` both pass clean.
+- Helpers (`handoffCreateSession`, `handoffGetMe`, `handoffRevParseViaPod`,
+  `handoffGetRefTipFromClone`) defined in `session_handoff_clean_drain_test.go`
+  and reused across both files (same `golden_test` package).
 
 ## Acceptance criteria
 
