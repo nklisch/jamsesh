@@ -701,5 +701,117 @@ func TestMCPEndpoint_QuerySessionState_RecentEvents(t *testing.T) {
 	}
 }
 
+// TestMCPEndpoint_Fork_TargetRefTraversal_RejectedAndDoesNotMutateBaseRef verifies
+// that a traversal target_ref is rejected AND that the session's base ref is not
+// clobbered by the attack.  The test pre-seeds refs/heads/jam/<sess>/base = sha_A,
+// then calls fork with target_ref="../../base" and target_commit_sha=sha_B.  It
+// asserts:
+//   (a) the tool returns IsError=true, and
+//   (b) after the call, refs/heads/jam/<sess>/base still resolves to sha_A.
+func TestMCPEndpoint_Fork_TargetRefTraversal_RejectedAndDoesNotMutateBaseRef(t *testing.T) {
+	env := newTestEnv(t)
+	repoPath, shaA := env.initBareRepo(t)
+
+	// Pre-seed the session base ref (refs/heads/jam/<sess>/base = sha_A) directly
+	// in the bare repo, simulating the state after a first receive-pack push.
+	repo, err := gogit.PlainOpen(repoPath)
+	if err != nil {
+		t.Fatalf("PlainOpen for pre-seed: %v", err)
+	}
+	baseRefName := plumbing.NewBranchReferenceName("jam/" + env.sessID + "/base")
+	baseHash := plumbing.NewHash(shaA)
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(baseRefName, baseHash)); err != nil {
+		t.Fatalf("pre-seed base ref: %v", err)
+	}
+
+	// sha_B: a syntactically valid but different SHA to attempt to inject.
+	shaB := strings.Repeat("b", 40)
+
+	mcpSess := initializeSession(t, env.srv, env.token)
+
+	// (a) Assert the traversal payload is rejected with IsError=true.
+	result, _ := callTool(t, env.srv, env.token, mcpSess, "fork", map[string]any{
+		"session_id":        env.sessID,
+		"target_commit_sha": shaB,
+		"target_ref":        "../../base",
+	})
+
+	var toolResult struct {
+		IsError bool `json:"isError"`
+	}
+	if err := json.Unmarshal(result, &toolResult); err != nil {
+		t.Fatalf("decode traversal result: %v — raw: %s", err, result)
+	}
+	if !toolResult.IsError {
+		t.Fatal("fork traversal: expected IsError=true but got success — validation is broken")
+	}
+
+	// (b) Assert the base ref was NOT clobbered — it still points to sha_A.
+	// Re-open the repo so we get a fresh view of the storer (no cache).
+	repo2, err := gogit.PlainOpen(repoPath)
+	if err != nil {
+		t.Fatalf("PlainOpen for verification: %v", err)
+	}
+	ref, err := repo2.Reference(baseRefName, true)
+	if err != nil {
+		t.Fatalf("base ref disappeared after traversal attempt: %v", err)
+	}
+	if got := ref.Hash().String(); got != shaA {
+		t.Errorf("base ref clobbered! want %s (sha_A), got %s — traversal succeeded", shaA, got)
+	}
+}
+
+// TestMCPEndpoint_Fork_AdversarialTargetRef runs a table-driven suite of
+// malicious target_ref values, asserting that each one is rejected with
+// IsError=true.  This covers the full adversarial surface of validateForkTargetRef.
+func TestMCPEndpoint_Fork_AdversarialTargetRef(t *testing.T) {
+	cases := []struct {
+		name      string
+		targetRef string
+	}{
+		{name: "double-dot traversal", targetRef: "../../base"},
+		{name: "leading-dash rf-injection", targetRef: "-rf"},
+		{name: "null byte injection", targetRef: "foo\x00bar"},
+		{name: "empty string", targetRef: ""},
+		{name: "space in name", targetRef: "foo bar"},
+		{name: "newline in name", targetRef: "foo\nbar"},
+		{name: "dot-dot prefix", targetRef: "..base"},
+		{name: "slash-escaped traversal", targetRef: "refs/heads/jam/sess/x/y/z/../../../base"},
+		{name: "leading dot", targetRef: ".hidden"},
+		{name: "trailing dot", targetRef: "branch."},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			env := newTestEnv(t)
+			env.initBareRepo(t)
+			mcpSess := initializeSession(t, env.srv, env.token)
+
+			// Use a real commit SHA from the repo as the target (doesn't matter
+			// whether commit lookup succeeds — the ref validation must fire first).
+			sha := strings.Repeat("a", 40)
+
+			result, _ := callTool(t, env.srv, env.token, mcpSess, "fork", map[string]any{
+				"session_id":        env.sessID,
+				"target_commit_sha": sha,
+				"target_ref":        tc.targetRef,
+			})
+
+			var toolResult struct {
+				IsError bool `json:"isError"`
+			}
+			if err := json.Unmarshal(result, &toolResult); err != nil {
+				t.Fatalf("decode result: %v — raw: %s", err, result)
+			}
+			if !toolResult.IsError {
+				t.Errorf("fork with adversarial target_ref %q: expected IsError=true but got success", tc.targetRef)
+			}
+		})
+	}
+}
+
 // Ensure object package is imported (used via initBareRepo indirectly).
 var _ = object.Blob{}
