@@ -4,8 +4,10 @@
 package router
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -59,9 +61,16 @@ type Deps struct {
 	ReadyzChecks []probes.Check
 
 	// MetricsHandler serves GET /metrics in Prometheus text exposition format.
-	// When nil the /metrics path is not registered. Unauthenticated; operators
-	// secure it via network policy.
+	// When nil or when MetricsToken is empty, the /metrics route is not
+	// registered. Access is gated behind MetricsToken bearer authentication.
 	MetricsHandler http.Handler
+
+	// MetricsToken is the static bearer token required to access /metrics.
+	// When empty (the default), /metrics is not mounted at all — operators
+	// must explicitly opt in via JAMSESH_METRICS_TOKEN. When set, the handler
+	// is wrapped with a constant-time bearer check; missing or mismatched
+	// tokens receive 401.
+	MetricsToken string
 
 	// MetricsRegistry is threaded into the Access logging middleware so that
 	// per-request counters and histograms are recorded. When nil, the Access
@@ -114,9 +123,12 @@ func New(d Deps) http.Handler {
 		r.Get("/readyz", probes.Handler(d.ReadyzChecks).ServeHTTP)
 	}
 
-	// Public metrics endpoint — unauthenticated; operators secure via network policy.
-	if d.MetricsHandler != nil {
-		r.Mount("/metrics", d.MetricsHandler)
+	// Metrics endpoint — only mounted when a token is configured (opt-in).
+	// Access is gated behind a static bearer-token check using constant-time
+	// comparison to prevent timing attacks. Operators set JAMSESH_METRICS_TOKEN;
+	// unset means /metrics is not registered and the path falls through to 404.
+	if d.MetricsHandler != nil && len(d.MetricsToken) > 0 {
+		r.Mount("/metrics", metricsTokenMiddleware(d.MetricsToken, d.MetricsHandler))
 	}
 
 	// /api — REST API, Bearer auth. Hook is responsible for attaching
@@ -158,6 +170,26 @@ func New(d Deps) http.Handler {
 	}
 
 	return r
+}
+
+// metricsTokenMiddleware wraps next with a static bearer-token check.
+// It extracts the token from the "Authorization: Bearer <token>" header
+// and compares it against wantToken using subtle.ConstantTimeCompare to
+// prevent timing side-channels. Missing or mismatched tokens return 401.
+func metricsTokenMiddleware(wantToken string, next http.Handler) http.Handler {
+	wantBytes := []byte(wantToken)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if subtle.ConstantTimeCompare([]byte(got), wantBytes) != 1 {
+			httperr.Write(w, r, &httperr.Error{
+				Code:       "auth.invalid_token",
+				Message:    "valid bearer token required",
+				HTTPStatus: http.StatusUnauthorized,
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func healthz(w http.ResponseWriter, _ *http.Request) {

@@ -18,12 +18,14 @@
 //	object_storage_endpoint_url, object_storage_path_style,
 //	object_storage_sync_queue_size,
 //	hydration_idle_timeout_s, hydration_cache_max_bytes,
-//	hydration_idle_check_period_s, hydration_workers
+//	hydration_idle_check_period_s, hydration_workers,
+//	metrics_token
 //
 // Env vars:   JAMSESH_AUTH_RATE_LIMIT_ENABLED,
 //
 //	JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
+//	JAMSESH_METRICS_TOKEN,
 //	JAMSESH_PORTAL_URL,
 //	JAMSESH_TLS_MODE, JAMSESH_TLS_CERT, JAMSESH_TLS_KEY,
 //	JAMSESH_LOG_FORMAT, JAMSESH_LOG_LEVEL, JAMSESH_STORAGE,
@@ -198,6 +200,14 @@ type Config struct {
 	// self-host scenarios where email-bombing is not a concern.
 	// Env: JAMSESH_AUTH_RATE_LIMIT_ENABLED
 	AuthRateLimitEnabled bool `yaml:"auth_rate_limit_enabled"`
+
+	// MetricsToken is the static bearer token required to access GET /metrics.
+	// When unset (the default), the /metrics route is not registered — operators
+	// must explicitly opt in by setting this value. When set, requests to
+	// /metrics must supply "Authorization: Bearer <token>"; missing or wrong
+	// tokens receive 401.
+	// Env: JAMSESH_METRICS_TOKEN
+	MetricsToken string `yaml:"metrics_token"`
 }
 
 // DBConfig holds database connection pool settings.
@@ -523,6 +533,7 @@ func applyEnv(c *Config) error {
 	applyObjectStorageEnv(c)
 	applyHydrationEnv(c)
 	applyAuthRateLimitEnv(c)
+	applyMetricsEnv(c)
 	return nil
 }
 
@@ -651,6 +662,15 @@ func applyOAuthEnv(o *OAuthConfig) error {
 func applyAuthRateLimitEnv(c *Config) {
 	if v := os.Getenv("JAMSESH_AUTH_RATE_LIMIT_ENABLED"); v != "" {
 		c.AuthRateLimitEnabled = v != "false"
+	}
+}
+
+// applyMetricsEnv overlays metrics-auth environment variables.
+// JAMSESH_METRICS_TOKEN, when set, enables the /metrics endpoint and
+// requires requests to present a matching bearer token.
+func applyMetricsEnv(c *Config) {
+	if v := os.Getenv("JAMSESH_METRICS_TOKEN"); v != "" {
+		c.MetricsToken = v
 	}
 }
 

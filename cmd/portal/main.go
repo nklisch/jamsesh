@@ -682,6 +682,7 @@ func main() {
 		MountWS:           wsGateway.Handler(),
 		MountTest:         testClk.mountTestEndpointsHook(),
 		MetricsHandler:    metricsReg.Handler(),
+		MetricsToken:      cfg.MetricsToken,
 		MetricsRegistry:   metricsReg,
 		ReadyzChecks: []probes.Check{
 			{
