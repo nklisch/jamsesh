@@ -1,7 +1,7 @@
 ---
 id: finalize-lock-concurrent-override-race-allows-two-active-locks
 kind: story
-stage: backlog
+stage: implementing
 tags: [bug, security, portal]
 parent: null
 depends_on: []
