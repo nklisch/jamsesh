@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-readyz
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -61,6 +61,26 @@ timeout).
 - `tests/e2e/failure/config_and_deps_test.go:198-265,517-560` —
   toxiproxy `reset_peer` pattern to mirror
 - `tests/e2e/fixtures/toxiproxy/` — Toxiproxy fixture API
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Both tests are structurally sound. The golden test asserts all
+acceptance criteria: 200 status, `application/json; charset=utf-8` Content-Type,
+`status:"ready"`, non-empty checks array, and `ok:true` per check. The failure
+test follows the toxiproxy `reset_peer` pattern correctly — pre-fault sanity
+check, `require.Eventually` with the 3s/200ms poll matching the 2s probe timeout
+plus 1s margin, and a final body-shape assertion confirming `status:"not_ready"`
+and at least one `ok:false` check. No tautological assertions; every assertion
+is against real HTTP responses and body shape. Package collision avoidance via
+prefixed DSN helpers (`readyzExtractHost`, `readyzExtractDBName`) is correct.
+SMTP omitted from the failure test is appropriate since only the DB probe path
+is under test. No foundation-doc drift; no security or breaking-change concerns.
 
 ## Implementation notes
 
