@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing
 kind: feature
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -486,3 +486,13 @@ Verification: `go build ./...` + `go vet ./...` clean across both modules. No si
 Cross-cutting finding: lease acquisition is lazy (post-receive sync path acquires advisory lock; HTTP handlers don't). Documented in golden's implementation notes. The router's 503-retry path is the synchronous "lease held elsewhere" surface, exercised by `routing-layer-failure-503-retry`.
 
 Ready for review.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Epic delivered as briefed. All 6 test files and 2 helper artifacts exist. F1, F11, F13, F14 audit findings fully addressed. Key cross-cutting properties verified in children: no tautological assertions (all monotonicity checks use strict T2 > T1), no silenced failures without documented reasons, `TestFencingTokenRejectionIsExplicit` actually catches silent acceptance via exit-code and manifest read-back checks. The lazy-lease-acquisition architectural finding is clearly documented and handled correctly (advisory-lock exclusivity remains the safety-critical assertion in the golden 503-escape-hatch path). No in-process mocks introduced. The `lease.held_elsewhere` error-code gap is tracked as a known follow-on (not a blocker — 503 status assertion is the safety-critical one). Children complete.
