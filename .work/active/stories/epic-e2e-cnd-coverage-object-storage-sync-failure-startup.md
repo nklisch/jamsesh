@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-failure-startup
 kind: story
-stage: review
+stage: implementing
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -93,6 +93,27 @@ The correct fix (tracked in the backlog item) is to add a startup connectivity
 probe (e.g. `HeadBucket` with a 5s context) after `objectstore.New` succeeds
 in `main.go`, before the HTTP listener starts — so a misconfigured endpoint
 fails at deploy time rather than at the first push.
+
+## Review findings (2026-05-17) — Request changes
+
+**Verdict**: Request changes
+
+**Blockers**:
+- **Missing backlog item for parked bug** (`tests/e2e/failure/object_storage_unreachable_at_startup_test.go:134`):
+  The `t.Skip` message references backlog item `object-storage-fail-fast-clustered-startup`
+  but that file was never created in `.work/backlog/`. The story design and feature table
+  both mention it, but only as a string label — the substrate item does not exist.
+  Test-integrity rules require "park it via `/agile-workflow:park`" which means a real
+  substrate item with frontmatter must exist as the audit trail.
+  → Item created: `object-storage-fail-fast-clustered-startup`
+
+**Fix required**: Verify `.work/backlog/object-storage-fail-fast-clustered-startup.md`
+now exists (created during this review) and the `t.Skip` reference is accurate.
+No code change needed — the skip message already names the ID correctly. Simply
+re-advance to `stage: review` once the backlog item creation is confirmed.
+
+**Important**: none
+**Nits**: none
 
 ### single_instance_unaffected
 
