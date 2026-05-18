@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff
 kind: feature
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-lease-fencing, epic-e2e-cnd-coverage-object-storage-sync, epic-e2e-cnd-coverage-routing-layer]
@@ -208,6 +208,301 @@ weak. Three rules:
 - Cross-version handoff (pod A on vN, pod B on vN+1) — separate concern,
   rolling-deploy testing
 
-## Next
+## Mock-boundary plan
 
-`/agile-workflow:e2e-test-design epic-e2e-cnd-coverage-hydration-handoff`
+| External dep | Service-level mock | Notes |
+|---|---|---|
+| Multi-pod portal cluster | `portalcluster.Start` (Testcontainers) | Reuse — done by cluster-fixture |
+| MinIO (object storage) | `minio.Start` (minio/minio:RELEASE…) | Reuse — done by cluster-fixture |
+| Router | `router.Start` (real `cmd/jamsesh-router` binary in container) | Reuse — done by cluster-fixture |
+| Postgres advisory locks | Shared Postgres container | Reuse — done by cluster-fixture |
+| Network chaos (portal→MinIO) | Toxiproxy container (`toxiproxy.Start`) | Reuse — pattern from `object_storage_partition_test.go` |
+| Pod kill | `c.Kill` / `c.GracefulDrain` in lifecycle.go | Reuse — done by cluster-fixture |
+| Out-of-band bucket mutation | `mn.DeleteObject` / `mn.PutObject` in inspect.go | Direct MinIO SDK from test process — not mocking anything, the test IS the corruption |
+
+No in-process mocks. All external dependencies have service-level substitutes.
+The hydration lifecycle is exactly the path that must run real end-to-end to
+verify the safety properties; any in-process mock of the hydration path would
+produce a tautological test.
+
+## Taxonomy plan
+
+- **Golden:** 3 tests across 2 files — clean-drain handoff (state preserved
+  after SIGTERM), idle-eviction + re-hydration round-trip
+- **Failure:** 1 test — corrupt-bucket hydration refuses loudly (missing pack)
+- **Chaos:** 2 tests across 2 files — pod-kill during active session (F13
+  handoff half), handoff under Toxiproxy latency on portal→MinIO
+- **Lifecycle:** 1 test — evict-on-lease-release verifies local cache cleared
+- **Fuzz:** not applicable — no parser or validator surface in the hydration
+  handoff lifecycle path; fuzz coverage for pack-manifest format and URL
+  schemes is owned by `epic-e2e-cnd-coverage-object-storage-sync`
+
+Total: 7 test functions across 5 test files, 3 infrastructure helpers.
+
+## Design decisions
+
+_(Autopilot mode — resolved with judgment per Phase 4.5 caller-awareness rule)_
+
+1. **F13 coordination boundary.** `lease_holder_killed_test.go` (lease-fencing
+   feature) asserts token monotonicity and advisory-lock auto-release.
+   The hydration-handoff pod-kill chaos test asserts only user-visible state
+   preservation (draft tip, acked SHAs present). The split is: lease-fencing
+   owns the lock protocol; hydration-handoff owns the data outcome. A design-
+   boundary comment is required in both test files.
+
+2. **Cache eviction verification via `docker exec ls`.** Chosen over a test-
+   only portal endpoint (avoids production code change) and over indirect
+   timing observation (more reliable, not subject to network latency false
+   positives). Requires `JAMSESH_STORAGE_PATH=/var/jamsesh` in
+   `PortalExtraEnv` for a deterministic path. Implemented in new helper
+   `VerifyCacheEvicted` in `tests/e2e/fixtures/portalcluster/cache_inspect.go`.
+
+3. **Hydration readiness detection via `git ls-remote`.** `WaitForHydration`
+   polls `gitclient.LsRemote` against the target pod directly. LsRemote
+   succeeds iff the portal can serve the session's pack files from its local
+   cache — the exact post-hydration readiness signal. No new portal endpoint
+   required; no dependency on unspecified `/readyz` session-scoped variant.
+
+4. **SLOs grounded in `docs/SELF_HOST.md`.** Clean-drain handoff SLO: 30s
+   (matching existing `TestLeaseHolderKilled` SLO and the portal's shutdown
+   grace period). Chaos/latency SLO: 45s (empirically derived: 4 000ms
+   latency × 8 workers × ~3 pack objects = ~6-12s; 45s is 4-7× that,
+   conservative but not infinite). Idle eviction: `JAMSESH_HYDRATION_IDLE_TIMEOUT_S=5`
+   + `JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S=2` in tests (overrides production
+   defaults of 300s / 30s) to make tests deterministic in CI wall-clock time.
+
+5. **LRU eviction not tested.** `JAMSESH_HYDRATION_CACHE_MAX_BYTES` eviction
+   is non-deterministic in containers (memory pressure is not a reliable test
+   lever). Idle eviction is used exclusively in lifecycle tests. LRU is noted
+   in risks.
+
+6. **"Pod A came back" scenario.** Stale-token rejection after pod restart is
+   already covered by `stale_fencing_token_rejected_test.go` (lease-fencing
+   feature). No new test here. The hydration-handoff chaos test documents the
+   boundary with a comment. Cross-reference is in the chaos story body.
+
+7. **Router use.** Because `bug-router-static-discoverer-not-started` keeps
+   dead pods in the ring, post-kill assertions address the survivor pod
+   directly (`c.Pods[survivorIdx].URL`). The GracefulDrain tests CAN use the
+   router (clean exit triggers discoverer probe failure eventually, but not
+   instantly — tests use `WaitForHydration` to confirm the survivor is ready
+   before any router-mediated assertion). Each test documents this nuance via
+   `t.Logf`.
+
+## Implementation Units
+
+### Unit 1: Infrastructure helpers
+**Files:** `tests/e2e/fixtures/portalcluster/state_compare.go`,
+`tests/e2e/fixtures/portalcluster/hydration_wait.go`,
+`tests/e2e/fixtures/portalcluster/cache_inspect.go`
+**Story:** `epic-e2e-cnd-coverage-hydration-handoff-infra`
+**New helpers:**
+- `RequireSessionStateMatch(ctx, t, c, orgID, sessionID, expectedDraftTip, pod)`
+- `WaitForHydration(ctx, t, pod, orgID, sessionID, accessToken, timeout)`
+- `VerifyCacheEvicted(ctx, t, c, podIndex, sessionID)`
+
+---
+
+### Unit 2: Clean-drain handoff golden
+**File:** `tests/e2e/golden/session_handoff_clean_drain_test.go`
+**Story:** `epic-e2e-cnd-coverage-hydration-handoff-golden`
+**Invariant:** After SIGTERM drain of the holding pod, no committed state is
+lost or duplicated. The surviving pod hydrates from MinIO and serves the exact
+same draft tip.
+
+```go
+func TestSessionHandoffCleanDrain(t *testing.T) {
+    // Setup: 2-pod cluster + router, short heartbeat
+    // Push 5 commits to pod 0 → confirm lease on pod 0 → record draftTipBefore
+    // GracefulDrain(pod 0, 30s)
+    // WaitForHydration(pod 1, 30s)
+    // Push 6th commit via pod 1 (or router with retry)
+    // ASSERT: RequireSessionStateMatch — draft tip on pod 1 includes commits 1-5
+    // ASSERT: mn.ListObjects non-empty
+}
+```
+
+**Acceptance criteria:**
+- [ ] All 5 pre-drain commit SHAs reachable from pod 1's draft tip
+- [ ] Bucket still intact after drain
+
+---
+
+### Unit 3: Idle-eviction golden
+**File:** `tests/e2e/golden/session_handoff_idle_eviction_test.go`
+**Story:** `epic-e2e-cnd-coverage-hydration-handoff-golden`
+**Invariant:** After idle eviction and cache clearance on pod A, a subsequent
+push triggers re-hydration and serves the complete session state.
+
+```go
+func TestSessionHandoffIdleEviction(t *testing.T) {
+    // Setup: short IDLE_TIMEOUT_S=5, IDLE_CHECK_PERIOD_S=2
+    // Push 3 commits to pod 0 → record draftTipBefore
+    // time.Sleep(10s) → idle threshold exceeded + at least one scan period
+    // VerifyCacheEvicted(pod 0, sessionID)
+    // Push 4th commit via router
+    // ASSERT: draft tip on new holder includes all 4 commits
+    // ASSERT: mn.ListObjects non-empty
+}
+```
+
+**Acceptance criteria:**
+- [ ] Cache eviction confirmed via docker exec
+- [ ] Post-eviction push succeeds; all 4 commits present in draft tip
+
+---
+
+### Unit 4: Missing-pack failure mode
+**File:** `tests/e2e/failure/hydration_with_missing_pack_test.go`
+**Story:** `epic-e2e-cnd-coverage-hydration-handoff-failure`
+**Invariant:** A missing pack object causes hydration to fail loudly. No
+partial state is silently served.
+
+```go
+func TestHydrationWithMissingPack(t *testing.T) {
+    // Setup: 2-pod cluster (Router: false)
+    // Push 15 commits to pod 0 → bucket has pack objects
+    // mn.DeleteObject(packKey) — out-of-band corruption
+    // Attempt push via pod 1 (triggers hydration of corrupted state)
+    // ASSERT: push returns non-zero exit (not silent success)
+    // ASSERT: ls-remote on pod 1 does NOT return pre-corruption refs
+    // ASSERT: bucket manifest NOT updated to claim corrupted state success
+    // Subtest recovery_after_repair: mn.PutObject(packKey, data) → retry push → success
+}
+```
+
+**Acceptance criteria:**
+- [ ] Push to pod 1 fails (non-zero exit) when pack is missing
+- [ ] No partial state served; recovery-after-repair subtest green
+
+---
+
+### Unit 5: Pod-kill chaos
+**File:** `tests/e2e/chaos/handoff_under_pod_kill_test.go`
+**Story:** `epic-e2e-cnd-coverage-hydration-handoff-chaos`
+**Invariant:** All acked commits survive a hard SIGKILL of the holding pod.
+
+```go
+func TestHandoffUnderPodKill(t *testing.T) {
+    // Setup: 2-pod cluster + router, short heartbeat
+    // Push 5 commits via router → record ackedSHAs, holderPod, draftTipBefore
+    // c.Kill(holderPod)
+    // WaitForHydration(survivor, 30s)
+    // Push 6th commit via survivor directly
+    // ASSERT: all 5 ackedSHAs reachable from survivor draft tip (git merge-base)
+    // ASSERT: bucket has objects for 6th commit
+    // NOTE in source: design boundary with lease_holder_killed_test.go
+}
+```
+
+**Acceptance criteria:**
+- [ ] All 5 acked SHAs reachable from survivor after kill
+- [ ] Design-boundary comment in source
+
+---
+
+### Unit 6: Object-storage chaos handoff
+**File:** `tests/e2e/chaos/handoff_under_object_storage_chaos_test.go`
+**Story:** `epic-e2e-cnd-coverage-hydration-handoff-chaos`
+**Invariant:** Handoff with 4s Toxiproxy latency on portal→MinIO completes
+within 45s SLO; no acked commits lost.
+
+```go
+func TestHandoffUnderObjectStorageChaos(t *testing.T) {
+    // Setup: Toxiproxy → MinIO; 2-pod cluster wired through proxy
+    // Push 5 commits via pod 0
+    // tp.AddLatency(4000ms on portal-minio)
+    // c.GracefulDrain(pod 0, 45s)
+    // WaitForHydration(pod 1, 45s)
+    // tp.RemoveToxic
+    // Push 6th commit via pod 1
+    // ASSERT: draft tip on pod 1 includes all 5 pre-chaos + 6th commit
+    // ASSERT: mn.ListObjects non-empty
+}
+```
+
+**Acceptance criteria:**
+- [ ] Hydration completes within 45s SLO under 4s latency
+- [ ] No acked commits lost
+
+---
+
+### Unit 7: Lifecycle eviction cache cleanup
+**File:** `tests/e2e/golden/lifecycle_evict_on_lease_release_test.go`
+**Story:** `epic-e2e-cnd-coverage-hydration-handoff-lifecycle`
+**Invariant:** After idle eviction, the pod's local bare-repo cache for the
+session is removed from disk. Re-hydration on subsequent access serves the
+complete state.
+
+```go
+func TestLifecycleEvictOnLeaseRelease(t *testing.T) {
+    // Setup: IDLE_TIMEOUT_S=5, IDLE_CHECK_PERIOD_S=2, STORAGE_PATH=/var/jamsesh
+    // Push 3 commits to pod 0 → draftTipBefore
+    // time.Sleep(10s)
+    // ASSERT: VerifyCacheEvicted(pod 0, sessionID) — cache cleared
+    // ASSERT: LeaseHolder == -1 (advisory lock released)
+    // Re-hydration: push 4th commit via pod 0
+    // WaitForHydration(pod 0, 30s)
+    // ASSERT: draft tip on pod 0 includes all 4 commits
+}
+```
+
+**Acceptance criteria:**
+- [ ] Cache cleared from disk after idle eviction
+- [ ] Advisory lock released (lease holder = -1)
+- [ ] Re-hydration round-trip preserves all state
+
+---
+
+## Implementation Order
+
+1. `epic-e2e-cnd-coverage-hydration-handoff-infra` (no deps — helpers first)
+2. `epic-e2e-cnd-coverage-hydration-handoff-golden` (depends on infra)
+3. `epic-e2e-cnd-coverage-hydration-handoff-failure` (depends on infra; parallel with golden)
+4. `epic-e2e-cnd-coverage-hydration-handoff-chaos` (depends on golden)
+5. `epic-e2e-cnd-coverage-hydration-handoff-lifecycle` (depends on golden)
+
+## Risks
+
+1. **`VerifyCacheEvicted` path fragility.** The `docker exec ls` approach
+   requires that `JAMSESH_STORAGE_PATH` is set to a deterministic value in
+   test env vars AND that the portal's actual storage path matches. If the
+   portal ignores the env var or uses a different sub-path layout, the helper
+   will always return "evicted" (directory not found), producing a false
+   positive. Mitigation: add a `VerifyCachePresent` positive-check assertion
+   before the eviction wait, so false-positive eviction detection is caught.
+
+2. **Router static-discoverer bug (`bug-router-static-discoverer-not-started`).**
+   Dead pods stay in the consistent-hash ring indefinitely after kill. All
+   post-kill assertions address the survivor pod directly rather than through
+   the router. Tests document this limitation inline. The bug is tracked
+   separately; these tests do not regress if the bug is fixed (direct-pod
+   assertions still pass after fix).
+
+3. **LRU eviction not tested.** `JAMSESH_HYDRATION_CACHE_MAX_BYTES` eviction
+   is memory-pressure-driven and non-deterministic in containers. LRU is
+   excluded from scope; idle eviction covers the eviction code path
+   structurally. A follow-on perf-design story could add a soak test that
+   verifies LRU under simulated memory pressure.
+
+4. **`WaitForHydration` via `git ls-remote` may race.** If the portal serves
+   the ls-remote before the hydration write is fully committed to disk (e.g.
+   partial object write), the helper may return a false ready signal. Mitigation:
+   after `WaitForHydration`, verify the draft tip explicitly via the REST API
+   before making state assertions — the two-step confirm pattern is already
+   in the golden test designs.
+
+5. **Toxiproxy container startup in chaos tests.** The object-storage chaos
+   test requires Toxiproxy to be interposed before the portal cluster starts
+   (the cluster must receive the proxy endpoint, not the direct MinIO endpoint).
+   The startup order is: MinIO → Toxiproxy → cluster (with proxy endpoint).
+   If Toxiproxy fails to start (Docker unavailable, port conflict), the test
+   should skip cleanly via the `requireDocker(t)` guard already used in other
+   chaos tests.
+
+6. **Weakest mock decision: none.** All mocks are service-level (MinIO,
+   Toxiproxy, Testcontainers). No in-process mocks are present in any unit.
+   The only borderline case is the `git ls-remote` readiness probe in
+   `WaitForHydration` — this is a real git operation against a real portal
+   container, not a mock.
+
