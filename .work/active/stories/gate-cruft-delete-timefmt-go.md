@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-delete-timefmt-go
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, portal]
 parent: null
 depends_on: []
@@ -34,3 +34,12 @@ Delete the file. `tsLayout`, `formatTS`, and `parseTS` are never
 referenced anywhere outside this file (verified with grep across `cmd/`
 and `internal/`). sqlc-generated adapters handle timestamp marshalling
 directly.
+
+## Implementation notes
+
+- Confirmed `tsLayout`, `formatTS`, `parseTS` were the only symbols in the file.
+- `grep -rn 'tsLayout\|formatTS\|parseTS'` across `cmd/`, `internal/`, and `tests/` found zero references outside `timefmt.go` itself.
+- No `timefmt_test.go` existed in the package.
+- Deleted via `git rm internal/db/store/timefmt.go`.
+- `go build ./internal/db/...` — clean.
+- `go test ./internal/db/...` — all pass (`store` 0.135s, `db` cached).
