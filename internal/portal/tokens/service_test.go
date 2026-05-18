@@ -186,7 +186,7 @@ func TestService_Validate_RevokedToken(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	if err := svc.Revoke(ctx, pair.AccessToken, false); err != nil {
+	if err := svc.Revoke(ctx, acc.ID, pair.AccessToken, false); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
 
@@ -281,7 +281,7 @@ func TestService_Revoke_Single(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	if err := svc.Revoke(ctx, pair.AccessToken, false); err != nil {
+	if err := svc.Revoke(ctx, acc.ID, pair.AccessToken, false); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
 
@@ -312,7 +312,7 @@ func TestService_Revoke_All(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	if err := svc.Revoke(ctx, pair.AccessToken, true); err != nil {
+	if err := svc.Revoke(ctx, acc.ID, pair.AccessToken, true); err != nil {
 		t.Fatalf("Revoke(all): %v", err)
 	}
 
@@ -333,7 +333,7 @@ func TestService_Revoke_Idempotent(t *testing.T) {
 	svc := tokens.New(s)
 
 	// Revoking an unknown token must not error.
-	err := svc.Revoke(ctx, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)
+	err := svc.Revoke(ctx, "some-account-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)
 	if err != nil {
 		t.Errorf("Revoke unknown token: want nil, got %v", err)
 	}
@@ -407,5 +407,64 @@ func TestService_IssueShortLived_RejectedAfterTTL(t *testing.T) {
 	_, err = svc.Validate(ctx, raw)
 	if !errors.Is(err, tokens.ErrExpiredToken) {
 		t.Errorf("Validate after TTL: want ErrExpiredToken, got %v", err)
+	}
+}
+
+// TestService_Revoke_CrossAccount_Single verifies that caller A cannot revoke a
+// token that belongs to caller B (single-token revoke path).
+func TestService_Revoke_CrossAccount_Single(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	accA := mustCreateAccount(t, ctx, s, "alice-xacct@example.com")
+	accB := mustCreateAccount(t, ctx, s, "bob-xacct@example.com")
+	svc := tokens.New(s)
+
+	pairB, err := svc.Issue(ctx, accB.ID)
+	if err != nil {
+		t.Fatalf("Issue for B: %v", err)
+	}
+
+	// Caller A attempts to revoke B's access token — must be rejected.
+	err = svc.Revoke(ctx, accA.ID, pairB.AccessToken, false)
+	if !errors.Is(err, tokens.ErrForbidden) {
+		t.Errorf("cross-account single revoke: want ErrForbidden, got %v", err)
+	}
+
+	// B's token must still be valid after the rejected attempt.
+	got, err := svc.Validate(ctx, pairB.AccessToken)
+	if err != nil {
+		t.Fatalf("Validate after rejected cross-account revoke: %v", err)
+	}
+	if got.ID != accB.ID {
+		t.Errorf("token still belongs to B: got account %q, want %q", got.ID, accB.ID)
+	}
+}
+
+// TestService_Revoke_CrossAccount_All verifies that caller A cannot trigger a
+// revoke-all for tokens that belong to caller B.
+func TestService_Revoke_CrossAccount_All(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	accA := mustCreateAccount(t, ctx, s, "alice-xacct-all@example.com")
+	accB := mustCreateAccount(t, ctx, s, "bob-xacct-all@example.com")
+	svc := tokens.New(s)
+
+	pairB, err := svc.Issue(ctx, accB.ID)
+	if err != nil {
+		t.Fatalf("Issue for B: %v", err)
+	}
+
+	// Caller A submits B's refresh token with revokeAll=true — must be rejected.
+	err = svc.Revoke(ctx, accA.ID, pairB.RefreshToken, true)
+	if !errors.Is(err, tokens.ErrForbidden) {
+		t.Errorf("cross-account revoke-all: want ErrForbidden, got %v", err)
+	}
+
+	// B's tokens must still be valid after the rejected attempt.
+	if _, err := svc.Validate(ctx, pairB.AccessToken); err != nil {
+		t.Errorf("B's access token should still be valid after rejected revoke-all: %v", err)
+	}
+	if _, err := svc.Validate(ctx, pairB.RefreshToken); err != nil {
+		t.Errorf("B's refresh token should still be valid after rejected revoke-all: %v", err)
 	}
 }

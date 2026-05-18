@@ -174,13 +174,18 @@ func (s *service) Refresh(ctx context.Context, raw string) (Pair, error) {
 	return s.Issue(ctx, acct.ID)
 }
 
-func (s *service) Revoke(ctx context.Context, raw string, revokeAll bool) error {
+func (s *service) Revoke(ctx context.Context, callerAccountID string, raw string, revokeAll bool) error {
 	row, err := s.store.GetOAuthTokenByHash(ctx, hashToken(raw))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil // idempotent: already gone
 		}
 		return err
+	}
+
+	// Ownership check: prevent caller A from revoking caller B's tokens.
+	if row.AccountID != callerAccountID {
+		return ErrForbidden
 	}
 
 	now := s.clock.Now()

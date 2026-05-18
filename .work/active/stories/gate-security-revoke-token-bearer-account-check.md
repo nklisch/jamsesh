@@ -1,7 +1,7 @@
 ---
 id: gate-security-revoke-token-bearer-account-check
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -44,3 +44,42 @@ Either (a) ignore `req.Body.Token` and always revoke based on the
 bearer-authenticated account, or (b) require that
 `hashToken(req.Body.Token)`'s AccountID equals the caller's account ID
 and return 403 otherwise.
+
+## Implementation notes
+
+Chose option (b): require AccountID match so callers retain the ability to
+revoke a specific token by value, while closing the cross-account vector.
+
+Changes:
+
+- **`docs/openapi.yaml`**: Added `403` response to `revokeToken` endpoint,
+  then ran `make generate-api-go` to emit `RevokeToken403JSONResponse` in
+  the generated server code.
+
+- **`internal/portal/tokens/service.go`**: Added `ErrForbidden` sentinel.
+  Updated `Service.Revoke` signature to accept `callerAccountID string` as
+  the second argument (before `rawToken`).
+
+- **`internal/portal/tokens/service_impl.go`**: After the store lookup,
+  compare `row.AccountID` to `callerAccountID`; return `ErrForbidden` if
+  they differ. This check fires before any mutation, so the attacker's
+  request leaves the victim's tokens untouched.
+
+- **`internal/portal/tokens/handlers.go`**: Extract the bearer account via
+  `AccountFromContext` (already present but previously unused after the
+  guard), pass it to `svc.Revoke`, and map `ErrForbidden` → 403 with
+  `auth.forbidden` / "token does not belong to the authenticated account".
+
+- **`internal/portal/tokens/service_test.go`**: Updated all existing
+  `svc.Revoke(...)` call sites to supply the owner's account ID. Added two
+  new tests:
+  - `TestService_Revoke_CrossAccount_Single` — single-token path rejects
+    with `ErrForbidden` and leaves victim token intact.
+  - `TestService_Revoke_CrossAccount_All` — revoke-all path rejects with
+    `ErrForbidden` and leaves both victim tokens intact.
+
+- **`internal/portal/tokens/basic_test.go`** and
+  **`internal/portal/tokens/middleware_test.go`**: Updated `Revoke` call
+  site and mock signature to match new interface.
+
+Build: `go build ./...` — clean. Tests: `go test ./internal/portal/tokens/...` — all pass.

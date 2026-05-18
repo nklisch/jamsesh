@@ -95,7 +95,7 @@ func TestBasicAuthValidator_RevokedToken(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	if err := svc.Revoke(ctx, pair.AccessToken, false); err != nil {
+	if err := svc.Revoke(ctx, acc.ID, pair.AccessToken, false); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
 

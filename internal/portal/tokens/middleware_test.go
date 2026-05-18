@@ -34,7 +34,7 @@ func (m *mockService) Refresh(_ context.Context, _ string) (tokens.Pair, error) 
 	return tokens.Pair{}, errors.New("not implemented")
 }
 
-func (m *mockService) Revoke(_ context.Context, _ string, _ bool) error {
+func (m *mockService) Revoke(_ context.Context, _ string, _ string, _ bool) error {
 	return errors.New("not implemented")
 }
 

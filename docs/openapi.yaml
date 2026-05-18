@@ -1486,6 +1486,8 @@ paths:
           description: Revocation complete
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/auth/oauth/start:
     post:

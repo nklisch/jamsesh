@@ -44,7 +44,10 @@ type Service interface {
 	Refresh(ctx context.Context, refreshToken string) (Pair, error)
 	// Revoke marks the supplied token as revoked. When revokeAll is true,
 	// every token for the token's account is revoked (logout-everywhere).
-	Revoke(ctx context.Context, rawToken string, revokeAll bool) error
+	// callerAccountID is the bearer-authenticated account performing the
+	// revocation; if it does not match the token's owner, ErrForbidden is
+	// returned so callers can emit a 403.
+	Revoke(ctx context.Context, callerAccountID string, rawToken string, revokeAll bool) error
 }
 
 // Sentinel errors that callers map to PROTOCOL.md error codes.
@@ -52,4 +55,5 @@ var (
 	ErrInvalidToken = errors.New("tokens: invalid")
 	ErrExpiredToken = errors.New("tokens: expired")
 	ErrRevokedToken = errors.New("tokens: revoked")
+	ErrForbidden    = errors.New("tokens: forbidden")
 )

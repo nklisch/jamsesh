@@ -58,7 +58,7 @@ func (h *Handler) RefreshToken(ctx context.Context, req openapi.RefreshTokenRequ
 func (h *Handler) RevokeToken(ctx context.Context, req openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
 	// Belt-and-suspenders: BearerMiddleware should have blocked unauthenticated
 	// requests before they reach here, but guard explicitly.
-	_, ok := AccountFromContext(ctx)
+	acct, ok := AccountFromContext(ctx)
 	if !ok {
 		return openapi.RevokeToken401JSONResponse{
 			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
@@ -69,7 +69,15 @@ func (h *Handler) RevokeToken(ctx context.Context, req openapi.RevokeTokenReques
 	}
 
 	revokeAll := req.Body.RevokeAll
-	if err := h.svc.Revoke(ctx, req.Body.Token, revokeAll); err != nil {
+	if err := h.svc.Revoke(ctx, acct.ID, req.Body.Token, revokeAll); err != nil {
+		if errors.Is(err, ErrForbidden) {
+			return openapi.RevokeToken403JSONResponse{
+				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
+					Error:   "auth.forbidden",
+					Message: "token does not belong to the authenticated account",
+				},
+			}, nil
+		}
 		return openapi.RevokeToken401JSONResponse{
 			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
 				Error:   "auth.invalid_token",
