@@ -1,7 +1,7 @@
 ---
 id: gate-security-mcp-fork-ref-name-validation
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -49,3 +49,32 @@ After constructing `refName`, call `refName.Validate()` and reject
 non-nil errors with a 400. Additionally enforce that the suffix matches
 `^[A-Za-z0-9_.-]+$` (no slashes, no dots-at-start) before composing the
 ref so even minor go-git rule gaps are blocked.
+
+## Implementation notes
+
+**Validation regex:** `^[A-Za-z0-9_][A-Za-z0-9_.-]*$`
+- Must start with alphanumeric or underscore (rejects leading `-` and `.`).
+- Allows alphanumerics, underscores, hyphens, and dots thereafter.
+- Slashes are implicitly rejected (not in character class).
+- `..` is rejected by an explicit `strings.Contains(suffix, "..")` check
+  applied before the regex, blocking git traversal sequences even if a
+  future regex edit missed them.
+
+**Where called:** `internal/portal/mcpendpoint/tools.go` — `validateForkTargetRef`
+is invoked in the `fork` handler immediately after `strings.TrimPrefix` strips
+`refs/heads/`, and before `plumbing.NewBranchReferenceName` composes the full path.
+
+**Defence-in-depth:** After composing `refName`, `refName.Validate()` is also
+called. Any suffix that passes the regex but still violates go-git's own rules
+is caught here with a second error path.
+
+**Error type and code returned:** Both validation paths return a plain `error`
+wrapped with `fmt.Errorf("fork: %w", err)`. The MCP SDK maps any non-nil error
+from a tool handler to a `tool_error` response (`isError: true` in the JSON
+content envelope), consistent with the existing `TestMCPEndpoint_Fork_BadCommit`
+test pattern.
+
+**Happy-path preserved:** Default suffix `fork-<sha7>` (e.g. `fork-abc1234`)
+starts with `f` and contains only alphanumerics and a hyphen — passes
+`validateForkTargetRef`. User-supplied names like `feature-x` or `my_branch.1`
+also pass. Existing tests continue green.

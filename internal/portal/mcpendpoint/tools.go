@@ -3,7 +3,9 @@ package mcpendpoint
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -132,6 +134,33 @@ func (e *Endpoint) resolveComment(
 // fork
 // ---------------------------------------------------------------------------
 
+// refSuffixPattern matches safe ref-name suffixes for the fork tool.
+// The suffix is spliced into refs/heads/jam/<session>/<account>/<suffix>, so it
+// must not contain slashes or dot-dot sequences that would escape the namespace.
+//
+// Rules:
+//   - Must start with an alphanumeric character or underscore (not '-' or '.').
+//   - May contain alphanumerics, underscores, hyphens, and dots thereafter.
+//   - No slashes (would break the namespace boundary).
+//   - ".." is rejected separately to block git traversal sequences.
+var refSuffixPattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`)
+
+// validateForkTargetRef checks that the user-supplied ref suffix is safe to
+// splice into refs/heads/jam/<session>/<account>/<suffix> without producing a
+// traversal that escapes the jam namespace.
+func validateForkTargetRef(suffix string) error {
+	if suffix == "" {
+		return errors.New("target_ref: empty after trimming refs/heads/ prefix")
+	}
+	if strings.Contains(suffix, "..") {
+		return fmt.Errorf("target_ref: %q contains '..' which is not allowed", suffix)
+	}
+	if !refSuffixPattern.MatchString(suffix) {
+		return fmt.Errorf("target_ref: %q contains invalid characters; must match %s", suffix, refSuffixPattern.String())
+	}
+	return nil
+}
+
 // ForkInput is the typed input for the fork tool.
 type ForkInput struct {
 	SessionID       string  `json:"session_id"              jsonschema:"jamsesh session id (uuid)"`
@@ -182,10 +211,21 @@ func (e *Endpoint) fork(
 		branchSuffix = strings.TrimPrefix(*in.TargetRef, "refs/heads/")
 	}
 
+	// Validate the suffix before composing the ref to prevent path traversal.
+	if err := validateForkTargetRef(branchSuffix); err != nil {
+		return nil, ForkOutput{}, fmt.Errorf("fork: %w", err)
+	}
+
 	// Full ref name under the session namespace.
 	refName := plumbing.NewBranchReferenceName(
 		fmt.Sprintf("jam/%s/%s/%s", in.SessionID, info.UserID, branchSuffix),
 	)
+
+	// Defence-in-depth: reject the composed ref name if go-git's own validator
+	// flags it (catches anything the regex above missed).
+	if err := refName.Validate(); err != nil {
+		return nil, ForkOutput{}, fmt.Errorf("fork: invalid ref name %q: %w", refName, err)
+	}
 
 	// Open the bare repo.
 	repoPath := e.Storage.RepoPath(orgID, in.SessionID)
