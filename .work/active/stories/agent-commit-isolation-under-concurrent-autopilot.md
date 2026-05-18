@@ -77,3 +77,24 @@ even though each agent's `git add` only named its own paths.
 
 This isn't blocking; the work is correct and tests pass. The fix is
 worth doing before the next big multi-feature autopilot run.
+
+## Autopilot routing note (2026-05-17)
+
+`/agile-workflow:autopilot --all` skipped this item — `kind: story` at
+`stage: drafting` falls outside the design-family routing table (which
+covers `kind: epic` → epic-design and `kind: feature` → feature-design /
+refactor-design / perf-design / e2e-test-design). Stories normally skip
+drafting per `.work/CONVENTIONS.md`.
+
+Two paths to unblock:
+1. Upgrade `kind` to `feature` and re-run autopilot — `feature-design`
+   picks it up and formally evaluates the 4 design options.
+2. Treat the 4 options in the body as the design pass already done,
+   pick the simplest in conversation (likely option 3, "pre-commit
+   verification"), advance to `implementing`, and let autopilot drain it.
+
+Additionally: the fix lives **outside the jamsesh codebase** (in the
+upstream `nklisch-skills` agile-workflow skill templates, not in
+jamsesh product code). The "implementation" would be a PR against
+that skill package, not a jamsesh commit. Worth weighing whether to
+track this in jamsesh's substrate at all vs. open an upstream issue.
