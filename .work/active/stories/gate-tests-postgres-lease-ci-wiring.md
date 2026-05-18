@@ -1,7 +1,7 @@
 ---
 id: gate-tests-postgres-lease-ci-wiring
 kind: story
-stage: review
+stage: done
 tags: [testing, infra, portal]
 parent: null
 depends_on: []
@@ -59,3 +59,13 @@ Took option (b): testcontainers self-bootstrap.
   `lease-collision-check-not-returning-erralreadyheld`.
 - 7 of 8 tests now run and pass under testcontainers without any env var.
   1 test is skipped (documented bug, not test infrastructure).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Option (b) taken — testcontainers self-bootstrap. New testdb_test.go helper acquireTestPostgres(t) uses JAMSESH_TEST_PG_DSN if set (operator override preserved), otherwise spins up postgres:16-alpine via testcontainers with sync.Once + per-test fresh DB + t.Cleanup. 7 of 8 lease tests now run without any env-var coordination. Skips cleanly when Docker is unavailable. The 8th test (TestPostgresCollisionDefensiveCheck) surfaced a real production bug — Acquire does not return ErrAlreadyHeld on stale row collision — parked as backlog item lease-collision-check-not-returning-erralreadyheld; test is t.Skip-anchored to that id. testcontainers-go v0.42.0 added to go.mod.

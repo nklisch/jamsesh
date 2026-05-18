@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-lifecycle-release-wired-or-deleted
 kind: story
-stage: review
+stage: done
 tags: [cleanup, portal, infra]
 parent: null
 depends_on: []
@@ -47,3 +47,13 @@ were each using `Release` as a convenience to invoke `releaseWithReason`
 internally; replaced each with a direct call to
 `mgr.releaseWithReason(ctx, sessionID, "explicit")`.
 `go test ./internal/portal/storage/objectstore/...` passes cleanly.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Wrapper deleted. LifecycleManager.Release (and its 7-line doc comment) removed from lifecycle.go. Three test call sites updated to call mgr.releaseWithReason(ctx, sessionID, 'explicit') directly — the package-internal method is accessible from test files. All objectstore tests pass.

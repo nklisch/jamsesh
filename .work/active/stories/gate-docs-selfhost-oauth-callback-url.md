@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-oauth-callback-url
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -56,3 +56,13 @@ SPA intermediary.
 Fix applied: step 2 now shows the exact URL to paste into GitHub
 (`https://<your-portal-host>/api/auth/oauth/callback`) and notes the
 server-side exchange explicitly.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Prior gate-docs-selfhost-oauth-future-release rewrite corrected the portal endpoint to /api/auth/oauth/callback but described a false two-hop SPA flow. Verified: no /auth/callback SPA route exists in router.svelte.ts; Login.svelte comments confirm GitHub redirects browser directly to the portal endpoint for server-side exchange. SELF_HOST.md §4 step 2 now shows the exact URL to paste into GitHub: https://<your-portal-host>/api/auth/oauth/callback.
