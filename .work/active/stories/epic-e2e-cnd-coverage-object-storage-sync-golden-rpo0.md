@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-object-storage-sync-golden-rpo0
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-object-storage-sync
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -48,6 +48,44 @@ is returned to the client. RPO=0: ACK implies durable.
   "eventually consistent" unless `docs/ARCHITECTURE.md` or `docs/SPEC.md`
   explicitly says RPO is not zero.
 - Fix bad fixtures in-session. Never game an assertion to make it pass.
+
+## Implementation notes
+
+Landed in `tests/e2e/golden/object_storage_rpo0_test.go`.
+
+**Infrastructure**: single `TestObjectStorageRPO0` function starts MinIO,
+Postgres, MailHog, and a 2-pod portalcluster (Router: false) once; all four
+subtests share this stack. Each subtest creates an isolated user/org/session so
+there is no state cross-contamination.
+
+**Assertion order**: `mn.ListObjects("sessions/<sessionID>/")` is called
+immediately after push returns — no `time.Sleep`, no polling loop. This is the
+RPO=0 assertion: if the bucket is empty after push returns, that IS the
+violation.  The push HTTP status is implicitly checked via `gitclient.Push`
+failing the test on a non-zero git exit (git reports non-2xx as exit 1).
+
+**Subtests**:
+- `small_commit` — single commit, single push; bucket non-empty after push.
+- `multi_pack_push` — ten commits batched before a single push; bucket
+  non-empty after that push (pack decisions are server-internal; we do not
+  assert specific sub-paths).
+- `refs_only_update` — two commits to establish history, then a `git reset
+  --hard <first-sha>` and `--force` push; bucket non-empty after force-push.
+  Uses `rpo0GitForcePush` (exec-based) since `gitclient.Push` doesn't support
+  `--force`.
+- `tag_creation` — commit push followed by `git tag -a v1.0`; tag pushed into
+  the `jam/` namespace (the portal's pre-receive hook only allows `jam/` refs).
+  Bucket non-empty after tag push.
+
+**Helpers defined locally** (all prefixed `rpo0` to avoid collision with
+existing `golden_test` package helpers):
+- `rpo0GetMe` — GET /api/me returning user ID
+- `rpo0CreateSession` — POST /api/orgs/{id}/sessions
+- `rpo0GitRun` — exec-based git runner (gitclient.run is unexported)
+- `rpo0GitForcePush` — `git push --force` via exec
+- `rpo0PushTag` — `git push origin v1.0:refs/heads/<tagRef>`
+
+Compiles and vets clean: `go build ./golden/... && go vet ./golden/...`.
 
 ## Acceptance Criteria
 
