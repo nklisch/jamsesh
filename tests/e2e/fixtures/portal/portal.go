@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -127,6 +128,27 @@ func (p *Portal) Logs(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// ContainerIP returns the Docker bridge network IP of the portal container.
+// Use this when another container (e.g. jamsesh-router) needs to reach the
+// portal directly on the bridge network — host-mapped ports are not reachable
+// from inside Docker.
+func (p *Portal) ContainerIP(ctx context.Context) (string, error) {
+	if p.container == nil {
+		return "", fmt.Errorf("portal: ContainerIP: container is nil")
+	}
+	return p.container.ContainerIP(ctx)
+}
+
+// State returns the current container state as reported by the Docker daemon.
+// Use this to inspect container lifecycle status (e.g. "running", "exited")
+// without going through the Docker daemon's top-level inspect command.
+func (p *Portal) State(ctx context.Context) (*container.State, error) {
+	if p.container == nil {
+		return nil, fmt.Errorf("portal: State: container is nil")
+	}
+	return p.container.State(ctx)
 }
 
 // SendSignal sends a Unix signal to PID 1 inside the container using BusyBox

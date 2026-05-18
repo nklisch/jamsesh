@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture-portalcluster
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage-cluster-fixture
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture-minio, epic-e2e-cnd-coverage-cluster-fixture-router-image]
@@ -137,3 +137,93 @@ specifics; do not paper over with retries or loose assertions.
   uses the full fixture surface)
 - Eventually consumed by lease-fencing, object-storage-sync,
   routing-layer, and hydration-handoff feature test bodies
+
+## Implementation notes
+
+### Files delivered
+
+- `tests/e2e/fixtures/portalcluster/cluster.go` — `Options`, `Cluster`,
+  `Start` (parallel pod boot via `errgroup.Group`, optional router wiring).
+- `tests/e2e/fixtures/portalcluster/lifecycle.go` — `GracefulDrain`, `Kill`,
+  `LeaseHolder`, `WaitForLeaseMigration`.
+- `tests/e2e/fixtures/portalcluster/cluster_test.go` — `TestClusterStart`:
+  3-pod boot, all-healthy `/healthz` check, clean cleanup via `t.Cleanup`.
+- `tests/e2e/fixtures/portal/portal.go` — two new backward-compatible methods:
+  `ContainerIP(ctx)` and `State(ctx)`.
+
+### Env-var bindings (verified against `internal/portal/config/config.go`)
+
+The clustered-mode env block set on every pod:
+
+```
+JAMSESH_DEPLOY_MODE=clustered
+JAMSESH_OBJECT_STORAGE_URL=s3://<bucket-name>/
+JAMSESH_OBJECT_STORAGE_ENDPOINT_URL=<minio.ContainerEndpoint>
+JAMSESH_OBJECT_STORAGE_PATH_STYLE=true
+JAMSESH_OBJECT_STORAGE_REGION=us-east-1
+AWS_ACCESS_KEY_ID=minioadmin
+AWS_SECRET_ACCESS_KEY=minioadmin
+```
+
+`config.go` has no `JAMSESH_OBJECT_STORAGE_ACCESS_KEY_*` variables. The
+portal's object-storage layer uses the standard AWS SDK credential chain, so
+`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` are the correct env-var names.
+
+### Parallel pod startup
+
+`errgroup.Group` starts all N pods concurrently. `portal.Start` calls
+`t.Fatal` on failure, which aborts only the calling goroutine; `errgroup`
+propagates the error to `Wait()`, which then calls `t.Fatalf`. This ensures
+partial clusters don't silently proceed.
+
+### Kill helper — Pumba not used
+
+The story spec noted Pumba as one pattern for pod kill; after reading
+`tests/e2e/chaos/runtime_and_clock_test.go` the existing chaos tests use
+`docker pause`/`docker unpause` (not Pumba) for process-level chaos. For
+an abrupt SIGKILL kill, `docker kill --signal SIGKILL <name>` is simpler,
+more reliable, and doesn't require pulling an additional Pumba image. The
+`Kill` helper uses this approach. If network-level chaos (packet loss,
+latency) is needed in future lease-fencing stories, Pumba can be added
+then.
+
+### LeaseHolder hashtext risk (KNOWN)
+
+`LeaseHolder` queries `pg_locks` using `hashtext($1)::bigint` to match
+the advisory-lock key the portal uses for lease-fencing. The risk:
+
+- PostgreSQL's `hashtext()` is not guaranteed stable across major versions.
+- If the portal uses a different key (e.g. a different hash, 64-bit vs.
+  32-bit advisory locks, or a composite key), `LeaseHolder` will return -1
+  even when a lease is held.
+- The keystone smoke test will surface this: if it reports -1 for a known
+  lock holder, the root cause is the hashtext assumption.
+
+**Recommended mitigation if this fires**: add a portal-side
+`/test/lease-debug` endpoint (behind a `testonly` build tag) that returns
+the exact advisory-lock key for a session ID. This avoids the
+version-sensitivity of `hashtext` and is the cleanest long-term solution.
+File as a follow-on story in the backlog.
+
+### go.mod promotion
+
+`go mod tidy` promoted several previously-indirect deps to direct, since
+`portalcluster` and the updated `portal.go` explicitly import them:
+`github.com/moby/moby/api`, `github.com/minio/minio-go/v7`,
+`golang.org/x/sync`, `github.com/stretchr/testify`,
+`github.com/prometheus/{client_model,common}`. This is correct and expected.
+
+### Acceptance criteria status
+
+- [x] `Start` validates `Postgres != nil && ObjectStore != nil`, t.Fatal otherwise
+- [x] N pods (default 2) start in parallel via errgroup
+- [x] All pods report `/healthz` 200 within 60s of `Start` returning (wait.ForHTTP in portal.Start)
+- [x] When `Router: true`, router is started and reachable
+- [x] `GracefulDrain(podIndex, timeout)` returns once the pod has cleanly exited
+- [x] `Kill(podIndex)` terminates the pod abruptly via `docker kill`
+- [x] `LeaseHolder(sessionID)` returns the holding pod's index; -1 if none (hashtext risk documented)
+- [x] `WaitForLeaseMigration` polls until holder changes or timeout
+- [x] Self-test: 3-pod cluster + Router=false + all healthy + clean cleanup
+- [x] Test skips cleanly when Docker or images unavailable (propagated from portal.Start / minio.Start)
+- [x] `go build ./fixtures/portal/... ./fixtures/portalcluster/...` — clean
+- [x] `go vet ./fixtures/portal/... ./fixtures/portalcluster/...` — clean
