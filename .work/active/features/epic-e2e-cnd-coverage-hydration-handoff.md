@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff
 kind: feature
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-lease-fencing, epic-e2e-cnd-coverage-object-storage-sync, epic-e2e-cnd-coverage-routing-layer]
@@ -529,4 +529,36 @@ Verification: `go build ./...` + `go vet ./...` clean across both modules at eve
 The handoff capstone is complete — clustered-mode session migration has end-to-end coverage on golden + failure + chaos + lifecycle layers.
 
 Ready for review.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All 7 test functions across 5 test files and 3 infrastructure helpers
+delivered as specified. F3 (Critical journey-gap — zero hydration/handoff
+coverage) and F13 handoff half (High chaos) fully addressed.
+
+Aggregate capability verification:
+- Golden (2 tests): clean-drain handoff + idle-eviction round-trip — non-tautological
+  ref-SHA and git-clone cross-checks; MinIO bucket not deleted.
+- Failure (1 test): missing-pack refuses loudly with no silent truncation —
+  Critical escape hatch comments present; manifest fencing-token not advanced.
+- Chaos (2 tests): pod-kill + object-storage latency — `git merge-base
+  --is-ancestor` ancestry checks on every acked SHA; design-boundary comments
+  coordinating with lease-fencing F13.
+- Lifecycle (1 test): evict-on-lease-release cache cleanup — `VerifyCachePresent`
+  pre-check guards against false-positive eviction; `VerifyCacheEvicted` via
+  direct docker exec.
+
+Foundation-doc alignment: `ARCHITECTURE.md` hydration handoff section and
+`SELF_HOST.md` env knobs both match the env vars used in tests.
+No foundation-doc drift detected.
+
+No in-process mocks anywhere. Bug-router-static-discoverer-not-started workaround
+correctly applied (kill → direct pod; drain → router OK). All child stories
+individually approved and at `stage: done`.
 
