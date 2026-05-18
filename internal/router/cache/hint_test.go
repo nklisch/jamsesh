@@ -234,6 +234,102 @@ func TestConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+// TestHintCache_LRUCorrectnessUnderConcurrentGet asserts that a key promoted
+// by concurrent Gets is never chosen as the LRU eviction target when a new Set
+// fires. The implementation holds a single mutex across the full Get and Set
+// critical sections, so eviction is strictly serialized: by the time Set
+// decides which entry to evict, any Get-promote that completed before Set
+// acquired the lock is already reflected in LRU order. Run with -race.
+//
+// Strategy: fill the cache to capacity (maxEntries=10, keys k0..k9), with k0
+// inserted last so it is the MRU. Spawn N goroutines that each do one Get(k0)
+// and then signal via a channel. Wait for all signals before firing a single
+// Set(k10) that must evict exactly one entry — the current LRU, which is k9
+// (the oldest insertion that was never touched again). Assert k0 survives and
+// k9 is gone. The goroutines then drain via the done channel.
+//
+// One evicting Set is all we need: under strict mutex serialization, Set cannot
+// observe a stale LRU order. Firing many Sets beyond the original key set would
+// legitimately make k0 the LRU eventually (once all competing keys are newer),
+// so we limit to exactly one eviction.
+func TestHintCache_LRUCorrectnessUnderConcurrentGet(t *testing.T) {
+	const (
+		maxEntries = 10
+		goroutines = 8
+	)
+
+	h := New(maxEntries, time.Minute)
+
+	// Insert k9 first, k8 second, …, k0 last.
+	// After the loop: k0 is at the front (MRU); k9 is at the back (LRU).
+	for i := maxEntries - 1; i >= 0; i-- {
+		h.Set(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i))
+	}
+	// Pre-condition check.
+	if _, ok := h.Get("k0"); !ok {
+		t.Fatal("pre-condition: k0 must be present before concurrent test")
+	}
+
+	// firstGet is a buffered channel used as a countdown latch: each goroutine
+	// sends one token after its first successful Get(k0). We wait for all
+	// goroutines to report before firing the evicting Set.
+	firstGet := make(chan struct{}, goroutines)
+	done := make(chan struct{})
+
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Do at least one Get(k0) and signal readiness.
+			h.Get("k0")
+			firstGet <- struct{}{}
+			// Keep accessing k0 until the main goroutine signals done.
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					h.Get("k0")
+				}
+			}
+		}()
+	}
+
+	// Synchronization point: wait until every goroutine has done at least one
+	// Get(k0). At this moment k0 is guaranteed to have been promoted to front
+	// at least once by each concurrent reader.
+	for i := 0; i < goroutines; i++ {
+		<-firstGet
+	}
+
+	// Fire exactly one evicting Set. The LRU tail must be k9 (oldest insert,
+	// never touched). Under strict mutex serialization, Set observes the LRU
+	// order as it is when Set acquires the lock — which reflects all Gets that
+	// completed before it. k0 must not be the victim.
+	h.Set("k10", "v10")
+
+	// Signal goroutines to stop and wait for them to exit before asserting.
+	close(done)
+	wg.Wait()
+
+	// k0 must survive: it was the most-recently-accessed key.
+	if _, ok := h.Get("k0"); !ok {
+		t.Fatal("k0 was evicted despite being the most-recently-accessed key; " +
+			"LRU ordering is broken under concurrent Get+Set")
+	}
+
+	// k9 must be gone: it was the LRU (oldest insertion, never accessed).
+	if _, ok := h.Get("k9"); ok {
+		t.Fatal("k9 survived but should have been evicted as the LRU entry")
+	}
+
+	// k10 must be present: it was just inserted.
+	if _, ok := h.Get("k10"); !ok {
+		t.Fatal("k10 should be present after insertion")
+	}
+}
+
 // TestExpiredEntryRemovedFromMap verifies that after a TTL miss, the internal
 // map does not retain the expired entry (prevents unbounded growth).
 func TestExpiredEntryRemovedFromMap(t *testing.T) {

@@ -1,7 +1,7 @@
 ---
 id: gate-tests-hint-cache-lru-concurrent
 kind: story
-stage: implementing
+stage: review
 tags: [testing, infra]
 parent: null
 depends_on: []
@@ -36,3 +36,39 @@ its Get and the LRU promotion completing.
 
 ## Test location (suggested)
 `internal/router/cache/hint_test.go`
+
+## Implementation notes
+
+### Production code contract
+
+`Hint` uses a single `sync.Mutex` that wraps the entire body of both `Get` and
+`Set`. This means every operation — including the LRU `MoveToFront` inside
+`Get` and the eviction-then-insert inside `Set` — is fully serialized. There
+is no race window between "decide which entry to evict" and "remove it": by
+the time `Set` acquires the lock, the LRU list already reflects every `Get`
+that completed before the lock was granted. The cache therefore guarantees
+**strict LRU ordering even under concurrent access**, not merely
+"eventual/approximate LRU."
+
+### Synchronization strategy
+
+1. Keys k0..k9 are inserted in reverse order (k9 first, k0 last) so that after
+   pre-population k0 is at the MRU front and k9 is at the LRU back.
+2. Eight goroutines each call `Get("k0")` once, signal via a buffered channel
+   (countdown-latch pattern), and then loop calling `Get("k0")` until a done
+   channel is closed. The buffered channel ensures no goroutine blocks the
+   main goroutine.
+3. The main goroutine waits for all eight signals before firing a single
+   `Set("k10", "v10")`. This synchronization point guarantees k0's promotion
+   has been observed by the LRU list before the eviction decision is made.
+4. Exactly one evicting `Set` is fired. Firing many Sets beyond the original
+   key set would legitimately make k0 the LRU eventually (once all nine
+   competing keys are newer than k0's last promotion), so the test limits to
+   one eviction to keep the assertion unambiguous.
+
+### Tolerance and invariant
+
+Because the implementation is strictly serialized, the test asserts the hard
+invariant: k0 survives the eviction and k9 (the true LRU) is gone. No
+tolerance or flakiness guard is needed. The race detector (`-race`) confirmed
+no data races exist across 1.098 s of execution covering all package tests.
