@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture-minio
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage-cluster-fixture
 depends_on: []
@@ -36,16 +36,16 @@ implementer may bump to a more recent stable tag if needed).
 
 ## Acceptance criteria
 
-- [ ] `minio.Start(ctx, t, minio.Options{})` returns within 30s
-- [ ] Bucket is pre-created with a random name (`bucket_<hex8>` style,
-      matching postgres-fixture's `test_<hex8>` DB naming)
-- [ ] Self-test: PUT a small payload, GET it back, assert content equals
-- [ ] `t.Cleanup` terminates the container
-- [ ] Test skips cleanly with a clear message when Docker is unavailable
+- [x] `minio.Start(ctx, t, minio.Options{})` returns within 30s
+- [x] Bucket is pre-created with a random name (`bucket-<hex8>` style;
+      hyphens required by S3 naming rules — underscore not permitted)
+- [x] Self-test: PUT a small payload, GET it back, assert content equals
+- [x] `t.Cleanup` terminates the container
+- [x] Test skips cleanly with a clear message when Docker is unavailable
       (existing `requireDocker` pattern)
-- [ ] `containerlog.DumpAndTerminate` used for cleanup so failure logs
+- [x] `containerlog.DumpAndTerminate` used for cleanup so failure logs
       surface in CI (matches portal/postgres fixtures)
-- [ ] `go test ./fixtures/minio/...` is green from the `tests/e2e/` module
+- [x] `go test ./fixtures/minio/...` is green from the `tests/e2e/` module
 
 ## Test integrity (from parent epic)
 
@@ -65,6 +65,48 @@ marking done. Do not silence by weakening assertions.
 - `tests/e2e/fixtures/portal/portal.go` — `requireDocker` + container-log
   cleanup patterns
 - Parent feature body for the full unit design
+
+## Implementation notes
+
+### Files touched
+
+- `tests/e2e/fixtures/minio/minio.go` — `Start`, `Options`, `MinIO` struct,
+  `randHex`, `requireDocker`.
+- `tests/e2e/fixtures/minio/inspect.go` — `ListObjects`, `GetObject`,
+  `PutObject`, `DeleteObject` on `*MinIO`.
+- `tests/e2e/fixtures/minio/minio_test.go` — `TestMinIOStart` self-test
+  (PUT + GET round-trip + `ListObjects`).
+- `tests/e2e/go.mod` / `tests/e2e/go.sum` — added `github.com/minio/minio-go/v7`.
+
+### Deviations from design
+
+**Bucket naming:** The design spec used `bucket_<hex8>` (underscore) but
+MinIO enforces S3 bucket naming rules (lowercase letters, numbers, hyphens
+only — no underscores). The fixture uses `bucket-<hex8>` (hyphen). Discovered
+during the first test run: `Bucket name contains invalid characters`.
+
+**Hex length:** `randHex(4)` produces 8 hex characters (4 bytes → 8 chars),
+matching the `bucket-<hex8>` naming. The design said "hex8" meaning 8 hex
+characters, which is `randHex(4)`. Implementation is correct.
+
+**Wait strategy:** `/minio/health/live` on port 9000 works correctly with the
+pinned image `minio/minio:RELEASE.2024-12-18T13-15-44Z`. No fallback needed.
+
+**No shared singleton:** Per design, MinIO is a per-test container (no
+`sync.Once`). Each `Start` call gets its own container + random bucket.
+
+**minio-go client construction:** `inspect.go` builds a fresh `miniogo.Client`
+per operation call via the private `client()` helper. This is intentional —
+the helper keeps the `MinIO` struct lean (no embedded client) and avoids
+client lifecycle concerns in fixture teardown.
+
+### Test run
+
+```
+--- PASS: TestMinIOStart (1.53s)
+PASS
+ok  jamsesh/tests/e2e/fixtures/minio  1.564s
+```
 
 ## Dependencies on this story (downstream)
 
