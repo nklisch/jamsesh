@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer
 kind: feature
-stage: drafting
+stage: implementing
 tags: [e2e-test, testing, portal, infra]
 parent: epic-e2e-cnd-coverage
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -192,6 +192,317 @@ feature.
 - Long-haul connection-pool perf characterization
 - Multi-region router federation
 
+---
+
+## Design decisions
+
+Resolved under autopilot (2026-05-17). All open questions from the brief:
+
+1. **"Which backend served this request" mechanism** → `cluster.LeaseHolder`
+   (option c from the brief). The Postgres advisory lock query is stable
+   (recently fixed with `::oid` cast in `lifecycle.go`) and requires no
+   portal code changes. Build-tag-gated response headers and log correlation
+   are both more complex and less reliable. LeaseHolder is used as the primary
+   routing-identity assertion in all golden tests.
+
+2. **Hint-cache invalidation semantics** → Verified in `proxy.go`:
+   - On 503 from first pod: `h.Hint.Invalidate(sessionID)` called immediately.
+   - On retry success (non-503): hint is NOT set (`// Don't update hint on
+     retry`), so ring.Get is used on the next request.
+   - On clean success (non-503, first attempt): `h.Hint.Set(sessionID, pod.ID)`.
+   - TTL-based expiry: 5 minutes (default), YAML-only — no env-var binding.
+   Tests relying on hint expiry would need to wait 5 minutes; instead tests
+   use 503-driven invalidation (correct path) and metrics scraping for
+   observability. A follow-on story for short-TTL config mount is filed in
+   backlog.
+
+3. **K8s discovery test scope** → Deferred to backlog item
+   `epic-e2e-cnd-coverage-routing-layer-k8s-discovery`. Static-mode coverage
+   exercises all router behavioral invariants. K8s-mode adds only
+   discovery-layer coverage; envtest or WireMock k8s-API setup is
+   disproportionate for one test.
+
+4. **Bounded-retry pathology** → The router retries exactly once (single
+   `Ring.GetNext` call + one more `proxyTo`). With 2 pods both returning 503,
+   the client gets 503 after 2 pod attempts. Test verifies response within 5s.
+
+5. **MCP header name** → The router uses `Jam-Session-Id` (not `Mcp-Session-Id`
+   as the brief stated) for session extraction — confirmed in
+   `internal/router/extract/extract.go`. The `mcpclient` fixture sends
+   `Mcp-Session-Id` (MCP wire protocol). The MCP header test requires setting
+   `Jam-Session-Id` explicitly in the HTTP request alongside `Mcp-Session-Id`.
+
+6. **Network chaos path** → Toxiproxy disconnect triggers the ReverseProxy
+   `ErrorHandler` (502), not the 503 retry path. This is the correct, clean
+   outcome — the test asserts 502 OR 2xx (if future retry-on-transport-error
+   enhancement lands), with wall-clock bound. NOT a hang.
+
+---
+
+## Mock-boundary plan (final)
+
+| External dep        | Service-level mock                        | Notes                        |
+|---------------------|-------------------------------------------|------------------------------|
+| Router binary       | Real `cmd/jamsesh-router/` (jamsesh/router:e2e image) | Verified from cluster-fixture; built via `make test-router-image` |
+| Multiple portals    | Real portals from `portalcluster` fixture  | Testcontainers; 2-3 pods     |
+| Postgres            | Real `postgres:16-alpine` Testcontainer    | Advisory locks, LeaseHolder  |
+| MinIO               | Real `minio/minio` Testcontainer           | Required for clustered-mode boot |
+| Network partition   | Toxiproxy (`ghcr.io/shopify/toxiproxy:2.7.0`) | Existing chaos fixture    |
+| K8s API (deferred)  | WireMock (proposed) or envtest             | Backlog item                 |
+
+No in-process mocks. All service-level. The router IS the system under test.
+
+---
+
+## Taxonomy plan
+
+- **Golden**: 5 tests covering consistent-hash routing, MCP Jam-Session-Id
+  header pinning, hint-cache override (2 subtests), hint-cache per-session
+  isolation.
+- **Failure**: 3 tests covering transparent 503 re-dispatch, bounded-retry
+  pathology guard (all pods 503), dead backend eviction from ring.
+- **Chaos**: 2 tests covering Toxiproxy disconnect mid-request, Toxiproxy
+  latency causing timeout failover.
+- **Fuzz**: Not applicable — no parser or input-validation boundary in the
+  router surface tested here. URL extraction is covered by unit tests
+  (`internal/router/extract/extract_test.go`).
+
+---
+
+## Implementation Units
+
+### Unit 1: Golden — Consistent-Hash Routing
+
+**File**: `tests/e2e/golden/router_consistent_hash_test.go`
+**Story**: `epic-e2e-cnd-coverage-routing-layer-golden-consistent-hash`
+**Invariant**: Same session_id consistently routes to the same pod absent
+re-ring events.
+
+```go
+func TestRouterGolden(t *testing.T) {
+    t.Run("same_session_pins_to_same_pod", func(t *testing.T) {
+        ctx := context.Background()
+        pg  := postgres.Start(ctx, t, postgres.Options{})
+        mn  := minio.Start(ctx, t, minio.Options{})
+        c   := portalcluster.Start(ctx, t, portalcluster.Options{
+            Pods: 3, Postgres: pg, ObjectStore: mn, Router: true,
+        })
+        // Issue 20+ session-scoped requests via c.RouterURL
+        // Assert cluster.LeaseHolder returns same pod index each time
+    })
+    t.Run("different_sessions_distribute", func(t *testing.T) {
+        // 10+ distinct session IDs → assert ≥2 distinct pod indices
+    })
+}
+```
+
+**Acceptance Criteria**:
+- [ ] LeaseHolder returns same index for all 20+ requests on same session
+- [ ] At least 2 of 3 pods appear across 10 distinct sessions
+
+---
+
+### Unit 2: Golden — MCP Jam-Session-Id Header Pinning
+
+**File**: `tests/e2e/golden/router_mcp_session_header_test.go`
+**Story**: `epic-e2e-cnd-coverage-routing-layer-golden-mcp-header`
+**Invariant**: MCP tool calls carrying `Jam-Session-Id: <session_id>` are
+routed to the pod holding the lease for that session.
+
+```go
+func TestRouterMCPHeader(t *testing.T) {
+    t.Run("mcp_jam_session_id_pins_to_handshake_pod", func(t *testing.T) {
+        // Create jamsesh session via REST → get session_id
+        // Perform MCP init via router; obtain mcpSessionID from Mcp-Session-Id header
+        // Make N tool calls with both Jam-Session-Id and Mcp-Session-Id set
+        // Assert cluster.LeaseHolder(session_id) == same pod each time
+    })
+}
+```
+
+**Acceptance Criteria**:
+- [ ] All N MCP tool calls return 2xx with valid response envelopes
+- [ ] LeaseHolder returns same pod index throughout the session
+
+---
+
+### Unit 3: Golden — Hint-Cache Override
+
+**File**: `tests/e2e/golden/router_hint_cache_test.go`
+**Story**: `epic-e2e-cnd-coverage-routing-layer-golden-hint-cache`
+**Invariant**: After 503-driven invalidation, hint repopulates on next clean
+success; per-session hints do not bleed across sessions.
+
+```go
+func TestRouterHintCache(t *testing.T) {
+    t.Run("hint_cache_overrides_ring_after_503", func(t *testing.T) {
+        // Hold advisory lock from test → trigger portal 503 → router retry
+        // Scrape /metrics: assert hit_cache increments after clean success
+    })
+    t.Run("hint_cache_is_per_session", func(t *testing.T) {
+        // 3 sessions → 3 distinct pod indices → stable routing per session
+    })
+}
+```
+
+**Acceptance Criteria**:
+- [ ] `router_decisions_total{result="hit_cache"}` increments after warm session
+- [ ] Distinct session IDs route independently (LeaseHolder differs per session)
+
+---
+
+### Unit 4: Failure — 503 Re-dispatch and Bounded Retry
+
+**File**: `tests/e2e/failure/router_lease_unavailable_test.go`
+**Story**: `epic-e2e-cnd-coverage-routing-layer-failure-503-retry`
+**Invariant**: Single-pod 503 → client sees 2xx (re-dispatched); all-pods 503
+→ client sees 503 within bounded time.
+
+```go
+func TestRouterLeaseUnavailable(t *testing.T) {
+    t.Run("transparent_redispatch_on_503", func(t *testing.T) {
+        // Hold advisory lock for session from test process (pg_advisory_lock)
+        // Send request via router → assert 2xx (router re-dispatched)
+        // Release lock → assert subsequent requests 2xx without re-dispatch
+    })
+    t.Run("bounded_retry_pathology_surfaces_503", func(t *testing.T) {
+        // Hold locks on BOTH pods for same session
+        // Send request → assert 503 within 5s
+        // Release locks
+    })
+}
+```
+
+**Acceptance Criteria**:
+- [ ] Subtest 1: response is 2xx; wall-clock < 3s
+- [ ] Subtest 2: response is 503; wall-clock < 5s (no hang)
+
+---
+
+### Unit 5: Failure — Backend Pod Dead
+
+**File**: `tests/e2e/failure/router_backend_dead_test.go`
+**Story**: `epic-e2e-cnd-coverage-routing-layer-failure-backend-dead`
+**Invariant**: After SIGKILL, router detects absent pod within 15s SLO and
+re-shards sessions to surviving pods.
+
+```go
+func TestRouterBackendDead(t *testing.T) {
+    t.Run("dead_pod_removed_from_routing_pool", func(t *testing.T) {
+        // Establish session on pod 0 (LeaseHolder confirms)
+        // cluster.Kill(ctx, t, 0) — docker SIGKILL
+        // Poll for 15s: assert requests for session return 2xx from surviving pod
+    })
+}
+```
+
+**Acceptance Criteria**:
+- [ ] Session re-shards within 15s SLO
+- [ ] No connection-reset or timeout errors after SLO window
+
+---
+
+### Unit 6: Chaos — Pod Disappears (Toxiproxy)
+
+**File**: `tests/e2e/chaos/router_pod_disappears_test.go`
+**Story**: `epic-e2e-cnd-coverage-routing-layer-chaos-pod-disappears`
+**Invariant**: Toxiproxy-induced network failure produces a clean 502 or
+retried 2xx within a bounded wall-clock window — never a client-side hang.
+
+```go
+func TestRouterPodDisappears(t *testing.T) {
+    t.Run("network_disconnect_mid_request", func(t *testing.T) {
+        // Toxiproxy reset_peer toxic on router→pod0 path
+        // Assert response < 5s, status 502 or 2xx
+    })
+    t.Run("network_latency_causes_timeout_failover", func(t *testing.T) {
+        // Toxiproxy 5s latency on router→pod0
+        // Assert response < 15s (router ReadHeaderTimeout: 10s fires)
+        // Status 502 or 2xx
+    })
+}
+```
+
+**Acceptance Criteria**:
+- [ ] Disconnect subtest: response < 5s; no hang
+- [ ] Latency subtest: response < 15s; no hang
+- [ ] Router started manually with Toxiproxy interposed per-pod (not via
+      `portalcluster.Start(Router: true)`)
+
+---
+
+## Helper: Advisory Lock Hold Pattern
+
+For Units 4 and 3 (503 induction), the test holds a Postgres advisory lock
+using the same key the portal uses:
+
+```go
+// Hold advisory lock for sessionID from test process
+db, _ := sql.Open("postgres", pg.DSN)
+_, _ = db.ExecContext(ctx, "SELECT pg_advisory_lock(hashtext($1)::oid)", sessionID)
+// ... inject request ... 
+_, _ = db.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1)::oid)", sessionID)
+db.Close()
+```
+
+This is an in-test helper, not a shared fixture — it sits inline in the test
+file or in a local `testhelper_test.go` file in the same package.
+
+---
+
+## Implementation Order
+
+1. `epic-e2e-cnd-coverage-routing-layer-golden-consistent-hash`
+2. `epic-e2e-cnd-coverage-routing-layer-golden-mcp-header`
+3. `epic-e2e-cnd-coverage-routing-layer-failure-503-retry`
+4. `epic-e2e-cnd-coverage-routing-layer-failure-backend-dead`
+5. `epic-e2e-cnd-coverage-routing-layer-golden-hint-cache` (depends on #1)
+6. `epic-e2e-cnd-coverage-routing-layer-chaos-pod-disappears` (depends on #1)
+
+Stories 2-4 are parallel (no inter-dependency). Stories 5-6 can run in parallel
+after story 1 completes.
+
+---
+
+## Risks
+
+1. **LeaseHolder reliability under rapid request bursts** — the advisory lock
+   may be acquired and released within a single request if the portal's
+   non-blocking lock acquisition is very fast. The test's LeaseHolder poll
+   between requests (not during) should be stable. If flaky: add a
+   `time.Sleep(100ms)` between LeaseHolder poll and next request to let the
+   lock state settle. Do not pre-solve; fix if it surfaces.
+
+2. **Router hint-cache TTL observability** — metrics-based cache-hit detection
+   is indirect. If `router_decisions_total` is not exposed or has wrong labels,
+   the hint-cache test has no observability lever. Mitigation: run a smoke
+   request through `/metrics` in TestMain to verify the counter exists before
+   running the subtest; `t.Skip` if absent with a message directing the
+   implementer to check the metrics registry.
+
+3. **Static discovery probe interval** — the backend-dead test (Unit 5) depends
+   on the router detecting a dead pod within 15s. If the probe interval default
+   is > 15s, the test fails immediately. Read `internal/router/discovery/
+   static.go` to confirm the default probe interval before implementing. If
+   the interval is not configurable via env-var, this is a design gap; file a
+   story to add env-var binding before implementing Unit 5.
+
+4. **Toxiproxy topology complexity** — the chaos test requires manually starting
+   the router with Toxiproxy-proxied backends rather than using `portalcluster.
+   Start(Router: true)`. This is more setup code. If the test becomes unwieldy,
+   extract a `startClusterWithToxiproxy(t, pods, tp)` helper function local to
+   the chaos test file.
+
+5. **MCP Jam-Session-Id header not sent by mcpclient** — confirmed; the test
+   must set it manually. If the portal's MCP session ID and the jamsesh session
+   ID are the same value in some code paths, this simplifies the test. If they
+   differ (MCP session ID is an opaque UUID unrelated to the jamsesh session ID),
+   the test must establish the jamsesh session via REST first. Implementer must
+   read the portal's `/mcp` initialize response carefully to determine the
+   relationship.
+
+---
+
 ## Next
 
-`/agile-workflow:e2e-test-design epic-e2e-cnd-coverage-routing-layer`
+`/agile-workflow:implement-orchestrator epic-e2e-cnd-coverage-routing-layer`

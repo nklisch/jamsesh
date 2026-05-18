@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-patch-endpoint
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: org-session-invite-policy
 depends_on: [org-session-invite-policy-schema]
@@ -178,3 +178,23 @@ LOW. Standard CRUD endpoint following the established handlerauth pattern.
 
 `git revert` the commit. The endpoint disappears; the schema column stays
 (idempotent — orgs default to `members_only` via the migration).
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Test name typo: `TestPatchOrg_CreatorSuccess_PolicePersists` should be
+  `PolicyPersists`. Doesn't affect behavior; rename if touched in a future
+  pass.
+- Belt-and-suspenders enum validation is duplicated with the OpenAPI enum
+  but explicitly defensive — the comment justifies it correctly.
+
+**Notes**: Grandfather invariant explicitly tested
+(`TestPatchOrg_Grandfather`) and documented in the handler doc comment.
+The `orgToOpenAPI` mapper is the right abstraction — used here and likely
+in the GetOrg sibling (which was added in the org-settings-ui story when
+that agent discovered the design assumed GET existed). `patchOrgFail`
+helper cleanly threads the `AuthFail → response object` mapping.
