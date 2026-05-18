@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture-router-image
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage-cluster-fixture
 depends_on: []
@@ -89,3 +89,56 @@ id in the test. Do not silence.
   `Options.Router: true`)
 - Eventually consumed by every test in
   `epic-e2e-cnd-coverage-routing-layer`
+
+## Implementation notes
+
+### Files touched
+
+- `Dockerfile.router` (new) — alpine:3.21, `ca-certificates`, copies
+  `jamsesh-router-${TARGETOS}-${TARGETARCH}` binary, exposes 8080, runs as
+  `nobody`. No `git` package (router doesn't shell out).
+- `Makefile` — added `test-router-image` and `test-router-image-clean`
+  targets immediately after the parallel portal targets; added both to the
+  relevant `.PHONY` line.
+- `.github/workflows/e2e.yml` — inserted `build router test image` step
+  (`make test-router-image`) between `build portal test image` and
+  `run e2e suite`.
+- `tests/e2e/fixtures/router/router.go` — `Start(ctx, t, Options) *Router`
+  fixture; `Router{URL, ContainerURL}` type; `requireDocker` /
+  `requireRouterImage` skip helpers; cleanup via
+  `containerlog.DumpAndTerminate`.
+- `tests/e2e/fixtures/router/router_test.go` — `TestRouterProxy`: nginx:alpine
+  stub backend (real container), router pointed at bridge IP, assert
+  `"Welcome to nginx"` in response body. Ran green in 5.65s.
+
+### Env-var bindings used
+
+| Env var | Value |
+|---|---|
+| `JAMSESH_ROUTER_BIND` | `:8080` |
+| `JAMSESH_ROUTER_DISCOVERY_MODE` | `static` |
+| `JAMSESH_ROUTER_STATIC_PODS` | comma-joined `opts.Backends` |
+| `JAMSESH_ROUTER_SHUTDOWN_GRACE_S` | `5` |
+
+### HintCacheTTL — not configurable via fixture
+
+`HintCacheTTL` is documented as YAML-only in
+`internal/router/config/config.go` (comment: "Remaining knobs —
+YAML-only in v1"). `cmd/jamsesh-router/main.go` `printUsage` confirms no
+corresponding env var. `Options.HintCacheTTL` was omitted from the fixture
+API — the default (60s) applies. If tests need a shorter TTL, a follow-on
+story can add config-file mount support to the fixture.
+
+### Wait strategy
+
+`/metrics` HTTP 200 on port `8080/tcp` with 30s startup timeout, per
+`cmd/jamsesh-router/main.go:145` which registers Prometheus metrics
+unconditionally. The wait resolved immediately after container start
+(confirmed in test output).
+
+### Verified
+
+- `go build ./fixtures/router/...` — clean
+- `go vet ./fixtures/router/...` — clean
+- `make test-router-image` — produced `jamsesh/router:e2e`
+- `go test -run TestRouterProxy ./fixtures/router/... -v -timeout 60s` — PASS (5.65s)

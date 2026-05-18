@@ -1,4 +1,4 @@
-.PHONY: generate generate-db generate-api generate-api-go generate-api-ts frontend-build build go-build test-portal-image test-portal-image-clean
+.PHONY: generate generate-db generate-api generate-api-go generate-api-ts frontend-build build go-build test-portal-image test-portal-image-clean test-router-image test-router-image-clean
 
 generate: generate-db generate-api
 
@@ -87,6 +87,19 @@ test-portal-image: frontend-build
 # test-portal-image-clean: remove the e2e portal image tag.
 test-portal-image-clean:
 	-docker rmi jamsesh/portal:e2e
+
+# test-router-image: build the router Docker image used by e2e Testcontainers
+# fixtures. The router binary is built CGO_ENABLED=0 for a fully static
+# executable compatible with Alpine's musl libc. No git or frontend build
+# dependency — the router does not embed any assets.
+test-router-image:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o jamsesh-router-linux-amd64 ./cmd/jamsesh-router
+	docker build -f Dockerfile.router --build-arg BINARY=jamsesh-router --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 -t jamsesh/router:e2e .
+	@rm -f jamsesh-router-linux-amd64
+
+# test-router-image-clean: remove the e2e router image tag.
+test-router-image-clean:
+	-docker rmi jamsesh/router:e2e
 
 .PHONY: dev dev-down dev-down-v dev-rebuild
 

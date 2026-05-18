@@ -1,0 +1,14 @@
+ARG BINARY=jamsesh-router
+# alpine:3.21 + ca-certificates is the runtime base: the router binary is
+# built CGO_ENABLED=0 (fully static) so musl libc is fine. ca-certificates
+# supplies the trust roots needed for outbound TLS when probing pod /readyz
+# endpoints over HTTPS. No git is needed — the router does not shell out.
+FROM alpine:3.21
+ARG BINARY
+ARG TARGETOS
+ARG TARGETARCH
+RUN apk add --no-cache ca-certificates
+COPY ${BINARY}-${TARGETOS}-${TARGETARCH} /usr/local/bin/jamsesh-router
+EXPOSE 8080
+USER nobody
+ENTRYPOINT ["/usr/local/bin/jamsesh-router"]

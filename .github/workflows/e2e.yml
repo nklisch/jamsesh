@@ -51,6 +51,9 @@ jobs:
       - name: build portal test image
         run: make test-portal-image
 
+      - name: build router test image
+        run: make test-router-image
+
       - name: run e2e suite
         run: make test-e2e
 
