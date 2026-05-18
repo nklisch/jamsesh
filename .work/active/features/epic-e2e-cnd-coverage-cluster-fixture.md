@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture
 kind: feature
-stage: review
+stage: done
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage
 depends_on: []
@@ -644,6 +644,25 @@ hydration-handoff) are unblocked to enter their own design passes.
 - K8s pod-discovery exercise for the router (lives in
   `epic-e2e-cnd-coverage-routing-layer`)
 - Multi-bucket / multi-region object-storage scenarios
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: `LeaseHolder` helper uses `::bigint` cast vs `::oid` in portal's own
+  test code — filed as `portalcluster-leaseholder-objid-cast`. Does not block the
+  feature; downstream lease-fencing tests will surface it.
+**Nits**: none
+
+**Notes**: All 4 units delivered as briefed. Audit findings F15 (single-instance-only
+fixture) and F2 fixture half (no object-storage fixture) are addressed. No foundation
+docs were modified — test infrastructure only. `portal.go` additions (ContainerIP,
+State) are backward-compatible. The keystone invariant (session created on pod A
+visible on pod B after graceful drain) is exercised by a real 7-step smoke test with
+genuine assertions at each step. CI workflow updated. README updated. Feature advances
+to done; downstream cnd-coverage features (lease-fencing, object-storage-sync,
+routing-layer, hydration-handoff) are unblocked.
 
 ## Next
 
