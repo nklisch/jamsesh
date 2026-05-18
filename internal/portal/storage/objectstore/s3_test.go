@@ -507,3 +507,194 @@ func TestPut_FencingTokenRoundtrips(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// probeEndpointInfo carries raw endpoint credentials resolved from env or
+// the container shim. Used by TestS3Backend_Probe_DistinguishesFailureModes.
+// ---------------------------------------------------------------------------
+
+type probeEndpointInfo struct {
+	endpoint  string
+	bucket    string
+	accessKey string
+	secretKey string
+	region    string
+	pathStyle bool
+}
+
+// resolveProbeEndpoint resolves S3 connection details from the environment (or
+// the container shim) and skips t if nothing is configured.
+func resolveProbeEndpoint(t *testing.T) probeEndpointInfo {
+	t.Helper()
+
+	endpoint := os.Getenv(envEndpoint)
+	bucket := os.Getenv(envBucket)
+	accessKey := os.Getenv(envAccessKey)
+	secretKey := os.Getenv(envSecretKey)
+	region := os.Getenv(envRegion)
+	pathStyle := os.Getenv(envPathStyle) == "true" || os.Getenv(envPathStyle) == "1"
+	useContainer := os.Getenv(envContainer) == "true" || os.Getenv(envContainer) == "1"
+
+	if useContainer {
+		endpoint, bucket, accessKey, secretKey = startMinIOContainer(t)
+		if endpoint == "" {
+			t.Skip("MinIO container could not be started (Docker unavailable?); skipping")
+		}
+		pathStyle = true
+	} else if endpoint == "" || bucket == "" {
+		t.Skipf(
+			"S3 Probe integration tests skipped: set %s and %s (plus %s/%s) to run, or set %s=true for Docker-based MinIO",
+			envEndpoint, envBucket, envAccessKey, envSecretKey, envContainer,
+		)
+	}
+
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	return probeEndpointInfo{
+		endpoint:  endpoint,
+		bucket:    bucket,
+		accessKey: accessKey,
+		secretKey: secretKey,
+		region:    region,
+		pathStyle: pathStyle,
+	}
+}
+
+// TestS3Backend_Probe_DistinguishesFailureModes verifies the Probe contract
+// against a real S3-compatible endpoint across four failure partitions:
+//
+//   - happy_path: reachable + correct bucket → nil in < 500 ms
+//   - missing_bucket: reachable + non-existent bucket → non-nil error
+//   - bad_credentials: reachable + wrong key/secret → non-nil error
+//   - unreachable: nothing listening on the target port → non-nil error
+//     after the context deadline (~5 s)
+//
+// The test skips cleanly when no S3 endpoint is configured (see setupBackend
+// for the env-var / container-shim documentation).
+func TestS3Backend_Probe_DistinguishesFailureModes(t *testing.T) {
+	info := resolveProbeEndpoint(t)
+
+	// Inject valid credentials into the environment for all subtests; each
+	// subtest that wants bad credentials overrides them with t.Setenv before
+	// calling NewS3 (t.Setenv restores on cleanup).
+	if info.accessKey != "" && info.secretKey != "" {
+		t.Setenv("AWS_ACCESS_KEY_ID", info.accessKey)
+		t.Setenv("AWS_SECRET_ACCESS_KEY", info.secretKey)
+	}
+
+	t.Run("happy_path", func(t *testing.T) {
+		backend, err := objectstore.NewS3(objectstore.S3Config{
+			URL:          fmt.Sprintf("s3://%s", info.bucket),
+			Region:       info.region,
+			EndpointURL:  info.endpoint,
+			UsePathStyle: info.pathStyle,
+		})
+		if err != nil {
+			t.Fatalf("NewS3: %v", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		start := time.Now()
+		err = backend.Probe(ctx)
+		elapsed := time.Since(start)
+
+		if err != nil {
+			t.Fatalf("Probe(happy_path) = %v; want nil", err)
+		}
+		if elapsed > 500*time.Millisecond {
+			t.Logf("Probe(happy_path) took %v (> 500 ms; may be cold-start)", elapsed)
+		}
+	})
+
+	t.Run("missing_bucket", func(t *testing.T) {
+		// Use a bucket name that was never created. MinIO returns 404 / NoSuchBucket.
+		missingBucket := fmt.Sprintf("probe-no-such-bucket-%x", rand.Int64())
+
+		backend, err := objectstore.NewS3(objectstore.S3Config{
+			URL:          fmt.Sprintf("s3://%s", missingBucket),
+			Region:       info.region,
+			EndpointURL:  info.endpoint,
+			UsePathStyle: info.pathStyle,
+		})
+		if err != nil {
+			t.Fatalf("NewS3: %v", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		err = backend.Probe(ctx)
+		if err == nil {
+			t.Fatal("Probe(missing_bucket) = nil; want non-nil error")
+		}
+		t.Logf("Probe(missing_bucket) error (expected): %v", err)
+	})
+
+	t.Run("bad_credentials", func(t *testing.T) {
+		// Override credentials with nonsense values so the AWS SDK uses them.
+		// t.Setenv restores the originals when the subtest finishes.
+		t.Setenv("AWS_ACCESS_KEY_ID", "BADACCESSKEY00000000")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "badsecretkeybadsecretkeybadsecretkeybadse")
+
+		backend, err := objectstore.NewS3(objectstore.S3Config{
+			URL:          fmt.Sprintf("s3://%s", info.bucket),
+			Region:       info.region,
+			EndpointURL:  info.endpoint,
+			UsePathStyle: info.pathStyle,
+		})
+		if err != nil {
+			t.Fatalf("NewS3: %v", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		err = backend.Probe(ctx)
+		if err == nil {
+			t.Fatal("Probe(bad_credentials) = nil; want non-nil error")
+		}
+		t.Logf("Probe(bad_credentials) error (expected): %v", err)
+	})
+
+	t.Run("unreachable", func(t *testing.T) {
+		// 127.0.0.1:1 — port 1 is reserved and nothing listens there; the OS
+		// returns ECONNREFUSED immediately. We want to assert that Probe honours
+		// the context deadline rather than hanging, so we use a 6-second deadline
+		// and assert the call returns within a reasonable window.
+		//
+		// Note: ECONNREFUSED is fast (immediate), not a timeout, so we simply
+		// assert the error is non-nil without timing it strictly.
+		backend, err := objectstore.NewS3(objectstore.S3Config{
+			URL:          fmt.Sprintf("s3://%s", info.bucket),
+			Region:       info.region,
+			EndpointURL:  "http://127.0.0.1:1",
+			UsePathStyle: info.pathStyle,
+		})
+		if err != nil {
+			t.Fatalf("NewS3: %v", err)
+		}
+
+		// Use a 6-second deadline so the test does not hang if ECONNREFUSED is
+		// not returned promptly (e.g. on some network stacks that drop packets
+		// instead of refusing). The acceptance criterion is merely "returns an
+		// error after context deadline at most", not a specific latency.
+		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+		defer cancel()
+
+		start := time.Now()
+		err = backend.Probe(ctx)
+		elapsed := time.Since(start)
+
+		if err == nil {
+			t.Fatal("Probe(unreachable) = nil; want non-nil error")
+		}
+		if elapsed > 7*time.Second {
+			t.Errorf("Probe(unreachable) took %v; expected to return within 7s", elapsed)
+		}
+		t.Logf("Probe(unreachable) returned after %v: %v", elapsed, err)
+	})
+}

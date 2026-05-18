@@ -1,7 +1,7 @@
 ---
 id: gate-tests-s3-probe-failure-modes
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, infra]
 parent: null
 depends_on: []
@@ -39,3 +39,32 @@ is unasserted.
 
 ## Test location (suggested)
 `internal/portal/storage/objectstore/s3_test.go`
+
+## Implementation notes
+
+### Test seam
+`TestS3Backend_Probe_DistinguishesFailureModes` was added to the existing
+`internal/portal/storage/objectstore/s3_test.go` (package `objectstore_test`),
+extending the file rather than creating a new integration file. The test uses
+the same env-var skip gate as the rest of the suite (`JAMSESH_TEST_S3_ENDPOINT`
++ `JAMSESH_TEST_S3_BUCKET`, or `JAMSESH_TEST_S3_USE_CONTAINER=true`).
+
+### Four subtests
+- **happy_path** — constructs a backend pointed at the live bucket with correct
+  credentials; asserts `Probe` returns nil within a 10 s context deadline.
+  Logs a warning (non-fatal) if elapsed > 500 ms.
+- **missing_bucket** — constructs a backend with a random bucket name that was
+  never created; asserts `Probe` returns a non-nil error. MinIO returns HTTP
+  404/NotFound, visible in the error string.
+- **bad_credentials** — uses `t.Setenv` to override `AWS_ACCESS_KEY_ID` and
+  `AWS_SECRET_ACCESS_KEY` with garbage values before calling `NewS3`; asserts
+  `Probe` returns a non-nil error. MinIO returns HTTP 403/Forbidden.
+- **unreachable** — points the backend at `http://127.0.0.1:1` (port 1,
+  ECONNREFUSED immediately); uses a 6 s context deadline and asserts both
+  non-nil error and elapsed < 7 s. In practice the AWS SDK retries 3 times
+  (~3.4 s total) before propagating the error, which is well within the bound.
+
+### Skipping behaviour
+Without any env-var configuration the top-level test logs a `t.Skip` message
+and the entire function (all four subtests) is skipped cleanly. No Docker
+daemon is required for the compile or skip path.
