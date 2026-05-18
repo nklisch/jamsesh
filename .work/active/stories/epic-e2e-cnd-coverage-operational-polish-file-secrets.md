@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-file-secrets
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -94,6 +94,23 @@ behavior on an unreadable secret file is never verified. Fix: write the host
 file with `0o600` (so testcontainers can open it) and let `FileMode: 0o000`
 on the `ContainerFile` struct set the unreadable permission inside the
 container (that field controls the in-container mode, not the host mode).
+
+## Review (2026-05-17) — re-review after fix
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Fix at `a974e2b` is correct. The `file_unreadable` subtest now
+writes the host file with `0o600` so testcontainers can open it during
+container build, and preserves `FileMode: 0o000` on the `ContainerFile`
+struct to enforce unreadability inside the container. That is exactly the
+right split: host mode for testcontainers, in-container mode for the test
+contract. The `file_missing` subtest, golden happy-path test, `ContainerFiles`
+fixture extension, and backward compatibility are all unchanged and correct.
+No further findings.
 
 ## Review findings
 
