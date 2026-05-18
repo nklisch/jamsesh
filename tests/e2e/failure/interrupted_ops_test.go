@@ -21,6 +21,7 @@ import (
 	"jamsesh/tests/e2e/fixtures/mailhog"
 	"jamsesh/tests/e2e/fixtures/portal"
 	"jamsesh/tests/e2e/fixtures/postgres"
+	"jamsesh/tests/e2e/fixtures/wsclient"
 )
 
 // sessionRef captures the fields we need from a created session.
@@ -293,16 +294,105 @@ func TestInterruptedOps(t *testing.T) {
 
 	t.Run("ws_reconnect_after_drop", func(t *testing.T) {
 		// Invariant: when a WebSocket client disconnects mid-event-burst,
-		// reconnecting with the same cursor ({"replay_from": <seq>} as the
-		// first text frame) causes missed events to be replayed in order.
+		// reconnecting with replay_from set to the last-seen seq causes the
+		// gateway to replay missed events (seq > replay_from) before
+		// transitioning to live mode.
 		//
-		// This subtest is skipped because tests/e2e/fixtures/wsclient/wsclient.go
-		// does not yet expose cursor-based reconnect. The portal gateway supports
-		// replay_from (see internal/portal/wsgateway/gateway.go), but the
-		// wsclient fixture only supports a basic subscribe-from-now connection.
-		// Un-skipping requires adding a wsclient.ConnectFromSeq(ctx, t, url,
-		// sessionID, bearer, fromSeq) helper (or similar) to the wsclient package.
-		t.Skip("requires wsclient cursor-based reconnect (wsclient.Connect does not support replay_from; see tests/e2e/fixtures/wsclient/wsclient.go)")
+		// Setup:
+		//   - Alice creates a session (seq 1: session.created).
+		//   - A WS client connects and listens for live events.
+		//   - Alice fires 5 mode.changed events (seq 2..6) via the ref-modes
+		//     endpoint, alternating between "sync" and "isolated" per ref.
+		//   - We wait for the first two live events (seq 2, 3) and record
+		//     the last-seen seq (3).
+		//   - The first WS client is closed (simulating a mid-burst disconnect).
+		//   - A second WS client reconnects with ConnectFromSeq(fromSeq=3).
+		//     The gateway replays events with seq > 3, i.e., seq 4, 5, 6.
+		//   - After replay we emit one more event (seq 7) and verify live
+		//     delivery on the reconnected client.
+		alice := authflow.SignInViaMagicLink(ctx, t, p, mh, "alice-ws-replay@example.com")
+		orgID := authflow.CreateOrg(ctx, t, p, alice.AccessToken, "WS Replay Org")
+		sessionID := createSession(ctx, t, p, alice.AccessToken, orgID, "WS Replay Session")
+
+		// upsertRefMode emits a mode.changed event for the given ref.
+		upsertRefMode := func(ref, mode string) {
+			t.Helper()
+			url := fmt.Sprintf("%s/api/orgs/%s/sessions/%s/ref-modes", p.URL, orgID, sessionID)
+			body := map[string]string{"ref": ref, "mode": mode}
+			b, err := json.Marshal(body)
+			if err != nil {
+				t.Fatalf("ws_reconnect_after_drop: marshal ref-mode body: %v", err)
+			}
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+			if err != nil {
+				t.Fatalf("ws_reconnect_after_drop: build ref-mode request: %v", err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+alice.AccessToken)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("ws_reconnect_after_drop: POST ref-modes: %v", err)
+			}
+			defer resp.Body.Close()
+			io.Copy(io.Discard, resp.Body)
+			if resp.StatusCode != http.StatusNoContent {
+				t.Fatalf("ws_reconnect_after_drop: POST ref-modes: status %d (want 204)", resp.StatusCode)
+			}
+		}
+
+		// First connection: subscribe from now, collect live events.
+		first := wsclient.Connect(ctx, t, p.URL, sessionID, alice.AccessToken)
+
+		// Emit 5 mode.changed events (seqs 2..6; seq 1 was session.created).
+		refs := []string{
+			"refs/heads/jam/a",
+			"refs/heads/jam/b",
+			"refs/heads/jam/c",
+			"refs/heads/jam/d",
+			"refs/heads/jam/e",
+		}
+		modes := []string{"sync", "isolated", "sync", "isolated", "sync"}
+		for i, ref := range refs {
+			upsertRefMode(ref, modes[i])
+		}
+
+		// Collect the first two live events on the initial connection and
+		// record the last-seen seq.
+		var lastSeenSeq int64
+		for i := 0; i < 2; i++ {
+			ev := first.WaitFor(t, "mode.changed", 10*time.Second)
+			lastSeenSeq = ev.Seq
+		}
+		// lastSeenSeq is the seq of the 2nd mode.changed event (seq 3).
+
+		// Simulate disconnect: close the first client before the remaining
+		// events (seqs lastSeenSeq+1 .. 6) arrive.
+		first.Close()
+
+		// Second connection: reconnect with cursor at lastSeenSeq.
+		// The gateway replays events with seq > lastSeenSeq.
+		second := wsclient.ConnectFromSeq(ctx, t, p.URL, sessionID, alice.AccessToken, lastSeenSeq)
+
+		// Expect the replayed events in ascending seq order.
+		// The gateway replays seq lastSeenSeq+1 through 6 (3 events), then
+		// transitions to live mode.
+		expectedReplayCount := 3 // seqs 4, 5, 6
+		var prevSeq int64 = lastSeenSeq
+		for i := 0; i < expectedReplayCount; i++ {
+			ev := second.WaitFor(t, "mode.changed", 10*time.Second)
+			if ev.Seq <= prevSeq {
+				t.Errorf("ws_reconnect_after_drop: replay event %d: seq=%d is not > prev seq=%d (events must be strictly ascending)", i, ev.Seq, prevSeq)
+			}
+			prevSeq = ev.Seq
+		}
+
+		// Emit one more event and assert it arrives as a live event on the
+		// reconnected client (proves live mode is active after replay).
+		upsertRefMode("refs/heads/jam/f", "isolated")
+		liveEv := second.WaitFor(t, "mode.changed", 10*time.Second)
+		if liveEv.Seq <= prevSeq {
+			t.Errorf("ws_reconnect_after_drop: live event seq=%d is not > last replay seq=%d", liveEv.Seq, prevSeq)
+		}
 	})
 }
 
