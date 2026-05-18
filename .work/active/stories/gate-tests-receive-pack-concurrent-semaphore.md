@@ -1,7 +1,7 @@
 ---
 id: gate-tests-receive-pack-concurrent-semaphore
 kind: story
-stage: implementing
+stage: review
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-receive-pack-stream-body]
@@ -37,3 +37,36 @@ handlers" is wholly untested.
 
 ## Test location (suggested)
 `internal/portal/githttp/receive_pack_test.go`
+
+## Implementation notes
+
+### Test: `TestReceivePack_ConcurrentPushSemaphore_BoundsConcurrency`
+Location: `internal/portal/githttp/receive_pack_test.go`
+
+**Contention pattern**: `io.Pipe` bodies (not `semBlockReader`). Each of the
+5 concurrent request goroutines uses an `io.Pipe`; the write end is held by
+the test. The server's `io.Copy(bodyFile, r.Body)` blocks waiting for bytes
+from the client, which keeps the semaphore slot held. Once the server is
+blocked, any additional request hits the `default:` branch in the semaphore
+select and returns 503 immediately.
+
+**Why `io.Pipe`, not a client-side blocking reader**: an initial approach used
+a custom `semBlockReader` that signalled and then blocked inside `Read()`.
+This failed because Go's HTTP client transport reads the body to SEND it to
+the server; the server handler runs asynchronously in a separate goroutine. By
+the time the body reader blocks on the client side, the server goroutines
+had already processed and returned (empty body → 400). `io.Pipe` creates a
+synchronous pipe where the server's `r.Body.Read()` blocks until the client
+calls `pw.Write()` or `pw.Close()`, correctly holding the semaphore.
+
+**Why file-based SQLite**: concurrent requests from 5 goroutines hitting the
+`:memory:` SQLite caused spurious 500 errors in the `requireSessionMember`
+middleware. A file-based DB with WAL mode enabled handles concurrent reads
+correctly. `busy_timeout(5000)` is injected automatically by `db.Open`.
+
+**Race detector**: test passes with `-race`.
+
+**Semaphore leak finding**: no leak detected. The `defer func() { <-h.ReceivePackSem }()`
+release is inside the semaphore acquire branch; it runs even on all
+subsequent error paths (400, 413, 500). The race detector did not flag any
+concurrent semaphore access. No blocking issued.

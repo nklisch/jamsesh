@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -601,6 +602,240 @@ func TestReceivePack_ObjectStorageFailure(t *testing.T) {
 	if ok {
 		t.Fatal("git push should have failed due to object-storage error, but it exited 0 (2xx) — RPO=0 violation")
 	}
+}
+
+// TestReceivePack_ConcurrentPushSemaphore_BoundsConcurrency verifies that the
+// per-instance receive-pack semaphore correctly limits concurrent handlers.
+//
+// Strategy: construct a Handler with ReceivePackSem capped at 2. Send 5
+// concurrent requests, each with an io.Pipe body. The pipe's write end is held
+// by the test; as long as no bytes are written, the server's io.Copy blocks
+// waiting for body data, holding the semaphore slot. Once the semaphore is
+// full the remaining requests hit the non-blocking select default: path and
+// return 503 immediately. A generous time.Sleep gives all 5 goroutines time to
+// reach the semaphore acquire point before we release the pipe writers.
+//
+// We do NOT exercise the full push path (pkt-line parsing, git subprocess,
+// etc.). The semaphore is the outermost gate in receivePack; a blocking pipe
+// body is enough to hold it.
+func TestReceivePack_ConcurrentPushSemaphore_BoundsConcurrency(t *testing.T) {
+	const (
+		semCap = 2
+		total  = 5
+	)
+
+	ctx := context.Background()
+	storageRoot := t.TempDir()
+
+	// Use a file-based SQLite DB (not :memory:) so that concurrent reads from
+	// multiple goroutines go through the WAL path rather than serialising on a
+	// single in-memory connection. busy_timeout(5000) is injected automatically
+	// by db.Open, so brief write contention does not cause spurious 500 errors
+	// that would obscure the semaphore-rejection assertions below.
+	dbPath := filepath.Join(t.TempDir(), "sem_test.db")
+	s, rawDB, err := db.Open(ctx, "sqlite", dbPath, db.PoolConfig{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	// Enable WAL mode so concurrent goroutines can hold read transactions
+	// simultaneously while the test goroutine (writer) sets up fixtures.
+	if _, err := rawDB.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
+		t.Fatalf("enable WAL: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	tokenSvc := tokens.New(s)
+	storageSvc := storage.New(storageRoot, s)
+
+	h := &githttp.Handler{
+		Store:          s,
+		Tokens:         tokenSvc,
+		Storage:        storageSvc,
+		Validator:      &prereceive.Validator{MaxPackBytes: 50 * 1024 * 1024},
+		Emitter:        nil,
+		ReceivePackSem: make(chan struct{}, semCap),
+	}
+
+	r := chi.NewRouter()
+	h.Mount(r)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	// Set up account + session so the auth/session middleware chains pass.
+	acc, err := s.CreateAccount(ctx, store.CreateAccountParams{
+		ID: nextID("sem-acc"), Email: "sem@example.com", DisplayName: "sem",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	pair, err := tokenSvc.Issue(ctx, acc.ID)
+	if err != nil {
+		t.Fatalf("Issue token: %v", err)
+	}
+	token := pair.AccessToken
+
+	orgID := nextID("sem-org")
+	if _, err := s.CreateOrg(ctx, store.CreateOrgParams{
+		ID: orgID, Name: "Sem Org", Slug: orgID, CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+	sessionID := nextID("sem-sess")
+	if _, err := s.CreateSession(ctx, store.CreateSessionParams{
+		ID: sessionID, OrgID: orgID, Name: "Sem Session", Goal: "sem",
+		WritableScope: `["**"]`, DefaultMode: "sync", Status: "active",
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := s.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID: orgID, SessionID: sessionID, AccountID: acc.ID,
+		Role: "member", JoinedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("AddSessionMember: %v", err)
+	}
+
+	// Create a bare repo so that checkArchived's LookupArchived returns
+	// ErrNotFound (not-archived), allowing the request to reach receivePack.
+	// Without a bare repo, the storage service may behave unexpectedly.
+	bareDir := filepath.Join(storageRoot, "orgs", orgID, "sessions", sessionID+".git")
+	if err := os.MkdirAll(bareDir, 0o755); err != nil {
+		t.Fatalf("mkdir bare: %v", err)
+	}
+	runGit(t, "", "init", "--bare", bareDir)
+
+	// Create one io.Pipe per request. The write end (pw) is held by the test;
+	// as long as pw is open and no bytes are written, the server's
+	// io.Copy(bodyFile, r.Body) blocks, holding the semaphore slot.
+	prs := make([]*io.PipeReader, total)
+	pws := make([]*io.PipeWriter, total)
+	for i := range prs {
+		prs[i], pws[i] = io.Pipe()
+	}
+	// Ensure all pipe writers are closed when the test finishes, so goroutines
+	// that are still blocked can exit cleanly.
+	t.Cleanup(func() {
+		for _, pw := range pws {
+			pw.Close()
+		}
+	})
+
+	endpointURL := srv.URL + "/" + orgID + "/" + sessionID + ".git/git-receive-pack"
+
+	// Use a transport that does not reuse connections, so all 5 requests hit
+	// separate server goroutines and contend on the semaphore concurrently.
+	transport := &http.Transport{DisableKeepAlives: true}
+
+	type result struct {
+		status     int
+		retryAfter string
+	}
+	results := make(chan result, total)
+
+	var wg sync.WaitGroup
+	for i := 0; i < total; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodPost, endpointURL, prs[i])
+			if err != nil {
+				results <- result{status: -1}
+				return
+			}
+			req.SetBasicAuth("x-access-token", token)
+			req.Header.Set("Content-Type", "application/x-git-receive-pack-request")
+
+			client := &http.Client{Transport: transport}
+			resp, err := client.Do(req)
+			if err != nil {
+				// A pipe-closed error arrives when the test closes pw[i] while
+				// the server hasn't responded yet. Count as -1; not expected for
+				// the 503 path (which responds before reading any body).
+				results <- result{status: -1}
+				return
+			}
+			defer resp.Body.Close()
+			results <- result{
+				status:     resp.StatusCode,
+				retryAfter: resp.Header.Get("Retry-After"),
+			}
+		}(i)
+	}
+
+	// Wait for all 5 goroutines to reach the server and contend on the
+	// semaphore. 200 ms is generous on any scheduler — the httptest.Server
+	// dispatches goroutines synchronously as connections arrive.
+	//
+	// Why sleep rather than poll: the only observable signal from outside the
+	// handler is the semaphore channel length, but reading len() on a channel
+	// is non-atomic and not guaranteed to see the final state before a
+	// concurrent select runs. A fixed sleep with a comfortable margin is
+	// simpler and more predictable than a spin-poll.
+	time.Sleep(200 * time.Millisecond)
+
+	// At this point: semCap handlers hold the semaphore and are blocked on
+	// io.Copy waiting for body bytes; the remaining (total-semCap) handlers
+	// have already returned 503 and are no longer in flight.
+	//
+	// Close the pipe writers for the admitted requests so their io.Copy
+	// completes (body = empty → 400 malformed pkt-line) and they return.
+	for i := 0; i < semCap; i++ {
+		pws[i].Close()
+	}
+
+	// Collect only the admitted results first; the 503s already landed.
+	// Then close remaining pipes (for requests that got 503 and whose
+	// goroutines have already returned, these are no-ops).
+	for i := semCap; i < total; i++ {
+		pws[i].Close()
+	}
+
+	wg.Wait()
+	close(results)
+
+	var (
+		admitted int // requests that acquired the semaphore (200 or 400)
+		got503   int
+		badRA    []int // 503s missing Retry-After
+		other    []int
+	)
+	for res := range results {
+		switch res.status {
+		case http.StatusOK, http.StatusBadRequest:
+			// 200: full pipeline ran (unexpected here, but not wrong)
+			// 400: semaphore acquired, body empty → malformed pkt-line
+			// Both mean the request was admitted (semaphore slot granted).
+			admitted++
+		case http.StatusServiceUnavailable:
+			got503++
+			if res.retryAfter == "" {
+				badRA = append(badRA, res.status)
+			}
+		default:
+			other = append(other, res.status)
+		}
+	}
+
+	// At most semCap requests should have been admitted.
+	if admitted > semCap {
+		t.Errorf("semaphore over-admitted: %d requests acquired a slot, cap=%d", admitted, semCap)
+	}
+
+	// The remainder must have been rejected with 503.
+	expectedRejections := total - semCap
+	if got503 < expectedRejections {
+		t.Errorf("expected at least %d 503 responses (semaphore rejections), got %d (admitted=%d other=%v)",
+			expectedRejections, got503, admitted, other)
+	}
+
+	// Every 503 must carry Retry-After.
+	if len(badRA) > 0 {
+		t.Errorf("%d 503 response(s) missing Retry-After header", len(badRA))
+	}
+
+	t.Logf("semaphore test: admitted=%d, rejected-503=%d, other=%v (cap=%d, total=%d)",
+		admitted, got503, other, semCap, total)
 }
 
 // ---------------------------------------------------------------------------
