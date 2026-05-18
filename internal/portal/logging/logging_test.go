@@ -113,6 +113,53 @@ func TestAccessMiddlewareDefaultStatus(t *testing.T) {
 	}
 }
 
+// TestAccessLogNoWSBearerLeak verifies that the access-log middleware does NOT
+// include the Sec-WebSocket-Protocol header (which carries bearer tokens in the
+// jamsesh.bearer.<token> subprotocol scheme) in any logged field. This pins the
+// invariant that the middleware only logs path/method/status/duration/bytes/route
+// so a future regression that adds header logging is caught immediately.
+func TestAccessLogNoWSBearerLeak(t *testing.T) {
+	const secretToken = "SECRET_TOKEN_123"
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusSwitchingProtocols)
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/ws/session/abc", nil)
+	r.Header.Set("Sec-WebSocket-Protocol", "jamsesh.bearer."+secretToken)
+
+	logging.Access(nil)(inner).ServeHTTP(w, r)
+
+	line := strings.TrimSpace(buf.String())
+	if line == "" {
+		t.Fatal("expected at least one log line")
+	}
+
+	// The raw log line must not contain the token in any form.
+	if strings.Contains(line, secretToken) {
+		t.Errorf("access log line leaks bearer token %q: %s", secretToken, line)
+	}
+
+	// Also verify the log line has the expected safe fields.
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		t.Fatalf("decode log line: %v\nline: %s", err, line)
+	}
+	for _, field := range []string{"method", "path", "status"} {
+		if _, ok := entry[field]; !ok {
+			t.Errorf("log missing expected field %q", field)
+		}
+	}
+	if entry["path"] != "/ws/session/abc" {
+		t.Errorf("want path=/ws/session/abc, got %v", entry["path"])
+	}
+}
+
 func TestAccessMiddlewareDurationAndBytes(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))

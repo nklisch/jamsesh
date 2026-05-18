@@ -1,7 +1,7 @@
 ---
 id: gate-tests-ws-bearer-redact
 kind: story
-stage: implementing
+stage: review
 tags: [testing, security, portal]
 parent: null
 depends_on: [gate-security-ws-bearer-token-leakage]
@@ -38,3 +38,18 @@ missing test for adversarial-spec-silent.
 ## Test location (suggested)
 `internal/portal/logging/logging_test.go` (or new
 `wsgateway/access_log_test.go`)
+
+## Implementation notes
+
+Added `TestAccessLogNoWSBearerLeak` in `internal/portal/logging/logging_test.go`.
+
+The test:
+- Sets up `Access(nil)` middleware with a JSON slog handler writing to a `bytes.Buffer`.
+- Issues a GET request with `Sec-WebSocket-Protocol: jamsesh.bearer.SECRET_TOKEN_123`.
+- Asserts the raw log line does NOT contain `SECRET_TOKEN_123`.
+- Also verifies that `method`, `path`, and `status` fields are present and correct.
+
+Result: test passes — the access-log middleware logs only `method`, `path`, `route`,
+`status`, `duration_ms`, and `bytes`. No request headers are logged; no bearer token
+leakage occurs. This confirms the docs-only mitigation in `gate-security-ws-bearer-token-leakage`
+is sufficient for the current implementation.
