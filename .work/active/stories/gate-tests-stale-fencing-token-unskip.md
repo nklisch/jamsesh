@@ -1,7 +1,7 @@
 ---
 id: gate-tests-stale-fencing-token-unskip
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, infra]
 parent: null
 depends_on: []
@@ -72,3 +72,13 @@ Lines (post-edit, approximately):
 
 The backlog story `id:` field and the skip message prefix are an exact
 string match — grep will find all three skips from the story id.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Option (a) taken — filed backlog story stale-token-injection-needs-manifest-format-exposure with exact id match to the skip-message prefix. All three t.Skipf calls now reference a real, discoverable follow-on. Audit trail restored without expanding scope into the manifest-format-exposure refactor.

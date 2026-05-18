@@ -1,7 +1,7 @@
 ---
 id: gate-tests-object-storage-write-rejected-unskip
 kind: story
-stage: review
+stage: done
 tags: [testing, infra, portal]
 parent: null
 depends_on: []
@@ -64,3 +64,13 @@ already in place. No new fixture methods were required.
 
 ### Build verification
 `go build -tags e2e ./...` from `tests/e2e/` — clean, no errors.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Test-integrity restoration verified. t.Skip removed at PATH B; t.Fatalf with clear invariant message replaces it. Message instructs maintainers not to re-add t.Skip. Build clean (-tags e2e). The previously-skipped RPO=0 invariant is now a hard assertion.

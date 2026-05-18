@@ -1,7 +1,7 @@
 ---
 id: gate-tests-s3-probe-failure-modes
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, infra]
 parent: null
 depends_on: []
@@ -68,3 +68,13 @@ the same env-var skip gate as the rest of the suite (`JAMSESH_TEST_S3_ENDPOINT`
 Without any env-var configuration the top-level test logs a `t.Skip` message
 and the entire function (all four subtests) is skipped cleanly. No Docker
 daemon is required for the compile or skip path.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Four-subtest coverage added for s3Backend.Probe: happy_path / missing_bucket / bad_credentials / unreachable. Test skips cleanly when JAMSESH_TEST_S3_ENDPOINT and JAMSESH_TEST_S3_USE_CONTAINER are absent, runs against live MinIO when configured. Author confirmed all four subtests green against MinIO. Unreachable timing-bound is defensive (elapsed < 7s, accommodates AWS SDK retry slack).
