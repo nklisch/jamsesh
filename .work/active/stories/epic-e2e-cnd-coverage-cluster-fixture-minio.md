@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture-minio
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage-cluster-fixture
 depends_on: []
@@ -114,3 +114,19 @@ ok  jamsesh/tests/e2e/fixtures/minio  1.564s
   the object-storage backend for clustered portal config)
 - Eventually consumed by every test in
   `epic-e2e-cnd-coverage-object-storage-sync`
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Fixture correctly mirrors the portal/postgres patterns. `requireDocker`
+skip, `containerlog.DumpAndTerminate` cleanup, `ContainerEndpoint` vs `Endpoint`
+split, per-test container isolation — all match spec. Bucket-naming deviation
+(underscore → hyphen) is real S3 constraint, documented in implementation notes, and
+the story body already called out hyphens as required. Test assertions are
+behaviorally meaningful (content equality on GET, key + count on ListObjects). No
+tautological assertions. No foundation-doc drift.
