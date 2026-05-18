@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-missing-endpoints
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -51,3 +51,30 @@ surface (`GET/POST .../comments`, `POST .../comments/{commentId}/resolve`),
 Expand PROTOCOL.md's Sessions and Session-state sections to list every
 endpoint in `docs/openapi.yaml`, with the same scoping. The intent is a
 human-readable summary; the summary must be complete to be useful.
+
+## Implementation notes
+
+Added 12 missing endpoints to `docs/PROTOCOL.md`. No existing entries were
+modified. Endpoints added:
+
+**Sessions section (3 new):**
+- `GET /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}` — get a specific pending invite
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept` — accept a session invite
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/mark-shipped` — mark a finalizing session as shipped
+
+**Comments section (new section, 3 entries):**
+- `GET /api/orgs/{orgID}/sessions/{sessionID}/comments` — list comments
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/comments` — post a comment
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve` — resolve a comment
+
+**Session state section (2 new):**
+- `GET /api/orgs/{orgID}/sessions/{sessionID}/files` — list files in the draft tree
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/ref-modes` — change a ref's mode
+
+**Finalize machinery section (new section, 4 entries):**
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock` — acquire finalize lock
+- `PATCH /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}` — update curation state on held lock
+- `DELETE /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}` — release the lock
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token` — obtain HTTPS fetch token
+
+Path names match openapi.yaml verbatim (e.g. `{commentId}` not `{commentID}`).

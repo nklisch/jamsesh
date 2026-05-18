@@ -113,19 +113,37 @@ WebSocket.
   body, which is squash-by-default with a preserve-all opt-in)
 - `POST /api/orgs/{orgID}/sessions/{sessionID}/abandon` — close session without finalize
 - `POST /api/orgs/{orgID}/sessions/{sessionID}/invites` — invite participants
+- `GET /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}` — get a specific pending invite
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept` — accept a session invite
 - `POST /api/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove` — remove a member
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/mark-shipped` — mark a finalizing session as shipped (transitions to ended with reason "shipped")
+
+### Comments
+
+- `GET /api/orgs/{orgID}/sessions/{sessionID}/comments` — list comments in a session, cursor-paginated with optional filters
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/comments` — post a comment on a commit, file, or line range
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve` — mark a comment resolved
 
 ### Session state (used by the local binary)
 
 - `GET /api/orgs/{orgID}/sessions/{sessionID}/digest?since=<seq>` — formatted digest for the next
   turn. Returns text suitable for `additionalContext` injection.
 - `GET /api/orgs/{orgID}/sessions/{sessionID}/refs` — all refs in the session with mode and tip
+- `GET /api/orgs/{orgID}/sessions/{sessionID}/files` — list files in the session's draft tree
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/ref-modes` — change the ref mode for a session member's ref
 - `GET /api/orgs/{orgID}/sessions/{sessionID}/finalize-plan` — the finalize plan: mode-aware
   shell script body (squash via `cherry-pick --no-commit` + composed
   commit, or per-commit `cherry-pick` in preserve mode), plain-English
   summary, composed commit message + `Co-authored-by` list (squash mode),
   lock status, and HTTPS-fallback fetch source. See the OpenAPI YAML for
   the precise response schema.
+
+### Finalize machinery
+
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock` — acquire the finalize lock for curation (idempotent for the caller; 409 if another holds a fresh lock)
+- `PATCH /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}` — update curation state on a held lock (selected commits, target branch, commit message)
+- `DELETE /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}` — release the finalize lock
+- `POST /api/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token` — obtain an HTTPS fetch token for pulling the session repo during finalize
 
 ### Git smart-HTTP (separate path tree)
 
