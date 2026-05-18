@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish-metrics
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []
@@ -56,6 +56,25 @@ and contains at least one well-known metric family.
 - `cmd/jamsesh-router/main.go:145` — router's `/metrics` mount as
   reference for unauth convention
 - `github.com/prometheus/common/expfmt` — Prom textparser
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All acceptance criteria met. The test correctly asserts on
+`text/plain` Content-Type, parses with `expfmt.TextParser` (the
+non-tautological core per story design), verifies non-empty families, and
+spot-checks `go_goroutines` with a documented fallback to known prefixes that
+still fails if nothing recognizable is present. The 401 fail-loud path
+correctly names the `WWW-Authenticate` header. `familyNames` helper produces
+deterministic failure messages. go.mod additions are correctly indirect. No
+tautological assertions; no status-code-only checks. Metrics mount confirmed
+unauthenticated in router.go:98 matching the story's note. No foundation-doc
+drift; no security or breaking-change concerns.
 
 ## Implementation notes
 
