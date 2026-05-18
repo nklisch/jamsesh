@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-cluster-fixture-smoke
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, infra]
 parent: epic-e2e-cnd-coverage-cluster-fixture
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture-portalcluster]
@@ -109,3 +109,45 @@ to absorb fixture changes — don't paper over in this test.
 The full clustered shape of CND can be exercised end-to-end in CI. Every
 downstream feature's test bodies can spin up clustered stacks in a few
 lines of fixture code. The keystone smoke runs on every PR.
+
+## Implementation notes
+
+**Achieved scope: full** — all 7 invariant steps from the scaffold are
+implemented and the test compiles clean (`go build ./scaffolding/...` and
+`go vet ./scaffolding/...` pass with zero output).
+
+### Auth approach
+
+Magic-link sign-in via MailHog, reusing `authflow.SignInViaMagicLink` from
+the golden suite. MailHog is started alongside the cluster; its container-side
+SMTP coordinates are injected into each portal pod via `PortalExtraEnv`
+(`JAMSESH_EMAIL_PROVIDER=smtp`, `JAMSESH_EMAIL_SMTP_HOST`, etc.). Auth REST
+calls go directly to `cluster.Pods[0]` (any pod works — all share Postgres);
+git push and subsequent fetch go through the router URL.
+
+### Object-storage key prefix
+
+Verified in `internal/portal/storage/objectstore/sync.go`. The prefix written
+to MinIO for a session is `sessions/<sessionID>/` — not bare `<sessionID>/`
+as the story scaffold originally suggested. The test uses the correct prefix
+for the RPO=0 bucket inspection.
+
+### Handoff assertion
+
+A fresh `gitclient.Clone` into a separate temporary directory (distinct from
+the pusher's working tree) is used for the post-drain fetch, so the SHA
+comparison exercises actual network round-trips and hydration — the pusher's
+local repo is never consulted.
+
+### No parked bugs
+
+The test landed at full scope with no product bugs encountered during
+implementation. The `LeaseHolder` caveat about `hashtext()` portability is
+documented in `fixtures/portalcluster/lifecycle.go` and acknowledged: if
+`LeaseHolder` returns -1 in live runs, that is the signal to add the
+`/test/lease-debug` endpoint (already called out in that file as a follow-on).
+
+### Files changed
+
+- `tests/e2e/scaffolding/cluster_smoke_test.go` — `TestClusteredSmoke` (new)
+- `tests/e2e/README.md` — "Clustered mode" section added

@@ -101,6 +101,61 @@ at runtime and tears them down after the suite.
 No manual `docker compose up` is required — `go test ./...` is the
 single entry point.
 
+## Clustered mode
+
+The `epic-e2e-cnd-coverage` test program adds a second stack for multi-pod
+clustered deployments. See `.work/active/epics/epic-e2e-cnd-coverage.md` for
+the full test program.
+
+### New fixtures
+
+Three new fixtures support clustered-mode scenarios:
+
+| Package         | Container image                        | Exposes                                                                    |
+|-----------------|----------------------------------------|----------------------------------------------------------------------------|
+| `minio`         | `minio/minio:RELEASE.2024-12-18T13-15-44Z` | `.Endpoint`, `.ContainerEndpoint`, `.BucketName`, `.AccessKey`, `.SecretKey` |
+| `router`        | `jamsesh/router:e2e`                   | `.URL`, `.ContainerURL`                                                    |
+| `portalcluster` | `jamsesh/portal:e2e` (N pods) + router | `.RouterURL`, `.Pods[i].URL`, `.LeaseHolder()`, `.GracefulDrain()`, `.WaitForLeaseMigration()` |
+
+The `portalcluster` fixture starts N portal containers against a shared
+Postgres database and a shared MinIO bucket, configured in
+`JAMSESH_DEPLOY_MODE=clustered`. When `Router: true` is set, a
+`jamsesh-router` container is started and its URL is exposed as
+`Cluster.RouterURL`.
+
+### Image build requirement
+
+Clustered-mode tests require both portal and router images:
+
+```bash
+make test-portal-image
+make test-router-image
+```
+
+Re-run after any change to the portal or router binaries or their Dockerfiles.
+
+### Smoke entry point
+
+The keystone acceptance test for the clustered-mode fixture:
+
+```bash
+cd tests/e2e && go test -run TestClusteredSmoke ./scaffolding/... -v -timeout 360s
+```
+
+`TestClusteredSmoke` exercises the full end-to-end lifecycle:
+
+1. Boots a 3-pod cluster + MinIO + router.
+2. Authenticates via magic link.
+3. Creates a session and pushes a commit through the router.
+4. Asserts the pushed objects land in MinIO (RPO=0 invariant).
+5. Finds which pod holds the lease.
+6. Gracefully drains the lease-holding pod.
+7. Fetches the session ref from a fresh clone via the router and asserts the
+   commit SHA is preserved (handoff invariant).
+8. Asserts the lease has migrated to a different pod (migration invariant).
+
+If this test passes, the cluster-fixture feature is working end-to-end.
+
 ## Feature item
 
 `.work/active/features/epic-e2e-tests-infrastructure.md`
