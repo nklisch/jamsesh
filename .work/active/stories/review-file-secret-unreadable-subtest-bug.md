@@ -1,7 +1,7 @@
 ---
 id: review-file-secret-unreadable-subtest-bug
 kind: story
-stage: implementing
+stage: review
 tags: [bug, e2e-test, testing]
 parent: epic-e2e-cnd-coverage-operational-polish
 depends_on: []

@@ -110,9 +110,12 @@ func TestFileSecretMissing(t *testing.T) {
 		ctx := context.Background()
 
 		secretPath := filepath.Join(t.TempDir(), "db_dsn")
+		// Host file must be readable (0o600) so testcontainers can os.Open it
+		// during container build. Unreadability inside the container is
+		// enforced via the ContainerFile FileMode (0o000) below.
 		require.NoError(t,
-			os.WriteFile(secretPath, []byte("ignored"), 0o000),
-			"create unreadable secret file")
+			os.WriteFile(secretPath, []byte("ignored"), 0o600),
+			"create secret file")
 
 		env := baseFileSecretEnv()
 		env["JAMSESH_DB_DSN_FILE"] = "/run/secrets/db_dsn"

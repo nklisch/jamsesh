@@ -97,15 +97,17 @@ func (c *Cluster) LeaseHolder(ctx context.Context, t *testing.T, sessionID strin
 	defer db.Close()
 
 	// Find all connections that hold an advisory lock whose objid matches
-	// hashtext(sessionID)::int4. Join pg_stat_activity to get the client IP.
-	// Note: pg_locks.objid is an oid (unsigned); we cast to int4 to match the
-	// advisory lock key the portal uses (int4 advisory locks via pg_try_advisory_lock).
+	// hashtext(sessionID)::oid. Join pg_stat_activity to get the client IP.
+	// pg_locks.objid is type oid (unsigned 32-bit). The portal's own lease
+	// code (internal/portal/lease/postgres_test.go) consistently casts to
+	// ::oid; matching that convention avoids divergence on negative hashtext
+	// values where ::bigint sign-extends and ::oid wraps differently.
 	const query = `
 		SELECT a.client_addr::text
 		FROM pg_locks l
 		JOIN pg_stat_activity a ON l.pid = a.pid
 		WHERE l.locktype = 'advisory'
-		  AND l.objid = hashtext($1)::bigint
+		  AND l.objid = hashtext($1)::oid
 		  AND l.granted = true
 	`
 	rows, err := db.QueryContext(ctx, query, sessionID)
