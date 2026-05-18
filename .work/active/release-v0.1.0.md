@@ -52,3 +52,6 @@ self-host docs).
   - 1 tautological test flagged (`TestGitHub_Exchange_PicksPrimaryVerifiedEmail`) — to be reworked under `gate-tests-github-oauth-unverified-email`
 - **gate-cruft** (2026-05-18) — 16 findings (13 High, 3 Medium, 0 Low)
   - 16 items into `.work/active/stories/` (gate-cruft-*) — High at `implementing`, Medium at `drafting`
+- **gate-docs** (2026-05-18) — 15 findings (13 High foundation-doc drift, 1 High repo-skill drift, 1 Medium, 1 changelog-gap no-op)
+  - 14 items into `.work/active/stories/` (gate-docs-*) — High at `implementing`, Medium at `drafting`
+  - Changelog gap (Finding 15) addressed automatically by release-deploy phase 5.5
