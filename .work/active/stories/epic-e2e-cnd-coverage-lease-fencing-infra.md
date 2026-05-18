@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-lease-fencing-infra
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-lease-fencing
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -148,3 +148,52 @@ implementing dependent tests.
 
 **Never game an assertion.** The `RequireLeaseHolder` helper must `t.Fatal`
 on no-holder. Do not soften it to `t.Log` to make tests pass.
+
+## Implementation notes
+
+### Files touched
+
+- **`tests/e2e/fixtures/portalcluster/lease_inspect.go`** (new) — three
+  helper methods on `*Cluster`:
+  - `RequireLeaseHolder(ctx, t, sessionID string, retryTimeout time.Duration) int`
+  - `FencingTokenForSession(ctx, t, sessionID string) int64`
+  - `ReleaseLeaseForcibly(ctx, t, sessionID string)`
+
+### Helper shapes
+
+**`RequireLeaseHolder`** polls `c.LeaseHolder` every 200 ms until either a
+holder is found (returns pod index ≥ 0) or `retryTimeout` elapses (`t.Fatal`).
+Signature matches the design spec exactly.
+
+**`FencingTokenForSession`** opens a `database/sql` connection via
+`c.postgres.DSN` (the host-side DSN already present on `*Cluster`), queries
+`SELECT fencing_token FROM leases WHERE session_id = $1 ORDER BY acquired_at DESC LIMIT 1`,
+and returns the token or `-1` on `sql.ErrNoRows`. Uses the `lib/pq` driver
+(already imported in `lifecycle.go`; already a direct dep in `tests/e2e/go.mod`).
+No new deps required.
+
+**`ReleaseLeaseForcibly`** executes
+`UPDATE leases SET released_at = now() WHERE session_id = $1 AND released_at IS NULL`.
+Logs a warning (not `t.Fatal`) if zero rows are affected — the downstream
+assertion on fencing-token values will give better context in that case.
+Documents explicitly that this does NOT release the advisory lock; callers
+must `Kill` first so the lock is gone before the Postgres row is cleared.
+
+### Deviations
+
+None. All three helpers are implementable directly against the existing
+`leases` table schema (`session_id, pod_id, fencing_token, acquired_at,
+released_at, heartbeat_at`) confirmed in `internal/db/pgstore/leases.sql.go`.
+
+No production code was changed. No new imports added to `go.mod`.
+
+### Verification
+
+`go build ./fixtures/portalcluster/...` and `go vet ./fixtures/portalcluster/...`
+both exit 0 cleanly (run from `tests/e2e/`).
+
+### Follow-ons
+
+None required. The "design-flaw escape hatch" was not triggered — all three
+helpers are feasible against the existing Postgres surface without any new
+production endpoint.
