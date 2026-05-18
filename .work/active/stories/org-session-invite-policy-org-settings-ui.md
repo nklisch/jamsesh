@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-org-settings-ui
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: org-session-invite-policy
 depends_on: [org-session-invite-policy-patch-endpoint]
@@ -153,3 +153,27 @@ pre-existing `svelte-check` errors from `new Set()` being inferred as
   4 new GetOrg tests)
 - `npm test -- --run OrgSettings` — 10/10 pass
 - `npm run check` — 0 errors, 2 pre-existing warnings
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Adding `GetOrg` to `StrictServerInterface` required panic stubs on 5 more
+  `*OnlyStrict` test doubles than the agent caught initially. Orchestrator
+  patched the rest in commit `4681f53`. A pattern worth noting: when adding
+  a new endpoint to the strict interface, grep for `var _ openapi.StrictServerInterface = (*` and update every match.
+- Pre-existing `Set<unknown>` errors in `RefGroupList.test.ts` were fixed
+  inline. Reasonable — they were blocking `npm run check` cleanliness.
+- The 555-line component is dense but well-organized (parallel
+  `Promise.all` for load, `$derived` dirty tracking, transient success
+  via timer). No extraction needed yet.
+
+**Notes**: Backend admin check is independently re-validated by `PatchOrg`,
+so the client-side `isAdmin` flag is UX-only (which is correct). The
+sidebar nav with dimmed future sections sets a clean scaffold for upcoming
+Members/Billing/API-keys sections — anticipates growth without
+restructuring. Filling the design gap by inlining the GET endpoint
+(rather than blocking on a separate story) was the right call.
