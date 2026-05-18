@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-operational-polish
 kind: feature
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage
 depends_on: []
@@ -741,6 +741,40 @@ run in parallel via implement-orchestrator waves:
   needs a listening port on toxiproxy that doesn't collide with other
   in-test toxiproxy users (none today, but worth noting). Pin a
   per-test port or use toxiproxy's port-0 (any free port) feature.
+
+## Implementation summary (2026-05-17)
+
+All 5 child stories landed at `stage: review` in a single orchestrator
+run (2-sub-wave schedule, scheduled to avoid the portal.go conflict
+between file-secrets and shutdown-deadline).
+
+| Story | Status | Notes |
+|---|---|---|
+| `operational-polish-readyz` | review | golden + failure via toxiproxy `reset_peer` on portal→PG path; 3s eventually bound (2s check timeout + 1s margin); body-shape asserted |
+| `operational-polish-metrics` | review | expfmt parser + `go_goroutines` spot-check; `/metrics` is unauth per `internal/portal/router/router.go:98`; prom deps pinned to main module's versions |
+| `operational-polish-file-secrets` | review | `portal.Options.ContainerFiles` extension; happy-path + 2 failure subtests; `readEnvOrFile` error string contains "_FILE" reliably |
+| `operational-polish-migration-lock` | review | added `slog.InfoContext(ctx, "db migrations applied", ...)` to `internal/db/migrate.go` (production code change — gives ops + tests a stable signal); 3-pod errgroup parallel start; queries `goose_db_version` post-condition |
+| `operational-polish-shutdown-deadline` | review | `portal.SendSignal` extension; OAuth callback via WireMock-delay (existing pattern); 2-subtest matrix (under-deadline completes, over-deadline terminates near grace) |
+
+Cross-cutting changes:
+- **Production code change**: `internal/db/migrate.go` now emits
+  `slog.InfoContext(ctx, "db migrations applied", "dialect", ..., "count", ...)`
+  when actual DDL ran. Idempotent runs stay silent. Useful in production
+  ops + necessary for the migration-lock test's per-pod log distinction.
+- **`portal.Options` / `*Portal` extensions** (shared with the
+  cluster-fixture feature; landed there first):
+  `ContainerFiles []testcontainers.ContainerFile`, `Logs(ctx)`,
+  `SendSignal(ctx, sig)`, plus from cluster-fixture: `ContainerIP(ctx)`,
+  `State(ctx)`. All backward-compatible.
+
+Verification: `go build ./...` + `go vet ./...` clean across both the
+root module and `tests/e2e/` module. No product bugs surfaced — every
+test landed with assertions genuinely exercising the documented
+contracts (`/readyz` JSON envelope, Prom exposition format, `_FILE`
+error path, advisory-lock serialization, shutdown grace).
+
+The single-instance operational primitives now have golden + failure
+coverage end-to-end. Ready for review.
 
 ## Acceptance criteria
 
