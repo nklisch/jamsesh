@@ -1,7 +1,7 @@
 ---
 id: org-session-invite-policy-invite-accept-ui
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: org-session-invite-policy
 depends_on: [org-session-invite-policy-invite-accept-enforce, org-session-invite-policy-get-invite-details]
@@ -180,3 +180,38 @@ If `?token=` is absent from the query string, the component transitions immediat
 `git revert` the commit. The route disappears; the email link starts
 failing with a 404 on the frontend (users see NotFound.svelte). The
 backend endpoints stay functional.
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**:
+- **Bundled commit** (550280d): the implementation files for this story
+  ended up co-committed with the unrelated `e2e-test-design:
+  epic-e2e-cnd-coverage-lease-fencing` work, mislabeled with that title.
+  Two concurrent agents both staged files into the same git index and one
+  committed both batches. Code is correct and tests pass — this is a
+  hygiene issue, not a correctness one. Filing a backlog item to harden
+  agent commit isolation under concurrent autopilot activity.
+  → Item: `agent-commit-isolation-under-concurrent-autopilot`
+
+**Nits**:
+- Safe-URL validation in `Login.svelte` (`startsWith('/')` + reject `//`)
+  is the right defense against open-redirect. Comment block explicitly
+  documents the OAuth round-trip limitation as a follow-up — that's good
+  surfacing rather than hiding the gap.
+- 14 tests is generous coverage for a screen; well-justified given the
+  5-state machine.
+
+**Notes**: The state machine (loading/ready/accepting/rejection/error) maps
+cleanly to API outcomes. The `auth.org_membership_required` rejection state
+specifically maps to the warning-tinted hero variant from the mockup —
+matching the backend gate's intent (informational, not punitive). Decline
+navigation falls back to /login when unauthenticated, which is the
+graceful path for users hitting the URL cold.
+
+The OAuth return-to limitation is real but not in this story's scope:
+backend would need to embed `return_to` in the OAuth state nonce and
+reattach it on callback. Magic-link path works correctly via the client-
+side `$effect`.
