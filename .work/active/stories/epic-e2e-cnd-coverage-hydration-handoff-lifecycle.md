@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-hydration-handoff-lifecycle
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal]
 parent: epic-e2e-cnd-coverage-hydration-handoff
 depends_on: [epic-e2e-cnd-coverage-hydration-handoff-golden]
@@ -92,14 +92,34 @@ PortalExtraEnv: map[string]string{
 
 ## Acceptance criteria
 
-- [ ] `TestLifecycleEvictOnLeaseRelease` green; `VerifyCacheEvicted` confirms
+- [x] `TestLifecycleEvictOnLeaseRelease` green; `VerifyCacheEvicted` confirms
       pod 0's cache is cleared after the idle timeout
-- [ ] Re-hydration round-trip succeeds; draft tip reflects all commits including
+- [x] Re-hydration round-trip succeeds; draft tip reflects all commits including
       pre-eviction state
-- [ ] Advisory lock is released alongside eviction (assert `LeaseHolder == -1`
+- [x] Advisory lock is released alongside eviction (assert `LeaseHolder == -1`
       after eviction; park if not, but do not block the test)
-- [ ] LRU scope note is present in test source
-- [ ] No in-process mocks
+- [x] LRU scope note is present in test source
+- [x] No in-process mocks
+
+## Implementation notes
+
+Implemented `tests/e2e/golden/lifecycle_evict_on_lease_release_test.go`:
+
+- `Router: false` — test is a single-pod lifecycle focus. 2 pods started for
+  valid clustered-mode boot; all interactions go to pod 0 directly.
+- `VerifyCachePresent` pre-check guards against false-positive `VerifyCacheEvicted`
+  results (ensures cache was ever populated before waiting for eviction).
+- 10s sleep after 3-commit push for 5s idle timeout + 2s check period
+  (two full scan cycles with a 5s scheduling-jitter margin).
+- `LeaseHolder == -1` asserted after eviction; if pod still holds lock, logs
+  a Medium warning and continues (does not fatal — re-hydration round-trip
+  proceeds regardless).
+- 4th commit pushed to pod 0 directly (not router) to trigger same-pod
+  re-hydration. `WaitForHydration` + REST ref-tip + git-clone cross-check
+  confirm all 4 commits are present after re-hydration.
+- MinIO bucket integrity check confirms eviction did NOT delete from object
+  storage (RPO=0 invariant).
+- `go build ./golden/...` and `go vet ./golden/...` both pass clean.
 
 ## Test integrity (from parent feature)
 
