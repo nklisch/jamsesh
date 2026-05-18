@@ -47,6 +47,7 @@ import (
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/probes"
 	"jamsesh/internal/portal/router"
+	"jamsesh/internal/portal/ratelimit"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/server"
 	"jamsesh/internal/portal/sessions"
@@ -688,13 +689,24 @@ func main() {
 			},
 		},
 		MountAPI: func(r chi.Router) {
+			// Per-IP rate limiters for each unauthenticated auth endpoint.
+			// Limits: magic-link/request 3/min 10/hr; oauth/start 5/min 20/hr;
+			// exchange/callback 10/min; refresh 20/min.
+			// Controlled by JAMSESH_AUTH_RATE_LIMIT_ENABLED (default: true).
+			rlEnabled := cfg.AuthRateLimitEnabled
+			mlRequestRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 3, PerHour: 10}).Middleware(rlEnabled)
+			oauthStartRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 5, PerHour: 20}).Middleware(rlEnabled)
+			mlExchangeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
+			oauthCallbackRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
+			refreshRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 20}).Middleware(rlEnabled)
+
 			// Public auth endpoints — no Bearer middleware.
 			r.Group(func(r chi.Router) {
-				r.Post("/auth/refresh", apiWrapper.RefreshToken)
-				r.Post("/auth/magic-link/request", apiWrapper.RequestMagicLink)
-				r.Post("/auth/magic-link/exchange", apiWrapper.ExchangeMagicLink)
-				r.Post("/auth/oauth/start", apiWrapper.StartOAuth)
-				r.Post("/auth/oauth/callback", apiWrapper.OauthCallback)
+				r.With(refreshRL).Post("/auth/refresh", apiWrapper.RefreshToken)
+				r.With(mlRequestRL).Post("/auth/magic-link/request", apiWrapper.RequestMagicLink)
+				r.With(mlExchangeRL).Post("/auth/magic-link/exchange", apiWrapper.ExchangeMagicLink)
+				r.With(oauthStartRL).Post("/auth/oauth/start", apiWrapper.StartOAuth)
+				r.With(oauthCallbackRL).Post("/auth/oauth/callback", apiWrapper.OauthCallback)
 			})
 
 			// Authenticated endpoints — Bearer middleware required.

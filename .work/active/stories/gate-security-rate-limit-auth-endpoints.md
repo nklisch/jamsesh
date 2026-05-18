@@ -1,7 +1,7 @@
 ---
 id: gate-security-rate-limit-auth-endpoints
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -47,3 +47,50 @@ Add `chimw.Throttle` or a token-bucket limiter scoped per-IP for
 endpoints. At minimum cap `/auth/magic-link/request` and
 `/auth/oauth/start` at single-digit RPM per IP+email pair, and add
 Retry-After 429 responses.
+
+## Implementation notes
+
+### Package
+`internal/portal/ratelimit/` — new package. Two files:
+- `store.go` — `Store` (per-key token-bucket manager) + `Middleware(enabled bool)` factory
+- `response.go` — `writeTooManyRequests` (429 envelope) + `clientIP` helper
+
+### Algorithm
+Uses `golang.org/x/time/rate` (already in go.mod as indirect; no new deps added).
+Each `Store` holds a `sync.Mutex`-protected `map[string]*entry` where each entry has
+a per-minute `rate.Limiter` and an optional per-hour `rate.Limiter`. Both must pass
+for the request to be allowed. Stale entries (idle > 1h) are GC'd every 5 minutes.
+
+### Limits (per IP)
+| Endpoint                          | Per-minute | Per-hour |
+|-----------------------------------|-----------|---------|
+| `POST /auth/magic-link/request`   | 3         | 10      |
+| `POST /auth/oauth/start`          | 5         | 20      |
+| `POST /auth/magic-link/exchange`  | 10        | —       |
+| `POST /auth/oauth/callback`       | 10        | —       |
+| `POST /auth/refresh`              | 20        | —       |
+
+### Keying strategy
+Per-IP only (using `r.RemoteAddr` host after chi's `RealIP` middleware has
+already replaced it when `TrustProxyHeaders=true`). Per-IP+email keying was
+considered but requires body re-reading inside middleware which adds fragility
+to the strict-handler pipeline. Per-IP is sufficient for the declared threat
+model (email-bombing, brute-force).
+
+### Wiring
+Each endpoint gets its own `Store` instantiated in `MountAPI` in `cmd/portal/main.go`,
+mounted via `r.With(limiter).Post(...)` on the chi `/api` route group — NOT in the
+global `r.Use(...)` chain, preserving separation from `SecurityHeaders` middleware.
+
+### 429 response shape
+```json
+{"error": "rate_limited", "message": "Too many requests. Retry in N seconds."}
+```
+With `Retry-After: N` header. Matches the httperr envelope convention (same `error`/`message` keys).
+
+### Config knob
+`JAMSESH_AUTH_RATE_LIMIT_ENABLED=false` (default: `true`) via `config.Config.AuthRateLimitEnabled`.
+When false, `Middleware(false)` returns a pass-through no-op. Useful for single-user
+self-host where email-bombing is not a concern. Also set this in integration test
+environments that fire many auth requests in quick succession
+(e.g. `JAMSESH_AUTH_RATE_LIMIT_ENABLED=false` in test environment setup).

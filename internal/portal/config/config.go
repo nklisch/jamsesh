@@ -8,6 +8,7 @@
 //	email.postmark.*, email.resend.*,
 //	oauth.github.client_id, oauth.github.client_secret,
 //	oauth.github.base_url,
+//	auth_rate_limit_enabled,
 //	git.max_pack_bytes,
 //	db.max_open_conns, db.max_idle_conns, db.conn_max_lifetime,
 //	shutdown_grace_s,
@@ -19,7 +20,9 @@
 //	hydration_idle_timeout_s, hydration_cache_max_bytes,
 //	hydration_idle_check_period_s, hydration_workers
 //
-// Env vars:   JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
+// Env vars:   JAMSESH_AUTH_RATE_LIMIT_ENABLED,
+//
+//	JAMSESH_BIND, JAMSESH_DB_DRIVER, JAMSESH_DB_DSN,
 //
 //	JAMSESH_PORTAL_URL,
 //	JAMSESH_TLS_MODE, JAMSESH_TLS_CERT, JAMSESH_TLS_KEY,
@@ -186,6 +189,14 @@ type Config struct {
 	// Default: 8. Must be positive.
 	// Env: JAMSESH_HYDRATION_WORKERS
 	HydrationWorkers int `yaml:"hydration_workers"`
+
+	// AuthRateLimitEnabled controls whether per-IP rate limiting is applied to
+	// the unauthenticated /auth/* endpoints (magic-link request/exchange,
+	// oauth/start, oauth/callback, refresh). Default: true.
+	// Set JAMSESH_AUTH_RATE_LIMIT_ENABLED=false to disable for single-user
+	// self-host scenarios where email-bombing is not a concern.
+	// Env: JAMSESH_AUTH_RATE_LIMIT_ENABLED
+	AuthRateLimitEnabled bool `yaml:"auth_rate_limit_enabled"`
 }
 
 // DBConfig holds database connection pool settings.
@@ -378,6 +389,7 @@ func defaults() Config {
 		HydrationCacheMaxBytes:      0,
 		HydrationIdleCheckPeriodS:   30,
 		HydrationWorkers:            8,
+		AuthRateLimitEnabled:        true,
 	}
 }
 
@@ -499,6 +511,7 @@ func applyEnv(c *Config) error {
 	applyLeaseEnv(c)
 	applyObjectStorageEnv(c)
 	applyHydrationEnv(c)
+	applyAuthRateLimitEnv(c)
 	return nil
 }
 
@@ -614,6 +627,15 @@ func applyOAuthEnv(o *OAuthConfig) error {
 		o.GitHub.BaseURL = v
 	}
 	return nil
+}
+
+// applyAuthRateLimitEnv overlays auth rate-limit environment variables.
+// JAMSESH_AUTH_RATE_LIMIT_ENABLED accepts "true" (default) or "false".
+// Any value other than "false" is treated as enabled.
+func applyAuthRateLimitEnv(c *Config) {
+	if v := os.Getenv("JAMSESH_AUTH_RATE_LIMIT_ENABLED"); v != "" {
+		c.AuthRateLimitEnabled = v != "false"
+	}
 }
 
 // applyEmailEnv overlays email-related environment variables.
