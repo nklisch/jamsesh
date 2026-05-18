@@ -45,6 +45,9 @@ func TestHealthz(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Errorf("want status=ok, got %q", body["status"])
 	}
+	if body["version"] == "" {
+		t.Errorf("want non-empty version field in /healthz response")
+	}
 }
 
 func TestUnknownRouteReturns404Envelope(t *testing.T) {

@@ -4,11 +4,13 @@
 package router
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"jamsesh/internal/buildinfo"
 	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/logging"
 	"jamsesh/internal/portal/metrics"
@@ -141,5 +143,8 @@ func New(d Deps) http.Handler {
 
 func healthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_, _ = w.Write([]byte(`{"status":"ok"}`))
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"version": buildinfo.String(),
+	})
 }

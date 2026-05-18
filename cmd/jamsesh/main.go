@@ -23,7 +23,7 @@ func main() {
 	app := &cli.Command{
 		Name:    "jamsesh",
 		Usage:   "Local client for the jamsesh portal",
-		Version: buildinfo.Version,
+		Version: buildinfo.String(),
 		Commands: []*cli.Command{
 			auth.Command(),
 			mcpheaders.Command(),
