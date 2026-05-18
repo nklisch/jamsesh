@@ -1,7 +1,7 @@
 ---
 id: portalcluster-leaseholder-objid-cast
 kind: story
-stage: review
+stage: done
 tags: [bug, e2e-test, testing]
 parent: null
 depends_on: []
@@ -46,3 +46,17 @@ any session ID whose `hashtext` value is negative.
 - `LeaseHolder` uses `::oid` cast matching the portal lease code convention
 - The smoke test (`epic-e2e-cnd-coverage-cluster-fixture-smoke`) passes
   `LeaseHolder` assertions for at least one acquired session
+
+## Review (2026-05-17)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Fix confirmed at `tests/e2e/fixtures/portalcluster/lifecycle.go:110` —
+`hashtext($1)::oid` present with explanatory comment. Root cause (sign-extension
+divergence on negative hashtext values) is correctly identified and the fix matches
+the portal's own lease code convention (`internal/portal/lease/postgres_test.go`).
+No parent; archiving.
