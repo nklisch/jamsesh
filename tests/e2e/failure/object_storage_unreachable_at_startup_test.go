@@ -122,19 +122,8 @@ func TestObjectStorageUnreachableAtStartup(t *testing.T) {
 		}
 
 		if !exited {
-			// The portal is still running — the fail-fast invariant is not met.
-			// This is a documented design gap: the AWS SDK v2 S3 client does not
-			// probe the endpoint at construction time, so a bad endpoint is only
-			// discovered on the first actual upload. The portal starts healthy.
-			//
-			// The correct fix is to add a startup probe in main.go (e.g. a
-			// lightweight HeadBucket or ListObjectsV2 with a short timeout) before
-			// the server starts listening. Tracked as backlog item:
-			// object-storage-fail-fast-clustered-startup.
-			t.Skip("portal did not exit within 30s on unreachable object-storage endpoint " +
-				"in clustered mode — the AWS S3 client is lazy and does not probe at " +
-				"construction time. Fail-fast is not implemented. " +
-				"See backlog: object-storage-fail-fast-clustered-startup")
+			t.Fatalf("clustered_mode_fails_fast: portal did not exit within 30s on unreachable "+
+				"object-storage endpoint — the startup HeadBucket probe should have fired within 5s")
 		}
 
 		// Container exited — assert non-zero exit code.

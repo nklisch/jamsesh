@@ -305,6 +305,20 @@ func (b *azureBlobBackend) List(ctx context.Context, prefix string, fn func(key 
 	return nil
 }
 
+// Probe implements Backend.Probe.
+//
+// Issues a GetProperties request on the container. This is the Azure Blob
+// equivalent of a liveness check: it succeeds if the container exists and the
+// credential has at least Read permission, and returns a connectivity or auth
+// error if the endpoint or container is unreachable.
+func (b *azureBlobBackend) Probe(ctx context.Context) error {
+	_, err := b.containerClient.GetProperties(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("object storage probe: %w", err)
+	}
+	return nil
+}
+
 // mapAzureError converts Azure SDK errors to objectstore sentinel errors.
 func mapAzureError(err error) error {
 	if err == nil {

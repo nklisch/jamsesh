@@ -443,6 +443,23 @@ func main() {
 			"region", cfg.ObjectStorageRegion,
 			"path_style", cfg.ObjectStoragePathStyle,
 		)
+
+		// Fail fast: probe the bucket before the HTTP listener starts.
+		// A 5-second timeout is conservative for a single HEAD request; on
+		// success the probe returns in < 100 ms. On an unreachable endpoint the
+		// context times out and the process exits non-zero before accepting traffic.
+		probeCtx, probeCancel := context.WithTimeout(ctx, 5*time.Second)
+		probeErr := backend.Probe(probeCtx)
+		probeCancel()
+		if probeErr != nil {
+			slog.Error("object storage connectivity check failed",
+				"err", probeErr,
+				"url", cfg.ObjectStorageURL,
+			)
+			os.Exit(1)
+		}
+		slog.Info("object storage probe succeeded", "url", cfg.ObjectStorageURL)
+
 		objSyncer = &objectstore.Syncer{
 			Backend:                backend,
 			Manifests:              &objectstore.ManifestStore{Backend: backend},

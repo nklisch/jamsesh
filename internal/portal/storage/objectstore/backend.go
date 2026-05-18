@@ -88,6 +88,15 @@ type Backend interface {
 	// happens to be an exact key name. If keyPrefix is non-empty, the Backend
 	// strips it from the reported keys so callers see logical names only.
 	List(ctx context.Context, prefix string, fn func(key string) error) error
+
+	// Probe checks that the configured bucket is reachable and accessible.
+	// It is intended as a lightweight startup connectivity check; callers should
+	// supply a short-lived context (e.g. 5 seconds) to bound the latency.
+	//
+	// Returns nil if the bucket is reachable. Returns a wrapped error if the
+	// endpoint is unreachable, the bucket does not exist, or access is denied.
+	// Probe does not modify any data.
+	Probe(ctx context.Context) error
 }
 
 // Sentinel errors returned by Backend implementations. Callers should use

@@ -290,6 +290,20 @@ func (b *gcsBackend) List(ctx context.Context, prefix string, fn func(key string
 	return nil
 }
 
+// Probe implements Backend.Probe.
+//
+// Fetches bucket metadata via Attrs. This is the canonical GCS liveness check:
+// it succeeds if the bucket exists and the credential has at least
+// storage.buckets.get permission, and returns a connectivity or auth error if
+// the endpoint or bucket is unreachable.
+func (b *gcsBackend) Probe(ctx context.Context) error {
+	_, err := b.client.Bucket(b.bucket).Attrs(ctx)
+	if err != nil {
+		return fmt.Errorf("object storage probe: %w", err)
+	}
+	return nil
+}
+
 // mapGCSError converts GCS / googleapi errors to objectstore sentinel errors.
 func mapGCSError(err error) error {
 	if err == nil {

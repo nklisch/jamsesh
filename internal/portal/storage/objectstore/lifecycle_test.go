@@ -203,6 +203,7 @@ func (b *errBackend) Get(_ context.Context, _ string) ([]byte, string, int64, er
 }
 func (b *errBackend) Delete(_ context.Context, _ string) error { return b.err }
 func (b *errBackend) List(_ context.Context, _ string, _ func(string) error) error { return b.err }
+func (b *errBackend) Probe(_ context.Context) error                                { return b.err }
 
 // ---------------------------------------------------------------------------
 // Test helper: newTestLifecycleManager

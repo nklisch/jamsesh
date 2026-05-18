@@ -531,6 +531,10 @@ func (b *blockingBackend) List(ctx context.Context, prefix string, fn func(strin
 	return b.inner.List(ctx, prefix, fn)
 }
 
+func (b *blockingBackend) Probe(ctx context.Context) error {
+	return b.inner.Probe(ctx)
+}
+
 // TestSyncer_MetricsEmission verifies that metrics counters increment as
 // expected for successful, fenced, and backpressure outcomes.
 func TestSyncer_MetricsEmission(t *testing.T) {

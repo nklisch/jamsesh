@@ -292,6 +292,23 @@ func (b *s3Backend) List(ctx context.Context, prefix string, fn func(key string)
 	return nil
 }
 
+// Probe implements Backend.Probe.
+//
+// Issues a HeadBucket request against the configured bucket. HeadBucket is the
+// canonical S3 liveness probe: it succeeds (200) if the bucket exists and the
+// credentials have at least s3:ListBucket permission, and fails fast with a
+// connection error if the endpoint is unreachable. The caller provides ctx with
+// an appropriate deadline (typically 5 seconds at startup).
+func (b *s3Backend) Probe(ctx context.Context) error {
+	_, err := b.client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(b.bucket),
+	})
+	if err != nil {
+		return fmt.Errorf("object storage probe: %w", err)
+	}
+	return nil
+}
+
 // mapS3Error converts S3 / smithy errors to the objectstore sentinel errors.
 // Unknown errors are returned unchanged.
 func mapS3Error(err error) error {

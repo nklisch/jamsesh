@@ -98,6 +98,8 @@ func (b *memBackend) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+func (b *memBackend) Probe(_ context.Context) error { return nil }
+
 func (b *memBackend) List(_ context.Context, prefix string, fn func(key string) error) error {
 	b.mu.Lock()
 	keys := make([]string, 0, len(b.items))
