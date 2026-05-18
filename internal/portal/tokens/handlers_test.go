@@ -414,3 +414,71 @@ func TestHandler_RevokeToken_RevokedBearerRejectsSubsequentRequests(t *testing.T
 		t.Fatalf("revoked bearer: want 401, got %d", resp2.StatusCode)
 	}
 }
+
+// TestHandler_RevokeToken_CrossAccount_Forbidden verifies that account A
+// authenticated as bearer cannot revoke a single token belonging to account B.
+// This is the handler-tier integration test for the security fix in
+// gate-security-revoke-token-bearer-account-check.
+func TestHandler_RevokeToken_CrossAccount_Forbidden(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	_, pairA := env.mustIssue(t, "xacct-a@example.com")
+	_, pairB := env.mustIssue(t, "xacct-b@example.com")
+
+	// A is the bearer; body submits B's refresh token (single-revoke path).
+	resp := postJSON(t, env.srv, "/api/auth/revoke",
+		map[string]any{"token": pairB.RefreshToken, "revoke_all": false},
+		map[string]string{"Authorization": "Bearer " + pairA.AccessToken})
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-account single revoke: want 403, got %d", resp.StatusCode)
+	}
+
+	body := decodeJSON(t, resp)
+	if code, _ := body["error"].(string); code != "auth.forbidden" {
+		t.Errorf("error code: want auth.forbidden, got %q", code)
+	}
+
+	// B's tokens must still be valid after the rejected attempt.
+	if _, err := env.svc.Validate(ctx, pairB.AccessToken); err != nil {
+		t.Errorf("B's access token should still be valid after rejected cross-account revoke: %v", err)
+	}
+	if _, err := env.svc.Validate(ctx, pairB.RefreshToken); err != nil {
+		t.Errorf("B's refresh token should still be valid after rejected cross-account revoke: %v", err)
+	}
+}
+
+// TestHandler_RevokeToken_CrossAccount_RevokeAll_Forbidden verifies that
+// account A authenticated as bearer cannot trigger a revoke-all using a token
+// belonging to account B. This is the revoke_all=true path of the same
+// security fix.
+func TestHandler_RevokeToken_CrossAccount_RevokeAll_Forbidden(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	_, pairA := env.mustIssue(t, "xacct-all-a@example.com")
+	_, pairB := env.mustIssue(t, "xacct-all-b@example.com")
+
+	// A is the bearer; body submits B's refresh token with revoke_all=true.
+	resp := postJSON(t, env.srv, "/api/auth/revoke",
+		map[string]any{"token": pairB.RefreshToken, "revoke_all": true},
+		map[string]string{"Authorization": "Bearer " + pairA.AccessToken})
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-account revoke-all: want 403, got %d", resp.StatusCode)
+	}
+
+	body := decodeJSON(t, resp)
+	if code, _ := body["error"].(string); code != "auth.forbidden" {
+		t.Errorf("error code: want auth.forbidden, got %q", code)
+	}
+
+	// B's tokens must remain valid — revoke_all must not have fired for B's account.
+	if _, err := env.svc.Validate(ctx, pairB.AccessToken); err != nil {
+		t.Errorf("B's access token should still be valid after rejected cross-account revoke-all: %v", err)
+	}
+	if _, err := env.svc.Validate(ctx, pairB.RefreshToken); err != nil {
+		t.Errorf("B's refresh token should still be valid after rejected cross-account revoke-all: %v", err)
+	}
+}
