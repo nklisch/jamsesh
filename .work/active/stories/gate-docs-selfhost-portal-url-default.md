@@ -1,7 +1,7 @@
 ---
 id: gate-docs-selfhost-portal-url-default
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -33,3 +33,6 @@ When unset, `Config.PortalURL` defaults to `http://localhost:8443`.
 ## Required edit
 Change the default cell to `http://localhost:8443`, keep the "Required
 when … reverse proxy" qualification.
+
+## Implementation notes
+Changed the default cell for `JAMSESH_PORTAL_URL` in `docs/SELF_HOST.md:116` from `_(none)_` to `http://localhost:8443`, matching `internal/portal/config/config.go:351` (`PortalURL: "http://localhost:8443"`). Description and qualification text left intact.

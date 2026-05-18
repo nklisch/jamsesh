@@ -113,7 +113,7 @@ path as the first argument: `jamsesh-portal /etc/jamsesh/config.yaml`.
 | `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET` | `oauth.github.client_secret` | _(none)_ | GitHub OAuth application client secret |
 | `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the GitHub OAuth client secret; takes precedence over `JAMSESH_OAUTH_GITHUB_CLIENT_SECRET` when set |
 | `JAMSESH_OAUTH_GITHUB_BASE_URL` | `oauth.github.base_url` | _(none)_ | Override GitHub OAuth base URL for testing; leave unset in production |
-| `JAMSESH_PORTAL_URL` | `portal_url` | _(none)_ | Public base URL of the portal, e.g. `https://jamsesh.example.com`. Required when running behind a reverse proxy that does not forward `Host` and `X-Forwarded-Proto`. Used to construct OAuth callback URLs and magic-link email URLs. |
+| `JAMSESH_PORTAL_URL` | `portal_url` | `http://localhost:8443` | Public base URL of the portal, e.g. `https://jamsesh.example.com`. Required when running behind a reverse proxy that does not forward `Host` and `X-Forwarded-Proto`. Used to construct OAuth callback URLs and magic-link email URLs. |
 | `JAMSESH_DB_DSN_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the DB DSN; takes precedence over `JAMSESH_DB_DSN` when set |
 | `JAMSESH_DB_MAX_OPEN_CONNS` | `db.max_open_conns` | `25` | Maximum number of open connections in the pool. For Postgres this maps to `pgxpool.MaxConns`; no-op for SQLite (single-writer). |
 | `JAMSESH_DB_MAX_IDLE_CONNS` | `db.max_idle_conns` | `5` | Minimum number of idle connections the pool maintains. For Postgres this maps to `pgxpool.MinConns`; no-op for SQLite. |
