@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-frontend-unused-sessionid-param
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, ui]
 parent: null
 depends_on: []
@@ -34,3 +34,19 @@ const mockSubscribe = vi.fn((sessionId: string, type: string, handler: ...) => {
 Rename to `_sessionId` or drop the parameter — the mock body never
 inspects the session id. Triggered when running
 `tsc --noUnusedParameters --noUnusedLocals`.
+
+## Implementation notes
+
+Renamed `sessionId` → `_sessionId` in the `mockSubscribe` `vi.fn` declaration
+in all three files:
+- `frontend/src/lib/components/ActivityFeed.test.ts:13`
+- `frontend/src/lib/components/CommentsTab.test.ts:20`
+- `frontend/src/lib/components/TreeDag.test.ts:20`
+
+Chose rename over drop to keep the mock signature aligned with the real
+`subscribe` function interface for type-checking purposes.
+
+Verification:
+- `tsc --noUnusedLocals --noUnusedParameters --noEmit` produced no output for
+  these three files (sessionId warnings fully cleared).
+- All 28 tests across the three test files passed (3 test files, 28 tests).

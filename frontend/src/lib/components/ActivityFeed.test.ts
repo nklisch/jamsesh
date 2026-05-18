@@ -10,7 +10,7 @@ type EventEnvelope = components['schemas']['EventEnvelope'];
 // Capture handlers so tests can fire fake events
 const handlersByType = new Map<string, ((env: unknown) => void)[]>();
 
-const mockSubscribe = vi.fn((sessionId: string, type: string, handler: (env: unknown) => void) => {
+const mockSubscribe = vi.fn((_sessionId: string, type: string, handler: (env: unknown) => void) => {
   if (!handlersByType.has(type)) handlersByType.set(type, []);
   handlersByType.get(type)!.push(handler);
   return () => {
