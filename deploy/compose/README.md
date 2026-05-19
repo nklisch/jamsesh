@@ -17,7 +17,7 @@ in the root README instead.
 ## Quickstart
 
 ```bash
-git clone https://github.com/<owner>/jamsesh
+git clone https://github.com/nklisch/jamsesh
 cd jamsesh/deploy/compose
 cp .env.example .env
 $EDITOR .env   # set JAMSESH_DOMAIN; configure OAuth or email auth

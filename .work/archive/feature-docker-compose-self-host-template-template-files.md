@@ -1,7 +1,7 @@
 ---
 id: feature-docker-compose-self-host-template-template-files
 kind: story
-stage: review
+stage: done
 tags: [infra]
 parent: feature-docker-compose-self-host-template
 depends_on: []

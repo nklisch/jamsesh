@@ -1,7 +1,7 @@
 ---
 id: feature-docker-compose-self-host-template
 kind: feature
-stage: review
+stage: done
 tags: [infra]
 parent: null
 depends_on: []
@@ -595,3 +595,23 @@ All three child stories landed at `stage: review`:
 ### Backlog spawned
 
 The CI story explicitly defers full end-to-end compose-up smoke (no pull-able `ghcr.io` image exists for unmerged commits). Story body suggests filing `e2e-compose-template-up-smoke` as a follow-up once a CI strategy lands for using a locally-built image as the portal image in the compose file. Not parked yet — leaving the decision for review.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+
+**Important** (inline-fixed):
+- **`<owner>` placeholder default rendered the template unusable.** The compose file's portal image used `ghcr.io/${JAMSESH_OWNER:-<owner>}/jamsesh:...` as the default. A freshly-copied `.env` from `.env.example` did not set `JAMSESH_OWNER`, so an out-of-the-box `docker compose up -d` resolved to `ghcr.io/<owner>/jamsesh:v0.1.0` — not a valid image reference, and the literal `<owner>` placeholder was placed in the "ADVANCED — change only if you know why" section of `.env.example`, hiding the fact that operators needed to touch it. The same placeholder also appeared in 26 other sites across `docs/SELF_HOST.md`, `docs/RELEASING.md`, `README.md`, `deploy/compose/README.md`, and `deploy/compose/.env.example`. **Resolution**: global replace `<owner>` → `nklisch` across all 27 sites (6 files), making the template ship usable out-of-the-box and aligning all operator-facing docs to the real GitHub owner. The compose file's image default is now `ghcr.io/${JAMSESH_OWNER:-nklisch}/jamsesh:${JAMSESH_VERSION:-latest}`; `JAMSESH_OWNER` remains an override path for forks. Verified: `docker compose config` resolves to `ghcr.io/nklisch/jamsesh:v0.1.0`.
+
+**Nits** (inline notes only — no items filed):
+- `deploy/compose/README.md` has both an "Image version pinning" section and an "Upgrading" section that describe the same `docker compose pull && up -d` flow. Minor duplication; not worth restructuring.
+- `restart: unless-stopped` on all services is sensible but operators may not realize what triggers a non-restart — out-of-scope detail for the quickstart README.
+
+**Notes**:
+- All three child stories reviewed at the feature level (consolidated diff scope: commits `70cbb97`, `462b4b9`, `0beb951`, `49c1176`).
+- The `POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}` deviation from the design was correct — clean fix to a real `docker compose config` warning that would have falsely tripped the CI grep check.
+- Foundation-doc alignment: `docs/SELF_HOST.md` §1.0 addition is additive and consistent with the rolling-foundation principle (no "previously this was..." prose; the new content sits at the head of §1 as the new present truth).
+- Test integrity: no existing tests touched. The new CI job is a parse-validation guard, not a behavioral assertion. Clean.
+- Security: no auth surface, no input validation, no secret handling beyond the documented `_FILE` convention which this template doesn't exercise directly (operators using `_FILE` for secrets would add their own bind mounts; out of scope for the default template).

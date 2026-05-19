@@ -15,7 +15,7 @@ For the fastest path from clone to running portal, use the bundled compose
 template at `deploy/compose/`:
 
 ```bash
-git clone https://github.com/<owner>/jamsesh
+git clone https://github.com/nklisch/jamsesh
 cd jamsesh/deploy/compose
 cp .env.example .env
 $EDITOR .env       # set JAMSESH_DOMAIN + OAuth or email creds
@@ -36,7 +36,7 @@ The portal ships as a single Docker image. Pull it from the GitHub Container
 Registry:
 
 ```bash
-docker pull ghcr.io/<owner>/jamsesh:latest
+docker pull ghcr.io/nklisch/jamsesh:latest
 ```
 
 Image tags follow the release version scheme (`v0.1.0`, `v0.2.0`, etc.).
@@ -47,9 +47,9 @@ production.
 
 ```bash
 cosign verify \
-  --certificate-identity-regexp 'https://github.com/<owner>/jamsesh/.github/workflows/release.yml@refs/heads/main' \
+  --certificate-identity-regexp 'https://github.com/nklisch/jamsesh/.github/workflows/release.yml@refs/heads/main' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/<owner>/jamsesh:latest
+  ghcr.io/nklisch/jamsesh:latest
 ```
 
 Releases are signed with Sigstore cosign in keyless mode using GitHub OIDC.
@@ -62,8 +62,8 @@ Download the appropriate binary from the GitHub releases page:
 
 ```bash
 # Example: Linux amd64
-curl -LO https://github.com/<owner>/jamsesh/releases/latest/download/jamsesh-portal-linux-amd64
-curl -LO https://github.com/<owner>/jamsesh/releases/latest/download/jamsesh-portal-linux-amd64.sha256
+curl -LO https://github.com/nklisch/jamsesh/releases/latest/download/jamsesh-portal-linux-amd64
+curl -LO https://github.com/nklisch/jamsesh/releases/latest/download/jamsesh-portal-linux-amd64.sha256
 sha256sum -c jamsesh-portal-linux-amd64.sha256
 ```
 
@@ -71,7 +71,7 @@ sha256sum -c jamsesh-portal-linux-amd64.sha256
 
 ```bash
 cosign verify-blob \
-  --certificate-identity-regexp 'https://github.com/<owner>/jamsesh/.github/workflows/release.yml@refs/heads/main' \
+  --certificate-identity-regexp 'https://github.com/nklisch/jamsesh/.github/workflows/release.yml@refs/heads/main' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --signature jamsesh-portal-linux-amd64.sig \
   --certificate jamsesh-portal-linux-amd64.pem \
@@ -590,14 +590,14 @@ attributes for alert routing:
 ### Docker
 
 ```bash
-docker pull ghcr.io/<owner>/jamsesh:<new-version>
+docker pull ghcr.io/nklisch/jamsesh:<new-version>
 docker stop jamsesh
 docker rm jamsesh
 docker run --rm -d --name jamsesh \
   -p 8443:8443 \
   -e JAMSESH_TLS_MODE=behind_proxy \
   -v /var/lib/jamsesh:/data \
-  ghcr.io/<owner>/jamsesh:<new-version>
+  ghcr.io/nklisch/jamsesh:<new-version>
 ```
 
 The portal runs database migrations automatically on startup. If the upgrade
@@ -770,7 +770,7 @@ echo -n "your-github-oauth-secret" | \
 
 # Deploy
 gcloud run deploy jamsesh \
-  --image ghcr.io/<owner>/jamsesh:v0.2.0 \
+  --image ghcr.io/nklisch/jamsesh:v0.2.0 \
   --region us-central1 \
   --port 8443 \
   --min-instances 1 \
@@ -809,7 +809,7 @@ app = "jamsesh"
 primary_region = "ord"
 
 [build]
-  image = "ghcr.io/<owner>/jamsesh:v0.2.0"
+  image = "ghcr.io/nklisch/jamsesh:v0.2.0"
 
 [deploy]
   strategy = "immediate"
@@ -986,7 +986,7 @@ spec:
       terminationGracePeriodSeconds: 35
       containers:
         - name: portal
-          image: ghcr.io/<owner>/jamsesh:v0.2.0
+          image: ghcr.io/nklisch/jamsesh:v0.2.0
           ports:
             - containerPort: 8443
           envFrom:
@@ -1222,7 +1222,7 @@ spec:
       terminationGracePeriodSeconds: 35
       containers:
         - name: portal
-          image: ghcr.io/<owner>/jamsesh:v0.3.0
+          image: ghcr.io/nklisch/jamsesh:v0.3.0
           ports:
             - name: http
               containerPort: 8443
@@ -1296,7 +1296,7 @@ spec:
       terminationGracePeriodSeconds: 35
       containers:
         - name: router
-          image: ghcr.io/<owner>/jamsesh-router:v0.3.0
+          image: ghcr.io/nklisch/jamsesh-router:v0.3.0
           ports:
             - name: http
               containerPort: 8080

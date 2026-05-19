@@ -20,9 +20,9 @@ a `v*` tag to GitHub triggers `.github/workflows/release.yml`, which:
 4. Generates and signs a `checksums.txt` over the binaries.
 5. Attests SLSA Build Level 3 provenance over the binary subjects.
 6. Creates a GitHub Release tagged `v<version>` with all artifacts attached.
-7. Builds and pushes the multi-arch `ghcr.io/<owner>/jamsesh` Docker image
+7. Builds and pushes the multi-arch `ghcr.io/nklisch/jamsesh` Docker image
    with semver tags + `latest`, signed via cosign.
-8. Publishes the Claude Code plugin to the `<owner>/jamsesh-cc-plugin`
+8. Publishes the Claude Code plugin to the `nklisch/jamsesh-cc-plugin`
    marketplace repository (plugin source + per-arch `jamsesh` binaries +
    matching git tag).
 
@@ -106,12 +106,12 @@ pushing the tag:
 1. **Create the marketplace repo on GitHub.**
 
    ```bash
-   gh repo create <owner>/jamsesh-cc-plugin \
+   gh repo create nklisch/jamsesh-cc-plugin \
      --public \
      --description "Claude Code plugin package for jamsesh (mirrored from the main repo)"
    ```
 
-   The `<owner>` defaults to the same owner as the `jamsesh` repo. To
+   The `nklisch` defaults to the same owner as the `jamsesh` repo. To
    override, set `vars.MARKETPLACE_OWNER` in the jamsesh repo's
    Actions configuration — the workflow reads it.
 
@@ -131,7 +131,7 @@ pushing the tag:
 
    ```bash
    gh repo deploy-key add marketplace_deploy_key.pub \
-     --repo <owner>/jamsesh-cc-plugin \
+     --repo nklisch/jamsesh-cc-plugin \
      --title "jamsesh release bot" \
      --allow-write
    ```
@@ -140,7 +140,7 @@ pushing the tag:
 
    ```bash
    gh secret set MARKETPLACE_DEPLOY_KEY \
-     --repo <owner>/jamsesh \
+     --repo nklisch/jamsesh \
      < marketplace_deploy_key
    ```
 
@@ -153,7 +153,7 @@ pushing the tag:
 6. **(Optional) Seed an initial README on the marketplace repo.** The
    release workflow overwrites the plugin contents but leaves a
    `README.md` untouched if present. A short README explaining "this is
-   a mirror of `<owner>/jamsesh`, do not commit here" helps drive-by
+   a mirror of `nklisch/jamsesh`, do not commit here" helps drive-by
    visitors back to the main repo.
 
 7. **Re-trigger any release that failed only on the marketplace step.**
@@ -180,7 +180,7 @@ manually verify at least one binary per release before announcing it:
 ```bash
 cosign verify-blob \
   --bundle portal-linux-amd64.sigstore.json \
-  --certificate-identity-regexp 'https://github.com/<owner>/jamsesh/.github/workflows/release.yml@refs/tags/v0.X.0' \
+  --certificate-identity-regexp 'https://github.com/nklisch/jamsesh/.github/workflows/release.yml@refs/tags/v0.X.0' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   portal-linux-amd64
 ```

@@ -1,7 +1,7 @@
 ---
 id: feature-docker-compose-self-host-template-ci-smoke
 kind: story
-stage: review
+stage: done
 tags: [infra, testing]
 parent: feature-docker-compose-self-host-template
 depends_on: [feature-docker-compose-self-host-template-template-files]

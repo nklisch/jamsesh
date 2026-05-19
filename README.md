@@ -50,7 +50,7 @@ For the operator-facing production deployment, see
 The fastest way to run jamsesh on your own host:
 
 ```bash
-git clone https://github.com/<owner>/jamsesh
+git clone https://github.com/nklisch/jamsesh
 cd jamsesh/deploy/compose
 cp .env.example .env
 $EDITOR .env       # set JAMSESH_DOMAIN + OAuth or email creds
@@ -69,7 +69,7 @@ docker run --rm -p 8443:8443 \
   -e JAMSESH_TLS_MODE=behind_proxy \
   -e JAMSESH_BIND=:8443 \
   -v $(pwd)/data:/data \
-  ghcr.io/<owner>/jamsesh:latest
+  ghcr.io/nklisch/jamsesh:latest
 
 curl http://localhost:8443/healthz
 # → {"status":"ok"}
