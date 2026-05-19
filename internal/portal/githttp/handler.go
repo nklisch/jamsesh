@@ -5,15 +5,26 @@
 package githttp
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/go-chi/chi/v5"
 
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/lease"
 	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
+
+// lifecycleAcquirer is the subset of objectstore.LifecycleManager used by the
+// git smart-HTTP handler. Defined locally so tests can inject a stub without
+// depending on the full objectstore package.
+type lifecycleAcquirer interface {
+	AcquireForRequest(ctx context.Context, sessionID string) (lease.Handle, error)
+}
 
 // Handler is the git smart-HTTP handler. Construct with all fields set and
 // call Mount to register routes on a chi router.
@@ -23,6 +34,11 @@ type Handler struct {
 	Storage   storage.Service
 	Validator *prereceive.Validator
 	Emitter   *postreceive.Emitter
+	// Lifecycle, when non-nil, hydrates the bare repo on first request for a
+	// session on this pod and holds the distributed lease. Nil in single-instance
+	// mode — the bare repo lives on the only pod's local disk from session-create
+	// onward. Mirrors postreceive.Emitter's Lifecycle field shape and semantics.
+	Lifecycle lifecycleAcquirer
 	// Metrics is optional; when non-nil, git push outcomes increment
 	// GitPushesTotal with result labels "ok" or "rejected".
 	Metrics *metrics.Registry
@@ -31,6 +47,23 @@ type Handler struct {
 	// 503 Retry-After. If nil, no concurrency limit is enforced.
 	// Initialise with make(chan struct{}, N) where N is the desired cap.
 	ReceivePackSem chan struct{}
+}
+
+// acquireForGitRequest invokes LifecycleManager.AcquireForRequest in
+// clustered mode to ensure the session's bare repo is hydrated to this pod's
+// local cache before serving the smart-HTTP operation. The returned handle is
+// owned by LifecycleManager (idle eviction / LRU / lease loss / SIGTERM); the
+// caller MUST NOT release it. Returns nil immediately when Lifecycle is nil
+// (single-instance mode).
+func (h *Handler) acquireForGitRequest(ctx context.Context, sessionID string) error {
+	if h.Lifecycle == nil {
+		return nil
+	}
+	_, err := h.Lifecycle.AcquireForRequest(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("githttp: hydrate session %s: %w", sessionID, err)
+	}
+	return nil
 }
 
 // Mount registers the smart-HTTP routes relative to the base path the caller

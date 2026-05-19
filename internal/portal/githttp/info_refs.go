@@ -32,6 +32,14 @@ func (h *Handler) infoRefs(w http.ResponseWriter, r *http.Request) {
 
 	orgID := chi.URLParam(r, "orgID")
 	sessionID := chi.URLParam(r, "sessionID")
+
+	// Clustered mode: hydrate the bare repo from object storage before serving.
+	// In single-instance mode (h.Lifecycle == nil) this is a no-op.
+	if err := h.acquireForGitRequest(r.Context(), sessionID); err != nil {
+		httperr.Write(w, r, httperr.ErrObjectStorageUnavailable(err))
+		return
+	}
+
 	repoPath := h.Storage.RepoPath(orgID, sessionID)
 
 	// Strip "git-" prefix to get the git subcommand name.

@@ -145,6 +145,20 @@ func ErrGitSubprocessFailed(cause error) *Error {
 	}
 }
 
+// ErrObjectStorageUnavailable is emitted when the clustered-mode lifecycle
+// manager cannot hydrate a session's bare repo (lease already held by another
+// pod, hydration I/O error, etc.). Returns 503 + Retry-After: 1 so the
+// router or git client retries quickly on the correct pod.
+func ErrObjectStorageUnavailable(cause error) *Error {
+	return &Error{
+		Code:       "dep.object_storage_unavailable",
+		Message:    "object storage temporarily unavailable",
+		HTTPStatus: http.StatusServiceUnavailable,
+		Wrapped:    cause,
+		Headers:    map[string]string{"Retry-After": "1"},
+	}
+}
+
 // ErrMagicLinkNotEnabled is emitted when a magic-link request arrives but
 // the portal has no email provider configured. Returns 400 so the client
 // knows not to retry (the operator must configure email to enable magic-link).

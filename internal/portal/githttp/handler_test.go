@@ -3,6 +3,7 @@ package githttp_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"jamsesh/internal/db"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/githttp"
+	"jamsesh/internal/portal/lease"
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
@@ -303,6 +305,158 @@ func TestValidMember_PassesAuthMiddleware(t *testing.T) {
 	// Auth passed → must NOT be 401.
 	if resp.StatusCode == http.StatusUnauthorized {
 		t.Errorf("auth should have passed, got 401")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle hydration tests
+// ---------------------------------------------------------------------------
+
+// lifecycleStub implements the unexported lifecycleAcquirer interface from
+// the githttp package. It satisfies the interface from the test package via
+// Go's structural typing: the exported Handler.Lifecycle field accepts any
+// value with the matching method set, regardless of the interface's package.
+type lifecycleStub struct {
+	err error // when non-nil, AcquireForRequest returns this error
+}
+
+func (s *lifecycleStub) AcquireForRequest(_ context.Context, _ string) (lease.Handle, error) {
+	return nil, s.err
+}
+
+// TestLifecycle_NilNoOp verifies that a nil Lifecycle (single-instance mode)
+// allows the handler to proceed normally. The handler will reach info/refs
+// subprocess and fail with 500 (no bare repo on disk) — that's fine, it
+// proves the Lifecycle path was a no-op.
+func TestLifecycle_NilNoOp(t *testing.T) {
+	env := newTestEnv(t) // Lifecycle is nil by default in newTestEnv
+	acc, token := env.mustIssueToken(t, "lifecycle-nil@example.com")
+	orgID, sessionID := env.mustCreateSessionWithMember(t, acc)
+
+	url := env.gitURL(orgID, sessionID)
+	resp := doGet(t, url, "x-access-token", token)
+	defer resp.Body.Close()
+
+	// Must not be 503 (that would indicate Lifecycle triggered unexpectedly).
+	// 500 is expected since no bare repo exists on disk.
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		t.Errorf("nil Lifecycle should be a no-op, got 503")
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		t.Errorf("auth should have passed, got 401")
+	}
+}
+
+// TestLifecycle_AcquireError verifies that when Lifecycle.AcquireForRequest
+// returns an error (e.g. lease already held by another pod), the handler
+// returns 503 Service Unavailable with Retry-After: 1.
+func TestLifecycle_AcquireError(t *testing.T) {
+	ctx := context.Background()
+
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	tokenSvc := tokens.New(s)
+	storageSvc := storage.New(t.TempDir(), s)
+
+	stub := &lifecycleStub{err: errors.New("lease already held by another pod")}
+
+	h := &githttp.Handler{
+		Store:     s,
+		Tokens:    tokenSvc,
+		Storage:   storageSvc,
+		Validator: &prereceive.Validator{MaxPackBytes: 50 * 1024 * 1024},
+		Emitter:   nil,
+		Lifecycle: stub,
+	}
+
+	r := chi.NewRouter()
+	h.Mount(r)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	tokenSvcLocal := tokens.New(s)
+	acc, err := s.CreateAccount(ctx, store.CreateAccountParams{
+		ID:          nextID("lc-acc"),
+		Email:       "lifecycle-err@example.com",
+		DisplayName: "lifecycle-err@example.com",
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	pair, err := tokenSvcLocal.Issue(ctx, acc.ID)
+	if err != nil {
+		t.Fatalf("Issue token: %v", err)
+	}
+
+	orgID := nextID("lc-org")
+	_, err = s.CreateOrg(ctx, store.CreateOrgParams{
+		ID:        orgID,
+		Name:      "LC Org",
+		Slug:      orgID,
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+	sessionID := nextID("lc-sess")
+	_, err = s.CreateSession(ctx, store.CreateSessionParams{
+		ID:            sessionID,
+		OrgID:         orgID,
+		Name:          "LC Session",
+		Goal:          "lifecycle test",
+		WritableScope: `["src/"]`,
+		DefaultMode:   "sync",
+		Status:        "active",
+		CreatedAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	err = s.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID:     orgID,
+		SessionID: sessionID,
+		AccountID: acc.ID,
+		Role:      "member",
+		JoinedAt:  time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("AddSessionMember: %v", err)
+	}
+
+	url := fmt.Sprintf("%s/%s/%s.git/info/refs?service=git-upload-pack",
+		srv.URL, orgID, sessionID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.SetBasicAuth("x-access-token", pair.AccessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("Lifecycle error should yield 503, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Retry-After"); got != "1" {
+		t.Errorf("want Retry-After: 1, got %q", got)
+	}
+
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if body.Error != "dep.object_storage_unavailable" {
+		t.Errorf("want error=dep.object_storage_unavailable, got %q", body.Error)
 	}
 }
 

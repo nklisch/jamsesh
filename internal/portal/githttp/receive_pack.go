@@ -113,6 +113,15 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clustered mode: hydrate the bare repo from object storage before serving.
+	// In single-instance mode (h.Lifecycle == nil) this is a no-op. This must
+	// run after auth and body parsing to avoid hydrating for unauthenticated or
+	// malformed requests, but before RepoPath is used to open the bare repo.
+	if err := h.acquireForGitRequest(r.Context(), sessionID); err != nil {
+		httperr.Write(w, r, httperr.ErrObjectStorageUnavailable(err))
+		return
+	}
+
 	// Build a validation repo: parse the pushed pack into memory storage, then
 	// layer it over the existing disk repo so the prereceive validator can see
 	// both new objects (in the pack) and existing objects (on disk).

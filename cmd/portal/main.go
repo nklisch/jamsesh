@@ -681,6 +681,7 @@ func main() {
 			Lifecycle: objLifecycle, // nil in single-instance mode; provides hydration + long-held lease
 			Storage:   storageSvc,  // used only when Syncer is non-nil
 		},
+		Lifecycle:      objLifecycle, // nil in single-instance mode; hydrates+leases in clustered
 		Metrics:        metricsReg,
 		ReceivePackSem: receivePackSem,
 	}
