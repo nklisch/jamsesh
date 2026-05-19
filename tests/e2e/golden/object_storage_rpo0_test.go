@@ -63,6 +63,12 @@ func TestObjectStorageRPO0(t *testing.T) {
 			"JAMSESH_EMAIL_SMTP_HOST": mh.ContainerSMTPHost,
 			"JAMSESH_EMAIL_SMTP_PORT": strconv.Itoa(mh.ContainerSMTPPort),
 			"JAMSESH_EMAIL_SMTP_TLS":  "none",
+			// Multiple subtests share one portal and each signs in via
+			// magic-link. The 3/min burst budget exhausts; later subtests
+			// (e.g. tag_creation) get 429 on /api/auth/magic-link/request.
+			// Disable since this test exercises object-storage semantics,
+			// not auth rate-limiting (same pattern as TestInterruptedOps).
+			"JAMSESH_AUTH_RATE_LIMIT_ENABLED": "false",
 		},
 	})
 
