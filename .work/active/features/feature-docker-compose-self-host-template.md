@@ -1,7 +1,7 @@
 ---
 id: feature-docker-compose-self-host-template
 kind: feature
-stage: implementing
+stage: review
 tags: [infra]
 parent: null
 depends_on: []
@@ -562,3 +562,36 @@ Once a release with this feature ships:
   healthcheck breaks. Pinning `caddy:2-alpine` mitigates near-term.
 
 <!-- Implementation Notes accumulate as each story lands. -->
+
+## Implementation Summary
+
+All three child stories landed at `stage: review`:
+
+| Story | Stage | Commit |
+|---|---|---|
+| `feature-docker-compose-self-host-template-template-files` | review | `70cbb97` |
+| `feature-docker-compose-self-host-template-docs` | review | `462b4b9` |
+| `feature-docker-compose-self-host-template-ci-smoke` | review | `0beb951` |
+
+### Deliverables
+- `deploy/compose/{docker-compose.yml,.env.example,Caddyfile,README.md}` — the four-file self-host quickstart bundle.
+- `docs/SELF_HOST.md` — new §1.0 "Quickstart with Docker Compose" subsection at top of §1 (Install), additive.
+- `README.md` — "Operator quickstart" rewritten to lead with the compose template; bare `docker run` retained as the "kick the tires locally" secondary option.
+- `docs/RELEASING.md` — new step 2 "Bump the compose template's `JAMSESH_VERSION` pin" inserted into "Cutting a release"; subsequent steps renumbered 1–6 with no gaps.
+- `.github/workflows/quickstart.yml` — new `compose-template` job running `docker compose config` against default + `--profile postgres` shapes, plus an "unresolved env var" assertion.
+
+### Cross-cutting deviation from design
+
+`POSTGRES_PASSWORD` in `docker-compose.yml` carries an explicit empty default (`${POSTGRES_PASSWORD:-}`) rather than the bare `${POSTGRES_PASSWORD}` shown in the original design body. Rationale: bare interpolation triggers a "variable is not set. Defaulting to a blank string." warning on every `docker compose config` parse — including the default (non-postgres) profile — which would cause the CI `assert no unresolved env vars` step to fail. The empty default suppresses the parse-time warning without weakening the operator contract (Postgres itself refuses to start with an empty password at runtime). Documented in the template-files story body.
+
+### Verification (orchestrator-side, after Wave 2)
+
+- `docker compose -f deploy/compose/docker-compose.yml config` (default) — clean parse, no unresolved env vars.
+- `docker compose -f deploy/compose/docker-compose.yml --profile postgres config` — clean parse, postgres service present in merged spec.
+- `awk` walk of `docs/RELEASING.md` "Cutting a release" steps confirms sequential numbering 1–6.
+- `docs/SELF_HOST.md §1.0` anchor present.
+- `compose-template` job present in `.github/workflows/quickstart.yml`.
+
+### Backlog spawned
+
+The CI story explicitly defers full end-to-end compose-up smoke (no pull-able `ghcr.io` image exists for unmerged commits). Story body suggests filing `e2e-compose-template-up-smoke` as a follow-up once a CI strategy lands for using a locally-built image as the portal image in the compose file. Not parked yet — leaving the decision for review.
