@@ -1,7 +1,7 @@
 ---
 id: clustered-portal-concurrent-migration-race
 kind: story
-stage: review
+stage: done
 tags: [testing, infra, portal, postgres, bug]
 parent: null
 depends_on: []
@@ -142,3 +142,30 @@ unit test**. Added in this stride at
   testcontainer + full e2e harness). The new unit test exercises the
   same race more tightly; the e2e tests will validate the integration
   shape in CI.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- ARCHITECTURE.md §"Per-session leases via Postgres advisory locks" covers
+  the lease lock but not the migration lock. A one-line nod in the
+  clustered-deploy section would help operators see that parallel pod
+  startup is intentionally safe. Inline doc at `internal/db/connect.go:60-63`
+  and `internal/db/migrate.go:109-120` is sufficient for code review.
+
+**Notes**: Land-mode story — advisory-lock code was already implemented
+during the v0.1.0 readiness drive (`internal/db/migrate.go:withMigrationLock`
++ Postgres branch of `connect.Open`). The missing piece — the parallel-open
+unit test — is now added at `TestMigrateUpPostgres_ConcurrentOpens`,
+exercising 4 concurrent `withMigrationLock` runs against a freshly-reset
+public schema. Asserts no duplicate `goose_db_version` rows. Skipped
+locally without `JAMSESH_TEST_PG_DSN`; CI will run it when Postgres is
+available.
+
+Build + vet clean; SQLite test passes (no regression). Postgres tests
+skip gracefully when DSN unset, which is the correct gating pattern.
+
+Advanced to done. Moved to `.work/archive/`.
