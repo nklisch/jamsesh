@@ -248,7 +248,15 @@ func TestFinalizePlanSquashFlow(t *testing.T) {
 	if fetchTok.Token == "" {
 		t.Fatal("issueFetchToken: empty token")
 	}
-	t.Logf("finalize: fetch token issued; expires_at=%s", fetchTok.ExpiresAt.Format(time.RFC3339))
+	// The portal generates RemoteUrl from JAMSESH_PORTAL_URL which defaults to
+	// http://localhost:8443 — the portal's INTERNAL listener. The test process
+	// runs on the host and can only reach the portal via its container's
+	// host-mapped port (p.URL). Rewrite the URL host before handing it to the
+	// sandbox so 'git fetch $JAMSESH_FETCH_REMOTE' resolves correctly from
+	// the host's network namespace.
+	fetchTok.RemoteUrl = strings.Replace(fetchTok.RemoteUrl, "http://localhost:8443", p.URL, 1)
+	t.Logf("finalize: fetch token issued; expires_at=%s remote=%s",
+		fetchTok.ExpiresAt.Format(time.RFC3339), fetchTok.RemoteUrl)
 
 	// Substitute the $JAMSESH_FETCH_REMOTE / runner placeholders in the script.
 	executableScript := plan.Script
