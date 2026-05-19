@@ -1,7 +1,7 @@
 ---
 id: finalize-fetch-token-leak-via-rungitverbose-echo
 kind: story
-stage: review
+stage: done
 tags: [security, plugin]
 parent: null
 depends_on: []
@@ -120,3 +120,18 @@ is replaced.
   `runGitVerbose` against a real temp repo with a token arg, asserts the
   printed line contains `<redacted>` and does not contain the raw token,
   and that the auth scheme (`Authorization: Bearer`) is preserved.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none.
+
+**Notes**: Targeted fix that closes the secondary leak surface identified in
+the parent story's review. Case-sensitive matching is the right call (git
+config keys are literal). Scheme preservation in the printed line gives
+operators the auth-type signal they need without exposing the credential.
+Unredacted args still flow to the subprocess unchanged, so the production
+behavior is intact.
