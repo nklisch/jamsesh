@@ -1,7 +1,7 @@
 ---
 id: distribution-marketplace-repo-bootstrap
 kind: story
-stage: review
+stage: done
 tags: [infra, plugin, documentation]
 parent: null
 depends_on: []
@@ -81,3 +81,32 @@ remaining steps are operational, not engineering. Closing this at
 review captures the documentation work; if the owner wants a tracking
 item specifically for "run the bootstrap and verify the next release",
 that's a separate ops task, not a substrate engineering item.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `docs/SELF_HOST.md` mentions cosign signature verification but does
+  not link to the new `docs/RELEASING.md` for the maintainer-side view.
+  A one-line cross-reference would help operators discover the release
+  toolchain. Small enough to leave as a polish task.
+
+**Notes**: Doc-only delivery. The bootstrap procedure in
+`docs/RELEASING.md` (steps 1-7) is cross-checked against the workflow
+contract at `release.yml:265-331` — `gh repo deploy-key add --allow-write`
+mints a write-capable SSH deploy key matching the workflow's push step,
+`gh secret set MARKETPLACE_DEPLOY_KEY` pipes the private key correctly
+to the jamsesh repo, and `shred -u` after registration is the right
+op-sec hygiene for the on-disk key material.
+
+The deviation from the story's literal "external acceptance criteria"
+(create the repo, set the secret, etc.) is documented in the
+Implementation notes — those steps require GitHub admin and cannot
+be agent-executed. The documentation-as-delivery pivot resolves the
+discoverable failure mode (no runbook for the marketplace job) without
+overreaching the agent's authority.
+
+Advanced to done. Moved to `.work/archive/`.
