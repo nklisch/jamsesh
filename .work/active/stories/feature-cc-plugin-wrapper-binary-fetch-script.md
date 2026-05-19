@@ -1,7 +1,7 @@
 ---
 id: feature-cc-plugin-wrapper-binary-fetch-script
 kind: story
-stage: implementing
+stage: review
 tags: [infra, plugin]
 parent: feature-cc-plugin-wrapper-binary-fetch
 depends_on: []
@@ -80,3 +80,32 @@ per `docs/RELEASING.md`).
 - The wrapper's stdout MUST be the binary's stdout exactly (no banners,
   no prefix). The `.mcp.json` `headersHelper` parses stdout as JSON; any
   contamination breaks MCP auth.
+
+## Implementation Notes
+
+- **Lines of script**: 129 lines (including comments and blank lines).
+- **OS/arch tested locally**: Linux amd64 (Fedora/Nobara, kernel 6.19.2).
+- **sha256 verification outcome (cold-cache run)**:
+  - Downloaded `jamsesh-linux-amd64` and `checksums.txt` from
+    `https://github.com/nklisch/jamsesh/releases/download/v0.1.0/`.
+  - Expected hash from checksums.txt:
+    `da84d324aebf772c9f9c11fc0e1e18f156b2309a33c870024a46565ef1ea820d`
+  - Verification passed: `jamsesh-wrapper: sha256 ok`
+- **cosign verification**: cosign not on PATH in test environment; skipped
+  silently (correct degraded-mode behavior per spec).
+- **Warm-cache run**: exec'd directly from
+  `${HOME}/.cache/jamsesh/bin/jamsesh-v0.1.0-linux-amd64`; no network call.
+  Log line: `jamsesh-wrapper: cache hit: ...`
+- **Concurrent invocations**: ran two background instances on cold cache;
+  instance 2 hit cache while instance 1 was still writing. Both produced
+  correct `--version` output; no corruption.
+- **Deviations from design pseudocode**:
+  - Used `tmpdir="${cache_dir}/.tmp.$$"` (same-fs, PID-suffixed) instead
+    of `mktemp -d`. This is the correct approach per the Risks section;
+    the pseudocode's `mktemp -d` was a placeholder that the Implementation
+    Notes explicitly said to refine.
+  - Added a `log "cache hit: ${cached}"` line in the cache-hit branch for
+    better verbose debuggability (not in design pseudocode; harmless addition).
+  - awk string concatenation written as `("*" f)` vs design's `"*"f` —
+    both are equivalent; verified with both GNU and BSD format test inputs.
+- **No backlog items filed**: no unrelated test failures encountered.

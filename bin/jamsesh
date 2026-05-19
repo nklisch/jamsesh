@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# jamsesh — Claude Code plugin entrypoint.
+#
+# On first invocation, downloads the per-arch jamsesh binary matching
+# JAMSESH_PLUGIN_VERSION from the corresponding GitHub release asset,
+# verifies it (sha256 + optional cosign), caches under
+# ${CLAUDE_PLUGIN_DATA}/bin/, and execs it. Subsequent invocations exec
+# directly from cache.
+#
+# Override env vars (advanced):
+#   JAMSESH_BIN_OVERRIDE             absolute path to an already-built binary
+#   JAMSESH_PLUGIN_VERSION_OVERRIDE  pin to a different version than the constant
+#   JAMSESH_PLUGIN_OWNER             override the upstream owner (default: nklisch)
+#   JAMSESH_PLUGIN_VERBOSE           set non-empty to log progress to stderr
+
+set -euo pipefail
+
+# Bumped on every release tag (see docs/RELEASING.md). The CI workflow
+# asserts this matches GITHUB_REF_NAME before the release proceeds.
+readonly JAMSESH_PLUGIN_VERSION="v0.1.0"
+
+log() {
+  if [[ -n "${JAMSESH_PLUGIN_VERBOSE:-}" ]]; then
+    printf 'jamsesh-wrapper: %s\n' "$*" >&2
+  fi
+}
+
+die() { printf 'jamsesh-wrapper: %s\n' "$*" >&2; exit 1; }
+
+# ── 1. Dev override ──────────────────────────────────────────────────────────
+if [[ -n "${JAMSESH_BIN_OVERRIDE:-}" ]]; then
+  [[ -x "${JAMSESH_BIN_OVERRIDE}" ]] || die "JAMSESH_BIN_OVERRIDE=${JAMSESH_BIN_OVERRIDE} is not executable"
+  exec "${JAMSESH_BIN_OVERRIDE}" "$@"
+fi
+
+# ── 2. Resolve version + owner ───────────────────────────────────────────────
+version="${JAMSESH_PLUGIN_VERSION_OVERRIDE:-${JAMSESH_PLUGIN_VERSION}}"
+owner="${JAMSESH_PLUGIN_OWNER:-nklisch}"
+
+# ── 3. Detect OS / arch ──────────────────────────────────────────────────────
+uname_s=$(uname -s)
+uname_m=$(uname -m)
+case "${uname_s}" in
+  Linux)                os=linux;   ext='' ;;
+  Darwin)               os=darwin;  ext='' ;;
+  MINGW*|MSYS*|CYGWIN*) os=windows; ext='.exe' ;;
+  *) die "unsupported OS: ${uname_s}" ;;
+esac
+case "${uname_m}" in
+  x86_64|amd64)  arch=amd64 ;;
+  arm64|aarch64) arch=arm64 ;;
+  *) die "unsupported arch: ${uname_m}" ;;
+esac
+[[ "${os}" == "windows" && "${arch}" == "arm64" ]] && die "no jamsesh release for windows-arm64"
+
+binary_name="jamsesh-${os}-${arch}${ext}"
+
+# ── 4. Cache hit? ────────────────────────────────────────────────────────────
+cache_dir="${CLAUDE_PLUGIN_DATA:-${HOME}/.cache/jamsesh}/bin"
+cached="${cache_dir}/jamsesh-${version}-${os}-${arch}${ext}"
+if [[ -x "${cached}" ]]; then
+  log "cache hit: ${cached}"
+  exec "${cached}" "$@"
+fi
+
+# ── 5. Cache miss — download, verify, install ────────────────────────────────
+mkdir -p "${cache_dir}"
+log "fetching ${binary_name} ${version} from github.com/${owner}/jamsesh"
+
+# Use a tmpdir adjacent to the cache dir so the final mv is on the same
+# filesystem and therefore atomic. Using /tmp risks a cross-fs copy+unlink.
+tmpdir="${cache_dir}/.tmp.$$"
+mkdir -p "${tmpdir}"
+trap 'rm -rf "${tmpdir}"' EXIT
+
+release_url="https://github.com/${owner}/jamsesh/releases/download/${version}"
+
+curl -fsSL "${release_url}/${binary_name}" \
+  -o "${tmpdir}/${binary_name}" \
+  || die "download failed: ${release_url}/${binary_name}"
+
+curl -fsSL "${release_url}/checksums.txt" \
+  -o "${tmpdir}/checksums.txt" \
+  || die "download failed: ${release_url}/checksums.txt"
+
+# sha256 verify
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    die "neither sha256sum nor shasum found on PATH"
+  fi
+}
+
+# checksums.txt uses GNU sha256sum format: "<hash>  <file>" or "<hash>  *<file>"
+# The awk pattern handles both GNU (space-prefix) and BSD (asterisk-prefix) forms.
+expected=$(awk -v f="${binary_name}" '$2 == f || $2 == ("*" f) { print $1; exit }' "${tmpdir}/checksums.txt")
+[[ -n "${expected}" ]] || die "${binary_name} not found in checksums.txt"
+
+actual=$(sha256_of "${tmpdir}/${binary_name}")
+[[ "${expected}" == "${actual}" ]] \
+  || die "sha256 mismatch for ${binary_name}: want ${expected}, got ${actual}"
+log "sha256 ok"
+
+# Optional cosign verify-blob (skipped silently if cosign not on PATH)
+if command -v cosign >/dev/null 2>&1; then
+  bundle_name="${binary_name}.sigstore.json"
+  if curl -fsSL "${release_url}/${bundle_name}" -o "${tmpdir}/${bundle_name}" 2>/dev/null; then
+    cosign verify-blob \
+      --bundle "${tmpdir}/${bundle_name}" \
+      --certificate-identity-regexp \
+        "https://github.com/${owner}/jamsesh/.github/workflows/release.yml@refs/tags/${version}" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+      "${tmpdir}/${binary_name}" >/dev/null 2>&1 \
+      || die "cosign verification failed for ${binary_name}"
+    log "cosign verified"
+  else
+    log "no sigstore bundle published for ${binary_name} (sha256 already validated; continuing)"
+  fi
+fi
+
+# Atomic install — mv within the same filesystem as the cache dir
+chmod +x "${tmpdir}/${binary_name}"
+mv "${tmpdir}/${binary_name}" "${cached}"
+log "installed at ${cached}"
+
+exec "${cached}" "$@"
