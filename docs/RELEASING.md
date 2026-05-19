@@ -1,0 +1,175 @@
+# Releasing jamsesh
+
+This is the maintainer reference for cutting a release. Self-hosters and end
+users do not need this document — see [SELF_HOST.md](SELF_HOST.md) and the
+[README quickstart](../README.md) instead.
+
+---
+
+## Overview
+
+Releases are git tags of the form `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`). Pushing
+a `v*` tag to GitHub triggers `.github/workflows/release.yml`, which:
+
+1. Cross-compiles `portal` and `jamsesh` binaries for 5 OS/arch combos
+   (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) —
+   10 binaries total.
+2. Signs every binary with cosign keyless OIDC (Fulcio + Rekor), producing
+   `<binary>.sigstore.json` bundles.
+3. Generates an SPDX SBOM covering the `dist/` tree.
+4. Generates and signs a `checksums.txt` over the binaries.
+5. Attests SLSA Build Level 3 provenance over the binary subjects.
+6. Creates a GitHub Release tagged `v<version>` with all artifacts attached.
+7. Builds and pushes the multi-arch `ghcr.io/<owner>/jamsesh` Docker image
+   with semver tags + `latest`, signed via cosign.
+8. Publishes the Claude Code plugin to the `<owner>/jamsesh-cc-plugin`
+   marketplace repository (plugin source + per-arch `jamsesh` binaries +
+   matching git tag).
+
+The substrate's release-deploy skill (`/agile-workflow:release-deploy`)
+handles steps the maintainer takes locally before pushing the tag —
+binding items to the release, running the quality gates, drafting the
+CHANGELOG entry. That skill is documented in
+`.work/CONVENTIONS.md`.
+
+---
+
+## Cutting a release
+
+1. **Drain the queue.** Every item bound to the upcoming release must be at
+   `stage: done` before the tag pushes. Run
+   `/agile-workflow:release-deploy <version>` to bind items, run gates,
+   and walk to the readiness halt.
+
+2. **Confirm the CHANGELOG entry.** `release-deploy` drafts `CHANGELOG.md`
+   from the bound items + their commits. Review and edit before approving.
+
+3. **Push the tag.** `release-deploy`'s ship phase tags and pushes
+   `v<version>` to `origin`, which triggers `release.yml`. If you're
+   doing this manually:
+
+   ```bash
+   git tag -a v0.X.0 -m "Release v0.X.0"
+   git push origin main          # ensure remote has the commits the tag points at
+   git push origin v0.X.0        # triggers the release workflow
+   ```
+
+4. **Watch the workflow.** Real-time view:
+
+   ```bash
+   gh run watch
+   ```
+
+   Or list recent runs of the release workflow:
+
+   ```bash
+   gh run list --workflow=release.yml --limit 5
+   ```
+
+5. **Verify the release.** Once `release.yml` finishes:
+
+   ```bash
+   gh release view v0.X.0
+   ```
+
+   The output lists every artifact uploaded, including the `.sigstore.json`
+   signature bundles for each binary, the SBOM, and the signed
+   `checksums.txt`.
+
+---
+
+## One-time bootstrap: marketplace plugin repo
+
+The `publish plugin to marketplace repo` job in `release.yml` mirrors the
+Claude Code plugin (manifest, hooks, skills, `.mcp.json`, per-arch
+`jamsesh` binaries) into a dedicated repo so it can be installed via
+Claude Code's marketplace flow. The job assumes the marketplace repo
+already exists.
+
+If you're cutting your **first** release, run this bootstrap once before
+pushing the tag:
+
+1. **Create the marketplace repo on GitHub.**
+
+   ```bash
+   gh repo create <owner>/jamsesh-cc-plugin \
+     --public \
+     --description "Claude Code plugin package for jamsesh (mirrored from the main repo)"
+   ```
+
+   The `<owner>` defaults to the same owner as the `jamsesh` repo. To
+   override, set `vars.MARKETPLACE_OWNER` in the jamsesh repo's
+   Actions configuration — the workflow reads it.
+
+2. **Generate a deploy key with write access.**
+
+   ```bash
+   ssh-keygen -t ed25519 -f marketplace_deploy_key -C "jamsesh release bot"
+   ```
+
+   This emits `marketplace_deploy_key` (private) and
+   `marketplace_deploy_key.pub` (public). The private key is the secret
+   the workflow uses; the public key is registered on the marketplace
+   repo.
+
+3. **Register the public key as a write-enabled deploy key on the
+   marketplace repo.**
+
+   ```bash
+   gh repo deploy-key add marketplace_deploy_key.pub \
+     --repo <owner>/jamsesh-cc-plugin \
+     --title "jamsesh release bot" \
+     --allow-write
+   ```
+
+4. **Add the private key as a secret on the jamsesh repo.**
+
+   ```bash
+   gh secret set MARKETPLACE_DEPLOY_KEY \
+     --repo <owner>/jamsesh \
+     < marketplace_deploy_key
+   ```
+
+5. **Delete the local key files.** They no longer need to exist on disk.
+
+   ```bash
+   shred -u marketplace_deploy_key marketplace_deploy_key.pub
+   ```
+
+6. **(Optional) Seed an initial README on the marketplace repo.** The
+   release workflow overwrites the plugin contents but leaves a
+   `README.md` untouched if present. A short README explaining "this is
+   a mirror of `<owner>/jamsesh`, do not commit here" helps drive-by
+   visitors back to the main repo.
+
+7. **Re-trigger any release that failed only on the marketplace step.**
+   If the marketplace job is the only one that failed for an
+   already-tagged release (e.g. `v0.1.0` was tagged before the
+   bootstrap above completed), re-run just that job:
+
+   ```bash
+   gh run rerun <run-id> --failed
+   ```
+
+   The run-id comes from `gh run list --workflow=release.yml --limit 5`.
+   The job is idempotent; re-running on the same tag updates the
+   marketplace repo without creating a duplicate tag.
+
+---
+
+## Verifying release signatures (for users)
+
+Self-hosters verifying a downloaded binary should follow the cosign
+instructions in [SELF_HOST.md](SELF_HOST.md). Maintainers should
+manually verify at least one binary per release before announcing it:
+
+```bash
+cosign verify-blob \
+  --bundle portal-linux-amd64.sigstore.json \
+  --certificate-identity-regexp 'https://github.com/<owner>/jamsesh/.github/workflows/release.yml@refs/tags/v0.X.0' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  portal-linux-amd64
+```
+
+A green verification confirms the binary was built by `release.yml` on a
+tag push and signed by the Fulcio+Rekor keyless chain.
