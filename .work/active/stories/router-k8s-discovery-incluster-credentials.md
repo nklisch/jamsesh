@@ -1,7 +1,7 @@
 ---
 id: router-k8s-discovery-incluster-credentials
 kind: story
-stage: review
+stage: done
 tags: [infra, portal]
 parent: null
 depends_on: []
@@ -96,3 +96,24 @@ Read-on-request via `tokenInjectingRoundTripper`. On each `RoundTrip` call the w
 ### RBAC docs location
 
 `docs/SELF_HOST.md` §14 "Kubernetes deployment" — the RBAC manifest block was updated from `resources: ["pods"]` to `resources: ["endpoints"]` with verbs `get`, `list`, `watch`. The malformed `roleBinding:` key was corrected to `roleRef:`. The `serviceAccountName` comment in the router Deployment was also updated.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: Read-on-request for token rotation adds an `os.ReadFile` per
+Endpoints request. For long-lived watch streams this is rare and negligible;
+for the initial list it's a few ms. Worth keeping in mind if router-startup
+latency ever becomes a focus, but a goroutine-refresh design wouldn't really
+help (the kubelet rotates infrequently, ~hourly).
+
+**Notes**: Solid implementation. Read-on-request rotation is the right design
+trade-off — simpler than goroutine refresh, no synchronization needed, OS
+rename-then-read atomicity guarantees a clean swap. The `MountPath` override
+in `K8sInClusterOptions` made the test truly exercise file rotation rather
+than mocking `os.ReadFile`. The bonus fix to `docs/SELF_HOST.md` §14 (RBAC
+verbs `pods → endpoints` and `roleBinding: → roleRef:`) corrects YAML that
+would not have applied as-shipped — adjacent-scope but unambiguously correct
+and worth landing in the same commit.
