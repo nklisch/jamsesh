@@ -99,6 +99,7 @@ shutdown_grace_s: 10
 func TestValidate(t *testing.T) {
 	base := config.Config{
 		Bind:                 ":8080",
+		DiscoveryMode:        config.DiscoveryStatic,
 		StaticPods:           []string{"pod1:8080"},
 		Vnodes:               150,
 		ProbeInterval:        5 * time.Second,

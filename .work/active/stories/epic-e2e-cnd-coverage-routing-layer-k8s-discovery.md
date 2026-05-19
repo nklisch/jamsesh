@@ -1,14 +1,14 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-k8s-discovery
 kind: story
-stage: implementing
+stage: review
 tags: [e2e-test, testing, portal, infra]
 parent: null
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
 release_binding: null
 gate_origin: null
 created: 2026-05-17
-updated: 2026-05-17
+updated: 2026-05-18
 ---
 
 # Routing Layer — Golden: K8s Discovery (Deferred)
@@ -51,3 +51,73 @@ Promote from backlog when:
 - The test must run with `KUBECONFIG` pointed at a fake server or with the
   router configured to use the in-cluster rest.Config override — see
   `internal/router/discovery/k8s.go` for config entry points.
+
+## Implementation notes
+
+### Fixture choice: hand-rolled httptest.Server (no WireMock, no client-go)
+
+`client-go` is not in `go.mod` and would pull hundreds of indirect
+dependencies. A plain `httptest.Server` with two route handlers (list +
+watch) is ~120 lines and exactly sufficient. WireMock was not used — the
+hand-rolled approach is lighter still.
+
+### What was implemented
+
+**Production code added:**
+
+- `internal/router/discovery/k8s.go` — `K8sDiscoverer` that polls
+  `GET /api/v1/namespaces/<ns>/endpoints/<svc>` for the initial state,
+  opens a long-poll watch stream via `?watch=true&resourceVersion=<rv>`,
+  processes `ADDED`/`MODIFIED`/`DELETED` events, and re-lists after a
+  configurable `ResyncInterval` (default 30 s). No client-go — plain
+  `net/http` + `bufio.Scanner`. Config injected via `K8sConfig` struct
+  (includes `HTTPClient` override for tests).
+
+- `internal/router/config/config.go` — `DiscoveryMode` type,
+  `DiscoveryStatic`/`DiscoveryKubernetes` constants, new `Kube*` config
+  fields, env-var bindings (`JAMSESH_ROUTER_DISCOVERY_MODE`,
+  `JAMSESH_ROUTER_KUBE_*`), and updated `Validate()` that gates on mode.
+
+- `cmd/jamsesh-router/main.go` — switch on `cfg.DiscoveryMode` to wire
+  either the static or k8s discoverer.
+
+**Test added:**
+
+- `cmd/jamsesh-router/k8s_discovery_test.go` — `TestRouter_K8sDiscovery_NewPodPickedUp` (package main):
+  - `k8sStub`: `httptest.Server` serving the Endpoints list and long-poll
+    watch stream with `resourceVersion` bookkeeping.
+  - Phase 1: announces IPs `10.0.0.1` and `10.0.0.2`; asserts discovery
+    publishes both within 10 s.
+  - Phase 2: calls `SetIPs` to add `10.0.0.3`; asserts discovery publishes
+    `10.0.0.3:8443` within a **15 s SLO**.
+  - Test exercises `discovery.K8s` directly (not via `runCtx`) — the
+    production discoverer is the code under test; the ring integration is
+    covered by static-mode e2e tests.
+
+### SLO trade-off
+
+The `ResyncInterval` in the test is set to 3 s (`JAMSESH_ROUTER_KUBE_RESYNC_INTERVAL_S=5`
+for `runCtx` path; `3 * time.Second` passed directly when testing the
+discoverer). The test takes ~3 s because the watch event is delivered almost
+immediately, but the first resync settles at 3 s. The SLO ceiling of 15 s
+gives >4× margin. The production default (30 s) is fine; the short resync
+is test-only via `K8sConfig.ResyncInterval`.
+
+### client-go quirks: none
+
+No client-go used. The discoverer uses `bufio.Scanner` on a chunked HTTP
+response body, which is exactly what the long-poll watch stream delivers.
+Watch reconnect on error or resync timeout is handled by the outer loop in
+`k8sDiscoverer.Run`.
+
+### Verification status
+
+All tests pass:
+
+```
+ok  jamsesh/cmd/jamsesh-router      3.28s
+ok  jamsesh/internal/router/config  0.00s
+ok  jamsesh/internal/router/discovery 0.59s
+```
+
+`go build ./...` clean.

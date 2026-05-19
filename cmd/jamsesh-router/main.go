@@ -125,23 +125,42 @@ func runCtx(ctx context.Context, args []string) int {
 		Metrics: metricsReg,
 	}
 
-	// Seed the ring from static config.
-	pods := make([]ring.Pod, 0, len(cfg.StaticPods))
-	for _, addr := range cfg.StaticPods {
-		pods = append(pods, ring.Pod{
-			ID:      addr, // use address as stable ID for static mode
-			Address: addr,
+	var disc discovery.Discoverer
+	switch cfg.DiscoveryMode {
+	case config.DiscoveryKubernetes:
+		slog.Info("jamsesh-router: using kubernetes discovery",
+			"api_server", cfg.KubeAPIServerURL,
+			"namespace", cfg.KubeNamespace,
+			"service", cfg.KubeServiceName,
+			"pod_port", cfg.KubePodPort,
+		)
+		disc = discovery.K8s(discovery.K8sConfig{
+			APIServerURL:   cfg.KubeAPIServerURL,
+			Namespace:      cfg.KubeNamespace,
+			ServiceName:    cfg.KubeServiceName,
+			PodPort:        cfg.KubePodPort,
+			BearerToken:    cfg.KubeBearerToken,
+			ResyncInterval: time.Duration(cfg.KubeResyncIntervalS) * time.Second,
 		})
-	}
-	r.SetPods(pods)
-	metricsReg.RouterRingRebalancesTotal.Inc()
-	metricsReg.RouterRingSize.Set(float64(len(pods)))
-	slog.Info("ring seeded from static config", "pod_count", len(pods))
+	default: // DiscoveryStatic
+		// Seed the ring from static config immediately so the first request
+		// doesn't race against the first discovery tick.
+		pods := make([]ring.Pod, 0, len(cfg.StaticPods))
+		for _, addr := range cfg.StaticPods {
+			pods = append(pods, ring.Pod{
+				ID:      addr, // use address as stable ID for static mode
+				Address: addr,
+			})
+		}
+		r.SetPods(pods)
+		metricsReg.RouterRingRebalancesTotal.Inc()
+		metricsReg.RouterRingSize.Set(float64(len(pods)))
+		slog.Info("ring seeded from static config", "pod_count", len(pods))
 
-	// Start the static discovery loop to evict dead pods from the ring.
-	// The loop probes all configured backends every cfg.ProbeInterval and
-	// calls ring.SetPods atomically when the healthy set changes.
-	disc := discovery.Static(cfg.StaticPods, probe, cfg.ProbeInterval)
+		disc = discovery.Static(cfg.StaticPods, probe, cfg.ProbeInterval)
+	}
+
+	// Start the discovery loop.
 	go func() {
 		if err := disc.Run(ctx, publishWithMetrics(r.SetPods)); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("jamsesh-router: discovery loop exited unexpectedly", "err", err)
