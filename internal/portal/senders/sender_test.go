@@ -26,12 +26,28 @@ func TestNew_UnknownProvider_ReturnsError(t *testing.T) {
 }
 
 // TestNew_EmptyFrom_ReturnsError verifies that setting a provider without a
-// from address still fails fast — the "disabled" path only triggers when
-// BOTH provider and from are unset.
+// from address still fails fast — the "disabled" path triggers when Provider
+// is unset (regardless of From), so partial misconfiguration (Provider set,
+// From missing) must still error fast.
 func TestNew_EmptyFrom_ReturnsError(t *testing.T) {
 	_, err := senders.New(config.EmailConfig{Provider: "smtp"})
 	if err == nil {
 		t.Fatal("want error for empty from with provider set, got nil")
+	}
+}
+
+// TestNew_FromSetProviderEmpty_ReturnsDisabledSender verifies that a stray
+// From value without a Provider does NOT force a "unknown provider" error —
+// Provider is the on/off switch. This covers the test-fixture case where
+// JAMSESH_EMAIL_FROM is always set but JAMSESH_EMAIL_PROVIDER may not be.
+func TestNew_FromSetProviderEmpty_ReturnsDisabledSender(t *testing.T) {
+	s, err := senders.New(config.EmailConfig{From: "noreply@example.com"})
+	if err != nil {
+		t.Fatalf("want disabled sender (no error) when Provider is unset, got: %v", err)
+	}
+	sendErr := s.Send(context.Background(), "u@example.com", "subj", "body")
+	if !errors.Is(sendErr, senders.ErrMagicLinkNotEnabled) {
+		t.Errorf("Send: want errors.Is(err, ErrMagicLinkNotEnabled), got %v", sendErr)
 	}
 }
 

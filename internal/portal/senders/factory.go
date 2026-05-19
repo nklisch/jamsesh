@@ -29,9 +29,12 @@ func (disabledSender) Send(_ context.Context, _, _, _ string) error {
 // Adding a fifth provider is: a new *Sender file + a new case here. Nothing
 // else needs to change.
 func New(cfg config.EmailConfig) (Sender, error) {
-	// Entirely unconfigured — no provider, no from address. Return the
-	// disabled sender so magic-link-free deployments start cleanly.
-	if cfg.Provider == "" && cfg.From == "" {
+	// Provider is the on/off switch for email. When empty, magic-link delivery
+	// is disabled regardless of any partially-set email fields — From is only
+	// meaningful when a Provider is selected. This lets OAuth-only and no-auth
+	// deployments start cleanly, and keeps stray JAMSESH_EMAIL_FROM values
+	// (e.g. test fixtures) from forcing a misleading "unknown provider" error.
+	if cfg.Provider == "" {
 		return disabledSender{}, nil
 	}
 
