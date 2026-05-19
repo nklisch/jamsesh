@@ -1,5 +1,88 @@
 # Changelog
 
+## v0.1.1
+
+Released 2026-05-19. Operator-experience release: self-host quickstart
+template, wrapper-script plugin distribution, OAuth-only deployments now
+work, and the e2e quickstart workflow goes green again.
+
+### Features
+
+- **Self-host quickstart template** — `deploy/compose/` ships a turn-key
+  `docker-compose.yml` + `.env.example` + `Caddyfile` + `README.md` bundle for
+  single-node operators. SQLite default, Postgres opt-in via `--profile
+  postgres`. Caddy auto-LE TLS sidecar. Operator workflow: clone → edit two
+  env vars → `docker compose up -d`. Documented in `docs/SELF_HOST.md` §1.0
+  as the recommended starting point.
+- **Wrapper-script plugin distribution** — `bin/jamsesh` is now a bash
+  wrapper that downloads the matching per-arch portal-client binary from the
+  release's GitHub assets on first invocation, verifies sha256 against the
+  signed `checksums.txt`, optionally validates the Sigstore cosign bundle
+  when `cosign` is on PATH, caches at `${CLAUDE_PLUGIN_DATA}/bin/`, and
+  execs. Same pattern as `gh extension install`. The previous mirror-repo
+  pattern (`<owner>/jamsesh-cc-plugin`) is retired — `release.yml` no
+  longer publishes to a separate marketplace repo; the Claude Code plugin
+  installs directly from `nklisch/jamsesh`.
+- **`deploy/compose/.env.example` `JAMSESH_VERSION` pin** — pinned to `v0.1.1`
+  for reproducible operator deploys. Bumped per release.
+
+### Fixes
+
+- **Portal starts cleanly without email configured** — `senders.New` no
+  longer hard-fails at init when `email.from` is empty. `Provider == ""`
+  triggers the new `disabledSender` (returns `ErrMagicLinkNotEnabled` on
+  send), letting OAuth-only and no-auth deployments boot. Magic-link
+  requests against a portal without email configured return
+  `400 auth.magic_link_not_enabled`. Invite emails skip silently when the
+  sender is disabled; the invite is still created and returned for the
+  host to share manually.
+- **`/readyz` storage check passes from a fresh install** — portal
+  `MkdirAll(cfg.Storage)` (best-effort) at startup so the readiness probe
+  doesn't return 503 until the first push lazily creates session-repo
+  parent dirs. Logs and continues on permission denied so it doesn't mask
+  other fail-fast paths.
+- **`<owner>` placeholder replaced with `nklisch`** across `docs/`,
+  `README.md`, `deploy/compose/`, `Caddyfile`. The previous placeholder
+  meant a fresh-clone operator setup would deploy a non-existent
+  `ghcr.io/<owner>/jamsesh` image; now the default Just Works.
+- **Quickstart CI workflow green** — `JAMSESH_EMAIL_FROM` added to the
+  workflow env (it was masked by the email-init issue above; the
+  workflow-side workaround is the canary that lets us drop the env var
+  once a future release removes the underlying require).
+- **Clustered mode: git smart-HTTP hydration** — git operations on a pod
+  that didn't handle the session-create call now hydrate the bare repo
+  from object storage via `LifecycleManager.AcquireForRequest` before
+  serving. Previously all peer-pod git operations returned 500. This
+  closes the largest cluster of e2e failures from v0.1.0.
+- **CI release pipeline** — `release.yml` `marketplace:` job deleted; new
+  version-assertion step in `sign-and-release` fails the release fast if
+  `bin/jamsesh`'s `JAMSESH_PLUGIN_VERSION` constant doesn't match the
+  pushed tag. The wrapper binary's pinned version is now part of the
+  release contract.
+
+### Internal
+
+- Release process updated in `docs/RELEASING.md`: "Cutting a release"
+  steps 1–6 now include both the compose-template and wrapper-binary
+  version bumps; deleted the "One-time bootstrap: marketplace plugin
+  repo" section entirely (no longer applicable).
+- `docs/SECURITY.md` §"Supply chain and integrity" reworded to describe
+  GitHub-release-asset distribution + wrapper-time `bin/jamsesh`
+  verification instead of the retired marketplace-repo flow.
+
+### Known issues
+
+- **Clustered-mode e2e tests** (chaos, fuzz, several failure-mode and
+  golden tests) remain red. Single-mode is unaffected. Tracked as
+  follow-ups: parsed in this session's substrate as
+  `bug-receive-pack-report-status-sideband-wrapping` (concrete protocol
+  fix for `TestObjectStorageRPO0`-class failures) plus broader
+  clustered-mode lease-on-API and fixture-timing work. Self-host operators
+  running single-mode (the documented default) see no impact.
+- **`bin/jamsesh` regression-test harness** — the wrapper has no
+  automated test suite yet. Tracked as
+  `testing-bin-jamsesh-regression-harness`.
+
 ## v0.1.0
 
 Released 2026-05-18. Initial release.

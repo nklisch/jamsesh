@@ -17,7 +17,7 @@ set -euo pipefail
 
 # Bumped on every release tag (see docs/RELEASING.md). The CI workflow
 # asserts this matches GITHUB_REF_NAME before the release proceeds.
-readonly JAMSESH_PLUGIN_VERSION="v0.1.0"
+readonly JAMSESH_PLUGIN_VERSION="v0.1.1"
 
 log() {
   if [[ -n "${JAMSESH_PLUGIN_VERBOSE:-}" ]]; then

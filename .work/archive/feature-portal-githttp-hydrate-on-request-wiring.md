@@ -1,7 +1,7 @@
 ---
 id: feature-portal-githttp-hydrate-on-request-wiring
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, clustered, git]
 parent: feature-portal-githttp-hydrate-on-request
 depends_on: []

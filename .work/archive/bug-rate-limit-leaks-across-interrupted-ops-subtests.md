@@ -1,7 +1,7 @@
 ---
 id: bug-rate-limit-leaks-across-interrupted-ops-subtests
 kind: story
-stage: review
+stage: done
 tags: [bug, auth, ratelimit, e2e-test]
 parent: null
 depends_on: []

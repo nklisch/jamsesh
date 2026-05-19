@@ -1,7 +1,7 @@
 ---
 id: feature-cc-plugin-wrapper-binary-fetch-script
 kind: story
-stage: review
+stage: done
 tags: [infra, plugin]
 parent: feature-cc-plugin-wrapper-binary-fetch
 depends_on: []

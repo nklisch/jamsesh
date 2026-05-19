@@ -1,7 +1,7 @@
 ---
 id: bug-router-503-readyz-evicts-seeded-ring
 kind: story
-stage: review
+stage: done
 tags: [bug, router, discovery, e2e-chaos]
 parent: null
 depends_on: []

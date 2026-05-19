@@ -1,7 +1,7 @@
 ---
 id: feature-cc-plugin-wrapper-binary-fetch
 kind: feature
-stage: review
+stage: done
 tags: [infra, plugin]
 parent: null
 depends_on: []
@@ -550,3 +550,23 @@ a placeholder. No semantic deviation.
   assets" and `bin/jamsesh` wrapper-time verification.
 - Full repo grep for `jamsesh-cc-plugin|MARKETPLACE_DEPLOY_KEY|marketplace repo`
   in `docs/` and `.github/workflows/`: empty.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+
+**Important** (filed as backlog):
+- **`bin/jamsesh` has no regression-test harness.** The wrapper is the plugin's runtime trust boundary; a future edit that breaks sha256 verification, the awk pattern, the curl flow, or the env-var overrides won't surface until a user hits the broken path in the field. A small bats/shellspec suite covering happy path, warm cache, sha256 mismatch, unsupported OS, all three override env vars, cosign presence/absence, stdout cleanliness, and tmpdir cleanup would close the gap. Filed as backlog item `testing-bin-jamsesh-regression-harness` with full test-matrix specified.
+
+**Nits** (inline-fixed):
+- **tmpdir leak after exec**: the wrapper's `EXIT` trap doesn't fire because `exec "${cached}" "$@"` replaces the bash process before bash gets to run trap handlers. Every cold-cache fetch left an orphan `${cache_dir}/.tmp.<pid>` directory containing `checksums.txt` (and possibly a sigstore bundle). Inline-fixed by explicit `rm -rf "${tmpdir}"; trap - EXIT` immediately before `exec`. Verified: cold-cache run now leaves no orphan tmpdirs.
+
+**Notes**:
+- **Correctness**: walked the script line-by-line. OS/arch detection handles MINGW/MSYS/CYGWIN for Git Bash on Windows; `[[ ]] && die` short-circuit pattern is safe under `set -e` (bash exempts AND/OR list non-final commands from errexit). `curl -fsSL` exit 22 on HTTP errors propagates correctly through `|| die`. sha256 string comparison is case-correct (both `sha256sum` and `shasum` emit lowercase). The cosign optional path fails closed when a bundle exists but verification fails (correct).
+- **Stdout cleanliness verified**: all logs go to stderr via `printf … >&2`; the wrapper's stdout is exactly the cached binary's stdout. `.mcp.json` `headersHelper` parsing is safe.
+- **Foundation-doc alignment**: SECURITY.md §"Supply chain and integrity" updated to describe GH-release-asset distribution + wrapper-time verification. RELEASING.md §"One-time bootstrap: marketplace plugin repo" deleted entirely. SPEC.md §"Local client" unchanged (the wrapper is still at `bin/jamsesh`, contract preserved). README.md addition deferred to backlog item `docs-readme-cc-plugin-install-instructions` (need to verify exact CC slash commands first). The "mirror" string still appears in SPEC.md and SELF_HOST.md but those references are to object-storage mirroring in clustered mode, not the deleted plugin mirror — not drift.
+- **Security**: wrapper does mandatory sha256 + optional fail-closed cosign + atomic install. Dev-mode `JAMSESH_BIN_OVERRIDE` skips verification but is opt-in and clearly documented. No silent-degrade paths.
+- **Breaking change**: distribution model changed (mirror repo → main repo + release-asset fetch). Intentional; mirror was already deleted by user; documented.
+- **Test integrity**: no existing tests modified or weakened. Wrapper has no test harness yet — filed as the Important backlog item above.

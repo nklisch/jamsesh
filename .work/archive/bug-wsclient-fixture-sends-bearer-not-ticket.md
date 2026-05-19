@@ -1,7 +1,7 @@
 ---
 id: bug-wsclient-fixture-sends-bearer-not-ticket
 kind: story
-stage: review
+stage: done
 tags: [bug, websocket, e2e-test, auth]
 parent: null
 depends_on: []

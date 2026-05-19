@@ -1,7 +1,7 @@
 ---
 id: feature-portal-githttp-hydrate-on-request
 kind: feature
-stage: implementing
+stage: done
 tags: [bug, portal, clustered, git]
 parent: null
 depends_on: []
