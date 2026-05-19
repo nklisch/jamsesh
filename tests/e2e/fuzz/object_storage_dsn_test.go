@@ -282,6 +282,13 @@ func TestObjectStorageDSNFuzz(t *testing.T) {
 		seed := seed // capture
 		t.Run(fmt.Sprintf("seed_%02d_%s", i, sanitizeDSNName(seed.Description)), func(t *testing.T) {
 			t.Parallel()
+			// Docker/runc rejects env vars containing NUL bytes before the
+			// portal binary even runs (OCI runtime error). NUL-containing
+			// DSN parsing is a unit-test concern, not an e2e-via-container
+			// concern; skip here and rely on dedicated unit coverage.
+			if strings.ContainsRune(seed.URL, 0) {
+				t.Skipf("DSN contains NUL byte; cannot pass via container env (see seed %q)", seed.Description)
+			}
 			c, logs := startDSNPortal(ctx, t, pg.ContainerDSN, seed.URL)
 			checkDSNOutcome(ctx, t, c, logs, seed.Description, seed.URL)
 		})
@@ -313,6 +320,11 @@ func TestObjectStorageDSNFuzz(t *testing.T) {
 		rawURL := generateRandomObjectStorageURL(rng)
 		t.Run(fmt.Sprintf("rand_%04d", i), func(t *testing.T) {
 			t.Parallel()
+			// See seed-loop comment: NUL bytes are blocked at the container
+			// runtime layer, not by the portal parser. Skip.
+			if strings.ContainsRune(rawURL, 0) {
+				t.Skipf("randomly generated DSN contains NUL byte; cannot pass via container env")
+			}
 			c, logs := startDSNPortal(ctx, t, pg.ContainerDSN, rawURL)
 			checkDSNOutcome(ctx, t, c, logs, fmt.Sprintf("rand_%04d", i), rawURL)
 		})
