@@ -112,6 +112,14 @@ func TestRestValidation(t *testing.T) {
 		EmailFrom: "noreply@example.com",
 		SMTPHost:  mh.ContainerSMTPHost,
 		SMTPPort:  mh.ContainerSMTPPort,
+		// This test exercises REST validation semantics, not the auth rate
+		// limiter. Subtests that hit /auth/magic-link/request share the same
+		// portal process; the 3/min burst budget is exhausted in early
+		// subtests and later subtests fail with 429 instead of the validation
+		// status they actually assert. Disable for isolation. Same pattern
+		// applied in TestInterruptedOps (see
+		// archive/bug-rate-limit-leaks-across-interrupted-ops-subtests).
+		ExtraEnv: map[string]string{"JAMSESH_AUTH_RATE_LIMIT_ENABLED": "false"},
 	})
 
 	// ---------------------------------------------------------------------------

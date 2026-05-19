@@ -400,6 +400,16 @@ func main() {
 		accountsHandler = accounts.New(dbStore, emailSender, cfg.PortalURL)
 	}
 
+	// Ensure the top-level storage directory exists. Without this the /readyz
+	// storage check (os.Stat on cfg.Storage) returns 503 from a fresh install
+	// until the first push lazily creates a session repo's parent dirs —
+	// operator-hostile, and it blocks the router fixture's pre-start
+	// readyz-wait in e2e clustered tests.
+	if err := os.MkdirAll(cfg.Storage, 0o750); err != nil {
+		slog.Error("storage dir create failed", "path", cfg.Storage, "err", err)
+		os.Exit(1)
+	}
+
 	// Build the storage service and git HTTP handler (needed before sessions).
 	// In e2etest builds, inject the advanceable clock so archive timestamps
 	// reflect /test/clock-advance offsets; in production builds the
