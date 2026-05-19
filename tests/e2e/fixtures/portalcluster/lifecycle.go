@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"os/exec"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -134,7 +135,9 @@ func (c *Cluster) LeaseHolder(ctx context.Context, t *testing.T, sessionID strin
 		return -1
 	}
 
-	// Cross-reference holder IPs against pod container IPs.
+	// Cross-reference holder IPs against pod container IPs. Postgres returns
+	// `client_addr::text` in CIDR notation (e.g. "172.17.0.21/32"); strip the
+	// mask suffix before comparing against ContainerIP's bare IPv4/IPv6 string.
 	for i, p := range c.Pods {
 		podIP, err := p.ContainerIP(ctx)
 		if err != nil {
@@ -143,7 +146,11 @@ func (c *Cluster) LeaseHolder(ctx context.Context, t *testing.T, sessionID strin
 			continue
 		}
 		for _, holderAddr := range holderAddrs {
-			if holderAddr == podIP {
+			holderIP, _, ok := strings.Cut(holderAddr, "/")
+			if !ok {
+				holderIP = holderAddr
+			}
+			if holderIP == podIP {
 				return i
 			}
 		}

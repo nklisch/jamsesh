@@ -811,6 +811,16 @@ func main() {
 				// Finalize plan: any session member; the handler validates the
 				// lock_id binding and idle/superseded state.
 				r.Get("/orgs/{orgID}/sessions/{sessionID}/finalize-plan", apiWrapper.GetFinalizePlan)
+
+				// Finalize fetch-token: mints an ephemeral fetch-only token +
+				// pre-composed remote URL for the plugin's HTTPS-fallback path.
+				// Session-membership enforced inside the handler.
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token", apiWrapper.IssueFetchToken)
+
+				// Mark-shipped: caller asserts the cherry-pick script ran;
+				// handler validates lock_id binding and transitions the
+				// session to shipped.
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/mark-shipped", apiWrapper.MarkSessionShipped)
 			})
 		},
 	})

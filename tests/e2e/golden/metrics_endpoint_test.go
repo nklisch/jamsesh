@@ -18,12 +18,21 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"jamsesh/tests/e2e/fixtures/mailhog"
 	"jamsesh/tests/e2e/fixtures/portal"
 	"jamsesh/tests/e2e/fixtures/postgres"
 )
+
+// prometheus/common v0.66+ requires NameValidationScheme to be set before
+// expfmt.TextParser can run; an "unset" scheme panics with
+// "Invalid name validation scheme requested: unset". Set the legacy scheme
+// here so the parser accepts the standard metric/label names the portal emits.
+func init() {
+	model.NameValidationScheme = model.LegacyValidation
+}
 
 func TestMetricsEndpoint(t *testing.T) {
 	const metricsToken = "e2e-metrics-test-token"
