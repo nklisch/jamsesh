@@ -1,7 +1,7 @@
 ---
 id: gate-security-debug-log-redact-tokens
 kind: story
-stage: review
+stage: done
 tags: [security, portal, documentation]
 parent: null
 depends_on: []
@@ -55,3 +55,20 @@ production; consider a redaction pass that strips `?token=`, `?code=`,
 ### Redacted param set
 
 `token`, `code`, `state`, `ticket` (case-insensitive match). Covers magic-link tokens, OAuth authorization codes, OAuth CSRF state, and ticket-based auth flows.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none.
+
+**Notes**: Implementation is precise — pair-by-pair walk avoids re-encoding
+non-sensitive values (a common pitfall with naive `url.ParseQuery` + re-Encode).
+Fallback regex on parse-failure guarantees the function never returns a raw
+token, even for malformed inputs. Both URL-shaped and raw-query inputs handled.
+Param set (`token`, `code`, `state`, `ticket`) is the right conservative cover
+for the project's auth flows (and is consistent with the newly-shipped ws-ticket
+flow). Doc note correctly frames this as defense-in-depth rather than a license
+to enable DEBUG in production.
