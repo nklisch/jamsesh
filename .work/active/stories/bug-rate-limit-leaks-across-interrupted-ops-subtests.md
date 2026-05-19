@@ -1,7 +1,7 @@
 ---
 id: bug-rate-limit-leaks-across-interrupted-ops-subtests
 kind: story
-stage: implementing
+stage: review
 tags: [bug, auth, ratelimit, e2e-test]
 parent: null
 depends_on: []
@@ -109,3 +109,14 @@ e2e rate-limit test is desired, it should be a dedicated test with a fresh porta
 - [ ] All other `TestInterruptedOps` subtests still pass.
 - [ ] No production behavior changes (env var is not set in any non-test context).
 - [ ] The rate-limit unit tests in `internal/portal/ratelimit/` continue to pass.
+
+## Implementation Notes
+
+Env var confirmed as `JAMSESH_AUTH_RATE_LIMIT_ENABLED` (via grep of
+`internal/portal/config/config.go:676` and `internal/portal/ratelimit/store.go:20`).
+The casing assumed in the story body was correct — no discovery needed.
+
+Change made: `tests/e2e/failure/interrupted_ops_test.go:95-104` — added
+`ExtraEnv: map[string]string{"JAMSESH_AUTH_RATE_LIMIT_ENABLED": "false"}` to
+the `portal.Start` call for `TestInterruptedOps`. No production code touched.
+`go vet ./failure/` passes clean.

@@ -98,6 +98,9 @@ func TestInterruptedOps(t *testing.T) {
 		EmailFrom: "noreply@example.com",
 		SMTPHost:  mh.ContainerSMTPHost,
 		SMTPPort:  mh.ContainerSMTPPort,
+		ExtraEnv: map[string]string{
+			"JAMSESH_AUTH_RATE_LIMIT_ENABLED": "false",
+		},
 	})
 
 	// ---------------------------------------------------------------------------
