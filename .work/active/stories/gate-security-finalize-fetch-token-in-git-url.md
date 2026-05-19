@@ -1,7 +1,7 @@
 ---
 id: gate-security-finalize-fetch-token-in-git-url
 kind: story
-stage: review
+stage: done
 tags: [security, portal, plugin]
 parent: null
 depends_on: []
@@ -114,3 +114,24 @@ it is not persisted to `.git/config`.
 
 `make generate-api-go` ran successfully and updated `server.gen.go` with the
 revised description for `FetchTokenResponse.RemoteUrl`.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- **Token echoed to stdout via `runGitVerbose`** (`cmd/jamsesh/finalizecmd/execute.go:116`):
+  the verbose command-line print includes `-c http.extraHeader=Authorization: Bearer <token>`
+  verbatim. This is a new (smaller) leak surface that the original spec didn't
+  cover — the threats it addressed (`.git/config`, `ps -ef`, shell history) are
+  successfully closed, but terminal scrollback and CI captures now see the token.
+  → Item: `finalize-fetch-token-leak-via-rungitverbose-echo`
+
+**Nits**: none.
+
+**Notes**: The primary spec is met cleanly — server returns plain URL + separate
+token field, plugin passes `-c http.extraHeader`, OpenAPI/codegen updated,
+e2e fixture updated, docs updated, both `_HTTPS` and `_HTTP` server tests
+rewritten with the new shape. The follow-up item targets the verbose-echo leak
+specifically rather than re-opening the whole change.
