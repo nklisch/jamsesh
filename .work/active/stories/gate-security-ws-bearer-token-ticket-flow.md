@@ -1,7 +1,7 @@
 ---
 id: gate-security-ws-bearer-token-ticket-flow
 kind: story
-stage: review
+stage: done
 tags: [security, portal, refactor]
 parent: null
 depends_on: []
@@ -152,3 +152,31 @@ accepted trade-off for the in-memory, single-process design.
 In-process clock only — no skew possible. Relevant only if the ticket store
 is ever moved to a shared external store (Redis, Postgres), which is a separate
 story.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Ticket carries a resolved `*store.Account` snapshot rather than the bearer
+  itself, so a bearer revocation between issue and consume (≤60 s) leaves the
+  ticket still valid. Documented as the accepted trade-off; worth revisiting if
+  the project ever gains a stricter "instant revocation" guarantee.
+- `TestTicketStore_ConcurrentConsume` is an empirical check; the actual
+  guarantee is `sync.Map.LoadAndDelete`'s documented atomicity. The test is
+  supplementary, which the implementation notes call out honestly.
+- `TicketStore.Stop()` doesn't drain entries — fine for a 60-second TTL but
+  worth keeping in mind if TTL ever grows.
+
+**Notes**: Excellent execution on a substantial change. The protocol
+discriminator switch (`jamsesh.bearer.` → `jamsesh-ticket.`) is clean and the
+gateway tests explicitly cover RawBearer-rejected and ReusedTicket-rejected
+paths, so the security regression surface is well-fenced. The 7 unrelated test
+files that needed `IssueWsTicket` stub additions (because the new method
+extends `StrictServerInterface`) were all updated rather than commented out.
+SPA pattern (async `open`/`reopen`, fetch ticket before each connection, never
+reuse) matches the security model exactly. PROTOCOL.md / SECURITY.md /
+SELF_HOST.md all updated together so the operator-facing surface is consistent
+with the code.
