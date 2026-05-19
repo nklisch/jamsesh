@@ -1,7 +1,7 @@
 ---
 id: finalize-lock-concurrent-override-race-allows-two-active-locks
 kind: story
-stage: review
+stage: done
 tags: [bug, security, portal]
 parent: null
 depends_on: []
@@ -133,3 +133,34 @@ in `internal/portal/finalize/lock_acquire_test.go`. Test now passes.
 - `go test ./internal/portal/finalize/...` — all pass including
   `TestAcquireFinalizeLock_ConcurrentOverrides_OnlyOneWins`
 - `go test ./internal/...` — all pass
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- If `InsertFinalizeLock` fails for a non-unique-violation reason (e.g. transient
+  DB error) after the prior `ReleaseFinalizeLock` succeeded, the session is
+  briefly lockless rather than retaining the prior holder. This is a minor shift
+  in error-recovery semantics — defensible (the override was in flight, so the
+  prior holder's authority is already questionable), and recoverable on the
+  next acquire. Worth keeping in mind if operators report "lock vanished
+  mid-override" incidents.
+- The `released_at`-now-also-set-on-override behavior means audit readers need
+  to look at both fields together: `(released_at IS NOT NULL AND
+  superseded_by_lock_id IS NULL)` = voluntary release; `(both NOT NULL)` =
+  override. Documented in the implementation notes; consider noting in
+  `docs/ARCHITECTURE.md` finalize section if/when that doc grows a lock-state
+  table.
+
+**Notes**: Pushing the invariant into the schema (unique partial index) is the
+right call — application-only enforcement would have left the race re-openable
+by any future code path. The release-first-then-insert ordering is the
+necessary consequence of the self-FK on `superseded_by_lock_id` combined with
+the new unique index; the agent's analysis traces it cleanly. Stale test
+fixtures (which were modeling now-impossible states) were updated rather than
+silenced. Re-enabled
+`TestAcquireFinalizeLock_ConcurrentOverrides_OnlyOneWins` without modification
+to its assertions.
