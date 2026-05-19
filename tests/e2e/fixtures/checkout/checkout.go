@@ -10,6 +10,7 @@
 package checkout
 
 import (
+	"encoding/base64"
 	"os/exec"
 	"strings"
 	"testing"
@@ -63,13 +64,20 @@ func (s *Sandbox) RunPlan(t *testing.T, planBody, fetchRemote, fetchToken string
 		"JAMSESH_RUNNER_EMAIL=finalize-runner@test.example",
 	)
 	if fetchToken != "" {
-		// Inject the bearer token as a one-shot git config via environment
-		// so the script's `git fetch "$JAMSESH_FETCH_REMOTE"` can
-		// authenticate without embedding the token in the URL.
+		// Inject the token as a one-shot HTTP Basic credential via env so the
+		// script's `git fetch "$JAMSESH_FETCH_REMOTE"` authenticates without
+		// embedding the token in the URL. The portal's /git/* routes use
+		// HTTP Basic (per docs/SPEC.md "One token per user — Basic auth for
+		// git push"); 'Authorization: Bearer ...' is rejected by basicAuth
+		// at 401, which causes git to prompt interactively and CI sees
+		// "could not read Username". base64("x-access-token:<token>") is
+		// the format the portal's tokens.BasicAuthValidator accepts
+		// (username ignored, password = access token).
+		basic := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + fetchToken))
 		env = append(env,
 			"GIT_CONFIG_COUNT=1",
 			"GIT_CONFIG_KEY_0=http.extraHeader",
-			"GIT_CONFIG_VALUE_0=Authorization: Bearer "+fetchToken,
+			"GIT_CONFIG_VALUE_0=Authorization: Basic "+basic,
 		)
 	}
 	cmd.Env = env
