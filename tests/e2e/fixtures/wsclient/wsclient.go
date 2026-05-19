@@ -1,17 +1,21 @@
 // Package wsclient provides a WebSocket client fixture for e2e specs that need
 // to subscribe to a jamsesh portal session's WebSocket event stream.
 //
-// Authentication uses the Sec-WebSocket-Protocol subprotocol mechanism:
+// Authentication uses the two-step ticket flow:
+//  1. POST /api/auth/ws-ticket with Authorization: Bearer <token> to obtain a
+//     short-lived single-use ticket.
+//  2. Dial the WebSocket endpoint with the ticket in the Sec-WebSocket-Protocol
+//     subprotocol header: jamsesh-ticket.<ticket>.
 //
-//	Sec-WebSocket-Protocol: jamsesh.bearer.<token>
-//
-// which is the only reliable auth path for browser WebSocket clients and is
-// the same mechanism used by the production portal gateway.
+// This matches the production gateway's expected authentication protocol.
 package wsclient
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -84,9 +88,47 @@ func ConnectFromSeq(ctx context.Context, t *testing.T, portalURL, sessionID, bea
 	return c
 }
 
-// dial builds the WebSocket URL, opens the connection with the bearer
-// subprotocol, and constructs a Client. It is the single source of truth for
-// auth + URL construction shared by Connect and ConnectFromSeq.
+// fetchWsTicket calls POST /api/auth/ws-ticket with the given bearer token and
+// returns the single-use ticket string. The ticket is valid for 60 seconds and
+// must be consumed immediately by the WebSocket dial that follows.
+func fetchWsTicket(ctx context.Context, t *testing.T, portalURL, bearer string) string {
+	t.Helper()
+
+	ticketURL := portalURL + "/api/auth/ws-ticket"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ticketURL, http.NoBody)
+	if err != nil {
+		t.Fatalf("wsclient: build ws-ticket request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("wsclient: POST %s: %v", ticketURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("wsclient: POST %s: unexpected status %d: %s", ticketURL, resp.StatusCode, body)
+	}
+
+	var ticketResp struct {
+		Ticket           string `json:"ticket"`
+		ExpiresInSeconds int    `json:"expires_in_seconds"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ticketResp); err != nil {
+		t.Fatalf("wsclient: decode ws-ticket response: %v", err)
+	}
+	if ticketResp.Ticket == "" {
+		t.Fatalf("wsclient: ws-ticket response contained empty ticket")
+	}
+	return ticketResp.Ticket
+}
+
+// dial fetches a single-use WS ticket, builds the WebSocket URL, opens the
+// connection with the ticket subprotocol, and constructs a Client. It is the
+// single source of truth for auth + URL construction shared by Connect and
+// ConnectFromSeq.
 //
 // The returned Client has its read loop NOT yet started — the caller is
 // responsible for starting it (typically with `go c.readLoop(c.readCtx)`),
@@ -94,8 +136,9 @@ func ConnectFromSeq(ctx context.Context, t *testing.T, portalURL, sessionID, bea
 func dial(ctx context.Context, t *testing.T, portalURL, sessionID, bearer string) *Client {
 	t.Helper()
 
+	ticket := fetchWsTicket(ctx, t, portalURL, bearer)
 	wsURL := strings.Replace(portalURL, "http://", "ws://", 1) + "/ws/sessions/" + sessionID
-	proto := "jamsesh.bearer." + bearer
+	proto := fmt.Sprintf("jamsesh-ticket.%s", ticket)
 
 	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 		Subprotocols: []string{proto},

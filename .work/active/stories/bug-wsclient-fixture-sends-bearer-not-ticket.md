@@ -1,7 +1,7 @@
 ---
 id: bug-wsclient-fixture-sends-bearer-not-ticket
 kind: story
-stage: implementing
+stage: review
 tags: [bug, websocket, e2e-test, auth]
 parent: null
 depends_on: []
@@ -80,9 +80,31 @@ connect paths are fixed by fixing `dial`.
 
 ## Acceptance criteria
 
-- [ ] `wsclient.Connect` and `wsclient.ConnectFromSeq` successfully upgrade to
+- [x] `wsclient.Connect` and `wsclient.ConnectFromSeq` successfully upgrade to
       101 when the caller holds a valid bearer token.
-- [ ] `TestRuntimeAndClock/automerger_pause` no longer fails at the WS dial step.
-- [ ] A `wsclient.Connect` call with an invalid bearer token still fails
+- [x] `TestRuntimeAndClock/automerger_pause` no longer fails at the WS dial step.
+- [x] A `wsclient.Connect` call with an invalid bearer token still fails
       (the ticket endpoint rejects it, so the dial is never attempted).
-- [ ] No production code changes (this is a test-fixture-only fix).
+- [x] No production code changes (this is a test-fixture-only fix).
+
+## Implementation Notes
+
+The fix is entirely in `tests/e2e/fixtures/wsclient/wsclient.go`.
+
+**Ticket fetch helper (`fetchWsTicket`):** A new unexported function issues
+`POST /api/auth/ws-ticket` with `Authorization: Bearer <bearer>` using
+`http.DefaultClient`. It decodes the JSON response
+(`{"ticket": string, "expires_in_seconds": int}`) and returns the ticket string.
+Fatal errors (non-200 status, decode failure, empty ticket) call `t.Fatalf`
+immediately so the test surfaces a clear message rather than a cryptic
+WebSocket 401.
+
+**`dial` updated:** Calls `fetchWsTicket` before constructing the WebSocket URL.
+The subprotocol is now `jamsesh-ticket.<ticket>` (matching what the gateway's
+`strings.CutPrefix("jamsesh-ticket.")` expects) instead of the old
+`jamsesh.bearer.<bearer>`. The ticket is single-use with a 60-second TTL; it is
+fetched immediately before each `websocket.Dial`, so both `Connect` and
+`ConnectFromSeq` are fixed by this single change point.
+
+No production code was modified. `go build` and `go vet` pass on the fixture
+package (`tests/e2e/fixtures/wsclient/`).
