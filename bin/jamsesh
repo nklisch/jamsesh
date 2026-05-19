@@ -126,4 +126,10 @@ chmod +x "${tmpdir}/${binary_name}"
 mv "${tmpdir}/${binary_name}" "${cached}"
 log "installed at ${cached}"
 
+# Clean up tmpdir before exec: exec replaces this process, so the EXIT
+# trap never fires. Without this, every cold-cache fetch leaves an
+# orphan ${cache_dir}/.tmp.<pid> directory behind.
+rm -rf "${tmpdir}"
+trap - EXIT
+
 exec "${cached}" "$@"
