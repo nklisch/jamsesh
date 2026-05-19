@@ -4,7 +4,7 @@
 
 services:
   portal:
-    image: ghcr.io/${JAMSESH_OWNER:-nklisch}/jamsesh:${JAMSESH_VERSION:-latest}
+    image: ghcr.io/nklisch/jamsesh:${JAMSESH_VERSION:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
