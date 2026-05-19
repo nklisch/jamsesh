@@ -1,0 +1,15 @@
+# Auto-LE for the configured domain. Reverse-proxies to portal:8443 inside
+# the compose network. WebSocket upgrades pass through Caddy's
+# reverse_proxy directive natively.
+{$JAMSESH_DOMAIN} {
+    reverse_proxy portal:8443 {
+        header_up Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}

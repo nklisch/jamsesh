@@ -1,7 +1,7 @@
 ---
 id: feature-docker-compose-self-host-template-template-files
 kind: story
-stage: implementing
+stage: review
 tags: [infra]
 parent: feature-docker-compose-self-host-template
 depends_on: []
@@ -75,3 +75,48 @@ files" section. Key contract points:
   template.
 - The compose file targets Compose v2 spec — no `version:` top-level key
   (deprecated in v2).
+
+## Implementation Notes
+
+### Files created
+
+- `deploy/compose/docker-compose.yml`
+- `deploy/compose/.env.example`
+- `deploy/compose/Caddyfile`
+- `deploy/compose/README.md`
+
+### Deviation from spec: `POSTGRES_PASSWORD` default
+
+The spec shows `POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}` (no default). In
+practice, `docker compose config` emits a "variable is not set. Defaulting to
+a blank string." warning for this var even when the postgres profile is
+inactive, because the postgres service definition is still parsed. The CI
+smoke check in Unit 3 greps for "variable is not set" and would fail on this.
+
+Resolution: changed to `${POSTGRES_PASSWORD:-}` (explicit empty default) with
+an inline comment: `# No default — operators must set POSTGRES_PASSWORD in
+.env.` This suppresses the parse-time warning without providing a real default;
+Postgres will still refuse to start cleanly with an empty password, which is
+the correct operator-facing behaviour.
+
+### Verification output
+
+```
+postgres service present in profile
+postgres service correctly absent from default profile
+Verification passed.
+```
+
+All acceptance criteria confirmed:
+- Four files exist at `deploy/compose/`.
+- `docker compose config` (default) parses cleanly with no unresolved vars.
+- `docker compose --profile postgres config` parses cleanly; postgres service
+  present in merged output.
+- `.env.example` has exactly one uncommented required-edit var (`JAMSESH_DOMAIN`)
+  plus the version pin (`JAMSESH_VERSION=v0.1.0`); every other var is
+  commented.
+- Portal service uses `expose: ["8443"]` only; Caddy publishes `:80`/`:443`.
+- Named volumes: `jamsesh_data`, `caddy_data`, `caddy_config`, `postgres_data`.
+- `caddy.depends_on.portal.condition: service_healthy` confirmed.
+- `README.md` references `../../docs/SELF_HOST.md` and `../../README.md` via
+  relative paths.
