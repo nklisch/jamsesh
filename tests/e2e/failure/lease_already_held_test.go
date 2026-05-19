@@ -426,7 +426,11 @@ func leaseHeldProbeGitEndpoint(
 	if err != nil {
 		t.Fatalf("leaseHeldProbeGitEndpoint: build request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	// The git smart-HTTP path uses HTTP Basic auth with the access token as
+	// password (per docs/SPEC.md "One token per user"). A Bearer header
+	// matches the /api/* convention and is rejected by basicAuth with 401,
+	// masking the lease-contention 503 we're trying to probe.
+	req.SetBasicAuth("x-access-token", accessToken)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

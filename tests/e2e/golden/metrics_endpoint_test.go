@@ -95,7 +95,11 @@ func TestMetricsEndpoint(t *testing.T) {
 
 		// Parse with the Prometheus text parser — this is the non-tautological
 		// assertion. A 200 with a malformed body still means a broken exporter.
-		var parser expfmt.TextParser
+		// NewTextParser takes the validation scheme explicitly; the zero-value
+		// TextParser has scheme=UnsetValidation which panics inside
+		// setOrCreateCurrentMF (prometheus/common v0.66+). Use LegacyValidation
+		// to accept the standard names the portal emits.
+		parser := expfmt.NewTextParser(model.LegacyValidation)
 		families, err := parser.TextToMetricFamilies(resp.Body)
 		require.NoError(t, err, "Prometheus exposition format must parse without error; "+
 			"a parse error means the exporter emits malformed output that Prometheus "+
