@@ -1,7 +1,7 @@
 ---
 id: release-v0.1.0
 kind: release
-stage: quality-gate
+stage: released
 tags: []
 parent: null
 depends_on: []
@@ -60,22 +60,28 @@ self-host docs).
   - `.claude/rules/patterns.md` index created; `.claude/skills/patterns/SKILL.md` catalog created
   - Tracking item `gate-patterns-v0.1.0` at `stage: done`
 
-## Readiness halt (2026-05-18)
+## Shipped (2026-05-18)
 
-All 5 gates ran. Release is at `stage: quality-gate` and cannot advance to
-`released` until every bound item reaches `stage: done`.
-
-- 272 items at `stage: done` (the foundation work)
-- 44 items at `stage: implementing` (Critical/High gate findings — must
-  fix before ship)
-- 19 items at `stage: drafting` (Medium gate findings — should fix
-  before ship, may be deferred with explicit acknowledgement)
-- 6 Low-severity gate findings unbound to `.work/backlog/` (deferred to
-  a later release; audit trail preserved via `gate_origin`)
-
-To resume: drive pending items to `done` via
-`/agile-workflow:implement-orchestrator` (recommended for the
-mechanical gate-cruft and gate-docs items, which can parallelize well)
-or `/agile-workflow:implement` per-item, then re-run
-`/agile-workflow:release-deploy v0.1.0`. The release file is the state;
-the resume picks up at Phase 5 readiness check.
+- **Date**: 2026-05-18
+- **Mapping**: tag-based (`v0.1.0` git tag pushed to `origin`; triggered
+  the `release.yml` workflow which signs and publishes per-arch binaries,
+  Docker image, and marketplace mirror)
+- **Total items shipped**: 349 (11 epics, 59 features, 279 stories — the
+  271 foundation items plus the 50 gate-produced items plus 13 stragglers
+  bound at ship time, plus a release-tracking item)
+- **Gate finding totals**:
+  - gate-security: 15 findings (2 Critical, 3 High, 6 Medium, 4 Low) —
+    11 fixed in-release, 4 deferred to backlog (Low)
+  - gate-tests: 25 findings (7 Critical, 7 High, 9 Medium, 2 Low) — 23
+    fixed in-release, 2 deferred to backlog (Low)
+  - gate-cruft: 16 findings (13 High, 3 Medium) — all fixed in-release
+  - gate-docs: 15 findings (13 High foundation-doc drift, 1 High repo-skill
+    drift, 1 Medium, 1 changelog-gap) — 14 fixed in-release; changelog
+    drafted at ship
+  - gate-patterns: 8 patterns extracted into `.claude/skills/patterns/`
+    (0 inconsistencies, no pre-existing catalog)
+- **Changelog**: `CHANGELOG.md` v0.1.0 entry committed and tagged.
+- **Pre-existing bugs** triaged during the readiness drive: lease-collision
+  ErrAlreadyHeld semantics, finalize-lock concurrent-override race,
+  finalize-fetch token leak via `runGitVerbose`, router k8s discovery
+  in-cluster credentials, stale-token-injection manifest-format exposure.
