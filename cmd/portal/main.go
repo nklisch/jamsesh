@@ -681,9 +681,16 @@ func main() {
 			Lifecycle: objLifecycle, // nil in single-instance mode; provides hydration + long-held lease
 			Storage:   storageSvc,  // used only when Syncer is non-nil
 		},
-		Lifecycle:      objLifecycle, // nil in single-instance mode; hydrates+leases in clustered
 		Metrics:        metricsReg,
 		ReceivePackSem: receivePackSem,
+	}
+	// Set Lifecycle only when objLifecycle is non-nil. Assigning a
+	// typed nil *LifecycleManager to the lifecycleAcquirer interface field
+	// would make the interface non-nil (Go nil-interface trap), causing the
+	// handler's nil check to pass and the subsequent method call to panic
+	// with "invalid memory address" on every single-mode git request.
+	if objLifecycle != nil {
+		gitHandler.Lifecycle = objLifecycle
 	}
 
 	// Wire the embedded SPA handler. assets.Handler() returns a handler that
