@@ -1,7 +1,7 @@
 ---
 id: gate-tests-router-discovery-shutdown
 kind: story
-stage: review
+stage: done
 tags: [testing, infra]
 parent: null
 depends_on: []
@@ -74,3 +74,25 @@ None.
 
 ### No context.Canceled error log assertion
 The discovery goroutine in `runCtx` already suppresses `context.Canceled` via `!errors.Is(err, context.Canceled)` before calling `slog.Error`. The test validates this path by confirming `runCtx` exits with code 0 (it would return 1 if shutdown errored). A full log-capture assertion was omitted as it would require redirecting `slog.Default()` which is shared state in tests — the existing suppression in production code is tested adequately by the zero exit code and the absence of leaked goroutines.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: The `baseline + 2` slack on the goroutine count is empirical; if a
+future runner introduces additional ambient goroutines, the test could flake.
+Acceptable for now — the agent's note acknowledges the constraint and the
+poll-with-ceiling pattern absorbs short-lived ones.
+
+**Notes**: The `run()` → `run()` + `runCtx()` split is a minimal, well-justified
+testability seam — production behavior is unchanged (signal handling still lives
+in `run`), and tests can now drive the actual production code path with an
+injected context rather than mocking. The `--help` early-exit was preserved.
+The agent's investigation discovered that the apparent "leaked" goroutines were
+`http.DefaultTransport`'s `persistConn.readLoop`/`writeLoop` from the readyz
+probe keep-alive pool, not our discovery goroutine; `CloseIdleConnections()`
+drains them correctly before the leak assertion. Honest documentation of that
+investigation in the implementation notes is exactly the right level of
+disclosure.
