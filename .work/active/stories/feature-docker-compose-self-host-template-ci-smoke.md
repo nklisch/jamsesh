@@ -1,7 +1,7 @@
 ---
 id: feature-docker-compose-self-host-template-ci-smoke
 kind: story
-stage: implementing
+stage: review
 tags: [infra, testing]
 parent: feature-docker-compose-self-host-template
 depends_on: [feature-docker-compose-self-host-template-template-files]
@@ -65,3 +65,24 @@ parse-validation" section. Key points:
   approach: a `compose.ci.override.yml` that swaps the image for a
   `build:` block targeting `Dockerfile` with a locally-built portal
   binary.
+
+## Implementation Notes
+
+- Added job `compose-template` to `.github/workflows/quickstart.yml` under
+  the top-level `jobs:` map, at the same indentation level as the existing
+  `quickstart:` job. It runs in parallel with `quickstart` under the same
+  `on:` triggers (already declared at the workflow level).
+- Three steps: (1) checkout + copy `.env.example` to `.env`; (2) validate
+  default profile shape; (3) validate postgres profile shape; (4) assert no
+  "variable is not set" warnings on default shape.
+- Local verification output:
+  ```
+  default parse ✓
+  postgres parse ✓
+  no unresolved env vars ✓
+  ```
+- YAML validity confirmed via `python3 -c "import yaml; yaml.safe_load(...)"`.
+- Docker Compose v2 confirmed to emit "variable is not set" to stderr for
+  unresolved interpolations — the grep assertion will fire correctly.
+- No new external action dependencies; `docker compose` is preinstalled on
+  `ubuntu-latest` runners.

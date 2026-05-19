@@ -55,3 +55,28 @@ jobs:
       - name: dump portal log on failure
         if: failure()
         run: cat portal.log
+
+  compose-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: validate default compose shape
+        working-directory: deploy/compose
+        run: |
+          cp .env.example .env
+          docker compose config > /dev/null
+
+      - name: validate postgres profile shape
+        working-directory: deploy/compose
+        run: |
+          docker compose --profile postgres config > /dev/null
+
+      - name: assert no unresolved env vars in default shape
+        working-directory: deploy/compose
+        run: |
+          stderr=$(docker compose config 2>&1 >/dev/null) || true
+          if echo "$stderr" | grep -E 'variable is not set'; then
+            echo "Unresolved env vars in default compose shape — .env.example must satisfy every interpolation."
+            exit 1
+          fi
