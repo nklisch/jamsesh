@@ -1,7 +1,7 @@
 ---
 id: feature-cc-plugin-wrapper-binary-fetch
 kind: feature
-stage: implementing
+stage: review
 tags: [infra, plugin]
 parent: null
 depends_on: []
@@ -496,3 +496,57 @@ Visual review + `grep -rn 'jamsesh-cc-plugin\|MARKETPLACE_DEPLOY_KEY\|marketplac
   tmpdir for the download target. **Implementation MUST follow this.**
 
 <!-- Implementation Notes accumulate as each story lands. -->
+
+## Implementation Summary
+
+All three child stories landed at `stage: review`:
+
+| Story | Stage | Commit |
+|---|---|---|
+| `feature-cc-plugin-wrapper-binary-fetch-script` | review | `51d7393` |
+| `feature-cc-plugin-wrapper-binary-fetch-release-workflow` | review | `3885f4f` |
+| `feature-cc-plugin-wrapper-binary-fetch-docs` | review | `f0022df` |
+
+### Deliverables
+
+- `bin/jamsesh` (129 lines) — bash wrapper. Cold-cache fetches sha256-verified
+  binary, optional cosign verify-blob, atomic same-fs install, exec with
+  passthrough. Verified locally on Linux amd64 against the live v0.1.0 release
+  assets (sha256 `da84d324…` passed).
+- `.github/workflows/release.yml` — `marketplace:` job deleted entirely.
+  New `assert bin/jamsesh version matches tag` step in `sign-and-release`
+  fails the release fast if the version constant is stale. Job map is now
+  `[build, sign-and-release, docker]`.
+- `docs/RELEASING.md` — "One-time bootstrap: marketplace plugin repo"
+  section deleted (~92 lines). New step 3 in "Cutting a release" bumps the
+  wrapper's `JAMSESH_PLUGIN_VERSION` constant (sibling to step 2's compose
+  template bump). "Cutting a release" is now seven sequential steps. Overview
+  step 8 reworded to describe wrapper-fetch distribution.
+- `docs/SECURITY.md` — §"Supply chain and integrity" reworded to describe
+  GitHub release asset distribution and `bin/jamsesh` wrapper verification.
+- `.work/backlog/docs-readme-cc-plugin-install-instructions.md` (new) —
+  captures the deferred README plugin-install section; the gap is the exact
+  user-facing CC slash commands which need verification against current CC
+  before publishing.
+
+### Cross-cutting deviation from design
+
+The script story used `tmpdir="${cache_dir}/.tmp.$$"` (PID-suffixed,
+same-fs as cache dir) rather than the design pseudocode's `mktemp -d`.
+This was actually called out in the parent feature's Risks section as
+the required correct approach — the pseudocode used `mktemp -d` only as
+a placeholder. No semantic deviation.
+
+### Verification (orchestrator-side, after both waves)
+
+- `bin/jamsesh` cold-cache run: downloaded v0.1.0 linux-amd64 binary, sha256
+  passed, exec'd cleanly. Warm-cache run: no network.
+- `release.yml`: YAML parses; `jobs` map is `[build, sign-and-release, docker]`;
+  zero `marketplace`/`MARKETPLACE_DEPLOY_KEY`/`jamsesh-cc-plugin` refs anywhere
+  in the workflow file.
+- `docs/RELEASING.md`: "Cutting a release" reads as steps 1–7 sequentially;
+  no `## One-time bootstrap` header; no `jamsesh-cc-plugin` references.
+- `docs/SECURITY.md`: §"Supply chain and integrity" mentions "GitHub release
+  assets" and `bin/jamsesh` wrapper-time verification.
+- Full repo grep for `jamsesh-cc-plugin|MARKETPLACE_DEPLOY_KEY|marketplace repo`
+  in `docs/` and `.github/workflows/`: empty.
