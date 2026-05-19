@@ -8,8 +8,7 @@ full operator guide.
 
 ## What it is
 
-Jamsesh is a collaboration substrate where a small team of humans drive Claude
-Code instances against a shared git-backed session, producing artifacts together
+Jamsesh is a collaboration expirence where a small team of humans drive their Claude's against a shared git-backed session, producing artifacts together
 in a live jam. Each human-agent pair gets their own namespace of refs to push
 to. A server-side auto-merger continuously integrates non-conflicting work into
 a shared draft ref, making the artifact converge live. Conflicts surface as
