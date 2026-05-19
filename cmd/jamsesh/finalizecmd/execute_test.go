@@ -204,6 +204,75 @@ func TestExecute_unknownModeErrors(t *testing.T) {
 	}
 }
 
+func TestRedactGitArgs(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{
+			name: "bearer token redacted",
+			in:   []string{"-c", "http.extraHeader=Authorization: Bearer abc123"},
+			want: []string{"-c", "http.extraHeader=Authorization: Bearer <redacted>"},
+		},
+		{
+			name: "basic token redacted",
+			in:   []string{"-c", "http.extraHeader=Authorization: Basic xyz789"},
+			want: []string{"-c", "http.extraHeader=Authorization: Basic <redacted>"},
+		},
+		{
+			name: "non-Authorization -c arg unchanged",
+			in:   []string{"-c", "color.ui=always"},
+			want: []string{"-c", "color.ui=always"},
+		},
+		{
+			name: "mixed args only redacts Authorization",
+			in:   []string{"-c", "http.extraHeader=Authorization: Bearer tok", "fetch", "jamsesh"},
+			want: []string{"-c", "http.extraHeader=Authorization: Bearer <redacted>", "fetch", "jamsesh"},
+		},
+		{
+			name: "no extraHeader args pass through untouched",
+			in:   []string{"cherry-pick", "--no-commit", "deadbeef"},
+			want: []string{"cherry-pick", "--no-commit", "deadbeef"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := redactGitArgs(tc.in)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len = %d, want %d; got %v", len(got), len(tc.want), got)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("arg[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestRunGitVerbose_redactsAuthorizationInPrint(t *testing.T) {
+	// runGitVerbose will actually try to run git, so we need a real repo.
+	repo := gitInTempRepo(t)
+	pinGitToCwd(t, repo)
+
+	var buf bytes.Buffer
+	// Use a real git command that succeeds. "git -c http.extraHeader=... status"
+	// ignores the header at runtime but still prints the arg via runGitVerbose.
+	_ = runGitVerbose(&buf, "-c", "http.extraHeader=Authorization: Bearer supersecret", "status")
+
+	printed := buf.String()
+	if strings.Contains(printed, "supersecret") {
+		t.Errorf("raw token leaked in printed line:\n%s", printed)
+	}
+	if !strings.Contains(printed, "<redacted>") {
+		t.Errorf("<redacted> not present in printed line:\n%s", printed)
+	}
+	if !strings.Contains(printed, "Authorization: Bearer") {
+		t.Errorf("auth scheme stripped unexpectedly from printed line:\n%s", printed)
+	}
+}
+
 func TestExecute_emptyPlanErrors(t *testing.T) {
 	repo := gitInTempRepo(t)
 	pinGitToCwd(t, repo)

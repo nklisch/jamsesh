@@ -112,12 +112,54 @@ func execute(out io.Writer, plan *Plan, runner runnerIdentity) error {
 // runGitVerbose prints `+ git <args>` to out, flushes, then invokes
 // runGit. The flush is best-effort: if out is *os.File we Sync; if it's
 // a *bufio.Writer the caller is responsible for flushing externally.
+//
+// Authorization values in http.extraHeader args are redacted in the
+// printed line; the actual subprocess receives the unredacted args.
 func runGitVerbose(out io.Writer, args ...string) error {
-	fmt.Fprintf(out, "+ git %s\n", strings.Join(args, " "))
+	fmt.Fprintf(out, "+ git %s\n", strings.Join(redactGitArgs(args), " "))
 	if f, ok := out.(interface{ Sync() error }); ok {
 		_ = f.Sync()
 	}
 	return runGit(args...)
+}
+
+// redactGitArgs returns a copy of args with the credential value in any
+// http.extraHeader=Authorization: <scheme> <token> arg replaced by
+// "<redacted>". The scheme (Bearer, Basic, etc.) is preserved so
+// operators can still see the auth type. Other args are returned
+// unchanged.
+//
+// Detection matches "http.extraHeader=Authorization:" case-sensitively
+// because http.extraHeader is a literal git config key and must be
+// spelled exactly as git expects it; case-folding would add false-match
+// surface for no real benefit.
+func redactGitArgs(args []string) []string {
+	out := make([]string, len(args))
+	const prefix = "http.extraHeader=Authorization:"
+	for i, a := range args {
+		if strings.HasPrefix(a, prefix) {
+			// a looks like: http.extraHeader=Authorization: Bearer eyJ...
+			// Find position after "Authorization:" (skip optional spaces).
+			idx := len(prefix)
+			for idx < len(a) && a[idx] == ' ' {
+				idx++
+			}
+			// idx now points at the scheme token (e.g. "Bearer").
+			// Advance to the space after the scheme to find where the
+			// credential begins, then replace everything from there onward.
+			spaceIdx := strings.IndexByte(a[idx:], ' ')
+			if spaceIdx >= 0 {
+				// Preserve "http.extraHeader=Authorization: Bearer "
+				out[i] = a[:idx+spaceIdx+1] + "<redacted>"
+			} else {
+				// No space after scheme — treat entire remainder as secret.
+				out[i] = a[:idx] + "<redacted>"
+			}
+			continue
+		}
+		out[i] = a
+	}
+	return out
 }
 
 // classifyCherryPickError inspects the repo post-failure to decide

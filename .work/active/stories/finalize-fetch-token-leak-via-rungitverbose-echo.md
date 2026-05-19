@@ -1,7 +1,7 @@
 ---
 id: finalize-fetch-token-leak-via-rungitverbose-echo
 kind: story
-stage: implementing
+stage: review
 tags: [security, plugin]
 parent: null
 depends_on: []
@@ -96,3 +96,27 @@ does not contain the raw token.
 - Non-Authorization `-c` args are unchanged in the printed line.
 - The actual git subprocess receives the unredacted args.
 - A test asserts both behaviors.
+
+## Implementation notes
+
+**Detection rule (case sensitivity):** `redactGitArgs` matches the prefix
+`"http.extraHeader=Authorization:"` case-sensitively. `http.extraHeader`
+is a literal git config key that git itself treats case-sensitively; folding
+to lowercase would add false-match surface for no real benefit. The call site
+in `fetchsource.go`'s `performFetch` spells it exactly as
+`http.extraHeader=Authorization: Bearer <token>`, which matches the prefix.
+
+**Redaction logic:** The scheme token (Bearer, Basic, etc.) is preserved in
+the printed line so operators can see the auth type. Only the credential
+value that follows the scheme is replaced with `<redacted>`. If no space
+follows the scheme (malformed header), the entire remainder after `Authorization:`
+is replaced.
+
+**Test coverage:**
+- `TestRedactGitArgs` — 5 sub-cases: Bearer redacted, Basic redacted,
+  non-Authorization `-c` unchanged, mixed args (only Authorization redacted),
+  no extraHeader args pass through.
+- `TestRunGitVerbose_redactsAuthorizationInPrint` — integration test: runs
+  `runGitVerbose` against a real temp repo with a token arg, asserts the
+  printed line contains `<redacted>` and does not contain the raw token,
+  and that the auth scheme (`Authorization: Bearer`) is preserved.
