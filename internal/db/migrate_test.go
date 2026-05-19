@@ -91,6 +91,109 @@ func TestMigrateUpPostgres_Idempotent(t *testing.T) {
 	assertPostgresTables(t, ctx, db)
 }
 
+// TestMigrateUpPostgres_ConcurrentOpens verifies that two db.Open calls racing
+// against a single fresh Postgres database both succeed, with no
+// "duplicate key value violates unique constraint pg_type_typname_nsp_index"
+// or similar catalog-level conflict. This reproduces the failure mode that
+// blocked clustered-mode e2e tests when two portal pods spun up in parallel:
+// each pod called db.Open → MigrateUp simultaneously, and the concurrent
+// DDL (CREATE TYPE, CREATE TABLE) conflicted at the Postgres catalog level.
+//
+// The fix is the pg_advisory_lock acquired in connect.Open's Postgres branch
+// (see internal/db/connect.go:130-138). This test exercises that lock by
+// spawning multiple goose providers concurrently against the same database
+// and confirming all succeed and the goose_db_version table contains exactly
+// one row per migration (no duplicates from racing inserts).
+//
+// Requires JAMSESH_TEST_PG_DSN to point at an EMPTY Postgres database
+// (typically a Docker-managed test instance). The DB is reset to empty
+// at the start of the test; do not point this at a database with other
+// state you care about.
+func TestMigrateUpPostgres_ConcurrentOpens(t *testing.T) {
+	dsn := os.Getenv("JAMSESH_TEST_PG_DSN")
+	if dsn == "" {
+		t.Skip("set JAMSESH_TEST_PG_DSN to enable Postgres migration tests")
+	}
+
+	ctx := context.Background()
+
+	// Reset the target DB so the migrations have to actually run (a no-op
+	// no-DDL path would not exercise the lock contention). Drop every
+	// user-created object in the public schema. CASCADE clears dependent
+	// objects (enums, sequences) introduced by future migrations.
+	resetDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open pgx (reset): %v", err)
+	}
+	if _, err := resetDB.ExecContext(ctx,
+		"DROP SCHEMA public CASCADE; CREATE SCHEMA public;"); err != nil {
+		resetDB.Close()
+		t.Fatalf("reset public schema: %v", err)
+	}
+	resetDB.Close()
+
+	// Spawn N concurrent migration runs through the same code path that
+	// db.Open uses: stdlib.OpenDBFromPool → withMigrationLock → MigrateUp.
+	// We use raw sql.Open + the helper directly here to keep the test
+	// inside this package and avoid pulling in the pgxpool dependency
+	// dance; the lock semantics are identical because withMigrationLock
+	// operates on any *sql.DB whose connections share a session.
+	const concurrentOpens = 4
+	errs := make(chan error, concurrentOpens)
+	for i := 0; i < concurrentOpens; i++ {
+		go func() {
+			db, err := sql.Open("pgx", dsn)
+			if err != nil {
+				errs <- err
+				return
+			}
+			// Restrict to a single connection so withMigrationLock's
+			// session-scoped lock applies to MigrateUp's connections.
+			db.SetMaxOpenConns(1)
+			defer db.Close()
+			errs <- withMigrationLock(ctx, db, func() error {
+				return MigrateUp(ctx, db, "postgres")
+			})
+		}()
+	}
+	for i := 0; i < concurrentOpens; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent MigrateUp %d/%d: %v", i+1, concurrentOpens, err)
+		}
+	}
+
+	// All tables must be present after the race resolves.
+	verifyDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open pgx (verify): %v", err)
+	}
+	defer verifyDB.Close()
+
+	assertPostgresTables(t, ctx, verifyDB)
+
+	// goose_db_version must have exactly one row per applied migration.
+	// Concurrent racing inserts on the same version would show up as
+	// duplicate version_id values (goose does not constrain version_id
+	// uniqueness on the table, so we check it explicitly here).
+	rows, err := verifyDB.QueryContext(ctx,
+		`SELECT version_id, COUNT(*) AS n
+		 FROM goose_db_version
+		 GROUP BY version_id
+		 HAVING COUNT(*) > 1`)
+	if err != nil {
+		t.Fatalf("query goose_db_version: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var version, count int64
+		if err := rows.Scan(&version, &count); err != nil {
+			t.Fatalf("scan duplicate row: %v", err)
+		}
+		t.Errorf("goose_db_version has %d rows for version %d (expected 1)",
+			count, version)
+	}
+}
+
 // assertSQLiteTables queries sqlite_master to verify all expected tables exist.
 func assertSQLiteTables(t *testing.T, db *sql.DB) {
 	t.Helper()

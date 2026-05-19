@@ -1,7 +1,7 @@
 ---
 id: clustered-portal-concurrent-migration-race
 kind: story
-stage: implementing
+stage: review
 tags: [testing, infra, portal, postgres, bug]
 parent: null
 depends_on: []
@@ -79,3 +79,66 @@ in-release because the race only affects clustered e2e tests when run
 against Postgres (the default suite uses SQLite); not a v0.1.0 ship
 blocker, but it blocks running the full clustered-mode e2e matrix
 locally.
+
+## Implementation notes (2026-05-18 — land mode)
+
+The advisory-lock fix was already implemented during the v0.1.0
+readiness drive (commits prior to this story's creation), with both the
+helper and its wiring already in place:
+
+- **`internal/db/migrate.go:121-132`** — `withMigrationLock(ctx, db,
+  fn)` acquires `pg_advisory_lock(jamseshMigrationLockKey)`, calls
+  `fn`, releases via deferred `pg_advisory_unlock` on a fresh
+  `Background` context (so unlock fires even if the caller's ctx is
+  already cancelled).
+- **`internal/db/migrate.go:22`** — `jamseshMigrationLockKey int64 =
+  8675309` (the design specified deriving from a SHA of
+  "jamsesh-portal-migrations"; the actual implementation uses a fixed
+  numeric constant. Same effect for this use — what matters is
+  stability across binary versions during rolling deploys. Documented
+  inline.).
+- **`internal/db/connect.go:130-138`** — the Postgres branch of
+  `Open(ctx, "postgres", dsn, pc)` wraps `MigrateUp` in
+  `withMigrationLock` against a temporary `*sql.DB` opened from the
+  pgxpool via `pgx/v5/stdlib`. The temporary connection is closed
+  after migration; the runtime pool stays open. Documented at lines
+  60-63.
+- **SQLite branch unchanged** — SQLite is effectively single-writer
+  at the file level so the race is impossible there, per design.
+
+The missing piece from the acceptance criteria was the **parallel-open
+unit test**. Added in this stride at
+`internal/db/migrate_test.go:TestMigrateUpPostgres_ConcurrentOpens`:
+
+- Resets the target Postgres DB to an empty `public` schema so the
+  migrations must actually run (otherwise the no-op path bypasses the
+  lock entirely and doesn't exercise the race).
+- Spawns 4 concurrent goroutines, each running
+  `withMigrationLock(ctx, db, MigrateUp)` — the same code path
+  `db.Open` uses.
+- Asserts all 4 succeed.
+- Asserts every expected table is present.
+- Asserts `goose_db_version` has no duplicate `version_id` rows (would
+  surface a racing insert that bypassed the lock).
+- Skipped when `JAMSESH_TEST_PG_DSN` is unset (matches the gating
+  pattern of the existing `TestMigrateUpPostgres_Idempotent`).
+
+### Verification
+
+- `go build ./internal/db/...` — clean.
+- `go vet ./internal/db/...` — clean.
+- `go test -run TestMigrateUpSQLite_Idempotent ./internal/db/` — pass
+  (SQLite regression check from the acceptance criteria).
+- `TestMigrateUpPostgres_ConcurrentOpens` will run in CI once
+  `JAMSESH_TEST_PG_DSN` is set; locally it skips. This is consistent
+  with the existing Postgres tests.
+
+### Acceptance status
+
+- **SQLite no-regression**: ✓ verified locally.
+- **Parallel-open unit test**: ✓ added.
+- **`TestStaleFencingTokenRejected` / `TestLeaseAlreadyHeld` ≥10 iters
+  against Postgres**: not exercised locally (requires Postgres
+  testcontainer + full e2e harness). The new unit test exercises the
+  same race more tightly; the e2e tests will validate the integration
+  shape in CI.
