@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-cnd-coverage-routing-layer-k8s-discovery
 kind: story
-stage: review
+stage: done
 tags: [e2e-test, testing, portal, infra]
 parent: null
 depends_on: [epic-e2e-cnd-coverage-cluster-fixture]
@@ -121,3 +121,33 @@ ok  jamsesh/internal/router/discovery 0.59s
 ```
 
 `go build ./...` clean.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- **In-cluster credentials not loaded** (`internal/router/discovery/k8s.go`):
+  `K8sConfig.HTTPClient` defaults to a vanilla `http.Client`, and
+  `BearerToken` is empty by default. For real in-cluster deployment the CA
+  cert at `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt` and the SA
+  token at `.../token` are not auto-loaded; operators would need to wire
+  them manually. Not blocking for this story (which scoped the test, with the
+  test running against an unauthenticated httptest stub), but blocks any
+  real k8s-mode deployment.
+  → Item: `router-k8s-discovery-incluster-credentials`
+
+**Nits**: none.
+
+**Notes**: Scope expansion is justified in context. Git history shows the
+`internal/router/discovery/k8s.go` file existed in `epic-cloud-native-deploy-routing-layer-discovery`
+(commit `2abca80`) but was deleted by a subsequent unwired-cruft sweep
+because nothing imported it. This story effectively re-introduces it WITH
+the wiring through `cmd/jamsesh-router/main.go` that the original lacked,
+plus the test that the story title actually scoped. The agent didn't have
+that historical context and wrote "k8s discovery did not exist yet" — true
+in the current tree, slightly under-stated as background. The plain-HTTP
+discoverer (no client-go) is a good design call: simpler dep graph, easier
+to test against a `httptest.Server`. The 15s SLO with 3s resync gives
+comfortable margin without flake risk.
