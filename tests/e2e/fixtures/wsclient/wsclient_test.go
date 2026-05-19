@@ -25,17 +25,21 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// stubGateway is an in-process WebSocket handler that mirrors the parts of
-// the portal gateway relevant to wsclient testing:
+// stubGateway is an in-process handler that mirrors the parts of the portal
+// gateway relevant to wsclient testing. It serves two distinct routes:
 //
-//   - Requires Sec-WebSocket-Protocol "jamsesh.bearer.<token>".
-//   - Tries to read a first text frame and decode it as {"replay_from": N}.
-//     If decoded and N > 0, the gateway emits events with seqs N+1..maxSeq.
-//   - Then emits any "live" events queued via the liveCh channel.
+//   - POST /api/auth/ws-ticket — validates Authorization: Bearer <wantBearer>
+//     and returns a JSON ticket envelope. The ticket value is deterministic:
+//     "stub-ticket-<wantBearer>" — so the WS upgrade handler can verify the
+//     client used the ticket it was just issued.
+//   - WS upgrade on any other path — requires Sec-WebSocket-Protocol
+//     "jamsesh-ticket.stub-ticket-<wantBearer>". Tries to read a first text
+//     frame and decode it as {"replay_from": N}. If decoded and N > 0, emits
+//     events with seqs N+1..maxSeq. Then emits any "live" events queued via
+//     the liveCh channel.
 //
 // The handler records the replayFrom value observed (if any) into observed,
-// closed when the read of the first frame has completed (whether or not a
-// frame was actually present).
+// which signals once the read of the first frame has completed.
 type stubGateway struct {
 	maxSeq      int64
 	liveCh      chan Event
@@ -55,8 +59,40 @@ func newStubGateway(maxSeq int64, wantBearer string) *stubGateway {
 	}
 }
 
+// stubTicketFor returns the deterministic ticket value the stub gateway
+// issues for a given bearer. Exposed so tests can assert against it if needed.
+func stubTicketFor(bearer string) string { return "stub-ticket-" + bearer }
+
 func (s *stubGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	want := "jamsesh.bearer." + s.wantBearer
+	// Route the two-step auth flow.
+	if r.URL.Path == "/api/auth/ws-ticket" && r.Method == http.MethodPost {
+		s.serveTicket(w, r)
+		return
+	}
+	s.serveWS(w, r)
+}
+
+// serveTicket handles POST /api/auth/ws-ticket. Validates the bearer matches
+// the configured wantBearer, then returns a deterministic ticket envelope.
+func (s *stubGateway) serveTicket(w http.ResponseWriter, r *http.Request) {
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if got != s.wantBearer {
+		http.Error(w, "bad bearer", http.StatusUnauthorized)
+		return
+	}
+	resp := struct {
+		Ticket           string `json:"ticket"`
+		ExpiresInSeconds int    `json:"expires_in_seconds"`
+	}{
+		Ticket:           stubTicketFor(s.wantBearer),
+		ExpiresInSeconds: 60,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *stubGateway) serveWS(w http.ResponseWriter, r *http.Request) {
+	want := "jamsesh-ticket." + stubTicketFor(s.wantBearer)
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		Subprotocols: []string{want},
 	})

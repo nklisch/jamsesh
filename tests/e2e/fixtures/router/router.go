@@ -184,8 +184,15 @@ func requireRouterImage(t *testing.T) {
 //
 // Each URL should be a host-side base URL (e.g. "http://127.0.0.1:PORT") —
 // the /readyz path is appended automatically.
+// readyzWaitTimeout bounds the readyz-poll so a misconfigured portal surfaces
+// as a fast, actionable failure rather than a 10-minute test-package timeout.
+const readyzWaitTimeout = 60 * time.Second
+
 func waitForBackendsReadyz(ctx context.Context, t *testing.T, baseURLs []string) {
 	t.Helper()
+
+	pollCtx, cancel := context.WithTimeout(ctx, readyzWaitTimeout)
+	defer cancel()
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	pending := make([]bool, len(baseURLs))
@@ -193,16 +200,18 @@ func waitForBackendsReadyz(ctx context.Context, t *testing.T, baseURLs []string)
 		pending[i] = true // all start as not-yet-ready
 	}
 
-	t.Logf("router fixture: waiting for %d backend portal(s) to pass /readyz", len(baseURLs))
+	t.Logf("router fixture: waiting for %d backend portal(s) to pass /readyz (timeout %s)", len(baseURLs), readyzWaitTimeout)
 
+	var lastStatuses []string
 	for {
 		allReady := true
+		lastStatuses = lastStatuses[:0]
 		for i, ready := range pending {
 			if !ready {
 				continue
 			}
 			url := baseURLs[i] + "/readyz"
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			req, err := http.NewRequestWithContext(pollCtx, http.MethodGet, url, nil)
 			if err != nil {
 				t.Fatalf("router fixture: waitForBackendsReadyz: build request for %s: %v", url, err)
 			}
@@ -214,19 +223,20 @@ func waitForBackendsReadyz(ctx context.Context, t *testing.T, baseURLs []string)
 					t.Logf("router fixture: backend %s is ready", baseURLs[i])
 					continue
 				}
+				lastStatuses = append(lastStatuses, fmt.Sprintf("%s=HTTP %d", baseURLs[i], resp.StatusCode))
+			} else {
+				lastStatuses = append(lastStatuses, fmt.Sprintf("%s=err:%v", baseURLs[i], err))
 			}
-			// This backend is not ready yet.
 			allReady = false
 		}
 		if allReady {
 			return
 		}
-		// Check for context cancellation before sleeping.
 		select {
-		case <-ctx.Done():
-			t.Fatalf("router fixture: context cancelled while waiting for backends to pass /readyz: %v", ctx.Err())
-		default:
+		case <-pollCtx.Done():
+			t.Fatalf("router fixture: backends did not pass /readyz within %s; last statuses: %s",
+				readyzWaitTimeout, strings.Join(lastStatuses, ", "))
+		case <-time.After(200 * time.Millisecond):
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
 }

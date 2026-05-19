@@ -88,10 +88,12 @@ func TestLeaseAlreadyHeld(t *testing.T) {
 	userID := leaseHeldGetMe(ctx, t, pod0.URL, pair.AccessToken)
 
 	// ── Hold the advisory lock from the test process ────────────────────────────
-	// The portal's lease manager calls pg_try_advisory_lock(hashtext(sessionID)::oid).
+	// The portal's lease manager calls pg_try_advisory_lock(hashtext(sessionID)).
 	// We acquire that same lock from a dedicated DB connection so every portal pod's
 	// try-lock fails and returns 503. This is the controlled injection mechanism —
-	// no need to race two real pods.
+	// no need to race two real pods. Note: pg_advisory_lock accepts bigint, not
+	// oid — hashtext returns int4 which Postgres auto-promotes; an explicit
+	// ::oid cast (which we used previously) errors with "function does not exist".
 	lockDB, err := sql.Open("postgres", pg.DSN)
 	if err != nil {
 		t.Fatalf("lease_already_held: open lock DB: %v", err)
@@ -100,7 +102,7 @@ func TestLeaseAlreadyHeld(t *testing.T) {
 
 	// pg_advisory_lock blocks until acquired. Since no push has happened yet,
 	// neither pod holds the lock — we acquire it immediately.
-	if _, err := lockDB.ExecContext(ctx, "SELECT pg_advisory_lock(hashtext($1)::oid)", sessionID); err != nil {
+	if _, err := lockDB.ExecContext(ctx, "SELECT pg_advisory_lock(hashtext($1))", sessionID); err != nil {
 		t.Fatalf("lease_already_held: acquire advisory lock from test process: %v", err)
 	}
 	t.Logf("lease_already_held: advisory lock held by test process for session %s", sessionID)
@@ -183,7 +185,7 @@ func TestLeaseAlreadyHeld(t *testing.T) {
 	}
 
 	// ── Release lock and verify portal can now acquire the lease ───────────────
-	if _, err := lockDB.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1)::oid)", sessionID); err != nil {
+	if _, err := lockDB.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID); err != nil {
 		t.Logf("lease_already_held: release advisory lock: %v (non-fatal — test assertion already complete)", err)
 	} else {
 		t.Logf("lease_already_held: advisory lock released")
