@@ -1,7 +1,7 @@
 ---
 id: gate-tests-automerger-safe-resolve-skipf
 kind: story
-stage: review
+stage: done
 tags: [testing, portal]
 parent: null
 depends_on: []
@@ -46,3 +46,13 @@ The whitespace-conflict subtest is deliberately constructed to produce a `SafeAu
 
 Build: `go build ./...` — clean, no errors.
 Tests: `go test ./internal/portal/automerger/...` — ok (0.873s), all passing. The whitespace conflict continues to classify as `SafeAutoResolve` on main.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: Replacement string is clearer than the original — the new fatal explicitly states the expectation.
+
+**Notes**: Change matches the story design exactly: one-line `t.Skipf` → `t.Fatalf` swap. The replacement assertion message ("expected SafeAutoResolve for whitespace-only conflict, got %s") is more informative than the original skip wording. Verification re-confirmed locally: whitespace-only conflicts continue to classify as SafeAutoResolve on main, so the now-stricter assertion does not regress.
