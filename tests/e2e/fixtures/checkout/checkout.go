@@ -50,7 +50,12 @@ func Start(t *testing.T) *Sandbox {
 // immediately if the script exits non-zero.
 func (s *Sandbox) RunPlan(t *testing.T, planBody, fetchRemote, fetchToken string) string {
 	t.Helper()
-	cmd := exec.Command("/bin/sh", "-c", planBody)
+	// The generated plan starts with '#!/usr/bin/env bash' and uses
+	// 'set -o pipefail'. /bin/sh is dash on debian-based hosts and dash
+	// doesn't support pipefail — running the script under sh yields
+	// '/bin/sh: 2: set: Illegal option -o pipefail'. Use bash explicitly
+	// so the shell matches the script's shebang.
+	cmd := exec.Command("/bin/bash", "-c", planBody)
 	cmd.Dir = s.Dir
 	env := append(sandboxEnv(s.Dir),
 		"JAMSESH_FETCH_REMOTE="+fetchRemote,
