@@ -23,7 +23,3 @@ services:
       JAMSESH_LOG_LEVEL: "-4"
       # Allow the Vite dev server to connect via WebSocket.
       JAMSESH_WS_ALLOW_ORIGINS: http://localhost:5173
-      # Satisfy the required email.from field; actual email delivery will
-      # fail gracefully since no SMTP server runs in dev. Configure a real
-      # provider via env overrides if you need email during development.
-      JAMSESH_EMAIL_FROM: dev@localhost

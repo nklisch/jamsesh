@@ -1,18 +1,42 @@
 package senders
 
 import (
+	"context"
 	"fmt"
 
 	"jamsesh/internal/portal/config"
 )
 
+// disabledSender is returned by New when neither email.provider nor email.from
+// is configured. It satisfies the Sender interface so the portal starts
+// normally; any actual send attempt returns ErrMagicLinkNotEnabled so callers
+// can translate it to a client-facing 4xx rather than a 5xx.
+type disabledSender struct{}
+
+func (disabledSender) Send(_ context.Context, _, _, _ string) error {
+	return fmt.Errorf("%w", ErrMagicLinkNotEnabled)
+}
+
 // New constructs a Sender from the portal email config. The selected provider's
 // credentials must be non-empty; the factory validates the minimum required
 // fields so callers get a clear error at startup rather than at first send.
 //
+// Special case: when both email.provider and email.from are empty (entirely
+// unconfigured), New returns a disabledSender with no error. This allows
+// OAuth-only and no-auth deployments to start cleanly; magic-link request
+// handlers detect ErrMagicLinkNotEnabled and return a client-facing 4xx.
+//
 // Adding a fifth provider is: a new *Sender file + a new case here. Nothing
 // else needs to change.
 func New(cfg config.EmailConfig) (Sender, error) {
+	// Entirely unconfigured — no provider, no from address. Return the
+	// disabled sender so magic-link-free deployments start cleanly.
+	if cfg.Provider == "" && cfg.From == "" {
+		return disabledSender{}, nil
+	}
+
+	// Provider is set but from is missing — fail fast; the operator made a
+	// partial configuration mistake.
 	if cfg.From == "" {
 		return nil, fmt.Errorf("senders: email.from must not be empty")
 	}

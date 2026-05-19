@@ -14,6 +14,7 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/deperr"
+	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/tokens"
 )
@@ -109,6 +110,9 @@ func (h *MagicLinkHandler) RequestMagicLink(
 		"\n\nThis link expires in 15 minutes and can only be used once.\n"
 
 	if err := h.sender.Send(ctx, email, magicLinkSubject, body); err != nil {
+		if errors.Is(err, senders.ErrMagicLinkNotEnabled) {
+			return nil, httperr.ErrMagicLinkNotEnabled()
+		}
 		return nil, deperr.WrapSMTP(fmt.Errorf("magic-link: send email: %w", err))
 	}
 

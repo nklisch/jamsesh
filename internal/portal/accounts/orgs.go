@@ -17,6 +17,7 @@ import (
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/handlerauth"
+	"jamsesh/internal/portal/senders"
 )
 
 const (
@@ -196,7 +197,12 @@ func (h *Handler) CreateOrgInvite(ctx context.Context, req openapi.CreateOrgInvi
 		"\n\nThis invite expires in 7 days.\n"
 
 	if err := h.sender.Send(ctx, recipientEmail, subject, body); err != nil {
-		return nil, deperr.WrapSMTP(fmt.Errorf("accounts: send invite email: %w", err))
+		// When email is unconfigured the invite is still created and returned —
+		// the host can share the accept URL manually. Any other send failure is
+		// a transient dep error.
+		if !errors.Is(err, senders.ErrMagicLinkNotEnabled) {
+			return nil, deperr.WrapSMTP(fmt.Errorf("accounts: send invite email: %w", err))
+		}
 	}
 
 	return openapi.CreateOrgInvite201JSONResponse{

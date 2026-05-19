@@ -145,6 +145,17 @@ func ErrGitSubprocessFailed(cause error) *Error {
 	}
 }
 
+// ErrMagicLinkNotEnabled is emitted when a magic-link request arrives but
+// the portal has no email provider configured. Returns 400 so the client
+// knows not to retry (the operator must configure email to enable magic-link).
+func ErrMagicLinkNotEnabled() *Error {
+	return &Error{
+		Code:       "auth.magic_link_not_enabled",
+		Message:    "magic-link auth is not enabled on this portal (no email provider configured)",
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
 // ErrBadRequest is emitted when oapi-codegen's strict handler fails to
 // decode a request body or path/query parameters. Replaces the default
 // plain-text 400 with the standard envelope so every error response

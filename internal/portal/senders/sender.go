@@ -33,4 +33,10 @@ var (
 	// ErrAuth signals a provider credentials / configuration problem.
 	// The operator must fix the config; retrying will not help.
 	ErrAuth = errors.New("senders: auth/config error")
+
+	// ErrMagicLinkNotEnabled signals that the portal was started without an
+	// email provider configured, so magic-link auth is unavailable. Callers
+	// (magic-link request handler) translate this to a client-facing 4xx; it
+	// is not a transient or retryable failure.
+	ErrMagicLinkNotEnabled = errors.New("senders: magic-link auth not enabled (no email provider configured)")
 )

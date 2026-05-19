@@ -1,7 +1,7 @@
 ---
 id: bug-portal-email-from-required-without-magic-link
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal]
 parent: null
 depends_on: []
@@ -87,3 +87,39 @@ present.
 - Touches `internal/email/` or equivalent + `cmd/portal/main.go` init
   wiring. May also touch `internal/auth/` magic-link request handler to
   return the new "not enabled" error.
+
+## Implementation Notes
+
+### Files touched
+
+- `internal/portal/senders/sender.go` — added `ErrMagicLinkNotEnabled` sentinel
+- `internal/portal/senders/factory.go` — added `disabledSender` type; factory returns it when both `Provider` and `From` are empty; preserves fail-fast when `Provider` is set and `From` is empty
+- `internal/portal/config/config.go` — removed `Provider: "smtp"` from defaults so a bare install has both fields empty and hits the disabled path
+- `internal/portal/httperr/httperr.go` — added `ErrMagicLinkNotEnabled()` constructor (400, code `auth.magic_link_not_enabled`)
+- `internal/portal/auth/magic_link.go` — added `errors.Is(err, senders.ErrMagicLinkNotEnabled)` guard before `deperr.WrapSMTP`; returns `httperr.ErrMagicLinkNotEnabled()` directly so the pipeline emits 400 instead of 503
+- `internal/portal/sessions/invites.go` — skip email send (not hard-fail) when `ErrMagicLinkNotEnabled`; invite still created and returned so hosts can copy the link
+- `internal/portal/accounts/orgs.go` — same skip pattern for org invites
+- `internal/portal/senders/sender_test.go` — updated `TestNew_EmptyFrom_ReturnsError` comment; added `TestNew_NoEmailConfig_ReturnsDisabledSender` (matrix 1+2), `TestNew_ProviderSetFromEmpty_ReturnsError` (matrix 4)
+- `internal/portal/auth/magic_link_test.go` — added `TestRequestMagicLink_DisabledSender_Returns400MagicLinkNotEnabled`
+- `.github/workflows/quickstart.yml` — removed `JAMSESH_EMAIL_FROM: ci@localhost` workaround and explanatory comment
+- `compose.yaml` — removed `JAMSESH_EMAIL_FROM: dev@localhost` workaround and explanatory comment
+
+### Approach: conditional construction (Path 1)
+
+`disabledSender` is a zero-value struct implementing `Sender`. `New` returns it with no error when both `cfg.Provider` and `cfg.From` are empty (entirely unconfigured). The disabled state is detected at send-time via `ErrMagicLinkNotEnabled` rather than at startup, which avoids the need to thread a boolean flag through all callers.
+
+Deviation from recommended shape: `translate.go` was NOT updated to add a new `senders` import — instead, `magic_link.go` catches `ErrMagicLinkNotEnabled` before wrapping with `deperr.WrapSMTP` and returns an `httperr.Error` directly. This is cleaner (no cross-package import in the translate pipeline) and consistent with how auth middleware already returns `httperr.Error` values directly.
+
+### Test coverage matrix
+
+1. OAuth-only (provider/from unset): `TestNew_NoEmailConfig_ReturnsDisabledSender` confirms disabled sender; `TestRequestMagicLink_DisabledSender_Returns400MagicLinkNotEnabled` confirms 400 response.
+2. No-auth (everything unset): same as matrix 1 — covered by above.
+3. Email-only (provider+from set): existing `TestNew_SMTP_ValidConfig_ReturnsSender` (and friends) confirm working sender.
+4. Email-misconfigured (provider set, from empty): `TestNew_EmptyFrom_ReturnsError` + `TestNew_ProviderSetFromEmpty_ReturnsError` confirm fail-fast preserved.
+
+### Workaround removal confirmed
+
+- `.github/workflows/quickstart.yml` — removed `JAMSESH_EMAIL_FROM: ci@localhost` and explanatory comment
+- `compose.yaml` — removed `JAMSESH_EMAIL_FROM: dev@localhost` and explanatory comment
+
+Full `go test ./...` passes with no failures. `go vet ./...` clean.

@@ -361,6 +361,27 @@ func TestRequestMagicLink_SenderError_Returns503DepSMTPUnavailable(t *testing.T)
 	}
 }
 
+// TestRequestMagicLink_DisabledSender_Returns400MagicLinkNotEnabled verifies
+// that when the portal is configured without an email provider (disabledSender),
+// a magic-link request returns 400 with error code "auth.magic_link_not_enabled"
+// rather than 503. This is the OAuth-only / no-auth deployment path.
+func TestRequestMagicLink_DisabledSender_Returns400MagicLinkNotEnabled(t *testing.T) {
+	// Wire a sender that returns ErrMagicLinkNotEnabled (same as disabledSender).
+	env := newMagicLinkTestEnv(t)
+	env.sender.err = fmt.Errorf("%w", senders.ErrMagicLinkNotEnabled)
+
+	resp := postJSONBody(t, env.srv, "/api/auth/magic-link/request",
+		map[string]string{"email": "user@example.com"})
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400 on disabled sender, got %d", resp.StatusCode)
+	}
+	body := decodeJSONResponse(t, resp)
+	if code, _ := body["error"].(string); code != "auth.magic_link_not_enabled" {
+		t.Errorf("error code: want auth.magic_link_not_enabled, got %q", code)
+	}
+}
+
 func TestRequestMagicLink_SubjectIsCorrect(t *testing.T) {
 	env := newMagicLinkTestEnv(t)
 	_ = requestAndExtractToken(t, env, "subj@example.com")

@@ -16,6 +16,7 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/deperr"
+	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -120,7 +121,12 @@ func (h *Handler) InviteToSession(ctx context.Context, req openapi.InviteToSessi
 		"\n\nThis invite expires in 7 days.\n"
 
 	if err := h.sender.Send(ctx, inviteeEmail, subject, body); err != nil {
-		return nil, deperr.WrapSMTP(fmt.Errorf("sessions: invite: send email: %w", err))
+		// When email is unconfigured the invite is still created and returned —
+		// the host can share the accept URL manually. Any other send failure is
+		// a transient dep error.
+		if !errors.Is(err, senders.ErrMagicLinkNotEnabled) {
+			return nil, deperr.WrapSMTP(fmt.Errorf("sessions: invite: send email: %w", err))
+		}
 	}
 
 	return openapi.InviteToSession201JSONResponse{

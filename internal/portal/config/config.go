@@ -389,7 +389,11 @@ func defaults() Config {
 		Log:       LogConfig{Format: "json", Level: slog.LevelInfo},
 		Storage:   "./storage",
 		Email: EmailConfig{
-			Provider: "smtp",
+			// Provider defaults to empty so that deployments without an email
+			// provider configured (OAuth-only, no-auth) start cleanly without
+			// requiring JAMSESH_EMAIL_FROM. When the operator sets
+			// JAMSESH_EMAIL_PROVIDER, the full validation (including
+			// JAMSESH_EMAIL_FROM) runs at startup via senders.New.
 			SMTP: SMTPConfig{
 				Host:    "localhost",
 				Port:    587,

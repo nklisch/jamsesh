@@ -25,10 +25,47 @@ func TestNew_UnknownProvider_ReturnsError(t *testing.T) {
 	}
 }
 
+// TestNew_EmptyFrom_ReturnsError verifies that setting a provider without a
+// from address still fails fast — the "disabled" path only triggers when
+// BOTH provider and from are unset.
 func TestNew_EmptyFrom_ReturnsError(t *testing.T) {
 	_, err := senders.New(config.EmailConfig{Provider: "smtp"})
 	if err == nil {
-		t.Fatal("want error for empty from, got nil")
+		t.Fatal("want error for empty from with provider set, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Four-matrix config tests (acceptance-criteria coverage)
+// ---------------------------------------------------------------------------
+
+// Matrix 1 — OAuth-only: provider and from unset, portal starts cleanly; a
+// send attempt returns ErrMagicLinkNotEnabled.
+func TestNew_NoEmailConfig_ReturnsDisabledSender(t *testing.T) {
+	s, err := senders.New(config.EmailConfig{})
+	if err != nil {
+		t.Fatalf("want disabled sender (no error), got err: %v", err)
+	}
+	if s == nil {
+		t.Fatal("want non-nil sender (disabledSender), got nil")
+	}
+	sendErr := s.Send(context.Background(), "u@example.com", "subj", "body")
+	if !errors.Is(sendErr, senders.ErrMagicLinkNotEnabled) {
+		t.Errorf("Send: want errors.Is(err, ErrMagicLinkNotEnabled), got %v", sendErr)
+	}
+}
+
+// Matrix 2 — No-auth: same as Matrix 1 (both provider and from unset).
+// Covered by TestNew_NoEmailConfig_ReturnsDisabledSender above.
+
+// Matrix 3 — Email-only: provider+from set, portal starts; Send succeeds
+// (SMTP constructor is the existing TestNew_SMTP_ValidConfig_ReturnsSender).
+
+// Matrix 4 — Email-misconfigured: provider set but from empty, must fail fast.
+func TestNew_ProviderSetFromEmpty_ReturnsError(t *testing.T) {
+	_, err := senders.New(config.EmailConfig{Provider: "sendgrid"})
+	if err == nil {
+		t.Fatal("want error when provider is set but from is empty, got nil")
 	}
 }
 
