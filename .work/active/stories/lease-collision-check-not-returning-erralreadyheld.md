@@ -1,7 +1,7 @@
 ---
 id: lease-collision-check-not-returning-erralreadyheld
 kind: story
-stage: review
+stage: done
 tags: [portal, lease, bug]
 parent: null
 depends_on: []
@@ -87,3 +87,19 @@ had the `t.Skip` sentinel removed. The test now passes: it logs
 `lease: hashtext collision detected` and the Acquire call returns
 `ErrAlreadyHeld` as expected. All other Postgres lease tests continue to
 pass.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none.
+
+**Notes**: Root-cause is correct and clearly explained — `ON CONFLICT DO UPDATE
+SET pod_id = EXCLUDED.pod_id` made the post-upsert guard tautological. Reordering
+the guard before the upsert is the right fix. The `rowPodID != ""` clause
+properly handles `sql.ErrNoRows` (zero-value path), and same-pod reacquire is
+preserved because `rowPodID == m.PodID` short-circuits the guard. Added an
+`incAcquires("error")` to the collision-scan error path — small consistency
+improvement. The skipped test was unskipped without modifying its assertions.
