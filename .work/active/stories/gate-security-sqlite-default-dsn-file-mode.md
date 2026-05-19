@@ -1,7 +1,7 @@
 ---
 id: gate-security-sqlite-default-dsn-file-mode
 kind: story
-stage: review
+stage: done
 tags: [security, portal, documentation]
 parent: null
 depends_on: []
@@ -91,3 +91,21 @@ The story body referenced `internal/portal/config/config.go:350` as the
 location. The actual DB-open site is `internal/db/connect.go:Open()`,
 consumed by `cmd/portal/main.go:274`. The config file only holds the DSN
 default string; the connection is established in `internal/db`.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: `sqliteFilePath` doesn't detect the URI-form in-memory DSN
+`file:foo.db?mode=memory&cache=shared` — it returns `foo.db` and the subsequent
+`os.Chmod` will log a "file does not exist" warning. Production DSNs use plain
+paths or `postgres://`, so impact is zero in deployment; the case is mostly a
+testing curiosity. Tightening can ride along in a future change if anyone hits it.
+
+**Notes**: Implementation lands the chmod in the right place (post-migration,
+pre-return), correctly best-effort with a warning-only failure path, and handles
+the common in-memory DSNs. Tests cover both the helper and the chmod-on-open
+path. Docs updated to explain the automatic hardening plus the one-time chmod
+operators need on pre-existing installs.
