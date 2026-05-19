@@ -31,9 +31,10 @@ type Discoverer interface {
 // in "host:port" form. Pod IDs are set to the address itself (stable and
 // deterministic for static config).
 //
-// The first probe pass runs immediately when Run is called; subsequent passes
-// run every interval. publish is called only when the healthy set changes to
-// avoid spurious ring rebalances.
+// The first probe pass runs after one interval elapses (not immediately), so
+// a pre-seeded ring is not cleared during the startup window before portals
+// finish their readiness checks. publish is called only when the healthy set
+// changes to avoid spurious ring rebalances.
 func Static(addrs []string, probe *readyz.Probe, interval time.Duration) Discoverer {
 	return &staticDiscoverer{
 		addrs:    addrs,

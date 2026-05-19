@@ -166,17 +166,24 @@ func Start(ctx context.Context, t *testing.T, opts Options) *Cluster {
 		// Collect each pod's container IP for the router's backend list.
 		// Pods communicate with the router on the Docker bridge network at
 		// port 8443 (the portal's internal bind port).
+		//
+		// Also collect each pod's host-side URL for the pre-start readyz poll.
+		// The test process cannot reach container-internal IPs directly, so
+		// we use the host-mapped port URL that Testcontainers exposes.
 		backends := make([]string, len(pods))
+		readyzURLs := make([]string, len(pods))
 		for i, p := range pods {
 			ip, err := p.ContainerIP(ctx)
 			if err != nil {
 				t.Fatalf("portalcluster.Start: get container IP for pod %d: %v", i, err)
 			}
 			backends[i] = fmt.Sprintf("%s:8443", ip)
+			readyzURLs[i] = p.URL // host-side URL, e.g. "http://127.0.0.1:PORT"
 		}
 
 		rtr := router.Start(ctx, t, router.Options{
-			Backends: backends,
+			Backends:          backends,
+			BackendReadyzURLs: readyzURLs,
 		})
 		c.rtr = rtr
 		c.RouterURL = rtr.URL

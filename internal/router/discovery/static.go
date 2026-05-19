@@ -22,11 +22,17 @@ type staticDiscoverer struct {
 // avoids a separate boolean and keeps the comparison simple.
 const neverPublished = "\x00"
 
-// Run blocks until ctx is cancelled. It probes all configured addresses
-// immediately, then again on every interval tick. publish is called only when
-// the healthy set changes from the previously published set. The first pass
-// always calls publish (even for an empty healthy set) so the ring is
-// initialised from a known state.
+// Run blocks until ctx is cancelled. It waits for the first tick interval
+// before probing, then probes again on every subsequent tick. publish is called
+// only when the healthy set changes from the previously published set.
+//
+// The pre-tick delay is intentional: at startup the ring is already seeded with
+// all configured pod addresses by the caller (cmd/jamsesh-router/main.go). If
+// we probed immediately, a readyz probe arriving before portals finish their
+// Postgres-ping + os.Stat readiness checks would return zero healthy pods and
+// publish([]) — evicting the seeded ring and causing all in-flight requests to
+// 503. Waiting one full interval gives portals time to become genuinely ready
+// before any probe can clear the ring.
 func (d *staticDiscoverer) Run(ctx context.Context, publish func([]ring.Pod)) error {
 	prev := neverPublished // sentinel: "no previous publish"
 
@@ -41,9 +47,8 @@ func (d *staticDiscoverer) Run(ctx context.Context, publish func([]ring.Pod)) er
 		publish(pods)
 	}
 
-	// Run first pass immediately.
-	doProbe()
-
+	// Wait for the first tick before probing. The ring is already seeded at
+	// startup; an immediate probe risks clearing it before portals are ready.
 	ticker := time.NewTicker(d.interval)
 	defer ticker.Stop()
 

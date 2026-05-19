@@ -121,7 +121,7 @@ func TestStaticDiscoverer_AllHealthy(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- d.Run(ctx, coll.publish) }()
 
-	// Wait for at least one publish (initial pass).
+	// Wait for at least one publish (first tick pass).
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if coll.count() >= 1 {
@@ -195,7 +195,7 @@ func TestStaticDiscoverer_BecomesHealthy(t *testing.T) {
 
 	go d.Run(ctx, coll.publish) //nolint:errcheck
 
-	// Wait for first publish (unhealthy → empty set).
+	// Wait for first publish (first tick, unhealthy → empty set).
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if coll.count() >= 1 {
@@ -204,7 +204,7 @@ func TestStaticDiscoverer_BecomesHealthy(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	if coll.count() == 0 {
-		t.Fatal("no initial publish within deadline")
+		t.Fatal("no publish within deadline after first tick")
 	}
 	if len(coll.last()) != 0 {
 		t.Fatalf("expected empty initial publish (unhealthy), got %v", coll.last())
@@ -253,7 +253,7 @@ func TestStaticDiscoverer_NoSpuriousPublish(t *testing.T) {
 
 	<-ctx.Done()
 
-	// There should be exactly 1 publish (initial), not one per tick, since
+	// There should be exactly 1 publish (first tick), not one per tick, since
 	// the set never changed.
 	if coll.count() != 1 {
 		t.Fatalf("expected exactly 1 publish (no-change suppression), got %d", coll.count())
@@ -290,6 +290,59 @@ func TestStaticDiscoverer_PodIDEqualsAddr(t *testing.T) {
 	}
 	if pods[0].ID != s.addr() {
 		t.Fatalf("expected Pod.ID == addr %q, got %q", s.addr(), pods[0].ID)
+	}
+
+	cancel()
+}
+
+// TestStaticDiscoverer_NoImmediateProbeOnStartup verifies that the discoverer
+// does NOT publish on startup before the first tick interval elapses.
+//
+// This is the regression test for the "readyz evicts seeded ring" bug: the
+// router seeds the consistent-hash ring with all configured pod addresses at
+// startup, then launches the discovery goroutine. If the discoverer probed
+// immediately and all portals were still completing their readiness checks
+// (Postgres ping + os.Stat), publish([]) would clear the seeded ring and all
+// requests would 503 until the next probe interval.
+//
+// The fix: wait for the first tick before probing. This test confirms no
+// publish fires before that interval elapses, regardless of backend health.
+func TestStaticDiscoverer_NoImmediateProbeOnStartup(t *testing.T) {
+	// Start the backend as unhealthy — simulates portals that haven't completed
+	// their /readyz checks yet (Postgres ping, os.Stat) at the moment the
+	// discovery goroutine starts.
+	backend := newToggleServer(t, false)
+
+	const interval = 200 * time.Millisecond
+	probe := &readyz.Probe{Path: "/"}
+	d := discovery.Static([]string{backend.addr()}, probe, interval)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	coll := newCollector()
+	defer coll.close()
+
+	go d.Run(ctx, coll.publish) //nolint:errcheck
+
+	// Sleep for half the interval — no publish should have fired yet because
+	// the discoverer waits for the first tick before probing.
+	time.Sleep(interval / 2)
+
+	if coll.count() != 0 {
+		t.Fatalf("discoverer published %d time(s) before first tick interval elapsed; "+
+			"expected 0 — pre-tick probe must not evict the seeded ring", coll.count())
+	}
+
+	// After the full interval the first probe fires. The backend is still
+	// unhealthy, so publish([]) is called exactly once (empty set).
+	time.Sleep(interval) // wait past the first tick
+
+	if coll.count() != 1 {
+		t.Fatalf("expected exactly 1 publish after first tick, got %d", coll.count())
+	}
+	if len(coll.last()) != 0 {
+		t.Fatalf("expected empty publish (unhealthy backend), got %v", coll.last())
 	}
 
 	cancel()

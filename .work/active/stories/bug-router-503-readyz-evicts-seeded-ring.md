@@ -1,7 +1,7 @@
 ---
 id: bug-router-503-readyz-evicts-seeded-ring
 kind: story
-stage: implementing
+stage: review
 tags: [bug, router, discovery, e2e-chaos]
 parent: null
 depends_on: []
@@ -92,3 +92,45 @@ should land together.
 - [ ] `TestCrossPodClockSkew` no longer fails at `createLeaseSkewSession: want 201; got 503`.
 - [ ] All five chaos tests reach their actual chaos scenario (not blocked on 503 at session creation).
 - [ ] `go test ./internal/router/... -timeout 60s` passes.
+
+## Implementation Notes
+
+### Files touched
+
+- `internal/router/discovery/static.go` — Removed the pre-tick `doProbe()` call
+  (formerly line 45). The `Run` loop now waits for the first `ticker.C` tick before
+  probing. Added an explanatory comment in the `Run` doc: the ring is already seeded
+  by `cmd/jamsesh-router/main.go`; probing immediately risks clearing it before
+  portals finish their Postgres-ping + `os.Stat` readiness checks.
+
+- `internal/router/discovery/discovery.go` — Updated `Static` doc comment to
+  reflect "first probe after one interval" rather than "first probe immediately".
+
+- `internal/router/discovery/static_test.go` — Added
+  `TestStaticDiscoverer_NoImmediateProbeOnStartup`: starts a backend unhealthy,
+  confirms zero publishes before half the interval elapses, then confirms exactly
+  one publish (empty set) after the first tick fires. Updated stale comments
+  ("initial pass" → "first tick pass") in existing tests.
+
+- `tests/e2e/fixtures/router/router.go` — Added `BackendReadyzURLs []string` to
+  `Options`. When non-empty, `Start` calls `waitForBackendsReadyz` before creating
+  the container. `waitForBackendsReadyz` polls each host-side URL's `/readyz`
+  every 100ms until all return 200, logging progress and calling `t.Fatalf` on
+  context cancellation.
+
+- `tests/e2e/fixtures/portalcluster/cluster.go` — Populates `BackendReadyzURLs`
+  with `pod.URL` (host-mapped URLs) alongside the existing `backends` (container
+  bridge IPs) when `opts.Router` is true.
+
+### Approach
+
+Two complementary layers of defence:
+1. **Discoverer (production fix)**: skip the immediate pre-tick probe — the seeded
+   ring is the authoritative initial state and is safe to use for one full interval.
+2. **Fixture (test hardening)**: poll portal `/readyz` from the host side before
+   starting the router container — guarantees portals are genuinely ready before
+   the router's first tick probe fires.
+
+Both are minimal and obviously correct; no retry logic or exponential backoff was
+needed because the poll tight-loops at 100ms (well within the portal startup window)
+and the context deadline from `t` bounds the wait.

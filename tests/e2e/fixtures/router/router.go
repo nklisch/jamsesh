@@ -21,6 +21,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os/exec"
 	"strings"
 	"testing"
@@ -53,6 +54,20 @@ type Options struct {
 	// their ContainerIP:port here so the router (also on the bridge) can reach
 	// them without host-port mapping.
 	Backends []string
+
+	// BackendReadyzURLs, if set, are host-side base URLs (e.g. "http://127.0.0.1:PORT")
+	// for each backend portal. Start polls each URL's /readyz endpoint and waits
+	// until all return HTTP 200 before creating the router container.
+	//
+	// This prevents a race where the router's static discoverer fires its first
+	// /readyz probe before portals have completed their Postgres-ping + os.Stat
+	// readiness checks. Without this poll, the discovery goroutine may publish([])
+	// and evict the pre-seeded ring, causing 503 on the first requests.
+	//
+	// Use Backends for the router's static-discovery config (container-side IPs)
+	// and BackendReadyzURLs for the host-side poll (reachable from the test process).
+	// Leave nil to skip the poll (e.g. when backends are not portal containers).
+	BackendReadyzURLs []string
 }
 
 // Router holds connection info for a running jamsesh-router container.
@@ -79,6 +94,21 @@ func Start(ctx context.Context, t *testing.T, opts Options) *Router {
 	t.Helper()
 	requireDocker(t)
 	requireRouterImage(t)
+
+	// Wait for all backend portals to pass /readyz before starting the router.
+	// This eliminates the race where the router's discovery goroutine fires its
+	// first /readyz probe before portals have finished their Postgres-ping +
+	// os.Stat readiness checks. Without this wait, that probe returns zero
+	// healthy pods and publish([]) evicts the pre-seeded ring, causing 503.
+	//
+	// Note: the discoverer also no longer probes immediately on startup (it
+	// waits one full interval first), but this fixture-side poll is a second
+	// layer of defence: it ensures portals are genuinely ready before the
+	// router container even starts, so both the first tick and any early
+	// requests are safe.
+	if len(opts.BackendReadyzURLs) > 0 {
+		waitForBackendsReadyz(ctx, t, opts.BackendReadyzURLs)
+	}
 
 	env := map[string]string{
 		"JAMSESH_ROUTER_BIND":             ":8080",
@@ -145,5 +175,58 @@ func requireRouterImage(t *testing.T) {
 	t.Helper()
 	if err := exec.Command("docker", "image", "inspect", image).Run(); err != nil {
 		t.Skipf("router e2e image %q not present — run `make test-router-image` first", image)
+	}
+}
+
+// waitForBackendsReadyz polls each base URL's /readyz endpoint until all
+// return HTTP 200 or the context is cancelled. It logs progress so test output
+// is actionable when a portal is slow to become ready.
+//
+// Each URL should be a host-side base URL (e.g. "http://127.0.0.1:PORT") —
+// the /readyz path is appended automatically.
+func waitForBackendsReadyz(ctx context.Context, t *testing.T, baseURLs []string) {
+	t.Helper()
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	pending := make([]bool, len(baseURLs))
+	for i := range pending {
+		pending[i] = true // all start as not-yet-ready
+	}
+
+	t.Logf("router fixture: waiting for %d backend portal(s) to pass /readyz", len(baseURLs))
+
+	for {
+		allReady := true
+		for i, ready := range pending {
+			if !ready {
+				continue
+			}
+			url := baseURLs[i] + "/readyz"
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			if err != nil {
+				t.Fatalf("router fixture: waitForBackendsReadyz: build request for %s: %v", url, err)
+			}
+			resp, err := client.Do(req)
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					pending[i] = false // this backend is ready
+					t.Logf("router fixture: backend %s is ready", baseURLs[i])
+					continue
+				}
+			}
+			// This backend is not ready yet.
+			allReady = false
+		}
+		if allReady {
+			return
+		}
+		// Check for context cancellation before sleeping.
+		select {
+		case <-ctx.Done():
+			t.Fatalf("router fixture: context cancelled while waiting for backends to pass /readyz: %v", ctx.Err())
+		default:
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
