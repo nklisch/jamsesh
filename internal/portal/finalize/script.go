@@ -78,7 +78,7 @@ func BuildScript(in ScriptInput) string {
 func buildSquashScript(in ScriptInput) string {
 	var b strings.Builder
 	writeScriptPrologue(&b)
-	writeFetchStep(&b)
+	writeFetchStep(&b, in.BaseSHA, in.SelectedSHAs)
 	writeCheckoutStep(&b, in.TargetBranch, in.BaseSHA)
 
 	b.WriteString(fmt.Sprintf("echo \"==> Staging %d curated commit", len(in.SelectedSHAs)))
@@ -128,7 +128,7 @@ func buildSquashScript(in ScriptInput) string {
 func buildPreserveScript(in ScriptInput) string {
 	var b strings.Builder
 	writeScriptPrologue(&b)
-	writeFetchStep(&b)
+	writeFetchStep(&b, in.BaseSHA, in.SelectedSHAs)
 	writeCheckoutStep(&b, in.TargetBranch, in.BaseSHA)
 
 	total := len(in.SelectedSHAs)
@@ -150,10 +150,28 @@ func writeScriptPrologue(b *strings.Builder) {
 }
 
 // writeFetchStep writes the verbose fetch step. The `$JAMSESH_FETCH_REMOTE`
-// placeholder is substituted by the plugin (local path or HTTPS URL).
-func writeFetchStep(b *strings.Builder) {
+// placeholder is substituted by the plugin (local path or HTTPS URL). The
+// fetched refspecs are explicit SHAs — `git fetch <url>` with no refspec
+// fetches the remote's HEAD, but session bare repos don't have HEAD
+// pointing at a real ref (refs live under jam/<session>/...), so the
+// default fetch errors with "couldn't find remote ref HEAD". Fetching by
+// SHA bypasses HEAD entirely.
+func writeFetchStep(b *strings.Builder, baseSHA string, shas []string) {
 	b.WriteString("echo \"==> Fetching session refs\"\n")
-	b.WriteString("git fetch \"$JAMSESH_FETCH_REMOTE\"\n")
+	b.WriteString("git fetch \"$JAMSESH_FETCH_REMOTE\"")
+	if baseSHA != "" {
+		b.WriteString(" ")
+		b.WriteString(baseSHA)
+	}
+	for _, sha := range shas {
+		// Skip empty and duplicate-of-baseSHA to keep the fetch tidy.
+		if sha == "" || sha == baseSHA {
+			continue
+		}
+		b.WriteString(" ")
+		b.WriteString(sha)
+	}
+	b.WriteString("\n")
 }
 
 // writeCheckoutStep writes the branch-creation step.

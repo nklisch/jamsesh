@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 echo "==> Fetching session refs"
-git fetch "$JAMSESH_FETCH_REMOTE"
+git fetch "$JAMSESH_FETCH_REMOTE" fedcba9876543210fedcba9876543210fedcba98 1111111111111111111111111111111111111111
 echo "==> Creating target branch ship/comments at fedcba987654"
 git checkout -b 'ship/comments' 'fedcba9876543210fedcba9876543210fedcba98'
 echo "==> Staging 1 curated commit"
