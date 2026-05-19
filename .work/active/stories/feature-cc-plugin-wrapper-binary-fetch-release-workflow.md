@@ -1,7 +1,7 @@
 ---
 id: feature-cc-plugin-wrapper-binary-fetch-release-workflow
 kind: story
-stage: implementing
+stage: review
 tags: [infra, plugin]
 parent: feature-cc-plugin-wrapper-binary-fetch
 depends_on: [feature-cc-plugin-wrapper-binary-fetch-script]
@@ -72,3 +72,35 @@ After the edit, the `jobs:` map has exactly: `build`, `sign-and-release`,
   workflow with no marketplace step. The currently-failing-on-marketplace
   prior v0.1.0 run can be ignored (the failed job is for a tree that no
   longer matters).
+
+## Implementation Notes
+
+### Edit 1 — Delete `marketplace:` job
+
+Deleted lines 264–332 of the original file (the blank line separating
+`docker:` from `marketplace:` through the final `git push origin "${VERSION}"`
+line). The `jobs:` map now contains exactly `build`, `sign-and-release`,
+`docker`.
+
+### Edit 2 — Insert version-assertion step
+
+Inserted 12-line step block immediately after `uses: actions/checkout@v4`
+in `sign-and-release` (before the `actions/download-artifact@v4` step
+that downloads dist-staging). Indentation matches the existing 6-space
+style used by all sibling steps.
+
+### Verification outcomes
+
+1. YAML parse: `python3 -c "import yaml; yaml.safe_load(...)"` — exit 0,
+   no output. **PASS**
+
+2. Jobs structure: `sorted(w['jobs'].keys())` →
+   `['build', 'docker', 'sign-and-release']` — no `marketplace`. **PASS**
+
+3. Marketplace references: `grep -n "marketplace|MARKETPLACE|jamsesh-cc-plugin"` →
+   no output. **PASS**
+
+4. Assertion match simulation (`expected="v0.1.0"`): prints `OK`. **PASS**
+
+5. Assertion mismatch simulation (`expected="v9.9.9"`): prints `MISMATCH`.
+   **PASS**

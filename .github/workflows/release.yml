@@ -98,6 +98,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: assert bin/jamsesh version matches tag
+        run: |
+          set -euo pipefail
+          expected="${GITHUB_REF_NAME}"
+          actual=$(grep '^readonly JAMSESH_PLUGIN_VERSION=' bin/jamsesh \
+                   | sed -E 's/.*="([^"]+)".*/\1/')
+          if [[ "${actual}" != "${expected}" ]]; then
+            echo "::error::bin/jamsesh JAMSESH_PLUGIN_VERSION='${actual}' but tag is '${expected}'."
+            echo "::error::Bump the constant in bin/jamsesh before pushing the tag (see docs/RELEASING.md)."
+            exit 1
+          fi
+
       # Download all 10 build artifacts into dist-staging/, then flatten
       # into dist/ so every step below operates on one directory.
       - uses: actions/download-artifact@v4
@@ -261,71 +273,3 @@ jobs:
       - name: cosign sign image
         run: |
           cosign sign --yes ghcr.io/${{ github.repository_owner }}/jamsesh@${{ steps.build.outputs.digest }}
-
-  marketplace:
-    name: publish plugin to marketplace repo
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-      - name: checkout jamsesh
-        uses: actions/checkout@v4
-        with:
-          path: jamsesh
-
-      - name: checkout marketplace repo
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ vars.MARKETPLACE_OWNER || github.repository_owner }}/jamsesh-cc-plugin
-          path: marketplace
-          ssh-key: ${{ secrets.MARKETPLACE_DEPLOY_KEY }}
-
-      - name: download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: assemble plugin tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Copy plugin source from main repo
-          rm -rf marketplace/.claude-plugin marketplace/hooks marketplace/.mcp.json marketplace/skills marketplace/bin
-          cp -r jamsesh/.claude-plugin marketplace/
-          cp -r jamsesh/hooks marketplace/
-          cp jamsesh/.mcp.json marketplace/
-          cp -r jamsesh/skills marketplace/
-
-          # Place per-arch binaries with marketplace-expected names
-          mkdir -p marketplace/bin
-          cp artifacts/jamsesh-darwin-amd64 marketplace/bin/jamsesh-darwin-amd64
-          cp artifacts/jamsesh-darwin-arm64 marketplace/bin/jamsesh-darwin-arm64
-          cp artifacts/jamsesh-linux-amd64 marketplace/bin/jamsesh-linux-amd64
-          cp artifacts/jamsesh-linux-arm64 marketplace/bin/jamsesh-linux-arm64
-          cp artifacts/jamsesh-windows-amd64.exe marketplace/bin/jamsesh-windows-amd64.exe
-
-          # Update plugin.json version
-          VERSION="${GITHUB_REF_NAME#v}"
-          cd marketplace
-          jq --arg v "$VERSION" '.version = $v' .claude-plugin/plugin.json > .claude-plugin/plugin.json.tmp
-          mv .claude-plugin/plugin.json.tmp .claude-plugin/plugin.json
-
-          # Prepend CHANGELOG entry (newest first)
-          printf "## v${VERSION}\n\nReleased $(date -u +%Y-%m-%d).\n\n" > CHANGELOG.md.tmp
-          [ -f CHANGELOG.md ] && cat CHANGELOG.md >> CHANGELOG.md.tmp
-          mv CHANGELOG.md.tmp CHANGELOG.md
-
-      - name: commit + tag + push
-        working-directory: marketplace
-        run: |
-          set -euo pipefail
-          VERSION="${GITHUB_REF_NAME}"
-          git config user.email "release-bot@jamsesh.io"
-          git config user.name "jamsesh release bot"
-          git add .
-          git commit -m "Release ${VERSION}"
-          git tag -a "${VERSION}" -m "Release ${VERSION}"
-          git push origin HEAD
-          git push origin "${VERSION}"
