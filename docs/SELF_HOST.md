@@ -9,6 +9,27 @@ a real database, OAuth, or production-grade setup.
 
 ## 1. Install
 
+### 1.0 Quickstart with Docker Compose
+
+For the fastest path from clone to running portal, use the bundled compose
+template at `deploy/compose/`:
+
+```bash
+git clone https://github.com/<owner>/jamsesh
+cd jamsesh/deploy/compose
+cp .env.example .env
+$EDITOR .env       # set JAMSESH_DOMAIN + OAuth or email creds
+docker compose up -d
+```
+
+This brings up the portal behind a Caddy reverse proxy with automatic
+HTTPS via Let's Encrypt. See [`deploy/compose/README.md`](../deploy/compose/README.md)
+for the full template reference (profiles, volumes, upgrading).
+
+The rest of this document is the deep operator reference — TLS modes,
+OAuth callbacks, database options, monitoring, and backup. Read on when
+the quickstart template doesn't fit your shape.
+
 ### Docker (recommended)
 
 The portal ships as a single Docker image. Pull it from the GitHub Container

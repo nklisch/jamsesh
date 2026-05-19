@@ -41,10 +41,24 @@ CHANGELOG entry. That skill is documented in
    `/agile-workflow:release-deploy <version>` to bind items, run gates,
    and walk to the readiness halt.
 
-2. **Confirm the CHANGELOG entry.** `release-deploy` drafts `CHANGELOG.md`
+2. **Bump the compose template's `JAMSESH_VERSION` pin.** The self-host
+   quickstart template at `deploy/compose/.env.example` pins
+   `JAMSESH_VERSION` to a specific tag for reproducible operator deploys.
+   Bump it to the version you're about to release, then commit:
+
+   ```bash
+   sed -i 's/^JAMSESH_VERSION=.*/JAMSESH_VERSION=v0.X.0/' deploy/compose/.env.example
+   git add deploy/compose/.env.example
+   git commit -m "release-prep: bump compose template to v0.X.0"
+   ```
+
+   Skipping this step means freshly-cloned operator setups will deploy
+   the previous release until they edit their `.env` manually.
+
+3. **Confirm the CHANGELOG entry.** `release-deploy` drafts `CHANGELOG.md`
    from the bound items + their commits. Review and edit before approving.
 
-3. **Push the tag.** `release-deploy`'s ship phase tags and pushes
+4. **Push the tag.** `release-deploy`'s ship phase tags and pushes
    `v<version>` to `origin`, which triggers `release.yml`. If you're
    doing this manually:
 
@@ -54,7 +68,7 @@ CHANGELOG entry. That skill is documented in
    git push origin v0.X.0        # triggers the release workflow
    ```
 
-4. **Watch the workflow.** Real-time view:
+5. **Watch the workflow.** Real-time view:
 
    ```bash
    gh run watch
@@ -66,7 +80,7 @@ CHANGELOG entry. That skill is documented in
    gh run list --workflow=release.yml --limit 5
    ```
 
-5. **Verify the release.** Once `release.yml` finishes:
+6. **Verify the release.** Once `release.yml` finishes:
 
    ```bash
    gh release view v0.X.0

@@ -47,6 +47,23 @@ For the operator-facing production deployment, see
 
 ## Operator quickstart
 
+The fastest way to run jamsesh on your own host:
+
+```bash
+git clone https://github.com/<owner>/jamsesh
+cd jamsesh/deploy/compose
+cp .env.example .env
+$EDITOR .env       # set JAMSESH_DOMAIN + OAuth or email creds
+docker compose up -d
+```
+
+This brings up the portal behind a Caddy reverse proxy with automatic
+HTTPS. See [`deploy/compose/README.md`](deploy/compose/README.md) for the
+template reference and [docs/SELF_HOST.md](docs/SELF_HOST.md) for TLS,
+OAuth, database options, and production deployment details.
+
+To kick the tires locally without a domain or TLS:
+
 ```bash
 docker run --rm -p 8443:8443 \
   -e JAMSESH_TLS_MODE=behind_proxy \
@@ -57,14 +74,6 @@ docker run --rm -p 8443:8443 \
 curl http://localhost:8443/healthz
 # → {"status":"ok"}
 ```
-
-This runs the portal in behind-proxy mode (plain HTTP on `localhost:8443`,
-suitable for local testing or when sitting behind a TLS-terminating reverse
-proxy). Data — the SQLite database and per-session bare repos — lands in
-`./data/` on your host.
-
-For TLS, OAuth, database options, and production deployment, see
-[docs/SELF_HOST.md](docs/SELF_HOST.md).
 
 ## License
 
