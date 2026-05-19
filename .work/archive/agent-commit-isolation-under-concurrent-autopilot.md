@@ -1,14 +1,14 @@
 ---
 id: agent-commit-isolation-under-concurrent-autopilot
 kind: story
-stage: drafting
+stage: done
 tags: [process, agent-tooling]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-17
-updated: 2026-05-17
+updated: 2026-05-18
 ---
 
 # Agent commit isolation under concurrent autopilot activity
@@ -98,3 +98,29 @@ upstream `nklisch-skills` agile-workflow skill templates, not in
 jamsesh product code). The "implementation" would be a PR against
 that skill package, not a jamsesh commit. Worth weighing whether to
 track this in jamsesh's substrate at all vs. open an upstream issue.
+
+## Closed (2026-05-18, no action)
+
+Reviewed during `/agile-workflow:feature-design`. Decision: drop without
+action. Rationale:
+
+- The bug is non-blocking — the affected work was correct and tests
+  passed; the only damage was a misleading commit message in
+  `550280d` (a single commit, recoverable by `git log --grep` against
+  the actual file paths).
+- The fix lives in upstream `nklisch-skills` skill templates, not
+  jamsesh product code. The upstream rule at
+  `implement-orchestrator/SKILL.md:248` already gates worktree
+  isolation on file overlap; this case (non-overlapping files sharing
+  the git index) is a missed-case in that rule, but designing and
+  delivering an upstream PR isn't worth a jamsesh substrate stride.
+- Recurrence is infrequent — multi-agent waves with simultaneous
+  commits are rare enough that occasional commit-message rewrites are
+  cheaper than the prevention machinery.
+- v0.1.0 shipped without recurrence and post-release backlog is empty
+  except for this and the small clustered-Postgres race; no signal
+  that this is biting active work.
+
+Audit trail preserved: the original problem analysis, four design
+options, and verification path remain in the body above for anyone who
+hits this again.
