@@ -1271,7 +1271,7 @@ spec:
       labels:
         app: jamsesh-router
     spec:
-      serviceAccountName: jamsesh-router  # needs pod list/watch on the namespace
+      serviceAccountName: jamsesh-router  # needs get/list/watch on endpoints in the namespace
       terminationGracePeriodSeconds: 35
       containers:
         - name: router
@@ -1315,7 +1315,10 @@ spec:
       # cert-manager). The router speaks plain HTTP internally.
 
 ---
-# RBAC: allow the router to list/watch pods
+# RBAC: allow the router to read the portal Endpoints object
+# The router watches the Kubernetes Endpoints API (not pods directly) to
+# discover portal pod IPs. The ServiceAccount needs get/list/watch on
+# endpoints in the portal namespace.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -1329,7 +1332,7 @@ metadata:
   namespace: jamsesh
 rules:
   - apiGroups: [""]
-    resources: ["pods"]
+    resources: ["endpoints"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1340,7 +1343,8 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: jamsesh-router
-roleBinding:
+    namespace: jamsesh
+roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: jamsesh-router

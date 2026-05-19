@@ -128,20 +128,40 @@ func runCtx(ctx context.Context, args []string) int {
 	var disc discovery.Discoverer
 	switch cfg.DiscoveryMode {
 	case config.DiscoveryKubernetes:
+		var k8sCfg discovery.K8sConfig
+		// Use in-cluster credentials when no explicit API server URL or bearer
+		// token are configured. This is the standard path for pods running
+		// inside a Kubernetes cluster where the kubelet injects the SA token
+		// and CA cert at the well-known mount path.
+		if cfg.KubeAPIServerURL == "" && cfg.KubeBearerToken == "" {
+			var err error
+			k8sCfg, err = discovery.K8sInCluster(discovery.K8sInClusterOptions{
+				Namespace:      cfg.KubeNamespace,
+				ServiceName:    cfg.KubeServiceName,
+				PodPort:        cfg.KubePodPort,
+				ResyncInterval: time.Duration(cfg.KubeResyncIntervalS) * time.Second,
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "jamsesh-router: k8s in-cluster setup: %v\n", err)
+				return 2
+			}
+		} else {
+			k8sCfg = discovery.K8sConfig{
+				APIServerURL:   cfg.KubeAPIServerURL,
+				Namespace:      cfg.KubeNamespace,
+				ServiceName:    cfg.KubeServiceName,
+				PodPort:        cfg.KubePodPort,
+				BearerToken:    cfg.KubeBearerToken,
+				ResyncInterval: time.Duration(cfg.KubeResyncIntervalS) * time.Second,
+			}
+		}
 		slog.Info("jamsesh-router: using kubernetes discovery",
-			"api_server", cfg.KubeAPIServerURL,
-			"namespace", cfg.KubeNamespace,
-			"service", cfg.KubeServiceName,
-			"pod_port", cfg.KubePodPort,
+			"api_server", k8sCfg.APIServerURL,
+			"namespace", k8sCfg.Namespace,
+			"service", k8sCfg.ServiceName,
+			"pod_port", k8sCfg.PodPort,
 		)
-		disc = discovery.K8s(discovery.K8sConfig{
-			APIServerURL:   cfg.KubeAPIServerURL,
-			Namespace:      cfg.KubeNamespace,
-			ServiceName:    cfg.KubeServiceName,
-			PodPort:        cfg.KubePodPort,
-			BearerToken:    cfg.KubeBearerToken,
-			ResyncInterval: time.Duration(cfg.KubeResyncIntervalS) * time.Second,
-		})
+		disc = discovery.K8s(k8sCfg)
 	default: // DiscoveryStatic
 		// Seed the ring from static config immediately so the first request
 		// doesn't race against the first discovery tick.

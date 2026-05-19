@@ -141,8 +141,11 @@ func (c Config) Validate() error {
 			return fmt.Errorf("router config: static_pods must not be empty")
 		}
 	case DiscoveryKubernetes:
-		if c.KubeAPIServerURL == "" {
-			return fmt.Errorf("router config: kube_api_server_url must not be empty in kubernetes discovery mode")
+		// KubeAPIServerURL is optional when KUBERNETES_SERVICE_HOST is set —
+		// the in-cluster constructor auto-derives it from https://kubernetes.default.svc.
+		// When neither is provided, K8sInCluster will fail loudly at wiring time.
+		if c.KubeAPIServerURL == "" && os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
+			return fmt.Errorf("router config: kube_api_server_url must not be empty in kubernetes discovery mode (or set KUBERNETES_SERVICE_HOST for in-cluster auto-detection)")
 		}
 		if c.KubeNamespace == "" {
 			return fmt.Errorf("router config: kube_namespace must not be empty in kubernetes discovery mode")

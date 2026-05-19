@@ -1,7 +1,7 @@
 ---
 id: router-k8s-discovery-incluster-credentials
 kind: story
-stage: implementing
+stage: review
 tags: [infra, portal]
 parent: null
 depends_on: []
@@ -74,3 +74,25 @@ existing precedents).
 - Switching to client-go (the plain-HTTP watcher is intentional — keep it).
 - Watching additional resources beyond Endpoints (e.g. EndpointSlice in
   newer clusters — separate story if needed).
+
+## Implementation notes
+
+### Files changed
+
+- `internal/router/discovery/k8s_incluster.go` — new file; `K8sInCluster` constructor and `tokenInjectingRoundTripper` type.
+- `internal/router/discovery/k8s_incluster_test.go` — new file; 5 unit tests.
+- `internal/router/config/config.go` — relaxed `KubeAPIServerURL` validation to allow empty when `KUBERNETES_SERVICE_HOST` is set.
+- `cmd/jamsesh-router/main.go` — wiring: uses `K8sInCluster` when `KubeAPIServerURL` and `KubeBearerToken` are both unset; falls back to explicit-config path otherwise.
+- `docs/SELF_HOST.md` — updated k8s RBAC snippet: `pods` → `endpoints` with correct `roleRef` (the prior YAML had a malformed `roleBinding` key).
+
+### Mount-path override mechanism
+
+`K8sInClusterOptions.MountPath` overrides the default `/var/run/secrets/kubernetes.io/serviceaccount`. Tests pass `t.TempDir()` containing synthetic `ca.crt` and `token` files. No mocking of `os.ReadFile` is needed — the tests actually write and read the files, which means rotation behavior (overwriting the token file between requests) is exercised as a true file-system round-trip.
+
+### Token-rotation approach
+
+Read-on-request via `tokenInjectingRoundTripper`. On each `RoundTrip` call the wrapper reads the token file, trims whitespace, and injects `Authorization: Bearer <token>` on a cloned request before delegating to the base transport. This is simpler than a goroutine-based refresh and requires no synchronization — the OS guarantees atomic rename-then-read for file rotation (kubelet rotates tokens via rename). The overhead is one `os.ReadFile` per Endpoints list/watch call, negligible compared to the network round-trip. Rationale is documented inline in `k8s_incluster.go`.
+
+### RBAC docs location
+
+`docs/SELF_HOST.md` §14 "Kubernetes deployment" — the RBAC manifest block was updated from `resources: ["pods"]` to `resources: ["endpoints"]` with verbs `get`, `list`, `watch`. The malformed `roleBinding:` key was corrected to `roleRef:`. The `serviceAccountName` comment in the router Deployment was also updated.
