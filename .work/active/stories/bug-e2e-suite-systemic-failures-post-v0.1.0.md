@@ -1,7 +1,7 @@
 ---
 id: bug-e2e-suite-systemic-failures-post-v0.1.0
 kind: story
-stage: implementing
+stage: review
 tags: [bug, testing, e2e-test, triage]
 parent: null
 depends_on: []
@@ -120,3 +120,77 @@ For each cluster:
 - If during investigation two clusters turn out to share a root cause
   (e.g. a fixture timing bug affects both A and D), file one combined
   child bug item rather than two duplicates and note the overlap here.
+
+---
+
+## Cluster A — root cause
+
+**Hypothesis confirmed**: the router's static discoverer fires an immediate
+`/readyz` probe on goroutine startup (before the first tick), clearing the
+pre-seeded ring if portal pods haven't yet passed their readyz checks.
+`cmd/jamsesh-router/main.go` seeds the ring from static config, then
+immediately starts the discovery goroutine whose first action is to probe
+`/readyz` on all backends. The portal fixture waits for `/healthz` (instant,
+no-dep) before returning — so the portal is "healthy" but its `/readyz` (which
+runs a Postgres ping and `os.Stat`) may not yet pass. The discoverer calls
+`publish([])`, emptying the ring. All subsequent router requests get 503.
+
+**Child item**: `bug-router-503-readyz-evicts-seeded-ring`
+
+Two-part fix: (A) delay first probe in `static.go` until after the first tick
+interval, and (B) poll portal readyz in the router fixture before starting the
+router container. Both are needed for robustness.
+
+---
+
+## Cluster B — root cause
+
+**Hypothesis confirmed**: the `gate-security-ws-bearer-token-ticket-flow` story
+(commit `2301005`) shipped in v0.1.0 changed the WS subprotocol from
+`jamsesh.bearer.<token>` to `jamsesh-ticket.<ticket>`. The gateway now rejects
+the old format with 401 (no compat path). The `wsclient` e2e fixture
+(`tests/e2e/fixtures/wsclient/wsclient.go:98`) still sends the old format
+(`jamsesh.bearer.<bearer>`) — it was not updated in the commit (verified via
+`git log`). Every `wsclient.Connect` call fails with 401 at the upgrade step.
+
+**Child item**: `bug-wsclient-fixture-sends-bearer-not-ticket`
+
+Fix: update `wsclient.dial` to POST `/api/auth/ws-ticket` to obtain a
+single-use ticket, then dial with `jamsesh-ticket.<ticket>`. Test-fixture-only
+change; no production code touched.
+
+---
+
+## Cluster C — root cause
+
+**Hypothesis confirmed**: `TestInterruptedOps` runs multiple subtests against
+a single shared portal at `127.0.0.1`. The `magic-link/request` rate limiter
+is 3/min per source IP, in-process, with no reset between subtests. By the
+time the `magic_link_ttl_expiry` subtest runs, prior subtests have already
+consumed all 3 burst tokens (`push_interrupted_mid_pack` = 1, `finalize_lock_release_and_reacquire`
+= 2, cumulative = 3). The 4th request (`magic_link_ttl_expiry`'s own call)
+hits 429. Rate-limiter TTL is 1 hour; no GC fires during the test run.
+
+**Child item**: `bug-rate-limit-leaks-across-interrupted-ops-subtests`
+
+Recommended fix: set `JAMSESH_AUTH_RATE_LIMIT_ENABLED=false` in the
+`TestInterruptedOps` portal's `ExtraEnv`. The test exercises interrupted-op
+semantics, not rate-limiting; disabling it in-test is correct scope.
+
+---
+
+## Cluster D — root cause
+
+**Downstream of Cluster A**. `TestClusteredSmoke` in `tests/e2e/scaffolding`
+starts a 3-pod cluster with a router, then calls `createSessionViaRouter` (line
+94), which POSTs to the router. This request has no session ID so it uses the
+round-robin fallback — but the fallback also returns 503 when `len(pods) == 0`.
+The ring is empty because the Cluster A bug cleared it on first probe. The
+8.435s failure time is consistent with testcontainers startup succeeding then
+the first router request hitting the empty ring.
+
+**No separate child item filed.** Fixing `bug-router-503-readyz-evicts-seeded-ring`
+fixes Cluster D as well, since the root cause is identical. Verified: no other
+test in `tests/e2e/scaffolding` is the actual failure vector (`TestPortalHealthz`
+and `TestPortalImageHealthz` skip on missing router image; `TestE2EModuleBuilds`
+is a no-op).
