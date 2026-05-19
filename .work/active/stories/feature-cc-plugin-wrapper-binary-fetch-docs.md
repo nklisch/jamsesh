@@ -1,7 +1,7 @@
 ---
 id: feature-cc-plugin-wrapper-binary-fetch-docs
 kind: story
-stage: implementing
+stage: review
 tags: [infra, plugin, documentation]
 parent: feature-cc-plugin-wrapper-binary-fetch
 depends_on: [feature-cc-plugin-wrapper-binary-fetch-script]
@@ -72,3 +72,51 @@ Do NOT add migration-style prose. Rolling-foundation: describe NOW.
 - The SECURITY.md tweak is small (≤6 lines) but matters for
   rolling-foundation honesty — operators reading SECURITY.md should see
   the actual distribution path.
+
+## Implementation Notes
+
+### Files edited
+
+**`docs/RELEASING.md`**
+- Overview step 8 (was lines 25–27): replaced marketplace-repo description
+  with wrapper-script fetch model text (anchor: "Plugin install: users install
+  from `nklisch/jamsesh` directly").
+- "Cutting a release" section: inserted new step 3 ("Bump `bin/jamsesh`
+  `JAMSESH_PLUGIN_VERSION`") as a sibling to the compose-template bump (step
+  2); renumbered old steps 3–6 to 4–7. Final list: 7 sequential steps, 1–7.
+- Deleted entire §"One-time bootstrap: marketplace plugin repo" including its
+  leading `---` separator (was lines 95–186 including the section separator
+  before "Verifying release signatures"). Zero trace of `jamsesh-cc-plugin`,
+  `MARKETPLACE_DEPLOY_KEY`, or `marketplace repo` remains.
+
+**`docs/SECURITY.md`**
+- §"Supply chain and integrity" lines 201–208 (original numbering): replaced
+  two sentences.
+  - Sentence 1 anchor: "distributed via the marketplace repo" → "distributed
+    as GitHub release assets"; added wrapper sha256 + cosign sentence.
+  - Sentence 2 anchor: "verified at install time by both the marketplace and
+    the self-host install flows" → "verified at fetch time by the plugin
+    wrapper (`bin/jamsesh`) and at install time by the self-host install flows".
+
+### README addition
+
+Deferred to backlog item `docs-readme-cc-plugin-install-instructions`. The
+exact user-facing Claude Code slash commands (`/marketplace add`,
+`/plugins install`) need verification against current CC before publishing.
+The marketplace JSON source shape (`{ "source": "github", "repo":
+"nklisch/jamsesh" }`) is known; only the CLI command names need confirmation.
+The backlog item contains everything the next implementer needs to dive in.
+
+### Verification check outcomes
+
+1. `grep -rn 'jamsesh-cc-plugin\|MARKETPLACE_DEPLOY_KEY\|marketplace repo' docs/`
+   → empty output. PASS.
+
+2. Sequential numbering check on "Cutting a release":
+   `1. 2. 3. 4. 5. 6. 7.` — sequential, no gaps, no duplicates. PASS.
+
+3. `grep -n 'GitHub release assets\|bin/jamsesh' docs/SECURITY.md`
+   → 3 hits (lines 202, 203, 208). PASS.
+
+4. `grep -n '^## One-time bootstrap' docs/RELEASING.md`
+   → empty output. PASS.

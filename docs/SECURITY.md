@@ -199,12 +199,15 @@ Mitigation:
 ## Supply chain and integrity
 
 - The `jamsesh` binary is built reproducibly from public source and
-  distributed via the marketplace repo with cryptographic checksums.
+  distributed as GitHub release assets with cryptographic checksums. The
+  plugin's `bin/jamsesh` wrapper verifies sha256 against the signed
+  `checksums.txt` before exec, and additionally validates the cosign
+  sigstore bundle when `cosign` is on the user's PATH.
 - The portal binary likewise.
 - Releases are signed with Sigstore cosign in keyless mode (GitHub OIDC).
-  Signatures are verified at install time by both the marketplace and the
-  self-host install flows using `--certificate-identity-regexp` pinned to the
-  jamsesh release workflow and
+  Signatures are verified at fetch time by the plugin wrapper (`bin/jamsesh`)
+  and at install time by the self-host install flows using
+  `--certificate-identity-regexp` pinned to the jamsesh release workflow and
   `--certificate-oidc-issuer https://token.actions.githubusercontent.com`.
 - The keyless-signing trust anchor is the release workflow's identity. A
   compromise of `.github/workflows/release.yml` on the `main` branch would

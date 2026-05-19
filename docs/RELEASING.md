@@ -22,9 +22,10 @@ a `v*` tag to GitHub triggers `.github/workflows/release.yml`, which:
 6. Creates a GitHub Release tagged `v<version>` with all artifacts attached.
 7. Builds and pushes the multi-arch `ghcr.io/nklisch/jamsesh` Docker image
    with semver tags + `latest`, signed via cosign.
-8. Publishes the Claude Code plugin to the `nklisch/jamsesh-cc-plugin`
-   marketplace repository (plugin source + per-arch `jamsesh` binaries +
-   matching git tag).
+8. Plugin install: users install from `nklisch/jamsesh` directly. The
+   `bin/jamsesh` wrapper script in the plugin fetches the matching binary
+   from the release's GitHub assets on first run, verifies via sha256 +
+   optional cosign, and caches under `${CLAUDE_PLUGIN_DATA}/bin/`.
 
 The substrate's release-deploy skill (`/agile-workflow:release-deploy`)
 handles steps the maintainer takes locally before pushing the tag —
@@ -55,10 +56,23 @@ CHANGELOG entry. That skill is documented in
    Skipping this step means freshly-cloned operator setups will deploy
    the previous release until they edit their `.env` manually.
 
-3. **Confirm the CHANGELOG entry.** `release-deploy` drafts `CHANGELOG.md`
+3. **Bump `bin/jamsesh` `JAMSESH_PLUGIN_VERSION`.** The plugin wrapper pins
+   to a specific release tag for reproducible plugin installs. Bump before
+   pushing:
+
+   ```bash
+   sed -i 's/^readonly JAMSESH_PLUGIN_VERSION=.*/readonly JAMSESH_PLUGIN_VERSION="v0.X.0"/' bin/jamsesh
+   git add bin/jamsesh
+   git commit -m "release-prep: bump plugin wrapper to v0.X.0"
+   ```
+
+   The release workflow asserts this matches the pushed tag and fails fast
+   if it doesn't.
+
+4. **Confirm the CHANGELOG entry.** `release-deploy` drafts `CHANGELOG.md`
    from the bound items + their commits. Review and edit before approving.
 
-4. **Push the tag.** `release-deploy`'s ship phase tags and pushes
+5. **Push the tag.** `release-deploy`'s ship phase tags and pushes
    `v<version>` to `origin`, which triggers `release.yml`. If you're
    doing this manually:
 
@@ -68,7 +82,7 @@ CHANGELOG entry. That skill is documented in
    git push origin v0.X.0        # triggers the release workflow
    ```
 
-5. **Watch the workflow.** Real-time view:
+6. **Watch the workflow.** Real-time view:
 
    ```bash
    gh run watch
@@ -80,7 +94,7 @@ CHANGELOG entry. That skill is documented in
    gh run list --workflow=release.yml --limit 5
    ```
 
-6. **Verify the release.** Once `release.yml` finishes:
+7. **Verify the release.** Once `release.yml` finishes:
 
    ```bash
    gh release view v0.X.0
@@ -89,85 +103,6 @@ CHANGELOG entry. That skill is documented in
    The output lists every artifact uploaded, including the `.sigstore.json`
    signature bundles for each binary, the SBOM, and the signed
    `checksums.txt`.
-
----
-
-## One-time bootstrap: marketplace plugin repo
-
-The `publish plugin to marketplace repo` job in `release.yml` mirrors the
-Claude Code plugin (manifest, hooks, skills, `.mcp.json`, per-arch
-`jamsesh` binaries) into a dedicated repo so it can be installed via
-Claude Code's marketplace flow. The job assumes the marketplace repo
-already exists.
-
-If you're cutting your **first** release, run this bootstrap once before
-pushing the tag:
-
-1. **Create the marketplace repo on GitHub.**
-
-   ```bash
-   gh repo create nklisch/jamsesh-cc-plugin \
-     --public \
-     --description "Claude Code plugin package for jamsesh (mirrored from the main repo)"
-   ```
-
-   The `nklisch` defaults to the same owner as the `jamsesh` repo. To
-   override, set `vars.MARKETPLACE_OWNER` in the jamsesh repo's
-   Actions configuration — the workflow reads it.
-
-2. **Generate a deploy key with write access.**
-
-   ```bash
-   ssh-keygen -t ed25519 -f marketplace_deploy_key -C "jamsesh release bot"
-   ```
-
-   This emits `marketplace_deploy_key` (private) and
-   `marketplace_deploy_key.pub` (public). The private key is the secret
-   the workflow uses; the public key is registered on the marketplace
-   repo.
-
-3. **Register the public key as a write-enabled deploy key on the
-   marketplace repo.**
-
-   ```bash
-   gh repo deploy-key add marketplace_deploy_key.pub \
-     --repo nklisch/jamsesh-cc-plugin \
-     --title "jamsesh release bot" \
-     --allow-write
-   ```
-
-4. **Add the private key as a secret on the jamsesh repo.**
-
-   ```bash
-   gh secret set MARKETPLACE_DEPLOY_KEY \
-     --repo nklisch/jamsesh \
-     < marketplace_deploy_key
-   ```
-
-5. **Delete the local key files.** They no longer need to exist on disk.
-
-   ```bash
-   shred -u marketplace_deploy_key marketplace_deploy_key.pub
-   ```
-
-6. **(Optional) Seed an initial README on the marketplace repo.** The
-   release workflow overwrites the plugin contents but leaves a
-   `README.md` untouched if present. A short README explaining "this is
-   a mirror of `nklisch/jamsesh`, do not commit here" helps drive-by
-   visitors back to the main repo.
-
-7. **Re-trigger any release that failed only on the marketplace step.**
-   If the marketplace job is the only one that failed for an
-   already-tagged release (e.g. `v0.1.0` was tagged before the
-   bootstrap above completed), re-run just that job:
-
-   ```bash
-   gh run rerun <run-id> --failed
-   ```
-
-   The run-id comes from `gh run list --workflow=release.yml --limit 5`.
-   The job is idempotent; re-running on the same tag updates the
-   marketplace repo without creating a duplicate tag.
 
 ---
 
