@@ -379,13 +379,13 @@ in use.
 
 | Env var | YAML key | Default | Description |
 |---|---|---|---|
-| `JAMSESH_EMAIL_PROVIDER` | `email.provider` | `smtp` | Delivery backend: `smtp`, `sendgrid`, `postmark`, or `resend` |
-| `JAMSESH_EMAIL_FROM` | `email.from` | _(none)_ | Envelope sender address, e.g. `jamsesh <noreply@example.com>` |
+| `JAMSESH_EMAIL_PROVIDER` | `email.provider` | _(none)_ | Delivery backend: `smtp`, `sendgrid`, `postmark`, or `resend`. Leave unset to disable magic-link auth — useful for OAuth-only deployments. Magic-link requests against a portal without a provider return `400 auth.magic_link_not_enabled`. |
+| `JAMSESH_EMAIL_FROM` | `email.from` | _(none)_ | Envelope sender address, e.g. `jamsesh <noreply@example.com>`. Required when `email.provider` is set. |
 
-### SMTP (default)
+### SMTP
 
-SMTP is the default provider and the right choice for self-hosted setups
-with an existing mail relay or a local MTA.
+SMTP is the right choice for self-hosted setups with an existing mail
+relay or a local MTA. Set `JAMSESH_EMAIL_PROVIDER=smtp` to enable.
 
 | Env var | YAML key | Default | Description |
 |---|---|---|---|

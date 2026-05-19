@@ -1,7 +1,7 @@
 ---
 id: bug-portal-email-from-required-without-magic-link
 kind: story
-stage: review
+stage: done
 tags: [bug, portal]
 parent: null
 depends_on: []
@@ -123,3 +123,21 @@ Deviation from recommended shape: `translate.go` was NOT updated to add a new `s
 - `compose.yaml` — removed `JAMSESH_EMAIL_FROM: dev@localhost` and explanatory comment
 
 Full `go test ./...` passes with no failures. `go vet ./...` clean.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+
+**Important** (inline-fixed):
+- **Foundation-doc drift in `docs/SELF_HOST.md` §6**. The env-var reference table listed `JAMSESH_EMAIL_PROVIDER` default as `smtp`, but `internal/portal/config/config.go` removed that default as part of this fix. Per rolling-foundation, SELF_HOST must describe the system as it is NOW. **Resolution**: updated the table entry to default `_(none)_` with an explanatory note about OAuth-only deployments and the `400 auth.magic_link_not_enabled` response. Also tightened the `JAMSESH_EMAIL_FROM` row ("Required when `email.provider` is set") and removed the "(default)" subheading from the SMTP section since SMTP is no longer the default provider.
+
+**Nits** (inline notes only):
+- Invite email skip behavior (sessions/invites.go, accounts/orgs.go) is silent — when email is disabled, the invite is created and the link is returned in the API response, but the recipient gets no automatic email. Operators in OAuth-only mode need to copy invite links manually. Not documented in SELF_HOST yet — a future polish item, not blocking. Worth a one-line note in §6 or a dedicated invites-without-email subsection, but doesn't block this fix.
+
+**Notes**:
+- Test integrity: all four config matrices covered (factory + magic-link 4xx response). `go test ./internal/portal/...` clean.
+- The deviation from the recommended fix shape (handling `ErrMagicLinkNotEnabled` in `magic_link.go` rather than threading a senders import through `translate.go`) is cleaner and justified — keeps the `httperr` translate pipeline import-clean.
+- Workarounds removed from both `quickstart.yml` and `compose.yaml` per acceptance criteria. The canary works: portal starts cleanly with no email env vars.
+- Security: no auth surface widened. Existing fail-fast for "provider set, from empty" is preserved.

@@ -1,7 +1,7 @@
 ---
 id: bug-e2e-suite-systemic-failures-post-v0.1.0
 kind: story
-stage: review
+stage: done
 tags: [bug, testing, e2e-test, triage]
 parent: null
 depends_on: []
@@ -194,3 +194,18 @@ fixes Cluster D as well, since the root cause is identical. Verified: no other
 test in `tests/e2e/scaffolding` is the actual failure vector (`TestPortalHealthz`
 and `TestPortalImageHealthz` skip on missing router image; `TestE2EModuleBuilds`
 is a no-op).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+- The deliverable shape matches the acceptance criteria exactly. Three focused child bug items filed, each with a confirmed root-cause hypothesis, concrete file:line fix sites, and a clean acceptance criteria block. Cluster D was correctly merged into Cluster A rather than filed redundantly (TestClusteredSmoke routes through the same static-discoverer/readyz path) — that's the right call, not a missed cluster.
+- The static-analysis approach (no e2e suite runs locally) was the right scope for autonomous mode. Each child item is concrete enough that the implementer can dive straight in.
+- Foundation-doc alignment: no SELF_HOST drift introduced; the children point at code-level bugs, not contract changes.
+- Security: cluster B identifies a fixture-side bug (wsclient sends old subprotocol). Production code is correctly enforcing the ticket-flow; the test fixture just needs to catch up. No security regression.
+- Test integrity: no tests modified in this story. Each child item will own its test changes.
