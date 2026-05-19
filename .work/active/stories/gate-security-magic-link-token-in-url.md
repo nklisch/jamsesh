@@ -1,7 +1,7 @@
 ---
 id: gate-security-magic-link-token-in-url
 kind: story
-stage: review
+stage: done
 tags: [security, portal]
 parent: null
 depends_on: []
@@ -129,3 +129,29 @@ an API-level parameter in the HTTP request from SPA to backend — NOT in the
 user-facing browser URL bar. The SPA reads the token from the hash, then
 sends it as a query param in the API call. No change needed to the OpenAPI
 spec or the backend `GetSessionInvite` handler.
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The `GET /api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}?token=...`
+  API call still carries the token in a query string. The portal's own access
+  log is now redacted (parallel story `gate-security-debug-log-redact-tokens`),
+  so this is mostly covered, but a CDN/load-balancer in front of the portal
+  would still see the unredacted query. If/when CDN proxying becomes a
+  deployment concern, switching this API to take the token in a header or
+  request body would close that surface.
+- Open-redirect guard on `return_to` (`startsWith('/') && !startsWith('//')`)
+  is correctly implemented; worth pulling out to a shared helper if the
+  pattern appears in more screens later.
+
+**Notes**: The `MagicLinkExchange` component fills a real gap — the route
+didn't exist before, only the email composition did. Component handles every
+state machine path (missing token, exchange failure, success, return_to
+redirect). Hash-clear via `history.replaceState` lands immediately after
+read, before any await, so the token can't escape via a re-render. All three
+callsites updated consistently. 387 frontend tests + all relevant Go tests
+pass.
