@@ -1,7 +1,7 @@
 ---
 id: stale-token-injection-needs-manifest-format-exposure
 kind: story
-stage: review
+stage: done
 tags: [testing, infra, portal]
 parent: null
 depends_on: []
@@ -103,3 +103,28 @@ violation on a pg_type constraint. This causes pod startup to fail with exit
 code 1, blocking all clustered-mode e2e tests. See backlog item
 `clustered-portal-concurrent-migration-race` (to be filed via
 /agile-workflow:park after this commit).
+
+## Review (2026-05-18)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- End-to-end execution of `TestStaleFencingTokenRejected` is gated on the
+  parked `clustered-portal-concurrent-migration-race` fix. Implementer of
+  that follow-up should run this test as part of their verification —
+  structural correctness is in place, but a successful run-through has not
+  been observed locally yet.
+- The map-based JSON manipulation is the right call here, but consider
+  whether the e2e module should grow a `go.work` workspace or a `replace`
+  directive at some point so future tests can use production types
+  (compile-time safety on schema drift). Not for this story.
+
+**Notes**: The `map[string]interface{}` approach is actually safer than a
+shadow struct — it round-trips the production manifest byte-for-byte and only
+mutates the one field under test. The three `t.Skipf` calls are replaced with
+real assertions (with a 10s manifest poll for the timing-dependent case).
+Discovery of the migration race during execution was handled correctly:
+parked as a separate item rather than bundled, noted in the implementation
+notes, and the story's structural scope was completed honestly.
