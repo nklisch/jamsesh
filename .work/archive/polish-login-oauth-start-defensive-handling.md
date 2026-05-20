@@ -1,7 +1,7 @@
 ---
 id: polish-login-oauth-start-defensive-handling
 kind: story
-stage: review
+stage: done
 tags: [bug, ui, auth]
 parent: null
 depends_on: []
@@ -88,3 +88,29 @@ Verification:
 - `npx vitest run src/lib/screens/Login.test.ts` — 11/11 pass.
 - `npx vitest run` (full suite) — 391/391 pass (was 389; +2 new).
 - `npx svelte-check` — 0 errors (2 pre-existing unrelated warnings).
+
+## Review (2026-05-19)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The success-path leaves `oauthPending = true` deliberately (we're
+  navigating away from the page, so resetting it would be pointless).
+  After a failure the error template's "Try again" button resets
+  `mode = 'choose'`, at which point the button is visible again with
+  `oauthPending = false`. The asymmetry is correct, just not obvious
+  from the diff alone.
+
+**Notes**: Clean defensive-handling polish, well-modeled tests. The
+double-click test is the right shape — uses a manually-resolved
+promise to keep the in-flight state observable across three rapid
+clicks rather than racing the test framework. The throw test uses
+`TypeError('Failed to fetch')` which is the actual exception browsers
+raise on network failure, so it exercises the real failure mode the
+fix targets. Comment correction is precise — drops the inaccurate
+"authenticated" claim without losing the WHY of the two-step shape.
+The single error-set site at the bottom of `signInWithGitHub` is
+cleaner than the previous duplicate would have been once try/catch
+was added.
