@@ -76,12 +76,24 @@ magic-link email (simpler for single operators). See
 OAuth setup and §6 for email providers.
 
 **Volume permission errors.**
-Docker named volumes inherit ownership from the first container write — they
-work out of the box. If you mount a host directory instead of a named volume,
-ensure the portal user (`nobody`, UID 65534) has write access:
+Docker named volumes inherit ownership from the mountpoint directory inside
+the image. The jamsesh image pre-creates `/data` owned by `nobody` (UID
+65534), so the default `jamsesh_data` named volume works without operator
+intervention.
+
+If you mount a host directory instead of a named volume, Docker uses the
+host directory's ownership as-is — you'll need to chown it yourself so the
+portal user can write:
 
 ```bash
 sudo chown -R 65534:65534 /path/to/your/host/dir
+```
+
+If you upgraded an existing deploy from a pre-fix image and your existing
+named volume is root-owned, run a one-shot chown:
+
+```bash
+docker run --rm -v jamsesh_data:/data alpine chown -R 65534:65534 /data
 ```
 
 **Postgres service not starting.**

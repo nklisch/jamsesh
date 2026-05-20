@@ -10,6 +10,10 @@ ARG TARGETOS
 ARG TARGETARCH
 RUN apk add --no-cache git ca-certificates
 COPY --chmod=0755 ${BINARY}-${TARGETOS}-${TARGETARCH} /usr/local/bin/portal
+# Pre-create /data with nobody ownership so the default named volume inherits
+# it on first mount (Docker copies image-mountpoint ownership into a fresh
+# volume). Without this, SQLite cannot open /data/jamsesh.db under USER nobody.
+RUN mkdir -p /data && chown nobody:nobody /data
 EXPOSE 8443
 USER nobody
 ENTRYPOINT ["/usr/local/bin/portal"]

@@ -1,7 +1,7 @@
 ---
 id: bug-docker-named-volume-root-owned-not-nobody
 kind: story
-stage: implementing
+stage: review
 tags: [bug, infra, docker, self-host, documentation]
 parent: null
 depends_on: []
@@ -110,6 +110,13 @@ Resolved at scope.
 - Re-test the fix by destroying any local `jamsesh_smoke_data` volume
   between runs; a previously-fixed volume keeps working even with the
   bug, masking the regression.
+
+## Implementation notes
+
+- Dockerfile: added `RUN mkdir -p /data && chown nobody:nobody /data` after the `COPY --chmod=0755` line and before `EXPOSE 8443` / `USER nobody`, with a three-line comment explaining named-volume ownership inheritance.
+- deploy/compose/README.md: rewrote "Volume permission errors" section to describe Docker's actual behavior (mountpoint ownership copied into fresh volume); preserved host-bind-mount guidance; added optional "existing deploys" one-shot chown snippet.
+- Smoke: synthetic stub binary used for build. `docker run --rm --entrypoint /bin/sh jamsesh:smoke -c 'ls -ld /data'` → `drwxr-xr-x 1 nobody nobody 0 ... /data`. Fresh-volume smoke (`jamsesh_smoke_data`) → `/data` and `/data/probe` both `nobody:nobody`, write succeeded without permission errors. All ACs passed.
+- End-to-end `docker compose up -d` deferred — needs a real domain for TLS provisioning. Named-volume ownership is the critical path; it is verified.
 
 ## Out of scope
 
