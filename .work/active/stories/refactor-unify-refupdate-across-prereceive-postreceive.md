@@ -1,7 +1,7 @@
 ---
 id: refactor-unify-refupdate-across-prereceive-postreceive
 kind: story
-stage: review
+stage: done
 tags: [refactor, cleanup, portal, git]
 parent: null
 depends_on: []
@@ -132,3 +132,13 @@ A larger consolidation that pulls the prereceive/postreceive packages
 themselves into a shared `gitlifecycle` package is NOT in scope here — those
 packages have meaningfully different responsibilities (validation vs event
 emission) and should stay separate.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: The type-alias approach (`type RefUpdate = gitref.RefUpdate` in each package) is a smart deviation from the story's "replace every usage" plan — it gets to single-source-of-truth with minimal diff (zero edits needed in each package's internal files or tests). All 30 portal package tests stay green, `toEmitterUpdates` is gone, `EmitForUpdates` accepts the slice directly. The two original structs were truly identical so the merge had nothing to reconcile beyond an "e.g." prefix on one comment.
