@@ -2,6 +2,7 @@
   import { current, navigate } from '$lib/router.svelte';
   import { auth } from '$lib/auth.svelte';
   import Login from '$lib/screens/Login.svelte';
+  import Home from '$lib/screens/Home.svelte';
   import MagicLinkExchange from '$lib/screens/MagicLinkExchange.svelte';
   import OAuthCallback from '$lib/screens/OAuthCallback.svelte';
   import SessionList from '$lib/screens/SessionList.svelte';
@@ -46,6 +47,8 @@
 
 {#if current.name === 'login'}
   <Login />
+{:else if current.name === 'home'}
+  <Home />
 {:else if current.name === 'magic-link'}
   <MagicLinkExchange />
 {:else if current.name === 'oauth-callback'}

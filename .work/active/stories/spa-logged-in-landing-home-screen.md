@@ -1,7 +1,7 @@
 ---
 id: spa-logged-in-landing-home-screen
 kind: story
-stage: implementing
+stage: review
 tags: [frontend, ui]
 parent: spa-logged-in-landing-and-org-bootstrap
 depends_on: [spa-logged-in-landing-auth-store-orgs-cache]
@@ -91,3 +91,36 @@ specification (component shape, snippet structure, edge cases).
 - No e2e / playwright tests; unit tests in `Home.test.ts` only.
 - No analytics, no telemetry, no toasts on create success — direct
   navigation is the feedback.
+
+## Implementation notes
+
+### Input.svelte extension (path chosen: extend the component)
+
+Added `id?: string` to `Input.svelte`'s `$props()` and passed it through to
+the underlying `<input>`. This is the preferred path: the `<label for="new-org-name">
+<Input id="new-org-name">` association is a hard accessibility requirement, and
+the three-line change is pattern-consistent with how `type`, `placeholder`, etc.
+are already forwarded. Added two new test cases to `Input.test.ts` covering the
+`id` attribute set/absent scenarios.
+
+### Single-org auto-route template fix
+
+The feature spec has the `{:else}` branch rendering the picker for `>= 1` orgs
+(relying on the `$effect` to navigate away for the length === 1 case). During
+testing, this caused a brief flash of "Pick a workspace" before the effect fired,
+and made the AC assertion "does not render the picker" technically false at mount
+time. The template was changed to `{:else if auth.orgs.length >= 2}` so the
+single-org branch renders nothing (empty card) rather than a transient picker
+heading. The `$effect` still fires and navigates immediately.
+
+### `{#snippet}` cross-branch sharing
+
+The `{#snippet createForm()}` block is declared after the `{/if}` and before
+`</style>` (outside the main conditional tree). Both the empty-state and picker
+branches call `{@render createForm()}`. Svelte 5 snippets are scoped to the
+component, so cross-branch sharing works correctly — no design flaw here.
+
+### Verification
+
+- `npm run check`: 0 errors, 2 pre-existing warnings (unrelated files).
+- `npm run test`: 447/447 passed (32 new Home tests + 2 new Input tests).

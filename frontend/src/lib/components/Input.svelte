@@ -4,12 +4,14 @@
     type = 'text',
     placeholder = '',
     disabled = false,
+    id,
     oninput,
   }: {
     value?: string;
     type?: 'text' | 'email';
     placeholder?: string;
     disabled?: boolean;
+    id?: string;
     oninput?: (e: Event) => void;
   } = $props();
 </script>
@@ -17,6 +19,7 @@
 <input
   class="input"
   {type}
+  {id}
   bind:value
   {placeholder}
   {disabled}

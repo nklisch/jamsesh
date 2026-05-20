@@ -42,6 +42,16 @@ describe('Input', () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
+  it('sets id attribute when id prop is provided', () => {
+    render(Input, { props: { id: 'my-input' } });
+    expect(screen.getByRole('textbox')).toHaveAttribute('id', 'my-input');
+  });
+
+  it('does not set id attribute when id prop is omitted', () => {
+    render(Input, {});
+    expect(screen.getByRole('textbox')).not.toHaveAttribute('id');
+  });
+
   it('bind:value round-trips', async () => {
     let captured = '';
     const handler = vi.fn((e: Event) => {

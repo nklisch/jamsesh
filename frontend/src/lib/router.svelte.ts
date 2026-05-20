@@ -4,6 +4,7 @@
 type Route = { pattern: RegExp; name: string; params: string[] };
 
 const routes: Route[] = [
+  { pattern: /^\/$/,                                                   name: 'home',         params: [] },
   { pattern: /^\/login$/,                                              name: 'login',        params: [] },
   { pattern: /^\/auth\/magic-link$/,                                   name: 'magic-link',   params: [] },
   { pattern: /^\/auth\/oauth\/callback$/,                              name: 'oauth-callback', params: [] },
