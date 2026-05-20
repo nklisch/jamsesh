@@ -85,6 +85,57 @@ describe('Login', () => {
     expect(screen.getByText(/Could not start GitHub sign-in/)).toBeInTheDocument();
   });
 
+  it('OAuth button routes a fetch throw to the error UI', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+
+    render(Login);
+    const githubBtn = screen.getByText('Continue with GitHub').closest('button')!;
+    await fireEvent.click(githubBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Could not start GitHub sign-in/)).toBeInTheDocument();
+  });
+
+  it('OAuth button only fires one start request on rapid double-click', async () => {
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, assign: assignSpy },
+      writable: true,
+      configurable: true,
+    });
+
+    // Block the response so the button stays in-flight across both clicks.
+    let releaseFetch!: (r: Response) => void;
+    const fetchPromise = new Promise<Response>((resolve) => {
+      releaseFetch = resolve;
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockReturnValue(fetchPromise);
+
+    render(Login);
+    const githubBtn = screen.getByText('Continue with GitHub').closest('button')!;
+    await fireEvent.click(githubBtn);
+    await fireEvent.click(githubBtn);
+    await fireEvent.click(githubBtn);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect((githubBtn as HTMLButtonElement).disabled).toBe(true);
+
+    releaseFetch(
+      new Response(
+        JSON.stringify({ authorize_url: 'https://github.com/login/oauth/authorize?state=abc' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(assignSpy).toHaveBeenCalledWith(
+        'https://github.com/login/oauth/authorize?state=abc',
+      );
+    });
+  });
+
   it('submitting the magic-link form with 2xx response transitions to magic-link-sent', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
 
