@@ -26,3 +26,4 @@ updated: 2026-05-20
 - **gate-tests** (2026-05-20) — 11 findings (0 critical, 4 high, 4 medium, 2 low, 1 informational). 8 active stories, 2 backlog. No test-integrity violations.
 - **gate-cruft** (2026-05-20) — 6 findings (1 high, 4 medium, 1 low). 5 active stories, 1 backlog.
 - **gate-docs** (2026-05-20) — 2 findings (2 high, 0 medium). 1 foundation-doc-assertion (UX.md), 1 pattern-skill-staleness. 2 active stories.
+- **gate-patterns** (2026-05-20) — 6 patterns extracted, 0 inconsistencies. Tracking item `gate-patterns-v0.3.0` at stage:done.
