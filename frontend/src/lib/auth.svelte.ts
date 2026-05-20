@@ -65,10 +65,16 @@ export const auth = {
     if (_currentUser !== null && _orgs !== null) return;
     if (_loadingMe !== null) return _loadingMe;
 
+    // Capture the token at the start so we can discard the response if
+    // signOut (or a sign-in as a different user) raced this call. Without
+    // this guard, a stale response would repopulate _currentUser/_orgs
+    // after they were cleared, and the next user would see the previous
+    // user's data until reload — a cross-tenant leak on the client.
+    const tokenAtStart = _token;
     _loadingMe = (async () => {
       try {
         const { data } = await client.GET('/api/me');
-        if (data) {
+        if (data && _token !== null && _token === tokenAtStart) {
           _currentUser = {
             id: data.id,
             email: data.email,

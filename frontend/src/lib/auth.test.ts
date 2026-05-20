@@ -102,6 +102,7 @@ describe('auth store', () => {
     );
 
     const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-access', 'test-refresh');
     await auth.loadCurrentUser();
 
     expect(auth.currentUser).toEqual({
@@ -161,6 +162,7 @@ describe('auth store', () => {
     );
 
     const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-access', 'test-refresh');
     await auth.loadCurrentUser();
 
     expect(auth.orgs).toEqual([]);
@@ -183,6 +185,7 @@ describe('auth store', () => {
     );
 
     const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-access', 'test-refresh');
     await auth.loadCurrentUser();
 
     expect(auth.orgs).toEqual([
@@ -207,6 +210,7 @@ describe('auth store', () => {
     );
 
     const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-access', 'test-refresh');
     await auth.loadCurrentUser();
     await auth.loadCurrentUser(); // second call — should not fetch again
 
@@ -252,6 +256,7 @@ describe('auth store', () => {
     );
 
     const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-access', 'test-refresh');
     await auth.loadCurrentUser();
     expect(auth.orgs).not.toBeNull();
 
@@ -285,6 +290,7 @@ describe('auth store', () => {
     );
 
     const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-access', 'test-refresh');
     await auth.loadCurrentUser();
 
     const originalArray = auth.orgs;
@@ -296,5 +302,55 @@ describe('auth store', () => {
       { id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' },
       { id: 'org-2', name: 'hooli', slug: 'hooli', role: 'member' },
     ]);
+  });
+
+  // --- stale-write race guard ---
+
+  test('discards stale /api/me response when signOut raced the in-flight call', async () => {
+    // signOut calls navigate('/login') — mock it so the test doesn't error.
+    vi.doMock('$lib/router.svelte', () => ({
+      navigate: vi.fn(),
+      current: { name: 'sessions', params: {} },
+    }));
+
+    // A controllable fetch we resolve manually after signOut runs.
+    let resolveFetch: (response: Response) => void;
+    const fetchPromise = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(fetchPromise as Promise<Response>);
+
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('user1-access', 'user1-refresh');
+
+    // Start the load — it will be in-flight after this line.
+    const loadPromise = auth.loadCurrentUser();
+    expect(auth.orgs).toBeNull();
+    expect(auth.currentUser).toBeNull();
+
+    // signOut races the load.
+    auth.signOut();
+    expect(auth.token).toBeNull();
+    expect(auth.orgs).toBeNull();
+
+    // Now the in-flight /api/me response arrives, valid but stale.
+    resolveFetch!(
+      new Response(
+        JSON.stringify({
+          id: 'stale-user',
+          email: 'stale@example.com',
+          display_name: 'Stale User',
+          orgs: [{ id: 'stale-org', name: 'stale', slug: 'stale', role: 'creator' }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    await loadPromise;
+
+    // State must remain cleared — the stale response is discarded by
+    // the token-at-start guard. Without the guard, this would leak the
+    // previous user's identity onto whoever signs in next.
+    expect(auth.currentUser).toBeNull();
+    expect(auth.orgs).toBeNull();
   });
 });
