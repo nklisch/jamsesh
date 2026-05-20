@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-router-mock-dead-current-field
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -39,3 +39,6 @@ is dead in the mock.
 Drop the `current: ...` line from both mock factories. Judgment call —
 consistent mock shape across tests is arguably a feature, which is why
 this is filed as Low.
+
+## Implementation notes
+Removed the `current: { ... }` key from the `vi.mock('$lib/router.svelte', ...)` factory in both `Home.test.ts` (line 21) and `OAuthCallback.test.ts` (line 31). Neither SUT imports `current` — only `navigate` is used. All 47 tests across both files remain green after the change.

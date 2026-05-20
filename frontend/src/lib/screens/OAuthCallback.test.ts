@@ -28,7 +28,6 @@ vi.mock('$lib/auth.svelte', () => ({
 
 const mockNavigate = vi.fn();
 vi.mock('$lib/router.svelte', () => ({
-  current: { name: 'oauth-callback', params: {} },
   navigate: (...args: unknown[]) => mockNavigate(...args),
 }));
 

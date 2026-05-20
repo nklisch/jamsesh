@@ -18,7 +18,6 @@ vi.mock('$lib/api/client', () => ({
 
 const mockNavigate = vi.fn();
 vi.mock('$lib/router.svelte', () => ({
-  current: { name: 'home', params: {} },
   navigate: (...args: unknown[]) => mockNavigate(...args),
 }));
 
