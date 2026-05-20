@@ -54,10 +54,17 @@ show_sed_diff() {
 
 # sed_inplace <file> <old_pattern> <new_value>
 #   Portable in-place edit using a temp file (works on Linux and macOS).
+#   Preserves the original file's mode — without the explicit chmod the temp
+#   file inherits the default umask (typically 0644) and the mv strips the
+#   executable bit on bin/jamsesh.
 sed_inplace() {
   local file="$1" pattern="$2" replacement="$3"
   local tmp="${file}.tmp"
-  sed "s/${pattern}/${replacement}/" "$file" > "$tmp" && mv "$tmp" "$file"
+  local mode
+  mode="$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file")"
+  sed "s/${pattern}/${replacement}/" "$file" > "$tmp" \
+    && chmod "$mode" "$tmp" \
+    && mv "$tmp" "$file"
 }
 
 # ── argument parsing ──────────────────────────────────────────────────────────

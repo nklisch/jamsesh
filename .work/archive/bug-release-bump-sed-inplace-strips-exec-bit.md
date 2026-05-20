@@ -1,7 +1,14 @@
 ---
 id: bug-release-bump-sed-inplace-strips-exec-bit
-created: 2026-05-19
+kind: story
+stage: done
 tags: [bug, tooling, release]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-19
+updated: 2026-05-19
 ---
 
 # `scripts/release-bump.sh` silently strips the executable bit on `bin/jamsesh`
@@ -64,3 +71,54 @@ original file's mode. Two viable approaches:
 - Original sed_inplace helper: `scripts/release-bump.sh:57-61`.
 - Related: `testing-bin-jamsesh-regression-harness` (a harness around
   `bin/jamsesh` would have caught the broken-perms artifact end-to-end).
+
+## Implementation notes
+
+Landed inline as part of the v0.2.0 release prep — the script was on
+the critical path for shipping cleanly, so fixing it first avoided
+repeating the v0.1.2 dance.
+
+Approach 1 from the design (capture and restore mode around the `mv`).
+Five-line change to `sed_inplace` in `scripts/release-bump.sh`:
+
+```bash
+local mode
+mode="$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file")"
+sed "s/${pattern}/${replacement}/" "$file" > "$tmp" \
+  && chmod "$mode" "$tmp" \
+  && mv "$tmp" "$file"
+```
+
+Portable across Linux (`stat -c`) and macOS (`stat -f`) per the
+design.
+
+Verification — smoke test against a copy of `bin/jamsesh`:
+
+```
+before: 755
+after:  755
+readonly JAMSESH_PLUGIN_VERSION="v9.9.9"
+```
+
+Both halves of the contract proved: mode preserved AND the edit
+landed. Did NOT add the suggested AC4 regression check (fixture-based
+script smoke test or pre-commit mode assertion); that would belong in
+a follow-up alongside the broader `testing-bin-jamsesh-regression-harness`
+work rather than as a one-off inline. The real-world canary is the
+next release pass producing a clean `git status --short` with no
+`mode change` line.
+
+## Review (2026-05-19)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Trivial five-line fix matching the design exactly. Smoke
+test verified mode preservation on a real fixture copy of
+`bin/jamsesh`. Did not add the suggested fixture-based regression
+check (AC4) — the cost/benefit favors letting the next release pass
+prove the fix end-to-end, with a more comprehensive harness landing
+under `testing-bin-jamsesh-regression-harness` later.
