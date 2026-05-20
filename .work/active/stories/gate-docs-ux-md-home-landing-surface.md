@@ -1,7 +1,7 @@
 ---
 id: gate-docs-ux-md-home-landing-surface
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -61,3 +61,40 @@ Then extend the existing `## Flow: creating a session` section's
 preamble or add a new `## Flow: creating your first org` section to
 capture the in-SPA bootstrap path (today the doc only describes session
 creation, not org creation, and assumes the user is already in an org).
+
+## Implementation notes
+
+### What was added to `docs/UX.md`
+
+**Bullet added to `## Portal UI surfaces`** (inserted before "Session list",
+now the first bullet in that section):
+
+- **Home (post-auth landing at `/`)** bullet describing all four auth.orgs
+  states: null (loading), empty array (inline create-org form), single entry
+  (auto-route), two-or-more (workspace picker + create-another form). Includes
+  concrete file references: `frontend/src/lib/router.svelte.ts` (router name
+  `home`) and `frontend/src/lib/screens/Home.svelte`.
+
+**New flow section added** (`## Flow: creating your first org`) inserted
+immediately before `## Portal UI surfaces`. Covers: empty-state render →
+user submits name → `POST /api/orgs` → `auth.addOrg(...)` + navigate to
+`/orgs/{new-id}/sessions` → lands in session list. Includes inline error
+handling note and cross-reference to "Flow: creating a session".
+
+### Drift noticed
+
+The story body describes the loading state as "loading from `/api/me`". In
+`Home.svelte` the loading state is driven by `auth.orgs === null` — the
+component never calls `/api/me` directly; the auth store handles that. The
+bullet was written to match the implementation: "populated from
+`GET /api/me`'s `orgs[]`" preserves the accurate API reference while
+making clear the component reads `auth.orgs` rather than making a direct
+fetch call.
+
+The story's suggested wording references only three states (empty, single,
+multi); the actual component has four: `null` (loading), empty array,
+single entry, and two-or-more. The bullet documents all four.
+
+The single-org condition in the code is `auth.orgs.length === 1` (exact
+equality); the multi-org picker branch is `auth.orgs.length >= 2`. Both
+are documented accurately.

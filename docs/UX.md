@@ -205,11 +205,39 @@ Humans can check session state from CC at any time:
 The portal UI is the rich-visual surface; CC is the textual at-a-glance
 surface.
 
+## Flow: creating your first org
+
+A user has authenticated but has no org memberships yet (the Home surface
+shows the empty state).
+
+1. The Home surface (`/`) renders a "Name your org" form.
+2. The user enters a name and submits. The SPA calls `POST /api/orgs` with
+   `{ name }`. The server derives the slug from the name and creates the org
+   with the caller as creator.
+3. On success the client calls `auth.addOrg(...)` to append the new org to
+   the local auth state (role `creator`), then navigates to
+   `/orgs/{new-id}/sessions`.
+4. The user is now inside their org and can create a session (see
+   **Flow: creating a session**).
+
+If the call fails, an inline error is shown and the form stays open for
+correction. No page reload is needed.
+
 ## Portal UI surfaces
 
 The portal UI has these primary surfaces. (Concrete designs land in
 `.mockups/screens/` as built.)
 
+- **Home (post-auth landing at `/`)** — the SPA's first non-org-scoped
+  surface after sign-in. Renders one of three states driven by `auth.orgs`
+  (populated from `GET /api/me`'s `orgs[]`): `null` (loading spinner);
+  empty array (welcome heading + inline "name your org" form that calls
+  `POST /api/orgs` and navigates the new creator into
+  `/orgs/{id}/sessions`); single entry (auto-routes immediately to
+  `/orgs/{id}/sessions`, no UI rendered); two or more entries (workspace
+  picker with role badges per org + inline "create another org" form).
+  Router name: `home` (`frontend/src/lib/router.svelte.ts`).
+  Component: `frontend/src/lib/screens/Home.svelte`.
 - **Session list** — sessions visible to the user, grouped by status
   (active, finalizing, ended).
 - **Session view** — the main work surface for a single session:
