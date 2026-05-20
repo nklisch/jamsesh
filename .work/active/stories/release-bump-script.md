@@ -1,14 +1,14 @@
 ---
 id: release-bump-script
 kind: story
-stage: implementing
+stage: review
 tags: [infra, tooling]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-18
-updated: 2026-05-18
+updated: 2026-05-19
 ---
 
 # Release bump script — one command to version-bump, tag, push
@@ -123,3 +123,35 @@ Resolved at scope.
 - Running quality gates (handled by `release-deploy` phases 4).
 - Triggering or watching `release.yml` after push (the maintainer's job
   via `gh run watch` per `docs/RELEASING.md`).
+
+## Implementation notes
+
+- Script structure mirrors `bin/jamsesh`: `set -euo pipefail`, `die()`/`warn()`/`info()`
+  helpers, leading section comments. Added a `run()` helper that either executes or
+  echoes commands in dry-run mode — cleaner than threading `if DRY_RUN` guards
+  through every action.
+- Sed edits use a portable tempfile pattern (`sed ... file > file.tmp && mv`) rather
+  than `sed -i`, which avoids the GNU vs BSD `-i` suffix difference on macOS.
+- One non-obvious fix: `jq` by default normalises `—` to the literal em-dash
+  character (`—`). Without `--ascii-output`, every run would produce a cosmetically
+  different `plugin.json` that git would flag as modified. Added `--ascii-output` to
+  both the apply step and the dry-run diff step so the output is byte-for-byte
+  identical to the source file when the only change is `.version`.
+- Dirty-tree check fires before idempotence warnings — correct ordering (no point
+  warning about already-bumped files if we're going to refuse anyway).
+- `--dry-run v0.1.1` correctly hits the "tag already exists locally" pre-flight
+  rather than the idempotence path, because v0.1.1 is the current shipped tag. The
+  idempotence path activates for future versions that were manually half-bumped.
+- `shellcheck` not available on this machine — skipped. The script uses only
+  standard constructs (`[[`, `$()`, `"${VAR:-}"`) and was hand-reviewed for
+  quoting and expansion safety.
+- Dry-run smoke (`--dry-run v9.9.9`) output highlights:
+  - `bin/jamsesh`: `-readonly JAMSESH_PLUGIN_VERSION="v0.1.1"` / `+readonly JAMSESH_PLUGIN_VERSION="v9.9.9"`
+  - `deploy/compose/.env.example`: `-JAMSESH_VERSION=v0.1.1` / `+JAMSESH_VERSION=v9.9.9`
+  - `.claude-plugin/plugin.json`: `-"version": "0.1.1"` / `+"version": "9.9.9"`, `—` preserved
+  - All five `[dry-run]` git commands printed; exit 0.
+  - `git status` after: only `?? scripts/` (untracked new dir) — nothing modified.
+- `docs/RELEASING.md`: old steps 2 + 3 (two separate manual sed recipes) replaced by
+  a single step 2 invoking `scripts/release-bump.sh vX.Y.Z`, with the original sed
+  recipes preserved verbatim under "Manual recipe (if the script breaks)". Old steps
+  5–7 renumbered to 3–5 (step 5 "push the tag" is now inside the script, so removed).

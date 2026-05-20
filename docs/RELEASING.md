@@ -42,47 +42,53 @@ CHANGELOG entry. That skill is documented in
    `/agile-workflow:release-deploy <version>` to bind items, run gates,
    and walk to the readiness halt.
 
-2. **Bump the compose template's `JAMSESH_VERSION` pin.** The self-host
-   quickstart template at `deploy/compose/.env.example` pins
-   `JAMSESH_VERSION` to a specific tag for reproducible operator deploys.
-   Bump it to the version you're about to release, then commit:
+2. **Bump versions, tag, and push.** Run the release bump script from a
+   clean `main` branch with the CHANGELOG already committed (step 1 above):
 
    ```bash
-   sed -i 's/^JAMSESH_VERSION=.*/JAMSESH_VERSION=v0.X.0/' deploy/compose/.env.example
-   git add deploy/compose/.env.example
-   git commit -m "release-prep: bump compose template to v0.X.0"
+   scripts/release-bump.sh vX.Y.Z
    ```
 
-   Skipping this step means freshly-cloned operator setups will deploy
-   the previous release until they edit their `.env` manually.
+   The script edits three files (`bin/jamsesh`, `deploy/compose/.env.example`,
+   `.claude-plugin/plugin.json`), commits them as `release-prep: vX.Y.Z`,
+   creates an annotated tag, and pushes `main` then the tag to `origin`.
+   The tag push triggers `release.yml`.
 
-3. **Bump `bin/jamsesh` `JAMSESH_PLUGIN_VERSION`.** The plugin wrapper pins
-   to a specific release tag for reproducible plugin installs. Bump before
-   pushing:
+   Use `--dry-run` first if you want to preview the changes:
 
    ```bash
-   sed -i 's/^readonly JAMSESH_PLUGIN_VERSION=.*/readonly JAMSESH_PLUGIN_VERSION="v0.X.0"/' bin/jamsesh
-   git add bin/jamsesh
-   git commit -m "release-prep: bump plugin wrapper to v0.X.0"
+   scripts/release-bump.sh --dry-run vX.Y.Z
    ```
 
-   The release workflow asserts this matches the pushed tag and fails fast
-   if it doesn't.
+   #### Manual recipe (if the script breaks)
 
-4. **Confirm the CHANGELOG entry.** `release-deploy` drafts `CHANGELOG.md`
+   If `scripts/release-bump.sh` is unavailable or broken, apply the three
+   edits by hand and combine them into a single commit:
+
+   ```bash
+   # Bump compose template
+   sed 's/^JAMSESH_VERSION=.*/JAMSESH_VERSION=vX.Y.Z/' deploy/compose/.env.example \
+     > deploy/compose/.env.example.tmp && mv deploy/compose/.env.example.tmp deploy/compose/.env.example
+
+   # Bump plugin wrapper
+   sed 's/^readonly JAMSESH_PLUGIN_VERSION=.*/readonly JAMSESH_PLUGIN_VERSION="vX.Y.Z"/' bin/jamsesh \
+     > bin/jamsesh.tmp && mv bin/jamsesh.tmp bin/jamsesh
+
+   # Bump plugin manifest (bare version, no 'v' prefix)
+   jq --ascii-output --arg v "X.Y.Z" '.version = $v' .claude-plugin/plugin.json \
+     > .claude-plugin/plugin.json.tmp && mv .claude-plugin/plugin.json.tmp .claude-plugin/plugin.json
+
+   git add bin/jamsesh deploy/compose/.env.example .claude-plugin/plugin.json
+   git commit -m "release-prep: vX.Y.Z"
+   git tag -a vX.Y.Z -m "Release vX.Y.Z"
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+
+3. **Confirm the CHANGELOG entry.** `release-deploy` drafts `CHANGELOG.md`
    from the bound items + their commits. Review and edit before approving.
 
-5. **Push the tag.** `release-deploy`'s ship phase tags and pushes
-   `v<version>` to `origin`, which triggers `release.yml`. If you're
-   doing this manually:
-
-   ```bash
-   git tag -a v0.X.0 -m "Release v0.X.0"
-   git push origin main          # ensure remote has the commits the tag points at
-   git push origin v0.X.0        # triggers the release workflow
-   ```
-
-6. **Watch the workflow.** Real-time view:
+4. **Watch the workflow.** Real-time view:
 
    ```bash
    gh run watch
@@ -94,10 +100,10 @@ CHANGELOG entry. That skill is documented in
    gh run list --workflow=release.yml --limit 5
    ```
 
-7. **Verify the release.** Once `release.yml` finishes:
+5. **Verify the release.** Once `release.yml` finishes:
 
    ```bash
-   gh release view v0.X.0
+   gh release view vX.Y.Z
    ```
 
    The output lists every artifact uploaded, including the `.sigstore.json`
