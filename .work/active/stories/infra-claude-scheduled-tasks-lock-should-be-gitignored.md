@@ -1,10 +1,19 @@
 ---
 id: infra-claude-scheduled-tasks-lock-should-be-gitignored
-created: 2026-05-19
+kind: story
+stage: implementing
 tags: [infra, tooling]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-19
+updated: 2026-05-20
 ---
 
 # `.claude/scheduled_tasks.lock` is tracked but should be gitignored
+
+## Brief
 
 The file `.claude/scheduled_tasks.lock` is committed in the repo and gets
 modified by the Claude Code harness whenever scheduled tasks (cron/loop)
