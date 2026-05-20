@@ -43,6 +43,17 @@ jobs:
           check-latest: false
           cache: true
 
+      - uses: actions/setup-node@v4
+        if: matrix.binary == 'portal'
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: build frontend (portal SPA)
+        if: matrix.binary == 'portal'
+        run: make frontend-build
+
       - name: build
         env:
           GOOS: ${{ matrix.target.goos }}

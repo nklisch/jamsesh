@@ -1,7 +1,7 @@
 ---
 id: bug-release-workflow-missing-frontend-build
 kind: story
-stage: implementing
+stage: review
 tags: [bug, infra, release, ui, self-host]
 parent: null
 depends_on: []
@@ -151,6 +151,53 @@ End-to-end:
   already handles the binary copy; they just need the working binary
   to land there. Once a re-published image (next tag) is verified to
   contain the SPA, the local-build workaround can be dropped.
+
+## Implementation notes
+
+### `.github/workflows/release.yml` change
+
+Two steps inserted before the existing `- name: build` step (now at line 58
+after the insertion, previously line 46). Both gated on `if: matrix.binary ==
+'portal'`:
+
+- **Lines 46-51:** `actions/setup-node@v4` — Node 20, npm cache, keyed on
+  `frontend/package-lock.json`. Matches the precedent in `.github/workflows/e2e.yml:34-41`.
+  No `.nvmrc` at repo root; `frontend/package.json` has no `engines.node` pin.
+  Node 20 used to match the existing CI convention in `e2e.yml`.
+- **Lines 53-55:** `- name: build frontend (portal SPA)` runs `make
+  frontend-build`. The `if:` gate is confirmed — the 5 `jamsesh` matrix entries
+  skip both steps cleanly, same as before.
+
+### `docs/RELEASING.md` change
+
+Added new bullet 1 describing the `make frontend-build` step (portal-only,
+Node 20). Former bullets 1–8 renumbered to 2–9. Wording is one-sentence
+functional description matching the doc's existing style.
+
+### Local `make frontend-build` result
+
+Ran successfully. Build output:
+
+```
+dist/index.html                   0.39 kB │ gzip:  0.26 kB
+dist/assets/index-DMjmOynP.css   72.79 kB │ gzip: 10.23 kB
+dist/assets/index-DnniF8dl.js   138.79 kB │ gzip: 46.65 kB
+✓ built in 720ms
+```
+
+`internal/portal/assets/dist/` contains `index.html`, `assets/` (JS+CSS),
+and `.gitkeep`. Build artifacts are covered by `.gitignore:9`
+(`internal/portal/assets/dist/*`) — they do not appear in `git status`.
+Only `.github/workflows/release.yml` and `docs/RELEASING.md` are staged.
+
+### No production code changes
+
+`git status` confirms only `release.yml`, `RELEASING.md`, and the story
+file are modified. Nothing under `internal/`, `frontend/`, or `cmd/` touched.
+
+### Deviations
+
+None. The design followed exactly as specified.
 
 ## Out of scope
 

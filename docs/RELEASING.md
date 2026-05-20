@@ -11,18 +11,21 @@ users do not need this document — see [SELF_HOST.md](SELF_HOST.md) and the
 Releases are git tags of the form `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`). Pushing
 a `v*` tag to GitHub triggers `.github/workflows/release.yml`, which:
 
-1. Cross-compiles `portal` and `jamsesh` binaries for 5 OS/arch combos
+1. Runs `make frontend-build` for the `portal` matrix entries (Node 20, npm
+   cache) to populate the embedded Svelte SPA in `internal/portal/assets/dist/`
+   before `go build` runs. The `jamsesh` wrapper entries skip this step.
+2. Cross-compiles `portal` and `jamsesh` binaries for 5 OS/arch combos
    (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) —
    10 binaries total.
-2. Signs every binary with cosign keyless OIDC (Fulcio + Rekor), producing
+3. Signs every binary with cosign keyless OIDC (Fulcio + Rekor), producing
    `<binary>.sigstore.json` bundles.
-3. Generates an SPDX SBOM covering the `dist/` tree.
-4. Generates and signs a `checksums.txt` over the binaries.
-5. Attests SLSA Build Level 3 provenance over the binary subjects.
-6. Creates a GitHub Release tagged `v<version>` with all artifacts attached.
-7. Builds and pushes the multi-arch `ghcr.io/nklisch/jamsesh` Docker image
+4. Generates an SPDX SBOM covering the `dist/` tree.
+5. Generates and signs a `checksums.txt` over the binaries.
+6. Attests SLSA Build Level 3 provenance over the binary subjects.
+7. Creates a GitHub Release tagged `v<version>` with all artifacts attached.
+8. Builds and pushes the multi-arch `ghcr.io/nklisch/jamsesh` Docker image
    with semver tags + `latest`, signed via cosign.
-8. Plugin install: users install from `nklisch/jamsesh` directly. The
+9. Plugin install: users install from `nklisch/jamsesh` directly. The
    `bin/jamsesh` wrapper script in the plugin fetches the matching binary
    from the release's GitHub assets on first run, verifies via sha256 +
    optional cosign, and caches under `${CLAUDE_PLUGIN_DATA}/bin/`.
