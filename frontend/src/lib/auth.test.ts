@@ -304,6 +304,77 @@ describe('auth store', () => {
     ]);
   });
 
+  // --- _loadingMe reset on signOut ---
+
+  test('signOut while a loadCurrentUser is in-flight allows a subsequent loadCurrentUser to fetch again', async () => {
+    // Without _loadingMe = null in signOut(), the post-signOut call to
+    // loadCurrentUser() would see _loadingMe still set to the in-flight
+    // (but now abandoned) promise and return early as a no-op — silently
+    // never fetching fresh data for the newly signed-in user.
+    vi.doMock('$lib/router.svelte', () => ({
+      navigate: vi.fn(),
+      current: { name: 'sessions', params: {} },
+    }));
+
+    // A controllable fetch so we can resolve user A's response after signOut.
+    let resolveUserA: (response: Response) => void;
+    const fetchUserA = new Promise<Response>((resolve) => {
+      resolveUserA = resolve;
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(fetchUserA as Promise<Response>)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'user-b',
+            email: 'userb@example.com',
+            display_name: 'User B',
+            orgs: [],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('a', 'a');
+
+    // Kick off the first load — it is in-flight and awaiting fetchUserA.
+    const p1 = auth.loadCurrentUser();
+
+    // signOut must reset _loadingMe to null so the next loadCurrentUser
+    // doesn't just await the abandoned promise.
+    auth.signOut();
+
+    // Resolve the stale user A response now that the token has been cleared.
+    // The token-at-start guard inside loadCurrentUser discards this data.
+    resolveUserA!(
+      new Response(
+        JSON.stringify({
+          id: 'user-a',
+          email: 'usera@example.com',
+          display_name: 'User A',
+          orgs: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    await p1;
+
+    // State is clean after the stale response was discarded.
+    expect(auth.currentUser).toBeNull();
+
+    // Sign in as user B and load their profile — this MUST fire a second fetch.
+    auth.setTokens('b', 'b');
+    await auth.loadCurrentUser();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(auth.currentUser).toEqual({
+      id: 'user-b',
+      email: 'userb@example.com',
+      displayName: 'User B',
+    });
+  });
+
   // --- stale-write race guard ---
 
   test('discards stale /api/me response when signOut raced the in-flight call', async () => {

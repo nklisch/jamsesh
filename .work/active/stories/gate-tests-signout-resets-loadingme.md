@@ -1,7 +1,7 @@
 ---
 id: gate-tests-signout-resets-loadingme
 kind: story
-stage: implementing
+stage: review
 tags: [testing]
 parent: null
 depends_on: []
@@ -54,3 +54,34 @@ stale-write race test ("discards stale /api/me response when signOut
 raced...") asserts that state isn't poisoned, but does NOT assert that
 a subsequent loadCurrentUser can actually fetch again — the AC's second
 half is untested.
+
+## Implementation notes
+
+Added test "signOut while a loadCurrentUser is in-flight allows a subsequent
+loadCurrentUser to fetch again" in the `// --- _loadingMe reset on signOut ---`
+section, immediately before the existing stale-write race block.
+
+**Deviation from story snippet:** The story's sketch used
+`mockResolvedValueOnce(/* user A */)` for both mocked responses, implying they
+could be queued and awaited in-order without manual control. That would have
+raced non-deterministically: if user A's response resolved before `signOut()`
+ran, `_loadingMe` would already be null (cleared by the `finally` block) and the
+test would pass vacuously regardless of whether `signOut()` resets `_loadingMe`.
+To make the test actually exercise the invariant, user A's fetch was kept
+controllable via a manually-resolved `Promise<Response>` (same pattern as the
+existing stale-write race test), so `signOut()` is guaranteed to run while the
+promise is still in-flight.
+
+**Patterns reused:**
+- `vi.doMock('$lib/router.svelte', ...)` for navigate stub (matches all signOut
+  tests in the file).
+- `vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(fetchPromise).mockResolvedValueOnce(...)`
+  chaining — same spy/chain shape as the `loadCurrentUser calls GET /api/me` and
+  stale-write tests.
+- `new Response(JSON.stringify({...}), { status: 200, headers: { 'Content-Type':
+  'application/json' } })` for realistic `Response` objects the openapi-fetch
+  client can call `.json()` on.
+- `vi.resetModules()` in `beforeEach` gives each test a fresh module instance
+  with isolated `_loadingMe` state.
+
+Test count: 19 (was 18). All passing.
