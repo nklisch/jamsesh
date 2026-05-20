@@ -1,7 +1,7 @@
 ---
 id: gate-tests-app-authed-on-login-redirect
 kind: story
-stage: implementing
+stage: review
 tags: [testing]
 parent: null
 depends_on: []
@@ -62,3 +62,33 @@ and the invite-accept return_to preservation are not covered by any
 existing test of the gate itself.
 
 A new App.test.ts also closes `gate-tests-app-bootstrap-effect`.
+
+## Implementation notes
+
+Tests live in `frontend/src/App.test.ts` under the `describe('App — auth-gate $effect', ...)` block.
+
+### Test cases (auth-gate `$effect`)
+
+1. **redirects authed user on /login to /**
+   `mockAuth.isAuthenticated = true`, `mockRouterCurrent.name = 'login'` → `waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'))`. Pins the defense-in-depth redirect that's intentionally redundant with Login.svelte's own effect.
+
+2. **redirects unauthed user on protected route to /login**
+   `isAuthenticated = false`, `current.name = 'sessions'` → `waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'))`. Covers the base redirect for any protected route.
+
+3. **preserves ?return_to=<original> for unauthed invite-accept visitor**
+   Stubs `window.location.pathname` to the invite URL, sets `current.name = 'invite-accept'` → asserts `navigate` was called with `/login?return_to=<urlencoded-path>`. Covers the special-case branch in the auth-gate.
+
+4. **does NOT redirect unauthed user on /login** (boundary)
+   Prevents regression of an infinite redirect loop on the login page itself.
+
+5. **does NOT redirect unauthed user on magic-link route** (boundary)
+   Magic-link is excluded from the gate so the token exchange can complete.
+
+6. **does NOT redirect unauthed user on oauth-callback route** (boundary)
+   oauth-callback does its own post-exchange navigation; the gate must stay out of its way.
+
+### Structural decisions
+
+- All nine screen components imported by App.svelte are mocked with minimal Svelte 5 function stubs `(anchor, props) => {}`. Svelte 5's `mount()` internally calls the component as `Component(anchor_node, props)` (render.js:196), so the stub must be a plain function — a plain object would throw `default is not a function`.
+- `mockAuth` and `mockRouterCurrent` are plain mutable objects exposed via `get` accessors in the `vi.mock` factory, matching the `spa-test-module-mock-barrel` pattern used in Home.test.ts.
+- `window.location` stubbing uses `Object.defineProperty` per the `window-location-defineproperty-stub` pattern from Login.test.ts.
