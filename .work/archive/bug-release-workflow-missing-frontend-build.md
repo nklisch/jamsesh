@@ -1,7 +1,7 @@
 ---
 id: bug-release-workflow-missing-frontend-build
 kind: story
-stage: review
+stage: done
 tags: [bug, infra, release, ui, self-host]
 parent: null
 depends_on: []
@@ -213,3 +213,31 @@ None. The design followed exactly as specified.
   whether to cut v0.1.2 as the first fixed release or re-publish
   v0.1.1 (the latter is risky — checksums change). Out of scope for
   the story; the story just lands the workflow fix.
+
+## Review (2026-05-19)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Eleven-line workflow addition: two new steps (`setup-node@v4`
+with Node 20 + npm cache, and `make frontend-build`) between the
+existing `setup-go` and `build` steps, both gated `if: matrix.binary
+== 'portal'` so the 5 jamsesh matrix entries skip cleanly. The Node
+configuration matches the `e2e.yml:34-41` precedent exactly (same
+version, same cache key path). `docs/RELEASING.md` updated with a new
+bullet 1 describing the frontend-build step; bullets 2-9 renumbered
+cleanly with no content loss. Wave 1's local `make frontend-build`
+run already produced the expected `dist/` output (index.html + assets/
+JS+CSS bundle), confirming the Makefile target works as expected in
+the CI environment. The fix-steps themselves don't carry a "why"
+comment naming the v0.1.1 incident, but the immediately-adjacent
+`assert SPA is embedded` step (landing as part of
+`testing-release-spa-embed-guard`) does — future maintainers find the
+historical context one step down in the same workflow section. What's
+now possible: the next published portal image will contain the
+embedded SPA; self-hosters pulling from `ghcr.io/nklisch/jamsesh` get
+a functional sign-in page on first run instead of the stub HTML the
+v0.1.1 image shipped.
