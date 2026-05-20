@@ -1,7 +1,7 @@
 ---
 id: spa-logged-in-landing-auth-store-orgs-cache
 kind: story
-stage: implementing
+stage: review
 tags: [frontend, ui]
 parent: spa-logged-in-landing-and-org-bootstrap
 depends_on: []
@@ -66,3 +66,36 @@ specification (file paths, store shape, bootstrap-effect body, edge cases).
 - Do NOT add a UI for re-triggering `loadCurrentUser` on failure. The
   retry path is "App.svelte effect fires whenever auth flips" plus
   whatever screen-level retry the next story adds.
+
+## Implementation notes
+
+Clean implementation — no design deviations. The spec matched reality exactly:
+`MeOrgMembership` and `MeResponse` shapes in `types.gen.ts` matched the spec
+test data shapes perfectly, so no escape-hatch was needed.
+
+**Changes made:**
+
+- `frontend/src/lib/auth.svelte.ts`: Added `MeOrgMembership` type import from
+  `$lib/api/types.gen`, added `_orgs` `$state` variable and `_loadingMe`
+  in-flight guard, added `orgs` getter, added `addOrg` mutator (reassignment,
+  not push-in-place), extended `loadCurrentUser` with idempotency guard and
+  `_orgs` population, extended `signOut` to clear `_orgs` and reset `_loadingMe`.
+
+- `frontend/src/App.svelte`: Added second `$effect` after the auth-gate effect
+  that calls `void auth.loadCurrentUser()` when `auth.isAuthenticated && auth.orgs === null`.
+  Existing auth-gate effect untouched.
+
+- `frontend/src/lib/auth.test.ts`: Added 8 new tests covering `orgs` null
+  initial state, populated orgs (empty and non-empty), idempotency (sequential
+  and concurrent), `signOut` clearing `orgs`, and `addOrg` (null-init and
+  append-via-reassignment). All 17 auth tests pass.
+
+**App.svelte bootstrap effect unit test:** Deferred to integration surface
+from the next story (Home.svelte will exercise the bootstrap path indirectly).
+Testing `$effect` isolation in vitest is awkward with the current test setup,
+and a shallow-mount approach would be brittle. The acceptance criteria for the
+bootstrap effect are covered by the `loadCurrentUser` idempotency and no-op
+tests in `auth.test.ts`, which exercise the same guard logic.
+
+**Verification:** `npm run check` — 0 errors, 2 pre-existing warnings (unrelated).
+`npm run test` — 413/413 tests pass across 39 test files.

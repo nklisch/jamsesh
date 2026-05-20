@@ -31,6 +31,17 @@
       }
     }
   });
+
+  // Bootstrap: when the user is authenticated but we have not yet loaded
+  // /api/me, fetch it. Covers cold-load with persisted tokens.
+  // OAuthCallback awaits loadCurrentUser() explicitly before navigating
+  // (in a later story), so this effect is a no-op there (guarded inside
+  // auth.loadCurrentUser via the _currentUser/_orgs check).
+  $effect(() => {
+    if (auth.isAuthenticated && auth.orgs === null) {
+      void auth.loadCurrentUser();
+    }
+  });
 </script>
 
 {#if current.name === 'login'}

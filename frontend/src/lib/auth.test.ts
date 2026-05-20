@@ -139,4 +139,162 @@ describe('auth store', () => {
     const calledUrl = (fetchSpy.mock.calls[0][0] as Request).url;
     expect(calledUrl).toContain('/api/me');
   });
+
+  // --- orgs getter ---
+
+  test('orgs starts null before loadCurrentUser', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    expect(auth.orgs).toBeNull();
+  });
+
+  test('loadCurrentUser populates orgs with empty array', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'user-123',
+          email: 'ada@example.com',
+          display_name: 'Ada Lovelace',
+          orgs: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    await auth.loadCurrentUser();
+
+    expect(auth.orgs).toEqual([]);
+  });
+
+  test('loadCurrentUser populates orgs with membership array', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'user-123',
+          email: 'ada@example.com',
+          display_name: 'Ada Lovelace',
+          orgs: [
+            { id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' },
+            { id: 'org-2', name: 'hooli', slug: 'hooli', role: 'member' },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    await auth.loadCurrentUser();
+
+    expect(auth.orgs).toEqual([
+      { id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' },
+      { id: 'org-2', name: 'hooli', slug: 'hooli', role: 'member' },
+    ]);
+  });
+
+  // --- idempotency ---
+
+  test('loadCurrentUser is a no-op when already loaded', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'user-123',
+          email: 'ada@example.com',
+          display_name: 'Ada Lovelace',
+          orgs: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    await auth.loadCurrentUser();
+    await auth.loadCurrentUser(); // second call — should not fetch again
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  test('concurrent loadCurrentUser calls result in exactly one fetch', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'user-123',
+          email: 'ada@example.com',
+          display_name: 'Ada Lovelace',
+          orgs: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    await Promise.all([auth.loadCurrentUser(), auth.loadCurrentUser()]);
+
+    expect(fetchSpy.mock.calls.length).toBe(1);
+  });
+
+  // --- signOut clears orgs ---
+
+  test('signOut clears orgs to null', async () => {
+    vi.doMock('$lib/router.svelte', () => ({
+      navigate: vi.fn(),
+      current: { name: 'sessions', params: {} },
+    }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'user-123',
+          email: 'ada@example.com',
+          display_name: 'Ada Lovelace',
+          orgs: [{ id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    await auth.loadCurrentUser();
+    expect(auth.orgs).not.toBeNull();
+
+    auth.signOut();
+
+    expect(auth.orgs).toBeNull();
+  });
+
+  // --- addOrg ---
+
+  test('addOrg initializes orgs array when currently null', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    expect(auth.orgs).toBeNull();
+
+    auth.addOrg({ id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' });
+
+    expect(auth.orgs).toEqual([{ id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' }]);
+  });
+
+  test('addOrg appends to existing orgs array via reassignment', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'user-123',
+          email: 'ada@example.com',
+          display_name: 'Ada Lovelace',
+          orgs: [{ id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    await auth.loadCurrentUser();
+
+    const originalArray = auth.orgs;
+    auth.addOrg({ id: 'org-2', name: 'hooli', slug: 'hooli', role: 'member' });
+
+    // Array was reassigned (not mutated in-place)
+    expect(auth.orgs).not.toBe(originalArray);
+    expect(auth.orgs).toEqual([
+      { id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' },
+      { id: 'org-2', name: 'hooli', slug: 'hooli', role: 'member' },
+    ]);
+  });
 });

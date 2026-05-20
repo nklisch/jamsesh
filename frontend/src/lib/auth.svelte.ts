@@ -4,8 +4,11 @@
 // a raw `$derived` value from a module; use a plain object with get
 // accessors that close over the private rune variables instead.
 
+import type { components } from '$lib/api/types.gen';
 import { navigate } from '$lib/router.svelte';
 import { client } from '$lib/api/client';
+
+type MeOrgMembership = components['schemas']['MeOrgMembership'];
 
 const TOKEN_KEY = 'jamsesh.token';
 const REFRESH_KEY = 'jamsesh.refresh';
@@ -17,6 +20,11 @@ let _refresh = $state<string | null>(
   typeof localStorage !== 'undefined' ? localStorage.getItem(REFRESH_KEY) : null,
 );
 let _currentUser = $state<{ id: string; email: string; displayName: string } | null>(null);
+let _orgs = $state<MeOrgMembership[] | null>(null);
+
+// Guards a single in-flight /api/me call. Concurrent callers await the
+// same promise; resolved-state callers return immediately.
+let _loadingMe: Promise<void> | null = null;
 
 export const auth = {
   get token(): string | null {
@@ -27,6 +35,9 @@ export const auth = {
   },
   get currentUser(): { id: string; email: string; displayName: string } | null {
     return _currentUser;
+  },
+  get orgs(): MeOrgMembership[] | null {
+    return _orgs;
   },
   get isAuthenticated(): boolean {
     return _token !== null;
@@ -43,24 +54,43 @@ export const auth = {
     _token = null;
     _refresh = null;
     _currentUser = null;
+    _orgs = null;
+    _loadingMe = null;
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
     navigate('/login');
   },
 
   async loadCurrentUser(): Promise<void> {
-    try {
-      const { data } = await client.GET('/api/me');
-      if (data) {
-        _currentUser = {
-          id: data.id,
-          email: data.email,
-          displayName: data.display_name,
-        };
+    if (_currentUser !== null && _orgs !== null) return;
+    if (_loadingMe !== null) return _loadingMe;
+
+    _loadingMe = (async () => {
+      try {
+        const { data } = await client.GET('/api/me');
+        if (data) {
+          _currentUser = {
+            id: data.id,
+            email: data.email,
+            displayName: data.display_name,
+          };
+          _orgs = data.orgs;
+        }
+      } catch {
+        // Leave state as-is; the App.svelte effect will retry on next
+        // isAuthenticated flip if any.
+      } finally {
+        _loadingMe = null;
       }
-    } catch {
-      // Network/parse failure — leave _currentUser as-is.
-      // The UI handles the null state.
-    }
+    })();
+
+    return _loadingMe;
+  },
+
+  // Append a freshly-created org to the local cache. Assigns a new array
+  // (not push-in-place) so Svelte 5 $state reactivity fires.
+  addOrg(org: MeOrgMembership): void {
+    if (_orgs === null) _orgs = [org];
+    else _orgs = [..._orgs, org];
   },
 };
