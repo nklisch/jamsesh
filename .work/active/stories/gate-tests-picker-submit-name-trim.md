@@ -1,7 +1,7 @@
 ---
 id: gate-tests-picker-submit-name-trim
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -51,3 +51,13 @@ against future divergence if the snippet is split.
 
 ## Implementation notes
 Added the test to `Home.test.ts` immediately after the "picker state shows 'or' divider" test, co-located in the "Picker: create form" section. Used the suggested snippet as-is — it matches the existing test style. The test sets two orgs (to enter picker state), uses the "Create another org" label to find the input, sets a padded value `'  foo  '`, fires an input event, submits, and asserts that `mockPOST` was called with the trimmed `'foo'`. Test passes; total 33 Home.test.ts tests green.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Test addition matches the suggested snippet exactly; co-located in the right describe block. Pins the AC's "trimmed before posting" guarantee for the picker-state branch (the empty-state branch was already covered).
