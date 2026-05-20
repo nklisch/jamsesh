@@ -1,7 +1,7 @@
 ---
 id: gate-tests-router-root-route-home
 kind: story
-stage: implementing
+stage: review
 tags: [testing]
 parent: null
 depends_on: []
@@ -43,3 +43,10 @@ seam between the router and Home screen at `current.name === 'home'` is
 currently asserted only inside Home.test.ts via a mocked router. Without
 a direct router test, a regression that reorders `routes[]` or breaks
 the `/^\/$/` pattern would not be caught at the router layer.
+
+## Implementation notes
+
+Added the test as the FIRST entry in `describe('router — pattern matching', ...)` in
+`frontend/src/lib/router.test.ts`, directly mirroring the first-match position of
+`{ pattern: /^\/$/, name: 'home' }` in `routes[]`. Test verifies both `current.name`
+and `current.params` via `navigate('/')`. Suite advances from 9 → 10 tests; all pass.

@@ -12,6 +12,13 @@ describe('router — pattern matching', () => {
   // We test the matching logic by importing the module once.
   // Each navigate() call mutates the shared `path` state and updates `current`.
 
+  test('matches / as home (first-match wins)', async () => {
+    const { navigate, current } = await import('./router.svelte');
+    navigate('/');
+    expect(current.name).toBe('home');
+    expect(current.params).toEqual({});
+  });
+
   test('matches /login', async () => {
     const { navigate, current } = await import('./router.svelte');
     navigate('/login');
