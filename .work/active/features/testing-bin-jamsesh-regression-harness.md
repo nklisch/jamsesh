@@ -1,7 +1,7 @@
 ---
 id: testing-bin-jamsesh-regression-harness
 kind: feature
-stage: review
+stage: done
 tags: [testing, infra, plugin]
 parent: null
 depends_on: []
@@ -263,3 +263,13 @@ Both child stories advanced to `done`:
 - `testing-bin-jamsesh-regression-harness-ci-job` — `wrapper-tests` job added to `quickstart.yml`, runs in parallel (`d1ddba5`)
 
 Net deliverables: 6 new files under `tests/wrapper/` (helpers + 4 .bats files + README), 12 lines added to `.github/workflows/quickstart.yml`. Local bats smoke green; first GitHub Actions run will be the final integration check.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: The bats apt-availability check (CI step `sudo apt-get install -y bats`) is the only unknown that local testing can't cover. Noted in the CI-job story's review section; not worth blocking on.
+
+**Notes**: Feature delivers exactly the brief — 10 test cases the brief enumerated + 5 additions (cosign-absent, BIN_OVERRIDE non-exec error, two extra tmpdir-cleanup variants) that close gaps the brief implied. Per-child reviews approved cleanly with no blockers. Foundation docs not affected. No public-API breakage (test-only addition). The smoke verification — intentionally breaking the wrapper in 3 ways and confirming the right tests fail — is the signal that this suite isn't vacuous; it's the test-integrity contract this feature exists to enforce.
