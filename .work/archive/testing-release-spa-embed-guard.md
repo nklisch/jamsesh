@@ -1,7 +1,7 @@
 ---
 id: testing-release-spa-embed-guard
 kind: story
-stage: review
+stage: done
 tags: [testing, infra, release, ui]
 parent: null
 depends_on: []
@@ -232,3 +232,41 @@ match the real output to avoid a false-positive miss.
   file's simplicity.
 - `go vet -tags release ./internal/portal/assets/...` and
   `go build -tags release ./internal/portal/assets/...`: both clean.
+
+## Review (2026-05-19)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Sixty-line Go test with `//go:build release` tag, accessing
+the package-private `dist embed.FS` via in-package access (clean, no
+exports needed). Two-tier assertion: `index.html` exists + non-empty,
+plus a JS-bundle walk that short-circuits on first match. Failure
+messages name the missing artifact and point directly at
+`make frontend-build` — exactly what a future maintainer hitting this
+in CI logs needs. Twenty-one workflow lines: an `assert SPA is
+embedded` step between `make frontend-build` and `go build` (gated to
+portal), plus a `strings | grep -q "<!DOCTYPE html>"` belt-and-
+suspenders check inside the build step's run block after `go build`.
+Both new workflow steps carry substantive comments referencing the
+v0.1.1 incident and this story id. **Notable deviation worth calling
+out:** the design brief specified `<!doctype html>` (lowercase) for
+the grep pattern; the agent verified the actual Vite output and
+corrected it to `<!DOCTYPE html>` (uppercase). Good catch — would
+have produced a false-positive miss in CI if implemented as designed.
+Independent verification confirmed both gating modes:
+`go test -tags release ./internal/portal/assets/...` → PASS (with
+current dist/ populated from prior wave's local frontend-build);
+`go test ./internal/portal/assets/...` (no tag) → `[no test files]`,
+local dev unaffected. What's now possible: the assets.go contract
+comment ("On every real build, `make frontend-build` runs before
+`go build`, so dist/ is fully populated") is now both true (via the
+sibling fix landed in commit `e58f84f`) AND enforced (via this guard,
+landed in commit `f5659a2`). The class of "release ships an empty
+SPA" bug is closed for good — any future regression to the build
+ordering fails fast in CI before any `go build` cycles, and the
+post-build strings check catches the rarer "embed stripped during
+link" failure mode.
