@@ -1,7 +1,7 @@
 ---
 id: gate-tests-unknown-role-titlecase
 kind: story
-stage: implementing
+stage: review
 tags: [testing]
 parent: null
 depends_on: []
@@ -45,3 +45,6 @@ Only `creator` and `member` are tested. Schema is documented as untyped
 server returns" and unknown roles fall through to the neutral pill.
 Equivalence-partition coverage: tested = creator (accent), member
 (neutral); untested = arbitrary-other (neutral).
+
+## Implementation notes
+Added the test to `Home.test.ts` immediately after the "non-creator badge does not have role-creator class" test, co-located in the "Role badges" section. Used the suggested snippet verbatim — sets two orgs (creator + reviewer), asserts `'Reviewer'` is in the document (verifying `roleLabel` title-cases the arbitrary value) and does not carry the `role-creator` class (verifying it gets the neutral pill). Test passes; total 34 Home.test.ts tests green.

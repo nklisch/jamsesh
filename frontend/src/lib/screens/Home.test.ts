@@ -223,6 +223,16 @@ describe('Home', () => {
     expect(memberBadge).not.toHaveClass('role-creator');
   });
 
+  it('title-cases arbitrary unknown role values', () => {
+    setOrgs([
+      { id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' },
+      { id: 'org-2', name: 'hooli', slug: 'hooli', role: 'reviewer' },
+    ]);
+    render(Home);
+    expect(screen.getByText('Reviewer')).toBeInTheDocument();
+    expect(screen.getByText('Reviewer')).not.toHaveClass('role-creator');
+  });
+
   // ── Picker: create form ──────────────────────────────────────────────────
 
   it('picker state renders the create form with "Create another org" label', () => {
