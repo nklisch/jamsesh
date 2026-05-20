@@ -1,7 +1,7 @@
 ---
 id: bug-docs-oauth-callback-url-and-flow-prose-mismatch
 kind: story
-stage: review
+stage: done
 tags: [bug, documentation, auth, oauth, self-host]
 parent: null
 depends_on: []
@@ -182,3 +182,29 @@ Client ID and secret unchanged.
 - **A regression test** that asserts the `redirect_uri` constant
   matches the documented value. Useful but belongs to a broader docs/
   ↔ code drift-detection story.
+
+## Review (2026-05-19)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Clean three-change diff: one-line URL fix in
+`deploy/compose/.env.example`, surgical §4 rewrite of
+`docs/SELF_HOST.md` that separates the OAuth-app registration URL
+(frontend SPA route) from the backend POST endpoint and replaces the
+inaccurate "no SPA-side redirect hop" sentence with an accurate
+SPA-hop flow description. The opening prose is actually stronger than
+the acceptance criteria asked for — it leads with "these are two
+distinct URLs — confusing them causes GitHub to reject sign-in with
+`redirect_uri_mismatch`", which preempts the exact mistake the
+reporter (and every future operator) would have made. Cross-check
+grep confirmed every remaining `/api/auth/oauth/callback` mention is
+backend-endpoint usage, not registration-URL drift. No code touched
+(`internal/portal/auth/oauth.go` and tests verified unchanged). What's
+now possible: future self-hosters following the official docs register
+the correct OAuth callback URL on the first attempt; the
+`redirect_uri_mismatch` failure mode the reporter hit no longer
+ships.
