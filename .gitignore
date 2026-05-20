@@ -17,6 +17,9 @@ jamsesh.db
 # Un-ignore the plugin skill dir named jamsesh
 !skills/jamsesh/
 
+# Claude Code harness — transient lock file; mutates during scheduled-task runs
+.claude/scheduled_tasks.lock
+
 # Local dev compose data
 .data/
 

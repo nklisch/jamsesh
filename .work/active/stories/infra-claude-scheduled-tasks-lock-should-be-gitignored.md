@@ -1,7 +1,7 @@
 ---
 id: infra-claude-scheduled-tasks-lock-should-be-gitignored
 kind: story
-stage: implementing
+stage: review
 tags: [infra, tooling]
 parent: null
 depends_on: []
@@ -43,3 +43,32 @@ References:
   2026-05-19 (commit `8f5e5cf` reviewed at that time).
 - The collision is with `scripts/release-bump.sh`'s clean-tree check
   (`scripts/release-bump.sh:114-120`).
+
+## Implementation notes
+
+**Pattern chosen: exact path `.claude/scheduled_tasks.lock`**
+
+Rationale: `git ls-files .claude/` and `ls -la .claude/` showed no other
+`.lock` files under `.claude/` — only `scheduled_tasks.lock` itself. Since
+there are no other lock files now or obviously anticipated, the exact-path
+entry is more precise and avoids inadvertently hiding future lock files that
+should be tracked. If additional harness-managed lock files appear, the
+pattern can be widened to `.claude/*.lock` at that time.
+
+**Audit of tracked `.claude/` items (all intentional)**
+
+`git ls-files .claude/` (after this fix) shows:
+- `.claude/rules/agile-workflow.md` — project navigation rules, intentional
+- `.claude/rules/patterns.md` — code pattern rules, intentional
+- `.claude/skills/*/SKILL.md` and `references/*.md` — skill definition files,
+  intentional (these are project-local skills that extend the Claude Code
+  harness for this repo)
+
+No other transient/cache/state files were found. The only candidate was
+`scheduled_tasks.lock`, which this story resolves.
+
+**Pre-existing unrelated modification noted (not part of this story)**
+
+`git status` showed `.claude/skills/patterns/openapi-fetch-middleware-client.md`
+as modified but unstaged — this is a pre-existing change unrelated to this
+story. Left untouched; should be reviewed separately.
