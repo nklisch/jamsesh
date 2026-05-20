@@ -9,7 +9,7 @@ ARG BINARY
 ARG TARGETOS
 ARG TARGETARCH
 RUN apk add --no-cache git ca-certificates
-COPY ${BINARY}-${TARGETOS}-${TARGETARCH} /usr/local/bin/portal
+COPY --chmod=0755 ${BINARY}-${TARGETOS}-${TARGETARCH} /usr/local/bin/portal
 EXPOSE 8443
 USER nobody
 ENTRYPOINT ["/usr/local/bin/portal"]

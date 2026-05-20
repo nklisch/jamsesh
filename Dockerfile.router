@@ -8,7 +8,7 @@ ARG BINARY
 ARG TARGETOS
 ARG TARGETARCH
 RUN apk add --no-cache ca-certificates
-COPY ${BINARY}-${TARGETOS}-${TARGETARCH} /usr/local/bin/jamsesh-router
+COPY --chmod=0755 ${BINARY}-${TARGETOS}-${TARGETARCH} /usr/local/bin/jamsesh-router
 EXPOSE 8080
 USER nobody
 ENTRYPOINT ["/usr/local/bin/jamsesh-router"]

@@ -1,7 +1,7 @@
 ---
 id: bug-dockerfile-portal-binary-not-executable
 kind: story
-stage: implementing
+stage: review
 tags: [bug, infra, docker, self-host]
 parent: null
 depends_on: []
@@ -80,3 +80,10 @@ Resolved at scope.
   happen separately if mode-preservation matters elsewhere.
 - Reproducing in CI as a regression test. Image-build smoke would be a
   nice e2e but belongs to a broader release-pipeline test story.
+
+## Implementation notes
+
+- Dockerfile: COPY → COPY --chmod=0755 (line 12).
+- Dockerfile.router: same fix (line 11) — audit confirmed same shape, same bug.
+- Smoke: Option A (real go build + docker buildx). Built portal-linux-amd64 via `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./cmd/portal`, built `jamsesh:smoke` via `docker buildx build --load --platform linux/amd64 --build-arg BINARY=portal`. Verified `ls -l /usr/local/bin/portal` inside image shows `-rwxr-xr-x`. Smoke artifacts cleaned up (binary removed, image removed).
+- Reporter's overlay Dockerfile at `/srv/jamsesh-portal/Dockerfile` can be deleted once the next published image is verified.
