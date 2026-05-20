@@ -1,7 +1,7 @@
 ---
 id: testing-bin-jamsesh-regression-harness-ci-job
 kind: story
-stage: review
+stage: done
 tags: [testing, infra, plugin, ci]
 parent: testing-bin-jamsesh-regression-harness
 depends_on: [testing-bin-jamsesh-regression-harness-bats-suite]
@@ -65,3 +65,13 @@ No explicit timeout — bats' own runtime is the cap; expected <30s.
 **Local bats smoke (`bats tests/wrapper/`):** All 15 tests passed (exit 0). This exercises the exact command the CI job will run, confirming the suite is invocable from the repo root.
 
 **Placement:** New job appended after `compose-template`, at the same indent level. No `needs:` — runs in parallel with `quickstart` and `compose-template`.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: The first real GitHub Actions run will be the true smoke — local-bats-passes is necessary but not sufficient (apt-get availability of bats on `ubuntu-latest` is the remaining unknown). Worst case, the apt step fails on first run and we switch to `bats-core` install via npm (`npm install -g bats`) which is more universally available. Filed only as a note, no item.
+
+**Notes**: 12-line YAML addition with correct 2-space indent matching the surrounding jobs. Local `bats tests/wrapper/` was re-verified by the implementer (15/15 green) — confirms the exact command CI will invoke. Job runs in parallel (no `needs:`), which is right for this surface (the wrapper tests don't share state with the portal smoke or compose-template jobs). Closes out the parent feature's last child.
