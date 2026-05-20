@@ -1,8 +1,19 @@
 ---
 id: testing-bin-jamsesh-regression-harness
-created: 2026-05-18
+kind: feature
+stage: drafting
 tags: [testing, infra, plugin]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-18
+updated: 2026-05-20
 ---
+
+# Regression test harness for `bin/jamsesh`
+
+## Brief
 
 `bin/jamsesh` (129 lines of bash) is the plugin's runtime trust boundary —
 on first invocation it downloads, sha256-verifies, optionally cosign-verifies,
