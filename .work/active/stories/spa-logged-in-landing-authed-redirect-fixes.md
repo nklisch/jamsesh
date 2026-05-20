@@ -1,7 +1,7 @@
 ---
 id: spa-logged-in-landing-authed-redirect-fixes
 kind: story
-stage: review
+stage: done
 tags: [frontend, ui]
 parent: spa-logged-in-landing-and-org-bootstrap
 depends_on: [spa-logged-in-landing-home-screen]
@@ -118,3 +118,68 @@ expect `navigate('/')` — the correct new fallback target.
 **Verification:** `npm run check` — 0 errors, 2 pre-existing warnings.
 `npm run test` — 450 tests passed across 40 files (OAuthCallback: 15
 tests, +2 new; Login: 13 tests, +2 new).
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none.
+**Important**: none.
+**Nits**: none worth filing.
+
+**Notes**:
+
+- OAuthCallback's `await auth.loadCurrentUser()` is safe — `loadCurrentUser`
+  swallows exceptions internally (`auth.svelte.ts:73-78`), so the await
+  cannot surface a rejection that blocks the subsequent `navigate(returnTo ?? '/')`
+  call. Verified by reading the post-fix `auth.svelte.ts`.
+- 401-path edge case traced through: token issued at OAuth callback turns out
+  invalid → `/api/me` returns 401 → `unauthorizedMiddleware` fires
+  `auth.signOut()` (clears tokens, navigates to `/login`) → in-flight call
+  resolves with `data: undefined` → write-guard's `if (data && ...)` skips →
+  OAuthCallback's subsequent `navigate(returnTo ?? '/')` lands on `/` →
+  App.svelte gate sees unauthed-on-`/` and redirects to `/login`. Net result:
+  user ends up on `/login` with a clean store. Two extra navigation hops but
+  no security issue and no UI thrash visible (the OAuth screen is full-bleed
+  during this whole sequence).
+- App.svelte's new top-branch only matches `current.name === 'login'`, leaving
+  the existing oauth-callback and magic-link exclusions untouched. Verified.
+- The intentional redundancy between Login.svelte's `$effect` and App.svelte's
+  gate (both catch authed-on-`/login`) converges correctly via Svelte 5's
+  $effect re-run semantics: whichever fires first navigates; the other re-runs
+  against the new route and either no-ops or harmlessly re-navigates. Confirmed
+  acceptable — defense in depth, no behavioral surprise.
+- Open-redirect protection intact: the existing `startsWith('/') &&
+  !startsWith('//')` validator in OAuthCallback (lines 35-38) still rejects
+  protocol-relative `oauth.return_to`. Fallback target changed from `/login`
+  to `/`, both in-origin. The "rejects protocol-relative return_to" test was
+  updated to expect the new fallback.
+- Test additions: 2 new in Login.test.ts (authed-redirect with/without
+  returnTo), 1 new + 2 updated in OAuthCallback.test.ts (call-order
+  assertion + navigate-target updates). The call-order assertion uses
+  vitest's `mock.invocationCallOrder` to prove `loadCurrentUser` fired
+  before `navigate`. Good idiom.
+- Design alignment: no deviations. Implementation matches Unit 3 verbatim.
+- Foundation-doc alignment: none affected.
+- Security: lightweight — no new attack surface, redirect-target literal,
+  open-redirect protection retained.
+- Test integrity: clean. No silenced tests; the 3 navigate-target
+  reassertions reflect the genuine spec change.
+
+**What's now possible**: the SPA's authentication flow is closed-loop end to
+end. A freshly-signed-up GitHub user clicks OAuth → exchange completes →
+`auth.loadCurrentUser()` populates identity → user lands on `/` →
+auto-routed to their only org (if exactly one), shown the picker (2+), or
+shown the create-first-org screen (zero). An already-authed user landing on
+`/login` (browser back, bookmark) bounces to `/` instead of staring at a
+form they don't need. The feature ships its promise — no dead ends for new
+signups.
+
+**Verification (review-side)**: full diff read of all 6 changed files,
+tests at 451/451 pass.
+
+## Children complete
+
+This is the final child story of `spa-logged-in-landing-and-org-bootstrap`.
+With all three children at `stage: done`, the parent feature (currently at
+`stage: review`) is ready for its own feature-level review pass.
