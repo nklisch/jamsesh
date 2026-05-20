@@ -1,7 +1,7 @@
 ---
 id: gate-docs-openapi-fetch-middleware-pattern-citation
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -65,3 +65,13 @@ auth.svelte.ts call:
 - Verified `auth.svelte.ts:76` is `const { data } = await client.GET('/api/me')` — correct line for the `{ data }`-only citation.
 - Verified `Home.svelte:41` is `const { data, error } = await client.POST('/api/orgs', { body: { name } })` — line number matches the story exactly; used as the replacement citation.
 - The "every caller" absolutism in the original was softened to "callers destructure `{ data, error }` ... (or `{ data }` alone when ...)" to accommodate the legitimate middleware-guarded pattern in auth without listing it as a violation. Phrasing matches the surrounding pattern skill's terse, file-anchored voice.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Citation updated to `Home.svelte:41` (verified line) + auth.svelte.ts moved to `:76` (verified). Softened claim correctly positions the `{ data }`-only call as a legitimate variant rather than a counter-example — accurate because the auth call IS guarded by the outer try/catch + token-at-start check. Foundation-doc rolling-forward done correctly.
