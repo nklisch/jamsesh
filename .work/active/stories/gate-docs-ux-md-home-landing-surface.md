@@ -1,7 +1,7 @@
 ---
 id: gate-docs-ux-md-home-landing-surface
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -98,3 +98,13 @@ single entry, and two-or-more. The bullet documents all four.
 The single-org condition in the code is `auth.orgs.length === 1` (exact
 equality); the multi-org picker branch is `auth.orgs.length >= 2`. Both
 are documented accurately.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Documents what's true today (4 states, not the story's 3; `auth.orgs === null` rather than story's "loading from /api/me"). Foundation-doc rolling-forward done correctly — no "previously this was..." prose, no version notes. Both the new bullet and the new flow section land in the right spots in the doc's structure. The decision to write actual-behavior over story-snippet is exactly the principle.
