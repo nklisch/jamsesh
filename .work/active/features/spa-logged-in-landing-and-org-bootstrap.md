@@ -1,7 +1,7 @@
 ---
 id: spa-logged-in-landing-and-org-bootstrap
 kind: feature
-stage: implementing
+stage: review
 tags: [frontend, ui]
 parent: null
 depends_on: []
@@ -651,3 +651,94 @@ infrastructure (if any) is in place.
   documents examples (`'creator'`, `'member'`) but isn't an enum. Future
   role values render in the picker with title-casing. Visual style for
   unknown roles falls through to the neutral pill (acceptable).
+
+## Implementation Summary
+
+All three child stories landed at `stage: review`:
+
+| Story | Stage | Commit |
+|---|---|---|
+| `spa-logged-in-landing-auth-store-orgs-cache` | review | `465ea0c` |
+| `spa-logged-in-landing-home-screen` | review | `f5994ef` |
+| `spa-logged-in-landing-authed-redirect-fixes` | review | `07e70ad` |
+
+### Deliverables
+
+- `frontend/src/lib/auth.svelte.ts` — extended with `orgs` getter,
+  `addOrg` mutator, idempotent `loadCurrentUser` (in-flight promise
+  guard + already-loaded short-circuit), `_orgs` + `_loadingMe` cleared
+  on `signOut`. `MeOrgMembership` typed via
+  `components['schemas']['MeOrgMembership']` from `types.gen.ts`.
+- `frontend/src/App.svelte` — added a separate bootstrap `$effect` for
+  cold-load (`auth.isAuthenticated && auth.orgs === null` -> `void
+  auth.loadCurrentUser()`), extended the existing auth-gate `$effect` to
+  bounce authed users hitting `/login` to `/`. The two effects are
+  separate and concern-isolated.
+- `frontend/src/lib/screens/Home.svelte` — net-new screen at `/`.
+  Renders loading / empty / picker states from `auth.orgs`; auto-routes
+  on `orgs.length === 1` via a one-shot `_autoRouted` plain `let` latch
+  (not `$state`); shared `{#snippet createForm()}` between empty and
+  picker branches; custom topbar matching the locked mock option-1.
+  Mock parity: `.mockups/screens/spa-logged-in-landing-and-org-bootstrap/option-1.html`.
+- `frontend/src/lib/router.svelte.ts` — `/` added as the FIRST entry
+  (first-match semantics) with `name: 'home'`.
+- `frontend/src/lib/screens/OAuthCallback.svelte` — `await
+  auth.loadCurrentUser()` before navigate; fallback target `'/login'`
+  -> `'/'`. The "Signing you in..." view now encompasses the
+  `/api/me` round-trip — no spinner-flash on the Home screen.
+- `frontend/src/lib/screens/Login.svelte` — `$effect` redirects authed
+  users to `returnTo ?? '/'` unconditionally (was: gated on `returnTo`
+  being set, which left users stuck on the form clean).
+- `frontend/src/lib/components/Input.svelte` — added `id?: string` prop
+  so the new Home create-form can wire `<label for="new-org-name">
+  <Input id="new-org-name">`. Three-line change, pattern-consistent.
+
+### Cross-cutting deviations from design
+
+1. **`Home.svelte` template uses `{:else if auth.orgs.length >= 2}`
+   instead of `{:else}`** for the picker branch. Rationale: the spec's
+   bare `{:else}` would render "Pick a workspace" for one paint tick on
+   the single-org auto-route case before the `$effect` fired
+   `navigate(...)`. The explicit `>= 2` guard makes the
+   single-org case render nothing while the effect routes away.
+   Documented in story-2's implementation notes.
+
+2. **App.svelte bootstrap-effect unit test deferred.** Story 1 noted
+   that a dedicated `$effect`-isolation test against the bootstrap
+   path is brittle under the current vitest harness; the integration
+   surface (Home.svelte's tests rendering with `auth.orgs === null` and
+   asserting on the loading state) covers the bootstrap path
+   end-to-end. Same call made in story 3 for App.svelte's gate effect
+   redirect behavior — per-screen authed-redirect tests cover the
+   externally-visible path; an App.test.ts would re-mock `current` +
+   `auth` + `navigate` for a string-comparison assertion adding noise
+   without signal. Documented in both story bodies.
+
+### Latent gap closed as a side effect
+
+Before this feature, `auth.loadCurrentUser()` was defined and tested
+but never called by any production code path. Three chrome consumers
+(`SessionList.svelte:135`, `SessionViewShell.svelte:153-154`,
+`InviteAccept.svelte:138-140`) read `auth.currentUser` behind
+`{#if auth.currentUser}` guards — so they all rendered the null branch
+in production. The bootstrap `$effect` from story 1 closes this gap:
+on any authenticated session load, `auth.currentUser` and `auth.orgs`
+are populated, and those existing chrome elements now render their
+intended content.
+
+### Verification (orchestrator-side, after Wave 3)
+
+- `npm run check`: 0 errors, 2 pre-existing warnings unrelated to this
+  feature (`ModeSwitchDialog.svelte` reference-capture warning;
+  `FinalizeView.svelte` unused-CSS-selector warning).
+- `npm run test`: 450/450 tests pass across 40 test files. Net new:
+  +8 in `auth.test.ts` (story 1), +32 in `Home.test.ts` (story 2), +2
+  in `Input.test.ts` (story 2 — id-prop coverage), +2 in
+  `OAuthCallback.test.ts` (story 3), +2 in `Login.test.ts` (story 3).
+- No tests were silenced, deleted, or gamed during the run.
+
+### Backlog notes
+
+None spawned. The role-styling fallback for unknown role strings is
+documented as acceptable v1 behavior in the Risks section above; no
+backlog item required.
