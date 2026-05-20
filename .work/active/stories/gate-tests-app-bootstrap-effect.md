@@ -1,7 +1,7 @@
 ---
 id: gate-tests-app-bootstrap-effect
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -72,3 +72,13 @@ Tests live in `frontend/src/App.test.ts` under the `describe('App — bootstrap 
 - `mockLoadCurrentUser` is a `vi.fn().mockResolvedValue(undefined)` defined at module scope and referenced inside the auth mock factory via a closure so the spy survives `vi.mock` hoisting.
 - The bootstrap tests default `mockRouterCurrent.name = 'home'` so the auth-gate effect does not fire and confound `mockNavigate` / `mockLoadCurrentUser` call counts.
 - Negative cases use a short `setTimeout(r, 50)` settle instead of `waitFor` so the test truly asserts absence rather than timing out.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: Same as the paired story — 50ms settle for absence-assertions is pragmatic, slightly timing-dependent. Not a finding.
+
+**Notes**: 3 tests directly cover both ACs and add a third boundary (`isAuthenticated = false`) that pins the conjunction in the effect condition. Shares the App.test.ts file with `gate-tests-app-authed-on-login-redirect` — bootstrap tests live in their own describe block with `mockRouterCurrent.name = 'home'` defaults so the auth-gate doesn't interfere. Clean.
