@@ -1,7 +1,7 @@
 ---
 id: gate-tests-router-root-route-home
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -50,3 +50,13 @@ Added the test as the FIRST entry in `describe('router — pattern matching', ..
 `frontend/src/lib/router.test.ts`, directly mirroring the first-match position of
 `{ pattern: /^\/$/, name: 'home' }` in `routes[]`. Test verifies both `current.name`
 and `current.params` via `navigate('/')`. Suite advances from 9 → 10 tests; all pass.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Placement choice (first test, mirroring first-match in `routes[]`) is the right call — the test sits where someone reordering routes would naturally encounter it. Pins the seam Home.test.ts couldn't, because Home.test.ts uses a mocked router.
