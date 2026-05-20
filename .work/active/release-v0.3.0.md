@@ -22,4 +22,4 @@ updated: 2026-05-20
 
 ## Gate runs
 
-(populated as gates run)
+- **gate-security** (2026-05-20) — 5 findings (0 critical, 0 high, 1 medium, 4 low). 1 active story, 4 backlog.
