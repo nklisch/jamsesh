@@ -1,7 +1,7 @@
 ---
 id: testing-release-spa-embed-guard
 kind: story
-stage: implementing
+stage: review
 tags: [testing, infra, release, ui]
 parent: null
 depends_on: []
@@ -168,3 +168,67 @@ post-frontend-build / pre-go-build checkpoint in CI.
 - **Generalizing the guard to assert specific bundle hashes or
   content shape.** Brittle and doesn't add value over "the file
   exists and is non-empty." Out of scope.
+
+## Implementation notes
+
+### New test file
+`internal/portal/assets/assets_release_test.go`
+
+Build constraint (first line of file): `//go:build release`
+
+Package: `package assets` (same package as `assets.go`, enabling direct
+access to the private `dist embed.FS` variable without exporting an accessor).
+
+### Verification runs
+
+**Pass case** (dist/ has built SPA — `assets/index-DnniF8dl.js` + `index.html`):
+```
+$ go test -tags release ./internal/portal/assets/... -v
+=== RUN   TestAssets_EmbeddedSPAIsBuilt
+    assets_release_test.go:59: embedded SPA verified: dist/index.html (391 bytes), found JS bundle at assets/index-DnniF8dl.js
+--- PASS: TestAssets_EmbeddedSPAIsBuilt (0.00s)
+PASS
+ok  	jamsesh/internal/portal/assets	0.002s
+```
+
+**Simulated regression** (dist/ cleared to only `.gitkeep`):
+```
+$ go test -tags release ./internal/portal/assets/... -v
+=== RUN   TestAssets_EmbeddedSPAIsBuilt
+    assets_release_test.go:28: expected dist/index.html to be embedded but it was not found — did `make frontend-build` run before `go build`? (err: open index.html: file does not exist)
+--- FAIL: TestAssets_EmbeddedSPAIsBuilt (0.00s)
+FAIL
+FAIL	jamsesh/internal/portal/assets	0.002s
+```
+
+**Default `go test ./...` (no tag):**
+```
+?   	jamsesh/internal/portal/assets	[no test files]
+```
+The release-tagged file is absent from compilation — local dev and CI without
+`-tags release` are unaffected. Full `go test ./...` suite: all 53 packages pass.
+
+### release.yml edits
+
+**Insertion A** — new step at line 57–65 (between the existing `build frontend`
+step at line 53 and the `build` step at line 67). Runs
+`go test -tags release ./internal/portal/assets/...`, gated on
+`matrix.binary == 'portal'`, with a comment naming this story and the v0.1.1
+incident.
+
+**Insertion B** — post-build shell block at lines 98–107, inside the existing
+`build` step's `run:` block immediately after the `go build` invocation.
+Checks `strings "${out}" | grep -q "<!DOCTYPE html>"` — uses the exact case
+that Vite emits in `index.html`.
+
+Note: the design brief specified `<!doctype html>` (lowercase); the actual
+Vite-emitted file uses `<!DOCTYPE html>` (uppercase). The grep was adjusted to
+match the real output to avoid a false-positive miss.
+
+### Deviations
+- Belt-and-suspenders grep uses `<!DOCTYPE html>` (uppercase) not `<!doctype html>`
+  (lowercase) as written in the design brief — Vite emits uppercase.
+- No `stretchr/testify` used; plain `testing` package only, consistent with the
+  file's simplicity.
+- `go vet -tags release ./internal/portal/assets/...` and
+  `go build -tags release ./internal/portal/assets/...`: both clean.

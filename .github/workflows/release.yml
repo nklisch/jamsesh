@@ -54,6 +54,16 @@ jobs:
         if: matrix.binary == 'portal'
         run: make frontend-build
 
+      - name: assert SPA is embedded
+        if: matrix.binary == 'portal'
+        # Regression guard for the v0.1.1 incident: release workflow ran `go build`
+        # without `make frontend-build`, shipping a portal image with an empty
+        # embedded SPA. Run the build-tag-gated Go test in
+        # internal/portal/assets/ to assert dist/index.html and at least one JS
+        # bundle are embedded. Fails fast before any `go build` cycles run.
+        # See substrate story: testing-release-spa-embed-guard.
+        run: go test -tags release ./internal/portal/assets/...
+
       - name: build
         env:
           GOOS: ${{ matrix.target.goos }}
@@ -84,6 +94,17 @@ jobs:
               -X jamsesh/internal/buildinfo.Commit=${GITHUB_SHA}" \
             -o "${out}" \
             ./cmd/${{ matrix.binary }}
+
+          # Belt-and-suspenders: verify the SPA index.html boilerplate is
+          # actually present in the built binary's bytes. Cheap (~50ms), catches
+          # a different failure mode than the Go-test guard above (e.g. if
+          # something stripped the embed during link). Skip for jamsesh (no SPA).
+          if [ "${{ matrix.binary }}" = "portal" ]; then
+            if ! strings "${out}" | grep -q "<!DOCTYPE html>"; then
+              echo "::error::built binary ${out} does not contain the embedded SPA (no '<!DOCTYPE html>' found in binary strings). The Go-test guard should have caught this earlier; investigate the release workflow."
+              exit 1
+            fi
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
