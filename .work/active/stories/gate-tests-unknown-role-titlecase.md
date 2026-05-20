@@ -1,7 +1,7 @@
 ---
 id: gate-tests-unknown-role-titlecase
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -48,3 +48,13 @@ Equivalence-partition coverage: tested = creator (accent), member
 
 ## Implementation notes
 Added the test to `Home.test.ts` immediately after the "non-creator badge does not have role-creator class" test, co-located in the "Role badges" section. Used the suggested snippet verbatim — sets two orgs (creator + reviewer), asserts `'Reviewer'` is in the document (verifying `roleLabel` title-cases the arbitrary value) and does not carry the `role-creator` class (verifying it gets the neutral pill). Test passes; total 34 Home.test.ts tests green.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Equivalence-partition test that pins the "arbitrary unknown role" branch — the untyped `string` schema and "any value the server returns" promise are now both protected. Clean addition.
