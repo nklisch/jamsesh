@@ -243,6 +243,20 @@ describe('Home', () => {
     expect(screen.getByText('or')).toBeInTheDocument();
   });
 
+  it('picker state submit also trims the name before posting', async () => {
+    setOrgs([
+      { id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' },
+      { id: 'org-2', name: 'hooli', slug: 'hooli', role: 'member' },
+    ]);
+    mockPOST.mockResolvedValue({ data: { id: 'n', name: 'foo', slug: 'foo' }, error: undefined });
+    render(Home);
+    const input = screen.getByLabelText('Create another org') as HTMLInputElement;
+    input.value = '  foo  ';
+    await fireEvent.input(input);
+    await fireEvent.submit(input.closest('form')!);
+    await waitFor(() => expect(mockPOST).toHaveBeenCalledWith('/api/orgs', { body: { name: 'foo' } }));
+  });
+
   // ── Create org — success ─────────────────────────────────────────────────
 
   it('submitting a non-empty name calls POST /api/orgs with the trimmed name', async () => {
