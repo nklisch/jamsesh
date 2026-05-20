@@ -1,7 +1,7 @@
 ---
 id: gate-docs-openapi-fetch-middleware-pattern-citation
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -58,3 +58,10 @@ auth.svelte.ts call:
 > outer try/catch, as in `frontend/src/lib/auth.svelte.ts:76`).
 >
 > 13+ call sites across screens and components.
+
+## Implementation notes
+
+- Verified `auth.svelte.ts:53` is the `signOut()` declaration — no `client.` call there.
+- Verified `auth.svelte.ts:76` is `const { data } = await client.GET('/api/me')` — correct line for the `{ data }`-only citation.
+- Verified `Home.svelte:41` is `const { data, error } = await client.POST('/api/orgs', { body: { name } })` — line number matches the story exactly; used as the replacement citation.
+- The "every caller" absolutism in the original was softened to "callers destructure `{ data, error }` ... (or `{ data }` alone when ...)" to accommodate the legitimate middleware-guarded pattern in auth without listing it as a violation. Phrasing matches the surrounding pattern skill's terse, file-anchored voice.

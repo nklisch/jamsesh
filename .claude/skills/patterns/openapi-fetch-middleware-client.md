@@ -50,8 +50,10 @@ const { data } = await client.GET('/api/orgs/{orgID}/sessions/{sessionID}/refs',
 **Files**: `frontend/src/lib/screens/FinalizeView.svelte:107`,
 `frontend/src/lib/components/CommentsTab.svelte:25`,
 `frontend/src/lib/components/NewSessionDrawer.svelte:41`,
-`frontend/src/lib/auth.svelte.ts:53` — every caller destructures
-`{ data, error }` from the awaited `client.{GET,POST,PATCH}(...)`.
+`frontend/src/lib/screens/Home.svelte:41` — callers destructure
+`{ data, error }` from the awaited `client.{GET,POST,PATCH}(...)` (or
+`{ data }` alone when the error path is handled by middleware + an outer
+try/catch, as in `frontend/src/lib/auth.svelte.ts:76`).
 
 13+ call sites across screens and components.
 
