@@ -1,8 +1,19 @@
 ---
 id: bug-receive-pack-report-status-sideband-wrapping
-created: 2026-05-19
+kind: story
+stage: implementing
 tags: [bug, portal, git, protocol]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-19
+updated: 2026-05-20
 ---
+
+# receive-pack report-status missing sideband-64k wrap
+
+## Brief
 
 When the git smart-HTTP client negotiates `sideband-64k` in the
 receive-pack capabilities (the modern default), the portal must wrap its
