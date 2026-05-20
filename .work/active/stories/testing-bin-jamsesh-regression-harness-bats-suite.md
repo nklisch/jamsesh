@@ -1,7 +1,7 @@
 ---
 id: testing-bin-jamsesh-regression-harness-bats-suite
 kind: story
-stage: review
+stage: done
 tags: [testing, infra, plugin]
 parent: testing-bin-jamsesh-regression-harness
 depends_on: []
@@ -139,3 +139,14 @@ No fixtures or helpers beyond the planned set were added. The `wrapper_bin()`
 helper was added to `helpers.bash` (it was in the workflow instructions but
 not explicitly in the feature's helpers sketch) — it resolves the absolute
 path to `bin/jamsesh` so test files don't hardcode the repo root.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The ephemeral-port race window (bind+close in Python, then python http.server rebinds in subshell) is noted in the helper comment as "negligible in practice." Under heavy CI parallelism it could in theory bite; if flakes ever surface, switch to having python's http.server itself bind port 0 and read the assigned port from its startup output. Not worth changing now.
+
+**Notes**: 15 tests pass in 3.0s — comfortably under the 30s target. Smoke verification is exactly what the suite exists to provide: 3 wrapper breaks each surface their failure region cleanly. The agent caught the `printf '%s\n'` heredoc trap during development and switched the override scripts to heredocs without silencing the test — that's the right call. The slight reframing of "smoke break 1" (awk pattern break manifests via cold-cache test, not the dedicated mismatch test) is honest and accurate. Helpers are small and composable as the design called for. README covers local invocation and version requirements. Solid foundation for the CI wiring story to land on.
