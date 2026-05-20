@@ -1,7 +1,7 @@
 ---
 id: spa-logged-in-landing-home-screen
 kind: story
-stage: review
+stage: done
 tags: [frontend, ui]
 parent: spa-logged-in-landing-and-org-bootstrap
 depends_on: [spa-logged-in-landing-auth-store-orgs-cache]
@@ -124,3 +124,52 @@ component, so cross-branch sharing works correctly — no design flaw here.
 
 - `npm run check`: 0 errors, 2 pre-existing warnings (unrelated files).
 - `npm run test`: 447/447 passed (32 new Home tests + 2 new Input tests).
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none.
+**Important**: none.
+**Nits**: none worth filing.
+
+**Notes**:
+
+- The single deviation from spec — `{:else if auth.orgs.length >= 2}` rather
+  than bare `{:else}` — is correct and was caught by the implementing agent's
+  own test. Approved as the proper shape.
+- Comprehensive test coverage: 32 Home tests cover loading / empty /
+  single-org auto-route / picker / role-badge / create-success / create-error /
+  empty-name guard / sign-out / topbar. Plus 2 new Input tests for the
+  `id` attribute add/omit cases.
+- `<a href>` + `onclick preventDefault` pattern preserved for middle-click +
+  keyboard accessibility — confirmed via the "each org row has an href"
+  test and the "clicking navigates" test.
+- Hardcoded `role: 'creator'` in the post-create `auth.addOrg` call matches
+  the OpenAPI spec: `POST /api/orgs` makes the caller the creator
+  (`docs/openapi.yaml:1650`), and the `OrgRef` response intentionally omits
+  the role field. The local cache shape stays in sync with what `GET /api/me`
+  would return.
+- The Input.svelte `id?: string` prop addition is additive — no existing
+  callers break, and the new test exercises both id-set and id-omitted paths.
+- Foundation-doc alignment: nothing touched, nothing needed.
+- Security: org name is server-validated (`CreateOrgBody.maxLength: 200`);
+  client trims and rejects empty/whitespace-only. No XSS surface — Svelte
+  auto-escapes all interpolations. The `<a href>` interpolates server-supplied
+  org id/slug, which are server-controlled.
+- Breaking changes: none. Input gains an optional prop; new route is additive.
+- Test integrity: no silenced tests, no `expect(true).toBe(true)`, no
+  drift-papering. Clean.
+
+**What's now possible**: a freshly-authenticated user actually has a destination
+— the SPA's first non-org-scoped page. Users with zero orgs see a welcoming
+empty state with an inline create-form; users with one org are whisked
+directly into their workspace; users with multiple orgs get a clean picker.
+The closed loop from "OAuth completed" to "doing work in an org" is now
+unbroken (modulo story 3's redirect wiring, which is next in line).
+
+**Verification (review-side)**: `git show f5994ef`, full file read of
+`frontend/src/lib/screens/Home.svelte`, full file read of
+`frontend/src/lib/screens/Home.test.ts`, full diff of App.svelte / router /
+Input changes. Tests still pass at 451/451 (story-1's review added a
+regression test for the cross-tenant race).
