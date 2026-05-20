@@ -1,5 +1,69 @@
 # Changelog
 
+## v0.2.0
+
+Released 2026-05-19. GitHub OAuth sign-in works end-to-end for the first
+time. The flow was broken at two separate hops in v0.1.x — both 404s
+that blocked the round-trip are now closed — and the Login screen's
+OAuth button is hardened against double-submit and network failures.
+
+### Features
+
+- **OAuth sign-in actually completes** — the SPA now owns the
+  `/auth/oauth/callback` route. After GitHub redirects the browser
+  back, the SPA reads `code`+`state` from the query, POSTs them to
+  `POST /api/auth/oauth/callback`, stores the returned token pair, and
+  navigates the user into the app (honoring `?return_to=` if set).
+  Mirrors the existing magic-link exchange pattern at
+  `frontend/src/lib/screens/MagicLinkExchange.svelte`. Provider and
+  return-to survive the GitHub round-trip via sessionStorage, written
+  by `Login.svelte#signInWithGitHub` before the redirect and consumed
+  + cleared by the new `OAuthCallback.svelte` on mount.
+
+### Fixes
+
+- **Login GitHub button hits the right route** — `Login.svelte` was
+  doing a top-level `window.location.assign('/api/auth/oauth/github/start')`
+  to a path that doesn't exist in the backend. The OpenAPI contract
+  is `POST /api/auth/oauth/start` with `{provider:"github"}` →
+  `{authorize_url}`; the button now uses the shared openapi-fetch
+  client and navigates the browser to the returned URL. Closes
+  `bug-frontend-oauth-start-route-mismatch`.
+- **OAuth flow completes end-to-end** — added the missing SPA
+  callback screen + route + auth-gate exclusion + dispatch branch.
+  Pre-v0.2.0, even after fixing the start-hop 404, GitHub's redirect
+  back to `/auth/oauth/callback` fell through the router to
+  `NotFound` and the token exchange never happened. Closes
+  `bug-frontend-oauth-callback-handler-missing`.
+- **Login GitHub button is double-submit-safe and network-failure-safe** —
+  rapid clicks no longer mint and orphan extra `oauth_state` nonces
+  (the button is disabled while a start call is in flight), and a
+  `fetch` throw (offline, CORS, DNS) routes to the existing error UI
+  instead of leaking an unhandled promise rejection. Removed an
+  inaccurate "authenticated SPA call" comment that misdescribed the
+  endpoint's auth requirement. Closes
+  `polish-login-oauth-start-defensive-handling`.
+
+### Internal
+
+- **`scripts/release-bump.sh` preserves file modes** —
+  `sed_inplace` now captures the source file's mode with `stat` and
+  applies it to the temp file before the `mv`. Pre-v0.2.0 the default
+  umask on the temp file stripped the executable bit off
+  `bin/jamsesh`, forcing a force-push + retag dance on every release.
+  Portable across Linux (`stat -c`) and macOS (`stat -f`). Closes
+  `bug-release-bump-sed-inplace-strips-exec-bit`.
+
+### Known issues
+
+- **v0.1.2 has no changelog entry** — the gap between v0.1.1 and this
+  release covers two intermediate tagged releases that were never
+  logged. The git tag and `release-prep` commit for v0.1.2 are
+  present in history; a backfill belongs in a separate doc pass, not
+  bundled into a release.
+- **`bin/jamsesh` regression harness** — still tracked as
+  `testing-bin-jamsesh-regression-harness` (unchanged from v0.1.1).
+
 ## v0.1.1
 
 Released 2026-05-19. Operator-experience release: self-host quickstart
