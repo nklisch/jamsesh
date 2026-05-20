@@ -1,7 +1,7 @@
 ---
 id: bug-dockerfile-portal-binary-not-executable
 kind: story
-stage: review
+stage: done
 tags: [bug, infra, docker, self-host]
 parent: null
 depends_on: []
@@ -87,3 +87,23 @@ Resolved at scope.
 - Dockerfile.router: same fix (line 11) — audit confirmed same shape, same bug.
 - Smoke: Option A (real go build + docker buildx). Built portal-linux-amd64 via `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./cmd/portal`, built `jamsesh:smoke` via `docker buildx build --load --platform linux/amd64 --build-arg BINARY=portal`. Verified `ls -l /usr/local/bin/portal` inside image shows `-rwxr-xr-x`. Smoke artifacts cleaned up (binary removed, image removed).
 - Reporter's overlay Dockerfile at `/srv/jamsesh-portal/Dockerfile` can be deleted once the next published image is verified.
+
+## Review (2026-05-19)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Two-line mechanical diff (`COPY` → `COPY --chmod=0755` in both
+`Dockerfile` and `Dockerfile.router`). Smoke verified with a real go build
++ docker buildx — `/usr/local/bin/portal` lands at `-rwxr-xr-x` in the
+image. The roll-in of `Dockerfile.router` matches the audit note in the
+story's Notes section and is the right call: same shape, same bug, same
+one-line fix. No tests added, correctly — the story explicitly excluded
+regression-test work from scope and Dockerfile test infrastructure does
+not exist in this repo. What's now possible: the next published
+`nklisch/jamsesh` image will run without operator overlay; self-hosters
+who hit the `exec: permission denied` reproducer can drop their custom
+Dockerfile wrappers as soon as a fresh tag ships.
