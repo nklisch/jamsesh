@@ -1,7 +1,7 @@
 ---
 id: bug-docs-oauth-callback-url-and-flow-prose-mismatch
 kind: story
-stage: implementing
+stage: review
 tags: [bug, documentation, auth, oauth, self-host]
 parent: null
 depends_on: []
@@ -133,6 +133,42 @@ Client ID and secret unchanged.
   re-registering the OAuth app with the correct URL. Their personal
   `/home/nathan/CLAUDE.md` notes the workaround for future operators
   hitting the same wall before this fix lands.
+
+## Implementation notes
+
+- **`.env.example` edit**: line 16 — changed
+  `https://<JAMSESH_DOMAIN>/api/auth/oauth/callback` to
+  `https://<JAMSESH_DOMAIN>/auth/oauth/callback` (removed `/api/`).
+  Surrounding lines unchanged.
+
+- **`docs/SELF_HOST.md` §4 edit**: lines 280-325 (section was ~280-313;
+  the rewrite expanded it slightly). Replaced the entire section body with:
+  - An opening paragraph naming the two-stage SPA-hop flow and explicitly
+    distinguishing the two URLs before any step-by-step instructions.
+  - A bullet list separating the OAuth app registration URL
+    (`/auth/oauth/callback`) from the backend code-exchange endpoint
+    (`POST /api/auth/oauth/callback`, informational only).
+  - Updated step 2 of "Registering the GitHub OAuth app" to use
+    `/auth/oauth/callback` (no `/api/`), plus the accurate SPA-hop flow
+    description replacing the false "no SPA-side redirect hop" sentence.
+  - Preserved the env-var table and reverse-proxy guidance unchanged.
+
+- **README audit**: `grep -in "oauth\|callback" README.md` returned two
+  hits — line 55 (`OAuth or email creds` in a comment) and line 62 (prose
+  pointing to SELF_HOST.md). Neither references the OAuth callback
+  registration URL. No README drift — no changes needed.
+
+- **Cross-check grep** (`grep -rn "api/auth/oauth/callback" docs/ deploy/ README.md`):
+  Four remaining hits, all correct-usage contexts:
+  - `docs/PROTOCOL.md:93` — documents the POST endpoint
+  - `docs/openapi.yaml:1565` — OpenAPI path definition
+  - `docs/SELF_HOST.md:295` — informational "not user-configurable" note
+  - `docs/SELF_HOST.md:309` — SPA-hop flow description
+  No registration-URL misuses remain.
+
+- **No code changes.** `git status` shows only `deploy/compose/.env.example`
+  and `docs/SELF_HOST.md` modified (plus pre-existing unrelated
+  `scheduled_tasks.lock` and untracked `.antigravitycli/`).
 
 ## Out of scope
 

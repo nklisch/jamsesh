@@ -279,22 +279,36 @@ reload support; using Caddy in `behind_proxy` mode sidesteps this entirely.
 
 ## 4. OAuth callback URLs
 
-**GitHub OAuth** is the supported provider. The portal exposes a
-provider-agnostic callback endpoint at:
+**GitHub OAuth** is the supported provider. jamsesh uses a two-stage OAuth
+flow: GitHub redirects the user's browser to a **frontend SPA route** (the
+URL you register on the OAuth app), and the SPA then forwards the
+authorization code to a **backend API endpoint** that performs the actual
+code-for-token exchange. These are two distinct URLs — confusing them causes
+GitHub to reject sign-in with `redirect_uri_mismatch`.
 
-```
-POST https://<your-portal-host>/api/auth/oauth/callback
-```
+- **OAuth app registration URL (frontend SPA route):**
+  `https://<your-portal-host>/auth/oauth/callback`
+  — This is where GitHub redirects the user's browser after the user
+  authorizes the app. Register this URL on the GitHub OAuth app.
+
+- **Backend code-exchange endpoint (informational — not user-configurable):**
+  `POST https://<your-portal-host>/api/auth/oauth/callback`
+  — This is where the SPA POSTs the code and state after receiving them from
+  GitHub. The portal handles it internally; you do not register this URL
+  anywhere.
 
 ### Registering the GitHub OAuth app
 
 1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App**.
 2. Set **Authorization callback URL** to:
    ```
-   https://<your-portal-host>/api/auth/oauth/callback
+   https://<your-portal-host>/auth/oauth/callback
    ```
-   GitHub redirects the user's browser directly to this portal endpoint
-   (server-side exchange — there is no SPA-side redirect hop).
+   GitHub redirects the user's browser to the SPA route
+   `/auth/oauth/callback?code=...&state=...`. The SPA reads the query params
+   and POSTs them to the backend at `/api/auth/oauth/callback`, which
+   validates the state nonce, exchanges the code with GitHub, and returns a
+   session token to the SPA.
 3. Copy the **Client ID** and **Client Secret**, then set them in the portal
    config:
 
