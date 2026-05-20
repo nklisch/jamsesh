@@ -3,6 +3,7 @@
   import { auth } from '$lib/auth.svelte';
   import Login from '$lib/screens/Login.svelte';
   import MagicLinkExchange from '$lib/screens/MagicLinkExchange.svelte';
+  import OAuthCallback from '$lib/screens/OAuthCallback.svelte';
   import SessionList from '$lib/screens/SessionList.svelte';
   import SessionViewShell from '$lib/screens/SessionViewShell.svelte';
   import FinalizeView from '$lib/screens/FinalizeView.svelte';
@@ -21,7 +22,7 @@
   // magic-link is excluded from the auth gate — it is the unauthenticated
   // landing page for magic-link token exchange.
   $effect(() => {
-    if (current.name !== 'login' && current.name !== 'magic-link' && !auth.isAuthenticated) {
+    if (current.name !== 'login' && current.name !== 'magic-link' && current.name !== 'oauth-callback' && !auth.isAuthenticated) {
       if (current.name === 'invite-accept') {
         const returnTo = window.location.pathname + window.location.search;
         navigate('/login?return_to=' + encodeURIComponent(returnTo));
@@ -36,6 +37,8 @@
   <Login />
 {:else if current.name === 'magic-link'}
   <MagicLinkExchange />
+{:else if current.name === 'oauth-callback'}
+  <OAuthCallback />
 {:else if current.name === 'sessions'}
   <SessionList orgId={current.params.orgId} />
 {:else if current.name === 'finalize'}

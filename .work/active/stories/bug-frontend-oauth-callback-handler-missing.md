@@ -1,7 +1,7 @@
 ---
 id: bug-frontend-oauth-callback-handler-missing
 kind: story
-stage: implementing
+stage: review
 tags: [bug, ui, auth]
 parent: null
 depends_on: []
@@ -112,6 +112,37 @@ Mirror the magic-link pattern.
    - Error path: backend 400 → error UI shown.
    - Missing-code path: no `code` in query → error UI shown without
      POST.
+
+## Implementation notes
+
+### Files created
+- `frontend/src/lib/screens/OAuthCallback.svelte` — new screen mirroring MagicLinkExchange.svelte. Reads `code`+`state` from query params, reads `oauth.provider` and `oauth.return_to` from sessionStorage, clears both before POSTing, exchanges with `/api/auth/oauth/callback`, stores tokens and navigates on success.
+- `frontend/src/lib/screens/OAuthCallback.test.ts` — 14 tests covering all specified scenarios.
+
+### Files modified
+- `frontend/src/lib/router.svelte.ts` — added `oauth-callback` route adjacent to `magic-link`.
+- `frontend/src/App.svelte` — imported OAuthCallback, excluded `oauth-callback` from auth gate, added template branch.
+- `frontend/src/lib/screens/Login.svelte` — added sessionStorage writes for `oauth.provider` and `oauth.return_to` in `signInWithGitHub`; replaced stale LIMITATION comment with accurate description.
+
+### Test scenarios covered (14 total)
+1. Renders exchanging state on mount before POST resolves
+2. Calls POST with correct provider/code/state
+3. Stores tokens and navigates to `oauth.return_to` on success
+4. Clears sessionStorage entries after reading
+5. Falls back to `/login` when no `oauth.return_to` in sessionStorage
+6. Uses `github` as provider fallback when `oauth.provider` absent
+7. Shows `missing_params` error without POST when `code` absent
+8. Shows `missing_params` error without POST when `state` absent
+9. Shows backend error code when POST returns error envelope
+10. Shows `exchange_failed` when POST returns error without code
+11. Shows `exchange_failed` when POST throws (network failure)
+12. Rejects protocol-relative `return_to` (`//evil.com`) and falls back to `/login`
+13. Clears code+state from URL via `history.replaceState` after reading
+14. Renders back-to-sign-in button in error state
+
+### Non-obvious decisions
+- sessionStorage keys are cleared eagerly (before the async POST) rather than after, so a failed exchange still clears stale keys and avoids replaying them on a subsequent visit.
+- The component catches all `exchange` throws rather than just `TypeError`s, since any unexpected rejection should degrade to the same `exchange_failed` error UI.
 
 ## References
 

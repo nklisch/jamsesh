@@ -31,13 +31,9 @@
   // client-side path (magic-link verify, future token exchange, etc.),
   // redirect them back to the original URL instead of the generic landing.
   //
-  // LIMITATION: GitHub OAuth is a full-page server-side redirect chain.
-  // The backend callback issues tokens and returns a JSON body; the browser
-  // never executes JavaScript between GitHub → /api/auth/oauth/callback →
-  // the client.  The `?return_to=` param is therefore NOT propagated through
-  // the OAuth round-trip without a backend change (the server would need to
-  // embed it in the OAuth state nonce and reattach it on the callback
-  // redirect).  That change is tracked in the story body as a follow-up.
+  // `return_to` is preserved across the GitHub OAuth round-trip by writing
+  // it to sessionStorage in signInWithGitHub() and reading it back in the
+  // OAuthCallback screen. See OAuthCallback.svelte.
   const _returnTo = _searchParams.get('return_to');
   const returnTo: string | null =
     _returnTo && _returnTo.startsWith('/') && !_returnTo.startsWith('//')
@@ -60,6 +56,13 @@
     if (oauthPending) return;
     oauthPending = true;
     errorMsg = null;
+
+    sessionStorage.setItem('oauth.provider', 'github');
+    if (returnTo) {
+      sessionStorage.setItem('oauth.return_to', returnTo);
+    } else {
+      sessionStorage.removeItem('oauth.return_to');
+    }
 
     let authorizeUrl: string | null = null;
     try {
