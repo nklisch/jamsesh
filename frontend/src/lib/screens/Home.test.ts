@@ -180,7 +180,6 @@ describe('Home', () => {
   });
 
   it('clicking an org row navigates via navigate() and prevents default', async () => {
-    setOrgs([{ id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' }]);
     // Need 2 orgs so picker renders (single-org auto-routes)
     setOrgs([
       { id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' },

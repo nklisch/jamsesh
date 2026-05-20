@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-home-test-redundant-setorgs
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -38,3 +38,6 @@ Delete line 184 (the single-org `setOrgs` call). The inline comment
 already acknowledges this — "Need 2 orgs so picker renders (single-org
 auto-routes)" was added to explain why the second call replaces the
 first. The first call is a refactor leftover.
+
+## Implementation notes
+Deleted the single-org `setOrgs([{ id: 'org-1', ... }])` call at the top of the "clicking an org row navigates via navigate() and prevents default" test. Kept the explanatory comment "Need 2 orgs so picker renders (single-org auto-routes)" on the surviving two-org call — it still explains the design decision. All 32 Home.test.ts tests pass.
