@@ -107,7 +107,7 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse the command list from the beginning of the body.
-	updates, packReader, err := readCommandList(bodyFile)
+	updates, caps, packReader, err := readCommandList(bodyFile)
 	if err != nil {
 		http.Error(w, "malformed push request", http.StatusBadRequest)
 		return
@@ -166,7 +166,7 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	if !result.OK {
 		// Pre-receive rejected: synthesise the report-status response so the
 		// git client displays the rejection messages inline.
-		writeReportStatusRejection(w, updates, result.Rejections)
+		writeReportStatusRejection(w, updates, result.Rejections, caps)
 		if h.Metrics != nil {
 			h.Metrics.GitPushesTotal.WithLabelValues("rejected").Inc()
 		}
