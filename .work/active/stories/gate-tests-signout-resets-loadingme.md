@@ -1,7 +1,7 @@
 ---
 id: gate-tests-signout-resets-loadingme
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -85,3 +85,13 @@ promise is still in-flight.
   with isolated `_loadingMe` state.
 
 Test count: 19 (was 18). All passing.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: The deviation from the story's suggested snippet is exactly right — the story's `mockResolvedValueOnce` for both responses would have made the test race-dependent and potentially vacuous. Using a controllable `Promise<Response>` for user A guarantees `signOut()` fires while `_loadingMe` is still set, which is the invariant the test exists to protect. Reuses the same control-the-in-flight-fetch pattern as the adjacent stale-write race test — good local consistency. This is the kind of design-flaw-in-the-suggestion-but-fix-it-in-the-impl call we want agents making.
