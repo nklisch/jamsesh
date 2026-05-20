@@ -23,3 +23,4 @@ updated: 2026-05-20
 ## Gate runs
 
 - **gate-security** (2026-05-20) — 5 findings (0 critical, 0 high, 1 medium, 4 low). 1 active story, 4 backlog.
+- **gate-tests** (2026-05-20) — 11 findings (0 critical, 4 high, 4 medium, 2 low, 1 informational). 8 active stories, 2 backlog. No test-integrity violations.
