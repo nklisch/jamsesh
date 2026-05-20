@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-router-mock-dead-current-field
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -42,3 +42,13 @@ this is filed as Low.
 
 ## Implementation notes
 Removed the `current: { ... }` key from the `vi.mock('$lib/router.svelte', ...)` factory in both `Home.test.ts` (line 21) and `OAuthCallback.test.ts` (line 31). Neither SUT imports `current` — only `navigate` is used. All 47 tests across both files remain green after the change.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Trivial test-only cleanup — 2 dead mock keys deleted, no production code touched, full 464-test frontend suite stays green. Exactly the surgical change the cruft gate filed.
