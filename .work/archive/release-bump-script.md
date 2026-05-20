@@ -1,7 +1,7 @@
 ---
 id: release-bump-script
 kind: story
-stage: review
+stage: done
 tags: [infra, tooling]
 parent: null
 depends_on: []
@@ -155,3 +155,37 @@ Resolved at scope.
   a single step 2 invoking `scripts/release-bump.sh vX.Y.Z`, with the original sed
   recipes preserved verbatim under "Manual recipe (if the script breaks)". Old steps
   5–7 renumbered to 3–5 (step 5 "push the tag" is now inside the script, so removed).
+
+## Review (2026-05-19)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Meticulous implementation. Pre-flight gate is comprehensive
+(7 checks: jq present, target files exist, expected version-pin lines
+match, clean tree, on main, tag not local, tag not on origin). Sed
+patterns are anchored at `^` so commented-out version mentions further
+down can't accidentally match. The `--ascii-output` discovery on jq is
+non-obvious and prevents a real footgun (`—` em-dash in `plugin.json`'s
+description would otherwise normalize and produce phantom diffs on every
+run). Portable tempfile-based sed avoids GNU vs BSD `-i` differences.
+Friendly error messages throughout ("working tree is dirty — commit or
+stash, then retry" not "ERROR: dirty"). The `RELEASING.md` rewrite
+preserves the previous manual recipe under a clearly-labeled "Manual
+recipe (if the script breaks)" fallback — operator-friendly. Independent
+dry-run smoke confirmed: three correct diffs (`v0.1.1 → v9.9.9` in
+bin/jamsesh and .env.example with `v` prefix and matching quote styles;
+`0.1.1 → 9.9.9` bare in plugin.json; em-dash escape preserved), five
+expected `[dry-run]` git commands in correct order (stage, commit, tag,
+push main, push tag), exit 0, no working-tree mutation. What's now
+possible: one-command release-prep replaces the six-step manual recipe
+in `docs/RELEASING.md`; future releases can collapse phase 6 of
+`release-deploy` to a single script invocation if the substrate skill
+is later extended. Side observation parked separately as
+`infra-claude-scheduled-tasks-lock-should-be-gitignored` in backlog —
+not a finding against this story (the script's clean-tree check is
+correct), but a related papercut for anyone running the script during
+an active autopilot session.
