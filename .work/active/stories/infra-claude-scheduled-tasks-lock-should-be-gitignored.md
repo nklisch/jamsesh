@@ -1,7 +1,7 @@
 ---
 id: infra-claude-scheduled-tasks-lock-should-be-gitignored
 kind: story
-stage: review
+stage: done
 tags: [infra, tooling]
 parent: null
 depends_on: []
@@ -72,3 +72,18 @@ No other transient/cache/state files were found. The only candidate was
 `git status` showed `.claude/skills/patterns/openapi-fetch-middleware-client.md`
 as modified but unstaged — this is a pre-existing change unrelated to this
 story. Left untouched; should be reviewed separately.
+
+(Post-review note: that unstaged change was the in-flight work from
+`gate-docs-openapi-fetch-middleware-pattern-citation` which committed in
+parallel as `5ca9f63` — not a real cross-story leak, just a timing artifact
+of the parallel wave.)
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Exact-path entry over `.claude/*.lock` glob is the right surgical call — no other lock files exist or are anticipated. The `git rm --cached` resolved as a no-op deletion in the diff because the file had been staged but never committed to HEAD; the `.gitignore` line is what actually does the work going forward. Resolves the clean-tree collision for `scripts/release-bump.sh`'s `git diff --quiet` pre-flight. Audit of other tracked `.claude/` items came back clean.
