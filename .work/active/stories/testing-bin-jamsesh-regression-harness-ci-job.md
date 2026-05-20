@@ -1,7 +1,7 @@
 ---
 id: testing-bin-jamsesh-regression-harness-ci-job
 kind: story
-stage: implementing
+stage: review
 tags: [testing, infra, plugin, ci]
 parent: testing-bin-jamsesh-regression-harness
 depends_on: [testing-bin-jamsesh-regression-harness-bats-suite]
@@ -54,3 +54,14 @@ No explicit timeout — bats' own runtime is the cap; expected <30s.
 ## Files NOT modified
 
 - The bats suite under `tests/wrapper/` — that's the responsibility of the depended-on sibling story.
+
+## Implementation notes
+
+**Linters:**
+- `yamllint`: not installed — skipped per story instructions.
+- `actionlint`: not installed — skipped per story instructions.
+- Indent verified by eyeball: new job uses 2-space job name under `jobs:`, matching `quickstart` and `compose-template`. Step keys at 6-space, `runs-on`/`steps` at 4-space — consistent with existing jobs throughout the file.
+
+**Local bats smoke (`bats tests/wrapper/`):** All 15 tests passed (exit 0). This exercises the exact command the CI job will run, confirming the suite is invocable from the repo root.
+
+**Placement:** New job appended after `compose-template`, at the same indent level. No `needs:` — runs in parallel with `quickstart` and `compose-template`.
