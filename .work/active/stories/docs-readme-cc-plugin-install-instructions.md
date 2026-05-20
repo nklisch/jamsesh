@@ -1,10 +1,19 @@
 ---
 id: docs-readme-cc-plugin-install-instructions
-created: 2026-05-18
+kind: story
+stage: drafting
 tags: [documentation, plugin]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-18
+updated: 2026-05-20
 ---
 
 # README: add "Install the Claude Code plugin" section
+
+## Brief
 
 `README.md` is missing a section explaining how end-users install the jamsesh
 Claude Code plugin. The section should sit between "Operator quickstart" and
