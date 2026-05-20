@@ -1,7 +1,7 @@
 ---
 id: gate-tests-app-authed-on-login-redirect
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -92,3 +92,13 @@ Tests live in `frontend/src/App.test.ts` under the `describe('App — auth-gate 
 - All nine screen components imported by App.svelte are mocked with minimal Svelte 5 function stubs `(anchor, props) => {}`. Svelte 5's `mount()` internally calls the component as `Component(anchor_node, props)` (render.js:196), so the stub must be a plain function — a plain object would throw `default is not a function`.
 - `mockAuth` and `mockRouterCurrent` are plain mutable objects exposed via `get` accessors in the `vi.mock` factory, matching the `spa-test-module-mock-barrel` pattern used in Home.test.ts.
 - `window.location` stubbing uses `Object.defineProperty` per the `window-location-defineproperty-stub` pattern from Login.test.ts.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: The 50ms `setTimeout` waits in the "does NOT navigate" assertions are pragmatic but slightly timing-dependent. Acceptable for now; could be replaced with a polling helper if CI flakiness ever surfaces. Filed only as a future-improvement note, no item created.
+
+**Notes**: Test file goes beyond the spec's 3 minimum cases with 3 extra boundary checks that pin the exclusion list (`/login`, `/magic-link`, `/oauth-callback`) — each tied to an explanatory comment in App.svelte. Screen-component stubbing solution traced to a real Svelte 5 internals quirk and the discovery was parked separately as `idea-app-test-svelte5-component-mock-broken`. Auth + router mocks faithfully mirror the wrapper-object-rune-store production pattern.
