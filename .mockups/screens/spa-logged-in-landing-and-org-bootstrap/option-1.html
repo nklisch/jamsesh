@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>spa-logged-in-landing — Option 1: Centered card</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 10px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      font: 13px/1.4 var(--font-sans);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .mock-meta .state-toggle {
+      display: inline-flex; gap: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: var(--radius-md);
+      padding: 3px;
+    }
+    .mock-meta .state-toggle button {
+      padding: 4px 10px;
+      background: transparent; border: 0;
+      color: var(--color-text-inverse);
+      font: 12px var(--font-mono);
+      cursor: pointer; border-radius: var(--radius-sm);
+      opacity: 0.65;
+    }
+    .mock-meta .state-toggle button.active {
+      background: var(--color-text-inverse);
+      color: var(--color-bg-inverse);
+      opacity: 1;
+    }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+    }
+
+    .topbar {
+      padding: 14px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-lg) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .user-strip {
+      display: flex; align-items: center; gap: 10px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+    }
+    .user-strip .email { font: 12px var(--font-mono); }
+    .signout-btn {
+      background: transparent; border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 5px 12px;
+      color: var(--color-text-secondary);
+      font: var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .signout-btn:hover { background: var(--color-bg-tertiary); }
+
+    main {
+      max-width: 480px; margin: 0 auto;
+      padding: 80px 24px 120px;
+    }
+
+    .card {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 32px 36px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .sub {
+      margin: 0 0 24px;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+
+    /* Picker state */
+    .org-list {
+      display: flex; flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .org-row {
+      display: grid;
+      grid-template-columns: 32px 1fr auto;
+      gap: 12px; align-items: center;
+      padding: 12px 14px;
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: border-color 0.1s, background-color 0.1s;
+      text-decoration: none;
+      color: inherit;
+    }
+    .org-row:hover {
+      border-color: var(--color-border-strong);
+      background: var(--color-bg-tertiary);
+    }
+    .org-avatar {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-md);
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 13px var(--font-mono);
+    }
+    .org-meta {
+      display: flex; flex-direction: column; gap: 2px;
+      min-width: 0;
+    }
+    .org-name {
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
+      color: var(--color-text-primary);
+    }
+    .org-slug {
+      font: 11px var(--font-mono);
+      color: var(--color-text-tertiary);
+    }
+    .role-badge {
+      padding: 3px 8px;
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-secondary);
+      border-radius: var(--radius-sm);
+      font: var(--font-weight-medium) 10px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .role-badge.creator {
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+    }
+
+    .divider {
+      display: flex; align-items: center;
+      gap: 12px;
+      margin: 16px 0;
+      color: var(--color-text-tertiary);
+      font: 11px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px;
+      background: var(--color-border);
+    }
+
+    /* Create form */
+    .create-block .label {
+      display: block;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      color: var(--color-text-secondary);
+      margin-bottom: 6px;
+    }
+    .create-form {
+      display: flex; gap: 8px;
+    }
+    .create-form input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      font: var(--font-size-base) var(--font-sans);
+    }
+    .create-form input:focus {
+      outline: 2px solid var(--color-accent);
+      outline-offset: -1px;
+      border-color: var(--color-accent);
+    }
+    .create-form button {
+      padding: 10px 18px;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-base) var(--font-sans);
+      cursor: pointer;
+    }
+    .create-form button:hover { background: #000; }
+    .form-hint {
+      margin: 8px 0 0;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+    }
+
+    /* Empty state */
+    .empty-pre {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      margin: 0 0 20px;
+      line-height: 1.6;
+    }
+
+    .state { display: none; }
+    .state.active { display: block; }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 1 — Centered card, quiet & literal</strong>
+    <div class="state-toggle">
+      <button class="active" onclick="showState('picker', this)">Picker (≥1 org)</button>
+      <button onclick="showState('empty', this)">Empty (0 orgs)</button>
+    </div>
+    <span>Mirrors the Login.svelte card pattern — natural continuation of sign-in.</span>
+  </header>
+
+  <header class="topbar">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <div class="user-strip">
+      <span class="email">ada@hooli.test</span>
+      <button class="signout-btn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ─── PICKER STATE ─── -->
+    <section class="state active" data-state="picker">
+      <div class="card">
+        <h1>Pick a workspace</h1>
+        <p class="sub">You're in 3 orgs. Click one to drop in, or create another below.</p>
+
+        <div class="org-list">
+          <a class="org-row" href="#">
+            <span class="org-avatar">A</span>
+            <span class="org-meta">
+              <span class="org-name">acme</span>
+              <span class="org-slug">/orgs/acme/sessions</span>
+            </span>
+            <span class="role-badge creator">Creator</span>
+          </a>
+          <a class="org-row" href="#">
+            <span class="org-avatar" style="background: var(--author-4); color: white;">H</span>
+            <span class="org-meta">
+              <span class="org-name">hooli-platform</span>
+              <span class="org-slug">/orgs/hooli-platform/sessions</span>
+            </span>
+            <span class="role-badge">Member</span>
+          </a>
+          <a class="org-row" href="#">
+            <span class="org-avatar" style="background: var(--author-2); color: white;">P</span>
+            <span class="org-meta">
+              <span class="org-name">pied-piper-oss</span>
+              <span class="org-slug">/orgs/pied-piper-oss/sessions</span>
+            </span>
+            <span class="role-badge">Member</span>
+          </a>
+        </div>
+
+        <div class="divider">or</div>
+
+        <div class="create-block">
+          <label class="label" for="org-name-1">Create another org</label>
+          <form class="create-form" onsubmit="event.preventDefault()">
+            <input id="org-name-1" type="text" placeholder="org name">
+            <button type="submit">Create</button>
+          </form>
+          <p class="form-hint">The slug is derived from the name. You become its creator.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── EMPTY STATE ─── -->
+    <section class="state" data-state="empty">
+      <div class="card">
+        <h1>Welcome to jamsesh, Ada</h1>
+        <p class="empty-pre">
+          You're signed in but not in any orgs yet. Spin up your first org —
+          you'll be its creator, and you can invite teammates from there.
+        </p>
+
+        <div class="create-block">
+          <label class="label" for="org-name-2">Name your org</label>
+          <form class="create-form" onsubmit="event.preventDefault()">
+            <input id="org-name-2" type="text" placeholder="e.g. acme">
+            <button type="submit">Create org</button>
+          </form>
+          <p class="form-hint">The slug is derived from the name. You become its creator.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function showState(name, btn) {
+      document.querySelectorAll('.state').forEach(s => s.classList.toggle('active', s.dataset.state === name));
+      document.querySelectorAll('.state-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  </script>
+</body>
+</html>

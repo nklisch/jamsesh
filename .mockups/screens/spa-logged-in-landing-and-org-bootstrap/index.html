@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>spa-logged-in-landing — review</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #0a0c10; color: #e7eaee; }
+    body { font: 14px/1.5 'Geist', system-ui, sans-serif; display: flex; flex-direction: column; }
+
+    header {
+      background: #14161a; color: #fafafa;
+      padding: 18px 24px;
+      border-bottom: 1px solid #2a2d33;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 18px; font-weight: 600; letter-spacing: -0.02em;
+    }
+    header p {
+      margin: 6px 0 0;
+      color: #8b8f99; font-size: 13px;
+    }
+
+    .grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 1px;
+      background: #2a2d33;
+    }
+    .cell {
+      background: #0a0c10;
+      display: flex; flex-direction: column;
+      min-height: 0;
+      position: relative;
+    }
+    .cell .label {
+      padding: 10px 14px;
+      background: #14161a;
+      border-bottom: 1px solid #2a2d33;
+      font-size: 12px; font-weight: 500;
+      color: #c8cbd3;
+      letter-spacing: -0.005em;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .cell .label .pole {
+      font-family: 'Geist Mono', ui-monospace, monospace;
+      font-size: 10px;
+      color: #8b8f99;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .cell iframe {
+      flex: 1;
+      border: 0;
+      background: #fafafa;
+      width: 100%;
+    }
+
+    footer {
+      background: #14161a; color: #8b8f99;
+      padding: 12px 24px;
+      font-size: 12px; line-height: 1.6;
+      border-top: 1px solid #2a2d33;
+    }
+    footer code {
+      background: rgba(255,255,255,0.05);
+      padding: 1px 6px; border-radius: 3px;
+      font-family: 'Geist Mono', ui-monospace, monospace;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>spa-logged-in-landing-and-org-bootstrap — 4 options</h1>
+    <p>
+      Logged-in landing at <code style="background:rgba(255,255,255,0.05);padding:1px 6px;border-radius:3px;font-family:'Geist Mono',monospace;font-size:11px;">/</code>.
+      Each option toggles between "Picker (≥1 org)" and "Empty (0 orgs)" via the dark bar at top.
+      Palette and typography are locked from <code style="background:rgba(255,255,255,0.05);padding:1px 6px;border-radius:3px;font-family:'Geist Mono',monospace;font-size:11px;">tokens.css</code>;
+      options vary in layout, density, and hierarchy.
+    </p>
+  </header>
+
+  <div class="grid">
+    <div class="cell">
+      <div class="label">
+        <span>Option 1 — Centered card, quiet & literal</span>
+        <span class="pole">centered · single column · CTA-forward</span>
+      </div>
+      <iframe src="option-1.html"></iframe>
+    </div>
+    <div class="cell">
+      <div class="label">
+        <span>Option 2 — Two-column split, both paths permanent</span>
+        <span class="pole">split · pragmatic · no mode-switching</span>
+      </div>
+      <iframe src="option-2.html"></iframe>
+    </div>
+    <div class="cell">
+      <div class="label">
+        <span>Option 3 — Editorial feed, generous & welcoming</span>
+        <span class="pole">single column · editorial · brand-forward</span>
+      </div>
+      <iframe src="option-3.html"></iframe>
+    </div>
+    <div class="cell">
+      <div class="label">
+        <span>Option 4 — Tile grid, app launcher</span>
+        <span class="pole">grid · dense · launcher metaphor</span>
+      </div>
+      <iframe src="option-4.html"></iframe>
+    </div>
+  </div>
+
+  <footer>
+    Scope inputs locked at feature-design time — single-org auto-routes; create-org is inline; post-create lands in the new org. The four options differ in <strong>how the picker and the create form share the page</strong>: one card, two panes, one feed + separate create block, or a grid with a "+" tile.
+  </footer>
+</body>
+</html>

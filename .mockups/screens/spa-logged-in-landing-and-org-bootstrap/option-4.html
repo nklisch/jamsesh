@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>spa-logged-in-landing — Option 4: Tile grid (launcher)</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 10px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      font: 13px/1.4 var(--font-sans);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .mock-meta .state-toggle {
+      display: inline-flex; gap: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: var(--radius-md);
+      padding: 3px;
+    }
+    .mock-meta .state-toggle button {
+      padding: 4px 10px;
+      background: transparent; border: 0;
+      color: var(--color-text-inverse);
+      font: 12px var(--font-mono);
+      cursor: pointer; border-radius: var(--radius-sm);
+      opacity: 0.65;
+    }
+    .mock-meta .state-toggle button.active {
+      background: var(--color-text-inverse);
+      color: var(--color-bg-inverse);
+      opacity: 1;
+    }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+    }
+
+    .topbar {
+      padding: 14px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-lg) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .user-strip {
+      display: flex; align-items: center; gap: 12px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+    }
+    .user-strip .email { font: 12px var(--font-mono); }
+    .signout-btn {
+      background: transparent; border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 5px 12px;
+      color: var(--color-text-secondary);
+      font: var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+
+    main {
+      max-width: 940px; margin: 0 auto;
+      padding: 48px 32px 80px;
+    }
+
+    .page-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 28px;
+    }
+    .page-head h1 {
+      margin: 0;
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .page-head .meta {
+      color: var(--color-text-tertiary);
+      font: 12px var(--font-mono);
+    }
+
+    /* Tile grid */
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .tile {
+      aspect-ratio: 1.15;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+    }
+    .tile:hover {
+      border-color: var(--color-border-strong);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px -8px rgba(20,22,26,0.18);
+    }
+    .tile-top {
+      display: flex; justify-content: space-between; align-items: flex-start;
+    }
+    .tile-avatar {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-md);
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 14px var(--font-mono);
+      color: white;
+    }
+    .tile .role-pill {
+      padding: 2px 8px;
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-secondary);
+      border-radius: var(--radius-sm);
+      font: var(--font-weight-medium) 9px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .tile .role-pill.creator {
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+    }
+    .tile-bottom .name {
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.01em;
+      margin: 0 0 4px;
+    }
+    .tile-bottom .slug {
+      font: 11px var(--font-mono);
+      color: var(--color-text-tertiary);
+    }
+    .tile-bottom .activity {
+      margin-top: 8px;
+      font: 11px var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+
+    /* Create tile — special */
+    .tile-create {
+      background: transparent;
+      border: 1.5px dashed var(--color-border-strong);
+      align-items: center; justify-content: center;
+      gap: 8px;
+      color: var(--color-text-secondary);
+    }
+    .tile-create:hover {
+      border-color: var(--color-accent);
+      border-style: solid;
+      color: var(--color-accent);
+      background: var(--color-accent-muted);
+      transform: translateY(-2px);
+    }
+    .tile-create .plus {
+      font: 36px var(--font-mono);
+      line-height: 1;
+    }
+    .tile-create .label {
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
+    }
+
+    /* Expanded create panel (appears below grid when active) */
+    .create-panel {
+      margin-top: 24px;
+      padding: 20px 24px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-accent);
+      border-radius: var(--radius-lg);
+      display: none;
+    }
+    .create-panel.active { display: block; }
+    .create-panel-head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 14px;
+    }
+    .create-panel-head h3 {
+      margin: 0;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.01em;
+    }
+    .create-panel-head .close {
+      background: transparent; border: 0;
+      color: var(--color-text-tertiary);
+      font: 18px var(--font-mono);
+      cursor: pointer;
+      padding: 4px;
+    }
+    .create-form {
+      display: flex; gap: 10px; align-items: stretch;
+    }
+    .create-form input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      font: var(--font-size-base) var(--font-sans);
+    }
+    .create-form input:focus {
+      outline: 2px solid var(--color-accent);
+      outline-offset: -1px;
+      border-color: var(--color-accent);
+    }
+    .create-form button {
+      padding: 10px 20px;
+      background: var(--color-accent);
+      color: white;
+      border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-base) var(--font-sans);
+      cursor: pointer;
+    }
+    .create-form button:hover { background: var(--color-accent-hover); }
+
+    /* Empty state — single hero tile */
+    .empty-stage {
+      max-width: 480px;
+      margin: 24px auto 0;
+      text-align: center;
+    }
+    .empty-stage h2 {
+      margin: 0 0 8px;
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .empty-stage p {
+      margin: 0 0 28px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-base);
+    }
+    .empty-create {
+      padding: 28px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-accent);
+      border-radius: var(--radius-lg);
+      text-align: left;
+    }
+    .empty-create label {
+      display: block;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      color: var(--color-text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .state { display: none; }
+    .state.active { display: block; }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 4 — Tile grid, app launcher</strong>
+    <div class="state-toggle">
+      <button class="active" onclick="showState('picker', this)">Picker (≥1 org)</button>
+      <button onclick="showState('empty', this)">Empty (0 orgs)</button>
+    </div>
+    <span>Orgs are tiles like a macOS app picker — "+" tile expands inline.</span>
+  </header>
+
+  <header class="topbar">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <div class="user-strip">
+      <span class="email">ada@hooli.test</span>
+      <button class="signout-btn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="state active" data-state="picker">
+      <div class="page-head">
+        <h1>Your workspaces</h1>
+        <span class="meta">3 orgs · ada@hooli.test</span>
+      </div>
+
+      <div class="tile-grid">
+        <a class="tile" href="#">
+          <div class="tile-top">
+            <span class="tile-avatar" style="background: var(--color-accent);">A</span>
+            <span class="role-pill creator">Creator</span>
+          </div>
+          <div class="tile-bottom">
+            <p class="name">acme</p>
+            <p class="slug">acme</p>
+            <p class="activity">4 active sessions</p>
+          </div>
+        </a>
+        <a class="tile" href="#">
+          <div class="tile-top">
+            <span class="tile-avatar" style="background: var(--author-4);">H</span>
+            <span class="role-pill">Member</span>
+          </div>
+          <div class="tile-bottom">
+            <p class="name">hooli-platform</p>
+            <p class="slug">hooli-platform</p>
+            <p class="activity">12 active sessions</p>
+          </div>
+        </a>
+        <a class="tile" href="#">
+          <div class="tile-top">
+            <span class="tile-avatar" style="background: var(--author-2);">P</span>
+            <span class="role-pill">Member</span>
+          </div>
+          <div class="tile-bottom">
+            <p class="name">pied-piper-oss</p>
+            <p class="slug">pied-piper-oss</p>
+            <p class="activity">1 active session</p>
+          </div>
+        </a>
+        <button class="tile tile-create" type="button" onclick="toggleCreate()">
+          <span class="plus">+</span>
+          <span class="label">Create another</span>
+        </button>
+      </div>
+
+      <div id="create-panel" class="create-panel">
+        <div class="create-panel-head">
+          <h3>Create another org</h3>
+          <button class="close" type="button" onclick="toggleCreate()">×</button>
+        </div>
+        <form class="create-form" onsubmit="event.preventDefault()">
+          <input type="text" placeholder="org name" autofocus>
+          <button type="submit">Create</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="state" data-state="empty">
+      <div class="page-head">
+        <h1>Welcome, Ada</h1>
+        <span class="meta">0 orgs · ada@hooli.test</span>
+      </div>
+
+      <div class="empty-stage">
+        <h2>Spin up your first org</h2>
+        <p>
+          An org owns the sessions your team writes together. You become its
+          creator — invite teammates from settings once it exists.
+        </p>
+        <div class="empty-create">
+          <form class="create-form" onsubmit="event.preventDefault()">
+            <input type="text" placeholder="e.g. acme" autofocus>
+            <button type="submit">Create org</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function showState(name, btn) {
+      document.querySelectorAll('.state').forEach(s => s.classList.toggle('active', s.dataset.state === name));
+      document.querySelectorAll('.state-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // Reset the create-panel between state switches
+      document.getElementById('create-panel').classList.remove('active');
+    }
+    function toggleCreate() {
+      document.getElementById('create-panel').classList.toggle('active');
+    }
+  </script>
+</body>
+</html>

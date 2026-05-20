@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>spa-logged-in-landing — Option 3: Editorial feed</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 10px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      font: 13px/1.4 var(--font-sans);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .mock-meta .state-toggle {
+      display: inline-flex; gap: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: var(--radius-md);
+      padding: 3px;
+    }
+    .mock-meta .state-toggle button {
+      padding: 4px 10px;
+      background: transparent; border: 0;
+      color: var(--color-text-inverse);
+      font: 12px var(--font-mono);
+      cursor: pointer; border-radius: var(--radius-sm);
+      opacity: 0.65;
+    }
+    .mock-meta .state-toggle button.active {
+      background: var(--color-text-inverse);
+      color: var(--color-bg-inverse);
+      opacity: 1;
+    }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+    }
+
+    .topbar {
+      padding: 14px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-lg) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .user-strip {
+      display: flex; align-items: center; gap: 12px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+    }
+    .user-strip .email { font: 12px var(--font-mono); }
+    .signout-btn {
+      background: transparent; border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 5px 12px;
+      color: var(--color-text-secondary);
+      font: var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+
+    main {
+      max-width: 760px; margin: 0 auto;
+      padding: 64px 32px 96px;
+    }
+
+    .hero {
+      margin-bottom: 48px;
+    }
+    .eyebrow {
+      font: var(--font-weight-medium) 11px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--color-accent);
+      margin-bottom: 14px;
+    }
+    .hero h1 {
+      margin: 0 0 16px;
+      font-size: 40px;
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+    }
+    .hero .lede {
+      margin: 0;
+      font-size: var(--font-size-lg);
+      color: var(--color-text-secondary);
+      line-height: 1.55;
+      max-width: 600px;
+    }
+
+    .section-rule {
+      display: flex; align-items: center; gap: 14px;
+      margin: 40px 0 20px;
+      font: var(--font-weight-medium) 11px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--color-text-tertiary);
+    }
+    .section-rule::after {
+      content: ''; flex: 1; height: 1px;
+      background: var(--color-border);
+    }
+
+    /* Org cards — editorial */
+    .org-feed {
+      display: flex; flex-direction: column;
+      gap: 0;
+    }
+    .org-card {
+      display: grid;
+      grid-template-columns: 56px 1fr auto;
+      gap: 18px; align-items: center;
+      padding: 22px 0;
+      border-bottom: 1px solid var(--color-border);
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+      transition: opacity 0.1s;
+    }
+    .org-card:hover { opacity: 0.7; }
+    .org-card:first-child { padding-top: 0; }
+    .org-card:last-child { border-bottom: 0; }
+
+    .org-avatar {
+      width: 56px; height: 56px;
+      border-radius: var(--radius-md);
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 22px var(--font-mono);
+      color: white;
+      letter-spacing: -0.02em;
+    }
+    .org-meta {
+      display: flex; flex-direction: column; gap: 6px;
+      min-width: 0;
+    }
+    .org-name {
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.015em;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .role-pill {
+      padding: 2px 8px;
+      background: transparent;
+      border: 1px solid var(--color-border);
+      color: var(--color-text-tertiary);
+      border-radius: var(--radius-sm);
+      font: var(--font-weight-medium) 10px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .role-pill.creator {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+    .org-sub {
+      display: flex; gap: 18px;
+      color: var(--color-text-tertiary);
+      font: 12px var(--font-mono);
+    }
+    .org-sub .dot {
+      width: 3px; height: 3px; border-radius: 50%;
+      background: var(--color-border-strong);
+      align-self: center;
+    }
+    .org-arrow {
+      font: 22px var(--font-mono);
+      color: var(--color-text-tertiary);
+      transition: transform 0.15s, color 0.15s;
+    }
+    .org-card:hover .org-arrow {
+      color: var(--color-accent);
+      transform: translateX(4px);
+    }
+
+    /* Create block */
+    .create-block {
+      margin-top: 32px;
+      padding: 28px 32px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+    }
+    .create-block h2 {
+      margin: 0 0 8px;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.015em;
+    }
+    .create-block p {
+      margin: 0 0 18px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      line-height: 1.55;
+    }
+    .create-form {
+      display: flex; gap: 10px;
+    }
+    .create-form input {
+      flex: 1;
+      padding: 12px 14px;
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      font: var(--font-size-base) var(--font-sans);
+    }
+    .create-form input:focus {
+      outline: 2px solid var(--color-accent);
+      outline-offset: -1px;
+      border-color: var(--color-accent);
+    }
+    .create-form button {
+      padding: 12px 22px;
+      background: var(--color-accent);
+      color: white;
+      border: 0; border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-base) var(--font-sans);
+      cursor: pointer;
+    }
+    .create-form button:hover { background: var(--color-accent-hover); }
+
+    /* Empty state */
+    .empty-illustration {
+      width: 80px; height: 80px;
+      margin: 0 0 24px;
+      border-radius: var(--radius-lg);
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+      display: inline-flex; align-items: center; justify-content: center;
+      font: 36px var(--font-mono);
+    }
+
+    .state { display: none; }
+    .state.active { display: block; }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 3 — Editorial feed, generous & welcoming</strong>
+    <div class="state-toggle">
+      <button class="active" onclick="showState('picker', this)">Picker (≥1 org)</button>
+      <button onclick="showState('empty', this)">Empty (0 orgs)</button>
+    </div>
+    <span>Reads like a publication lede — invites the user in rather than chooses for them.</span>
+  </header>
+
+  <header class="topbar">
+    <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+    <div class="user-strip">
+      <span class="email">ada@hooli.test</span>
+      <button class="signout-btn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="state active" data-state="picker">
+      <div class="hero">
+        <div class="eyebrow">Signed in as Ada</div>
+        <h1>Pick a workspace<br>and drop in.</h1>
+        <p class="lede">
+          You belong to three orgs. Click into one to see active sessions and
+          jump back into whatever your team's writing today.
+        </p>
+      </div>
+
+      <div class="section-rule">Your orgs</div>
+
+      <div class="org-feed">
+        <a class="org-card" href="#">
+          <span class="org-avatar" style="background: var(--color-accent);">A</span>
+          <span class="org-meta">
+            <span class="org-name">
+              acme
+              <span class="role-pill creator">Creator</span>
+            </span>
+            <span class="org-sub">
+              <span>/orgs/acme/sessions</span>
+              <span class="dot"></span>
+              <span>4 active sessions</span>
+            </span>
+          </span>
+          <span class="org-arrow">→</span>
+        </a>
+        <a class="org-card" href="#">
+          <span class="org-avatar" style="background: var(--author-4);">H</span>
+          <span class="org-meta">
+            <span class="org-name">
+              hooli-platform
+              <span class="role-pill">Member</span>
+            </span>
+            <span class="org-sub">
+              <span>/orgs/hooli-platform/sessions</span>
+              <span class="dot"></span>
+              <span>12 active sessions</span>
+            </span>
+          </span>
+          <span class="org-arrow">→</span>
+        </a>
+        <a class="org-card" href="#">
+          <span class="org-avatar" style="background: var(--author-2);">P</span>
+          <span class="org-meta">
+            <span class="org-name">
+              pied-piper-oss
+              <span class="role-pill">Member</span>
+            </span>
+            <span class="org-sub">
+              <span>/orgs/pied-piper-oss/sessions</span>
+              <span class="dot"></span>
+              <span>1 active session</span>
+            </span>
+          </span>
+          <span class="org-arrow">→</span>
+        </a>
+      </div>
+
+      <div class="create-block">
+        <h2>Spin up another</h2>
+        <p>
+          Need a separate workspace for a different team or project?
+          Pick a name — you'll be its creator.
+        </p>
+        <form class="create-form" onsubmit="event.preventDefault()">
+          <input type="text" placeholder="org name">
+          <button type="submit">Create org</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="state" data-state="empty">
+      <div class="hero">
+        <div class="empty-illustration">+</div>
+        <div class="eyebrow">Signed in as Ada</div>
+        <h1>Let's spin up<br>your first org.</h1>
+        <p class="lede">
+          An org is your team's workspace — it owns the sessions you write
+          together. You'll be the creator of any org you start here, and you
+          can invite teammates once it's live.
+        </p>
+      </div>
+
+      <div class="create-block">
+        <h2>Name your org</h2>
+        <p>
+          The slug is derived from the name — pick something short and stable.
+          You can rename it later from org settings.
+        </p>
+        <form class="create-form" onsubmit="event.preventDefault()">
+          <input type="text" placeholder="e.g. acme">
+          <button type="submit">Create org</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function showState(name, btn) {
+      document.querySelectorAll('.state').forEach(s => s.classList.toggle('active', s.dataset.state === name));
+      document.querySelectorAll('.state-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  </script>
+</body>
+</html>
