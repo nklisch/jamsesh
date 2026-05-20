@@ -1,7 +1,7 @@
 {
   "$schema": "https://schemas.anthropic.com/claude-plugin/manifest.json",
   "name": "jamsesh",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Multi-agent jamming for codebases \u2014 coordinated Claude Code sessions producing PR-shaped branches without merge headaches.",
   "author": {
     "name": "jamsesh maintainers",
