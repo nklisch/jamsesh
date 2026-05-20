@@ -1,7 +1,7 @@
 ---
 id: bug-frontend-oauth-start-route-mismatch
 kind: story
-stage: review
+stage: done
 tags: [bug, ui, auth]
 parent: null
 depends_on: []
@@ -145,3 +145,50 @@ they're trivial and tracked via the existing in-file TODO comment at
 - The `'magic-link-error'` and `'oauth-error'` modes render identical
   UI. If a third flow is added, collapse to a single `'error'` mode.
   Not worth the rename today.
+
+## Review (2026-05-19)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+
+**Important**:
+- **Second hop of OAuth flow is also broken — `/auth/oauth/callback`
+  has no SPA route** (`frontend/src/lib/router.svelte.ts`,
+  `frontend/src/App.svelte`). My fix repairs hop 1 (start), but
+  after GitHub redirects the browser to
+  `<portal>/auth/oauth/callback?code=...&state=...`, the SPA router
+  has no matching route and renders `NotFound`. Tokens are never
+  exchanged; OAuth sign-in is still broken end-to-end. The story's
+  brief sentence "OAuth sign-in is therefore completely broken" was
+  literally true pre-fix AND remains true post-fix for a *different*
+  reason. The v0.1.0 `epic-portal-foundation-auth-flows-oauth-provider-github`
+  scoped only backend handlers; the SPA-hop screen (analog of
+  `MagicLinkExchange.svelte`) was never built.
+  → Item: `bug-frontend-oauth-callback-handler-missing`
+- **Stale architecture comment in `Login.svelte:33-39`** —
+  the LIMITATION block claims "the browser never executes JavaScript
+  between GitHub → /api/auth/oauth/callback → the client," which
+  contradicts the actual `POST`-shaped callback and the SPA-hop flow
+  documented in `docs/SELF_HOST.md` §4 (per
+  `bug-docs-oauth-callback-url-and-flow-prose-mismatch`). I did not
+  touch this comment in the fix to keep the diff scoped, but its
+  premise is wrong and its `return_to`-can't-be-propagated conclusion
+  is also wrong (once the SPA owns the callback route it can read
+  `return_to` from sessionStorage written before the GitHub redirect).
+  Folded into the same parked item — naturally addressed when the
+  callback screen lands.
+  → Bundled in: `bug-frontend-oauth-callback-handler-missing`
+
+**Nits**:
+- `'magic-link-error'` + `'oauth-error'` modes render identical UI; a
+  future cleanup could collapse to a single `'error'` mode. Already
+  noted in implementation notes above.
+
+**Notes**: The fix does exactly what its brief specified — closes the
+start-route 404 the user reported. The end-to-end OAuth-broken
+symptom has a second cause that was not visible from the user's
+report (because the user never got past the first 404 to discover the
+second one). Approve and advance; the second-hop gap is parked as a
+ready-to-implement story with the `MagicLinkExchange.svelte` analog
+called out as the model.

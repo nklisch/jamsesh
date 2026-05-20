@@ -1,0 +1,132 @@
+---
+id: bug-frontend-oauth-callback-handler-missing
+kind: story
+stage: implementing
+tags: [bug, ui, auth]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-19
+updated: 2026-05-19
+---
+
+# OAuth flow's second hop has no SPA handler — `/auth/oauth/callback` 404s
+
+## Symptom
+
+Even with `bug-frontend-oauth-start-route-mismatch` fixed, GitHub
+sign-in still fails to complete. After the user authorizes on
+GitHub, the browser is redirected to
+`https://<portal>/auth/oauth/callback?code=...&state=...` (the
+`redirect_uri` the backend builds at
+`internal/portal/auth/oauth.go:74`). The SPA router has no matching
+route, falls through to `not-found`, and renders the `<NotFound />`
+screen. The `code`+`state` are never POSTed to
+`/api/auth/oauth/callback`; tokens are never issued; the user is
+never signed in.
+
+This is the SECOND of two route-shape bugs in the OAuth flow. The
+first (`/api/auth/oauth/github/start` 404) was fixed by
+`bug-frontend-oauth-start-route-mismatch`. This second one was uncovered
+during that story's review.
+
+## Root cause
+
+The v0.1.0 OAuth epic (`epic-portal-foundation-auth-flows-oauth-provider-github`)
+scoped only the backend handlers (`StartOAuth`, `OauthCallback` in
+`internal/portal/auth/oauth.go`) plus their OpenAPI schemas and tests.
+The frontend SPA-hop handler — the equivalent of
+`MagicLinkExchange.svelte` for the OAuth callback — was never built.
+
+The expected flow (documented in `docs/SELF_HOST.md` §4 after
+`bug-docs-oauth-callback-url-and-flow-prose-mismatch` landed) is:
+
+1. SPA POSTs `/api/auth/oauth/start` → backend mints state nonce →
+   returns `authorize_url`.  ✓ done by sibling story.
+2. SPA navigates browser to `authorize_url` (GitHub). ✓ done.
+3. User authorizes on GitHub.
+4. GitHub redirects browser to
+   `<portal>/auth/oauth/callback?code=...&state=...` — **the SPA must
+   own this route, parse the query, and POST to the backend.**  ✗ missing.
+5. SPA POSTs `/api/auth/oauth/callback` with `{provider, code, state}`
+   → backend validates nonce, exchanges code for identity, issues
+   `TokenPair`.
+6. SPA stores tokens via `auth.setTokens()` and navigates to landing
+   or `?return_to=`.
+
+Steps 4–6 have no implementation in the SPA. The existing
+`MagicLinkExchange.svelte` (frontend/src/lib/screens/MagicLinkExchange.svelte)
+is the exact analog for the magic-link flow and is the model to mirror.
+
+Additionally, the in-file LIMITATION comment at
+`frontend/src/lib/screens/Login.svelte:33-39` documents the WRONG flow
+architecture — it asserts "GitHub OAuth is a full-page server-side
+redirect chain" and "the browser never executes JavaScript between
+GitHub → /api/auth/oauth/callback → the client." That contradicts
+both the actual code (callback is `POST`, requires JS to invoke) and
+the documented flow in `docs/SELF_HOST.md` §4. The comment's wrong
+premise produced its wrong conclusion about `return_to` propagation —
+in fact, once the SPA owns step 4, `return_to` CAN be propagated
+trivially (via sessionStorage set in `signInWithGitHub` and read back
+in the callback screen).
+
+## Fix approach
+
+Mirror the magic-link pattern.
+
+1. **New screen** `frontend/src/lib/screens/OAuthCallback.svelte`,
+   modeled on `MagicLinkExchange.svelte`:
+   - `onMount`: read `code` + `state` from `window.location.search`
+     (these are query params, not the hash — OAuth doesn't use
+     fragments).
+   - POST `client.POST('/api/auth/oauth/callback', { body: { provider, code, state } })`.
+   - Provider value: pull from `sessionStorage` (set in
+     `signInWithGitHub` before redirecting to GitHub). The backend
+     also validates provider against the state-stored value, so the
+     SPA can hardcode `'github'` as a fallback safely.
+   - On 200: `auth.setTokens(data.access_token, data.refresh_token)`,
+     then `navigate(returnTo ?? '/login')` reading `return_to` from
+     sessionStorage too (set alongside provider in
+     `signInWithGitHub`).
+   - On error: show error UI mirroring MagicLinkExchange.svelte's
+     error state — display the typed `error` code envelope.
+2. **Router** `frontend/src/lib/router.svelte.ts`: add
+   `{ pattern: /^\/auth\/oauth\/callback$/, name: 'oauth-callback', params: [] }`.
+3. **App.svelte**:
+   - Import and dispatch `OAuthCallback` on `current.name === 'oauth-callback'`.
+   - Exclude `'oauth-callback'` from the auth-gate redirect (same
+     treatment as `'magic-link'`).
+4. **Login.svelte**:
+   - In `signInWithGitHub`, BEFORE the POST: write
+     `sessionStorage.setItem('oauth.provider', 'github')` and, if a
+     `return_to` query param was preserved, write
+     `sessionStorage.setItem('oauth.return_to', returnTo)`. These survive
+     the GitHub round-trip.
+   - Replace the LIMITATION comment at lines 33-39 with an accurate
+     short description of the SPA-hop, or remove it entirely.
+5. **Test** (`frontend/src/lib/screens/OAuthCallback.test.ts`):
+   - Happy path: query has `code`+`state` → POST sent with correct
+     body → tokens stored → navigated to `return_to` (or `/login`
+     fallback).
+   - Error path: backend 400 → error UI shown.
+   - Missing-code path: no `code` in query → error UI shown without
+     POST.
+
+## References
+
+- Analog implementation:
+  `frontend/src/lib/screens/MagicLinkExchange.svelte`
+- Backend endpoint contract: `docs/openapi.yaml:1565`
+  (`POST /api/auth/oauth/callback`)
+- Backend handler: `internal/portal/auth/oauth.go:91-186`
+- Backend `redirect_uri` it builds:
+  `internal/portal/auth/oauth.go:74` —
+  `redirectURI := h.portalURL + "/auth/oauth/callback"`
+- Router file to extend: `frontend/src/lib/router.svelte.ts`
+- App dispatcher: `frontend/src/App.svelte`
+- Comment to rewrite: `frontend/src/lib/screens/Login.svelte:33-39`
+- Documented flow: `docs/SELF_HOST.md` §4 (post
+  `bug-docs-oauth-callback-url-and-flow-prose-mismatch`)
+- Discovered during review of:
+  `bug-frontend-oauth-start-route-mismatch`
