@@ -30,7 +30,7 @@ describe('Login', () => {
     expect(screen.getByText('or')).toBeInTheDocument();
   });
 
-  it('OAuth button calls window.location.assign with the correct URL', async () => {
+  it('OAuth button posts to /api/auth/oauth/start and assigns the returned authorize_url', async () => {
     const assignSpy = vi.fn();
     Object.defineProperty(window, 'location', {
       value: { ...window.location, assign: assignSpy },
@@ -38,10 +38,51 @@ describe('Login', () => {
       configurable: true,
     });
 
+    let captured: Request | null = null;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      captured = input as Request;
+      return new Response(
+        JSON.stringify({
+          authorize_url: 'https://github.com/login/oauth/authorize?state=abc',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
     render(Login);
     const githubBtn = screen.getByText('Continue with GitHub').closest('button')!;
     await fireEvent.click(githubBtn);
-    expect(assignSpy).toHaveBeenCalledWith('/api/auth/oauth/github/start');
+
+    await waitFor(() => {
+      expect(assignSpy).toHaveBeenCalledWith(
+        'https://github.com/login/oauth/authorize?state=abc',
+      );
+    });
+
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(captured).not.toBeNull();
+    expect(captured!.url).toMatch(/\/api\/auth\/oauth\/start$/);
+    expect(captured!.method).toBe('POST');
+    const body = await captured!.clone().json();
+    expect(body).toEqual({ provider: 'github' });
+  });
+
+  it('OAuth button shows an error when the start call fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: 'oauth.provider_not_configured', message: 'no github' }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(Login);
+    const githubBtn = screen.getByText('Continue with GitHub').closest('button')!;
+    await fireEvent.click(githubBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Could not start GitHub sign-in/)).toBeInTheDocument();
   });
 
   it('submitting the magic-link form with 2xx response transitions to magic-link-sent', async () => {

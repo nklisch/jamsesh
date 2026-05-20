@@ -1,6 +1,7 @@
 <script lang="ts">
   import { navigate } from '$lib/router.svelte';
   import { auth } from '$lib/auth.svelte';
+  import { client } from '$lib/api/client';
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Card from '$lib/components/Card.svelte';
@@ -8,7 +9,7 @@
   // Mode drives card state transitions.
   // Note: once /api/auth/magic-link/request is in openapi.yaml this fetch
   // call becomes a typed client.POST. Deferred to epic-portal-foundation-auth-flows.
-  type Mode = 'choose' | 'magic-link-sent' | 'magic-link-error';
+  type Mode = 'choose' | 'magic-link-sent' | 'magic-link-error' | 'oauth-error';
 
   let email = $state('');
   let mode = $state<Mode>('choose');
@@ -51,8 +52,21 @@
     }
   });
 
-  function signInWithGitHub() {
-    window.location.assign('/api/auth/oauth/github/start');
+  // OAuth start is a two-step flow: POST to mint a state nonce and
+  // receive the provider's authorize_url, then navigate the browser to
+  // that URL. The backend cannot 302 from start because the nonce must
+  // be allocated by an authenticated SPA call before redirection.
+  async function signInWithGitHub() {
+    errorMsg = null;
+    const { data, error } = await client.POST('/api/auth/oauth/start', {
+      body: { provider: 'github' },
+    });
+    if (error || !data) {
+      mode = 'oauth-error';
+      errorMsg = 'Could not start GitHub sign-in. Please try again.';
+      return;
+    }
+    window.location.assign(data.authorize_url);
   }
 
   async function requestMagicLink(e: Event) {
