@@ -1,7 +1,7 @@
 ---
 id: bug-receive-pack-report-status-sideband-wrapping
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, git, protocol]
 parent: null
 depends_on: []
@@ -108,3 +108,23 @@ rejection branch, not on the acceptance branch. The RPO0 refs_only_update
 subtest should not have been failing due to this bug; however, a real git
 client using `side-band-64k` default would fail if pre-receive rejects that
 push. Local unit tests are sufficient to verify the fix.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `writeReportStatusRejection` swallows write errors via `_ = writeSidebandPktLine(...)` / `_ = writePktLine(...)` — this matches the pre-existing pattern in the function (errors were already swallowed before this change), so it's not a regression. If the response writer fails mid-stream the client gets a truncated reply. A future hardening pass could plumb a returned error and let the handler decide whether to log + bail; out-of-scope here.
+- The `writeLine` closure in `writeReportStatusRejection` reads cleanly but is local-to-function; if a third caller ever needs the same sideband-aware-or-not branching, lift to a method on a tiny `pkt-writer` value. Not needed yet.
+
+**Notes**: Wire format verified correct per git's pack-protocol spec:
+- outer = `<outerLen=4+1+innerLen><band=\x01><innerPktLine>`
+- inner pkt-line = `<innerLen=4+payload><payload>`
+
+For `"unpack ok\n"` (10 bytes payload) → inner=`000eunpack ok\n` (14 bytes) → outer=`0013\x01000eunpack ok\n` (19 bytes). Matches what git clients parse on the receive side.
+
+Author correctly identified that the subprocess-output path (receive_pack.go:~240) does NOT need a parallel change — `git receive-pack --stateless-rpc` learns about sideband from the pushed command list and handles the outer wrap itself. The portal just pipes those pre-wrapped bytes through. Documenting that finding in the story body is exactly the kind of "decision the doc carries" the rolling-foundation principle calls for.
+
+Tests cover both branches (caps include `side-band-64k` → wrapped; caps empty → unwrapped, backward-compat). All 24 githttp tests green.
