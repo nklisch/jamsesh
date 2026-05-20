@@ -1,7 +1,7 @@
 ---
 id: testing-bin-jamsesh-regression-harness
 kind: feature
-stage: implementing
+stage: review
 tags: [testing, infra, plugin]
 parent: null
 depends_on: []
@@ -254,3 +254,12 @@ The feature IS test infrastructure — its own "tests" are the bats files. The a
 - **PATH-shimmed `uname` shim leaks into other commands** (`uname -r` etc. during the test). Mitigation: the shim only mutates output for `-s` and `-m` flags, passes through everything else.
 - **Cosign shim ABI drift.** If the real cosign changes its CLI surface, our shim might not match. Mitigation: the wrapper invokes a fixed set of cosign flags (`verify-blob --bundle --certificate-identity-regexp --certificate-oidc-issuer`); the shim only needs to recognize those.
 - **The wrapper's hard-coded `https://github.com/...` URL means our shim has to intercept curl, not redirect via DNS or env var.** Documented in Unit 1.
+
+## Children complete (2026-05-20)
+
+Both child stories advanced to `done`:
+
+- `testing-bin-jamsesh-regression-harness-bats-suite` — 15 bats tests, 3.0s runtime, smoke-verified (`81e46ad` … `eaa8818`)
+- `testing-bin-jamsesh-regression-harness-ci-job` — `wrapper-tests` job added to `quickstart.yml`, runs in parallel (`d1ddba5`)
+
+Net deliverables: 6 new files under `tests/wrapper/` (helpers + 4 .bats files + README), 12 lines added to `.github/workflows/quickstart.yml`. Local bats smoke green; first GitHub Actions run will be the final integration check.
