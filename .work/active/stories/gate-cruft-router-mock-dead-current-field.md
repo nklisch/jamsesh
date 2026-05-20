@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-router-mock-dead-current-field
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup]
 parent: null
 depends_on: []

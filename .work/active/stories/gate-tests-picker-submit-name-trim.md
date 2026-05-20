@@ -1,7 +1,7 @@
 ---
 id: gate-tests-picker-submit-name-trim
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing]
 parent: null
 depends_on: []
