@@ -44,8 +44,8 @@
   // exchange completes), redirect to return_to if present.  The $effect re-runs
   // whenever `auth.isAuthenticated` changes so it's safe to leave in place.
   $effect(() => {
-    if (auth.isAuthenticated && returnTo) {
-      navigate(returnTo);
+    if (auth.isAuthenticated) {
+      navigate(returnTo ?? '/');
     }
   });
 

@@ -51,7 +51,8 @@
 
       if (data) {
         auth.setTokens(data.access_token, data.refresh_token);
-        navigate(returnTo ?? '/login');
+        await auth.loadCurrentUser();
+        navigate(returnTo ?? '/');
         return;
       }
 

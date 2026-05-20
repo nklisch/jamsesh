@@ -23,6 +23,15 @@
   // magic-link is excluded from the auth gate — it is the unauthenticated
   // landing page for magic-link token exchange.
   $effect(() => {
+    // Authed user landed on /login (direct visit, back button, etc.) — bounce to home.
+    // Skip oauth-callback (it does its own post-exchange navigation) and magic-link
+    // (it MAY be hit while still unauthed to complete the exchange).
+    if (auth.isAuthenticated && current.name === 'login') {
+      navigate('/');
+      return;
+    }
+
+    // Existing: unauthed user on protected route -> /login (UNCHANGED behavior).
     if (current.name !== 'login' && current.name !== 'magic-link' && current.name !== 'oauth-callback' && !auth.isAuthenticated) {
       if (current.name === 'invite-accept') {
         const returnTo = window.location.pathname + window.location.search;

@@ -5,8 +5,26 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import Login from './Login.svelte';
 
+// ── Module mocks (used by authed-redirect tests) ─────────────────────────────
+
+const mockNavigate = vi.fn();
+vi.mock('$lib/router.svelte', () => ({
+  navigate: (...args: unknown[]) => mockNavigate(...args),
+  current: { name: 'login', params: {} },
+}));
+
+// auth mock — isAuthenticated is reassignable per-test via mockAuth.isAuthenticated
+const mockAuth = { isAuthenticated: false };
+vi.mock('$lib/auth.svelte', () => ({
+  get auth() {
+    return mockAuth;
+  },
+}));
+
 describe('Login', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockAuth.isAuthenticated = false;
     // Reset location.assign spy before each test
     vi.spyOn(window, 'location', 'get').mockReturnValue({
       ...window.location,
@@ -222,5 +240,34 @@ describe('Login', () => {
     });
 
     expect(screen.getByText(/Try a different email/i)).toBeInTheDocument();
+  });
+
+  // ── Authed-redirect: $effect fires when auth.isAuthenticated flips ─────────
+
+  it('navigates to / when auth.isAuthenticated is true and no returnTo is set', async () => {
+    // No ?return_to in the URL — window.location.search is empty.
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '' },
+      writable: true,
+      configurable: true,
+    });
+    mockAuth.isAuthenticated = true;
+
+    render(Login);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'));
+  });
+
+  it('navigates to returnTo when auth.isAuthenticated is true and returnTo is set', async () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '?return_to=%2Forgs%2Ffoo%2Fsessions' },
+      writable: true,
+      configurable: true,
+    });
+    mockAuth.isAuthenticated = true;
+
+    render(Login);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/orgs/foo/sessions'));
   });
 });

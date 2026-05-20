@@ -17,9 +17,11 @@ vi.mock('$lib/api/client', () => ({
 }));
 
 const mockSetTokens = vi.fn();
+const mockLoadCurrentUser = vi.fn().mockResolvedValue(undefined);
 vi.mock('$lib/auth.svelte', () => ({
   auth: {
     setTokens: (...args: unknown[]) => mockSetTokens(...args),
+    loadCurrentUser: () => mockLoadCurrentUser(),
     isAuthenticated: false,
   },
 }));
@@ -111,7 +113,7 @@ describe('OAuthCallback', () => {
 
   // ── Happy path fallback (no return_to) ────────────────────────────────────
 
-  it('navigates to /login when no oauth.return_to in sessionStorage', async () => {
+  it('navigates to / when no oauth.return_to in sessionStorage', async () => {
     sessionStorage.removeItem('oauth.return_to');
     mockPOST.mockResolvedValue({
       data: {
@@ -124,7 +126,29 @@ describe('OAuthCallback', () => {
     });
     render(OAuthCallback);
 
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'));
+  });
+
+  // ── loadCurrentUser is awaited before navigate ────────────────────────────
+
+  it('awaits loadCurrentUser before navigating on successful exchange', async () => {
+    mockPOST.mockResolvedValue({
+      data: {
+        access_token: 'access-tok',
+        refresh_token: 'refresh-tok',
+        access_expires_at: new Date().toISOString(),
+        refresh_expires_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+    render(OAuthCallback);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
+    // loadCurrentUser must be called, and it must have been invoked before navigate.
+    expect(mockLoadCurrentUser).toHaveBeenCalledOnce();
+    expect(mockLoadCurrentUser.mock.invocationCallOrder[0]).toBeLessThan(
+      mockNavigate.mock.invocationCallOrder[0],
+    );
   });
 
   // ── Provider fallback ─────────────────────────────────────────────────────
@@ -202,7 +226,7 @@ describe('OAuthCallback', () => {
 
   // ── Open-redirect protection ──────────────────────────────────────────────
 
-  it('rejects protocol-relative return_to and falls back to /login', async () => {
+  it('rejects protocol-relative return_to and falls back to /', async () => {
     sessionStorage.setItem('oauth.return_to', '//evil.com');
     mockPOST.mockResolvedValue({
       data: {
@@ -215,7 +239,7 @@ describe('OAuthCallback', () => {
     });
     render(OAuthCallback);
 
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'));
   });
 
   // ── URL clearing ──────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 ---
 id: spa-logged-in-landing-authed-redirect-fixes
 kind: story
-stage: implementing
+stage: review
 tags: [frontend, ui]
 parent: spa-logged-in-landing-and-org-bootstrap
 depends_on: [spa-logged-in-landing-home-screen]
@@ -91,3 +91,30 @@ See parent feature `## Implementation Units > Unit 3` for full specification.
   separate and out of this feature's scope.
 - No reactive auth.orgs UI inside this story; consumers are limited to
   the existing OAuthCallback/Login screens which only care about tokens.
+
+## Implementation notes
+
+All three edits landed as specified with no design deviations.
+
+**App.test.ts:** Not created. The auth-gate logic is pure route-string +
+auth-state branching. The per-screen tests (Login.test.ts authed-redirect
+cases) cover the most user-visible path (authed user on /login → /). The
+unauthed-on-protected branch is exercised indirectly by the rest of the
+suite rendering screens with `isAuthenticated: false`. Adding a fragile
+App.svelte test that re-mocks `current` + `auth` + `navigate` for
+string-comparison assertions would add noise without adding signal —
+decision documented here per story instructions.
+
+**`auth.loadCurrentUser` await safety:** Verified that `loadCurrentUser`
+swallows all exceptions internally via its inner try/catch, so `await`-ing
+it in OAuthCallback cannot surface a rejection and block the navigate call.
+The outer catch block in `exchange()` remains intact for network/POST
+failures.
+
+**Open-redirect test updated:** The existing test asserting `navigate('/login')`
+for a protocol-relative `oauth.return_to` (`//evil.com`) was updated to
+expect `navigate('/')` — the correct new fallback target.
+
+**Verification:** `npm run check` — 0 errors, 2 pre-existing warnings.
+`npm run test` — 450 tests passed across 40 files (OAuthCallback: 15
+tests, +2 new; Login: 13 tests, +2 new).
