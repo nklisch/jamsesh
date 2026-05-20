@@ -1,7 +1,7 @@
 ---
 id: bug-frontend-oauth-callback-handler-missing
 kind: story
-stage: review
+stage: done
 tags: [bug, ui, auth]
 parent: null
 depends_on: []
@@ -161,3 +161,43 @@ Mirror the magic-link pattern.
   `bug-docs-oauth-callback-url-and-flow-prose-mismatch`)
 - Discovered during review of:
   `bug-frontend-oauth-start-route-mismatch`
+
+## Review (2026-05-19)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `frontend/src/App.svelte:22-23` — the auth-gate exclusion comment
+  mentions magic-link but not the new oauth-callback exclusion. The
+  code is correct (both are excluded at line 25); only the comment
+  drifted. Trivial follow-up the next time anyone touches that block.
+- `OAuthCallback.svelte:60` — the empty catch block has no inline
+  comment explaining the catch-all reasoning (it's in the story body
+  but not in code). Consistent with `MagicLinkExchange.svelte`'s
+  pattern, which also has no comment, so leaving as-is.
+
+**Notes**: Clean mirror of the magic-link pattern. The fan of 14 tests
+covers all the paths that matter: happy path (token storage +
+return_to navigation), the two missing-param branches, backend error
+envelope passthrough, generic fallback, network throw, and an
+explicit open-redirect protection test for `//evil.com`. Mock setup
+exactly mirrors `MagicLinkExchange.test.ts` so the convention holds.
+Non-obvious decisions in the story body are both defensible —
+clearing sessionStorage eagerly prevents stale-key replay on
+subsequent visits to the callback URL, and catching all throws (not
+just `TypeError`) means any unexpected rejection degrades to the same
+user-visible error UI rather than leaking. Foundation-doc alignment
+clean: the new flow matches `docs/SELF_HOST.md` §4 (which was already
+rewritten by `bug-docs-oauth-callback-url-and-flow-prose-mismatch`),
+and the stale LIMITATION comment in Login.svelte was rewritten to
+match.
+
+**What's now possible**: GitHub OAuth sign-in works end-to-end. A
+self-hoster on the next portal release will complete the round-trip:
+click "Continue with GitHub" → authorize on GitHub → land back at
+`/auth/oauth/callback` → SPA exchanges the code → tokens stored →
+into the sessions landing. Both 404s that were blocking the flow
+(`bug-frontend-oauth-start-route-mismatch` and this story) are now
+closed.
