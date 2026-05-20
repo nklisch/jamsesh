@@ -1,7 +1,7 @@
 ---
 id: bug-docker-named-volume-root-owned-not-nobody
 kind: story
-stage: review
+stage: done
 tags: [bug, infra, docker, self-host, documentation]
 parent: null
 depends_on: []
@@ -117,6 +117,29 @@ Resolved at scope.
 - deploy/compose/README.md: rewrote "Volume permission errors" section to describe Docker's actual behavior (mountpoint ownership copied into fresh volume); preserved host-bind-mount guidance; added optional "existing deploys" one-shot chown snippet.
 - Smoke: synthetic stub binary used for build. `docker run --rm --entrypoint /bin/sh jamsesh:smoke -c 'ls -ld /data'` → `drwxr-xr-x 1 nobody nobody 0 ... /data`. Fresh-volume smoke (`jamsesh_smoke_data`) → `/data` and `/data/probe` both `nobody:nobody`, write succeeded without permission errors. All ACs passed.
 - End-to-end `docker compose up -d` deferred — needs a real domain for TLS provisioning. Named-volume ownership is the critical path; it is verified.
+
+## Review (2026-05-19)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Two coordinated changes — Dockerfile gets a 4-line addition
+(3-line comment block + `RUN mkdir -p /data && chown nobody:nobody /data`)
+between `COPY` and `EXPOSE`, satisfying the must-run-as-root constraint
+ahead of `USER nobody`. README rewrite is more than mechanical: it
+replaces the inaccurate "first container write" claim with Docker's
+actual mountpoint-inheritance behavior, preserves the host-bind-mount
+chown guidance, and adds an "existing deploys" upgrade-path snippet
+that the story body explicitly invited as optional polish. Smoke
+confirmed `/data` lands `nobody:nobody` in the image and that a fresh
+named volume inherits it (probe-file write under USER nobody
+succeeded, no permission errors). What's now possible: self-hosters
+can `docker compose up -d` against the default SQLite path without
+running any volume chown — the experience the compose README already
+promised but the image didn't yet deliver.
 
 ## Out of scope
 
