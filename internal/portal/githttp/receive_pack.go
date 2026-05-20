@@ -18,7 +18,6 @@ import (
 
 	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/httperr"
-	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
 )
 
@@ -288,7 +287,7 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	if h.Emitter != nil {
 		if emitErr := h.Emitter.EmitForUpdates(
 			r.Context(), diskRepo, &session, account,
-			toEmitterUpdates(updates),
+			updates,
 		); emitErr != nil {
 			slog.ErrorContext(r.Context(), "receive-pack: post-receive emit (object-storage sync failure)",
 				"err", emitErr, "org", orgID, "session", sessionID)
@@ -445,16 +444,3 @@ func (s *layeredStorer) PackRefs() error {
 	return s.diskRefs.PackRefs()
 }
 
-// toEmitterUpdates converts []prereceive.RefUpdate to []postreceive.RefUpdate.
-// The two types have the same shape but live in separate packages.
-func toEmitterUpdates(in []prereceive.RefUpdate) []postreceive.RefUpdate {
-	out := make([]postreceive.RefUpdate, len(in))
-	for i, u := range in {
-		out[i] = postreceive.RefUpdate{
-			Ref:    u.Ref,
-			OldSHA: u.OldSHA,
-			NewSHA: u.NewSHA,
-		}
-	}
-	return out
-}

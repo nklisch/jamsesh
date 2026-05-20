@@ -1,7 +1,7 @@
 ---
 id: refactor-unify-refupdate-across-prereceive-postreceive
 kind: story
-stage: implementing
+stage: review
 tags: [refactor, cleanup, portal, git]
 parent: null
 depends_on: []
@@ -86,6 +86,45 @@ suite catches immediately.
 If a downstream caller turns out to depend on the type identity (e.g.,
 type assertions in tests that distinguish the two packages' types), revert
 the commits via `git revert` and reintroduce the translator.
+
+## Implementation notes
+
+### Files touched
+
+- `internal/portal/gitref/types.go` — new package; defines the single canonical `RefUpdate` struct
+- `internal/portal/prereceive/types.go` — removed local struct definition; added `type RefUpdate = gitref.RefUpdate` alias and `gitref` import; no other prereceive files needed changes
+- `internal/portal/postreceive/emitter.go` — removed local struct definition; added `type RefUpdate = gitref.RefUpdate` alias and `gitref` import; `prereceive` import retained (still needed for `Trailers()` call)
+- `internal/portal/githttp/pktline.go` — `readCommandList` return type changed from `[]prereceive.RefUpdate` to `[]gitref.RefUpdate`; `writeReportStatusRejection` first slice param updated to `[]gitref.RefUpdate`; added `gitref` import; `prereceive` import retained for `[]prereceive.Rejection` param
+- `internal/portal/githttp/receive_pack.go` — `toEmitterUpdates` shim deleted; call site updated to pass `updates` directly; `postreceive` import removed (no longer referenced directly)
+
+### Verification
+
+```
+grep -rn 'type RefUpdate' internal/portal/
+# internal/portal/prereceive/types.go:39:type RefUpdate = gitref.RefUpdate
+# internal/portal/postreceive/emitter.go:62:type RefUpdate = gitref.RefUpdate
+# internal/portal/gitref/types.go:8:type RefUpdate struct {
+```
+
+Exactly one struct *definition* — `gitref/types.go`. The other two lines are type aliases, not independent definitions.
+
+```
+grep -rn 'toEmitterUpdates' internal/portal/
+# (empty — shim fully removed)
+```
+
+### Reconciling the two original types
+
+The two original `RefUpdate` structs were identical in field names, types, and ordering. The only difference was the inline comment on `Ref`:
+
+- `prereceive`: `// "refs/heads/jam/<session>/<owner>/<branch>"`
+- `postreceive`: `// e.g. "refs/heads/jam/<session>/<owner>/<branch>"`
+
+The merged `gitref.RefUpdate` uses the prereceive comment (without "e.g.") as the more concise form. No struct tags, no field ordering differences to reconcile.
+
+### Implementation approach
+
+Type aliases (`type RefUpdate = gitref.RefUpdate`) were used in both packages rather than removing all unqualified `RefUpdate` references from internal files. This kept the diffs minimal: zero changes needed in `refs.go`, `commits.go`, `validate.go`, their tests, or `emitter_test.go`. The type aliases make `prereceive.RefUpdate` and `postreceive.RefUpdate` identical types at the Go type system level, enabling direct slice passing without conversion.
 
 ## Out of scope
 

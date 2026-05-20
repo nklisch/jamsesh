@@ -10,6 +10,7 @@ package prereceive
 
 import (
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/gitref"
 
 	git "github.com/go-git/go-git/v5"
 )
@@ -33,13 +34,9 @@ type Rejection struct {
 	Details map[string]any
 }
 
-// RefUpdate describes one ref being updated in a push.
-// OldSHA is empty when the ref is being created for the first time.
-type RefUpdate struct {
-	Ref    string // "refs/heads/jam/<session>/<owner>/<branch>"
-	OldSHA string // empty if new ref
-	NewSHA string
-}
+// RefUpdate is an alias for gitref.RefUpdate. See gitref.RefUpdate for field
+// documentation.
+type RefUpdate = gitref.RefUpdate
 
 // ValidateInput is the complete context passed to the validator.
 // Repo is a go-git Repository opened against the bare repo on disk.

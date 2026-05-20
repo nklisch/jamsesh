@@ -17,6 +17,7 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/events"
+	"jamsesh/internal/portal/gitref"
 	"jamsesh/internal/portal/lease"
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/storage"
@@ -56,13 +57,9 @@ type Emitter struct {
 	Storage storage.Service
 }
 
-// RefUpdate describes one ref that was accepted during a push.
-// OldSHA is empty when the ref is being created for the first time.
-type RefUpdate struct {
-	Ref    string // e.g. "refs/heads/jam/<session>/<owner>/<branch>"
-	OldSHA string // empty if new ref
-	NewSHA string
-}
+// RefUpdate is an alias for gitref.RefUpdate. See gitref.RefUpdate for field
+// documentation.
+type RefUpdate = gitref.RefUpdate
 
 // EmitForUpdates emits a batch of commit.arrived events for every new commit
 // in every accepted update. Commits are emitted in chronological order

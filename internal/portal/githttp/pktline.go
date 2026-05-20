@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"jamsesh/internal/portal/gitref"
 	"jamsesh/internal/portal/prereceive"
 )
 
@@ -42,7 +43,7 @@ func readPktLineLen(r io.Reader) (int, error) {
 // Returns the slice of RefUpdates, the capability set advertised by the client
 // on the first command line (e.g. "side-band-64k"), and a reader whose unread
 // bytes are the pack data (everything after the flush packet).
-func readCommandList(r io.Reader) (updates []prereceive.RefUpdate, caps map[string]bool, packReader io.Reader, err error) {
+func readCommandList(r io.Reader) (updates []gitref.RefUpdate, caps map[string]bool, packReader io.Reader, err error) {
 	br := bufio.NewReader(r)
 	caps = make(map[string]bool)
 
@@ -89,7 +90,7 @@ func readCommandList(r io.Reader) (updates []prereceive.RefUpdate, caps map[stri
 		if oldSHA == "0000000000000000000000000000000000000000" {
 			oldSHA = ""
 		}
-		updates = append(updates, prereceive.RefUpdate{
+		updates = append(updates, gitref.RefUpdate{
 			OldSHA: oldSHA,
 			NewSHA: parts[1],
 			Ref:    parts[2],
@@ -152,7 +153,7 @@ func writeFlushPkt(w io.Writer) error {
 //
 // If there are no specific per-ref rejections a generic message is used for
 // each update.
-func writeReportStatusRejection(w io.Writer, updates []prereceive.RefUpdate, rejections []prereceive.Rejection, caps map[string]bool) {
+func writeReportStatusRejection(w io.Writer, updates []gitref.RefUpdate, rejections []prereceive.Rejection, caps map[string]bool) {
 	sideband := caps["side-band-64k"]
 
 	writeLine := func(payload string) {
