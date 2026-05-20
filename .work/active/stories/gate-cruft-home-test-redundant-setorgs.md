@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-home-test-redundant-setorgs
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -41,3 +41,13 @@ first. The first call is a refactor leftover.
 
 ## Implementation notes
 Deleted the single-org `setOrgs([{ id: 'org-1', ... }])` call at the top of the "clicking an org row navigates via navigate() and prevents default" test. Kept the explanatory comment "Need 2 orgs so picker renders (single-org auto-routes)" on the surviving two-org call — it still explains the design decision. All 32 Home.test.ts tests pass.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Surgical 1-line deletion of dead test setup. Kept the explanatory comment which is the right call — the comment still explains why the test needs two orgs. Full suite stays green.
