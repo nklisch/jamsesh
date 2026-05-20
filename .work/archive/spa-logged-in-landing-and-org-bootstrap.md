@@ -1,11 +1,11 @@
 ---
 id: spa-logged-in-landing-and-org-bootstrap
 kind: feature
-stage: review
+stage: done
 tags: [frontend, ui]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.3.0
 gate_origin: null
 created: 2026-05-19
 updated: 2026-05-20
@@ -742,3 +742,62 @@ intended content.
 None spawned. The role-styling fallback for unknown role strings is
 documented as acceptable v1 behavior in the Risks section above; no
 backlog item required.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve (feature-level aggregate)
+
+**Blockers**: none.
+**Important**: none.
+**Nits**: none worth filing.
+
+**Notes**:
+
+Per-line lenses (correctness / tests / naming) were exercised when each child
+was reviewed individually — see the `## Review` sections in each child story.
+This feature-level review focuses on aggregate concerns:
+
+- **Design alignment**: realized decomposition matches the brief precisely.
+  Three stories cover the four-way gap from the original framing — data
+  plumbing (auth store), UI surface (Home + route), connecting tissue
+  (redirect fixes). No scope creep, no scope gaps.
+- **Foundation-doc alignment**: brief explicitly stated none required;
+  verified zero foundation docs touched across all three stories. The
+  openapi.yaml schema for `/api/me` (`MeResponse` + `MeOrgMembership`) and
+  `/api/orgs` (`CreateOrgBody` + `OrgRef`) are unchanged.
+- **Breaking changes**: all internal-SPA, all intentional, all documented in
+  the deliverables section above. No external API surface affected.
+- **Capability completeness — end-to-end traces** (each scenario walked
+  through from user action to terminal state):
+  - **0-org signup** → OAuth → setTokens → loadCurrentUser → `/` → empty
+    state with create-form → POST /api/orgs → addOrg → /orgs/{id}/sessions.
+  - **1-org user** → same flow but `/` auto-routes to the only org.
+  - **2+ org user** → picker renders, click navigates.
+  - **Authed user on `/login`** → both Login.svelte's effect and App.svelte's
+    gate fire `navigate('/')` (redundant defense-in-depth, converges
+    correctly via $effect re-runs).
+  - **Token expiry mid-session** → unauthorizedMiddleware → signOut →
+    /login. Existing behavior preserved.
+  - **Cross-tenant race** (signout + re-sign-in as different user mid-load) →
+    caught and fixed inline during story 1's review via the `tokenAtStart`
+    guard; regression test included.
+- **Aggregate test posture**: 46 net new tests across 5 test files (8 auth +
+  32 Home + 2 Input + 2 OAuthCallback + 2 Login), plus 1 cross-tenant race
+  regression test added during story 1's review. 451/451 pass.
+  `npm run check` clean.
+- **Latent gap closed as side effect**: chrome consumers (`SessionList`,
+  `SessionViewShell`, `InviteAccept`) that read `auth.currentUser` behind
+  `{#if auth.currentUser}` guards were rendering null branches in production
+  before this feature. With Story 1's App.svelte bootstrap effect, they now
+  render their intended content on any authenticated session load. This
+  wasn't in the brief but is an unambiguous improvement.
+
+**What's now possible**: a freshly-signed-up GitHub user has somewhere to
+go. The four-way gap described in the original bug report is closed:
+OAuthCallback's fallback target is the home route, Login.svelte redirects
+authed users unconditionally, App.svelte mirrors that redirect, and the `/`
+route exists with empty-state + picker + auto-route + inline create-form.
+End-to-end signup → first-org-creation → in-workspace is unbroken.
+
+Feature delivered as briefed. Advancing review → done and archiving alongside
+all three child stories per the no-release-binding archival convention.
