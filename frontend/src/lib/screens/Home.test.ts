@@ -179,7 +179,7 @@ describe('Home', () => {
     expect(links[1]).toHaveAttribute('href', '/orgs/org-2/sessions');
   });
 
-  it('clicking an org row navigates via navigate() and prevents default', async () => {
+  it('clicking an org row navigates via navigate()', async () => {
     // Need 2 orgs so picker renders (single-org auto-routes)
     setOrgs([
       { id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' },
@@ -189,6 +189,20 @@ describe('Home', () => {
     const link = screen.getAllByRole('link')[0];
     await fireEvent.click(link);
     expect(mockNavigate).toHaveBeenCalledWith('/orgs/org-1/sessions');
+  });
+
+  it('clicking an org row prevents default navigation (SPA-only)', () => {
+    // Pins that e.preventDefault() is called on left-click so the browser
+    // does not full-page-load; middle-click (not cancelable) keeps real href.
+    setOrgs([
+      { id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' },
+      { id: 'org-2', name: 'hooli', slug: 'hooli', role: 'member' },
+    ]);
+    render(Home);
+    const link = screen.getAllByRole('link')[0];
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   // ── Role badges ──────────────────────────────────────────────────────────

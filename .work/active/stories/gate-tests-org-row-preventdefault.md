@@ -1,7 +1,7 @@
 ---
 id: gate-tests-org-row-preventdefault
 kind: story
-stage: implementing
+stage: review
 tags: [testing]
 parent: null
 depends_on: []
@@ -50,3 +50,26 @@ navigate-mock fires before any default action. The boundary "real
 `<a href>` works for middle-click but does not full-page-load on normal
 click" is the actual spec contract; the assertion needs
 `event.defaultPrevented === true`.
+
+## Implementation notes
+
+**Decision: add alongside, not replace.** The existing test was kept (covering
+navigate-fires-on-click) and renamed from "navigates via navigate() and
+prevents default" → "navigates via navigate()" to remove the misleading claim
+in the title. The new test is placed immediately after and specifically pins
+`e.preventDefault()` using `dispatchEvent` with a manually-constructed
+`MouseEvent` so `event.defaultPrevented` is accessible after dispatch.
+
+**Why dispatchEvent vs fireEvent.** `fireEvent.click` doesn't return the
+synthesized event, making `defaultPrevented` inaccessible. `dispatchEvent`
+with `new MouseEvent('click', { bubbles: true, cancelable: true })` hands
+back the event object, enabling the direct assertion.
+
+**Negative-case verification.** Temporarily removed `e.preventDefault()` from
+`Home.svelte:93`. The new "prevents default" test failed (`× ... prevents
+default navigation`) while the renamed "navigates via navigate()" test
+continued to pass — confirming the new assertion catches the regression and
+the old one does not. Reverted; both tests pass green.
+
+**npm run check:** 0 errors, 2 pre-existing warnings (unrelated files).
+**npm test (twice):** 472/472 tests pass.
