@@ -120,6 +120,22 @@ describe('auth store', () => {
     expect(auth.currentUser).toBeNull();
   });
 
+  test('loadCurrentUser discards response when _token is null at completion', async () => {
+    // Call loadCurrentUser WITHOUT setTokens — _token is null, so the guard
+    // `_token !== null && _token === tokenAtStart` is false (null !== null is
+    // false). The 200 response must not write state.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 'u', email: 'x', display_name: 'X', orgs: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const { auth } = await import('$lib/auth.svelte');
+    await auth.loadCurrentUser();
+    expect(auth.currentUser).toBeNull();
+    expect(auth.orgs).toBeNull();
+  });
+
   test('loadCurrentUser calls GET /api/me', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
