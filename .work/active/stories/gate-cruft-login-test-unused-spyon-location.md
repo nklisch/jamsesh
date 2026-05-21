@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-login-test-unused-spyon-location
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -61,3 +61,13 @@ Deleted the `// Reset location.assign spy before each test` comment and the
 in `Home.test.ts` and Login OAuth URL validation tests (from concurrent story
 `gate-security-authorize-url-no-scheme-host-validation`) resolved on re-run;
 neither is related to this change.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: 4-line beforeEach block removed. Per-test `Object.defineProperty(window, 'location', ...)` stubs handle the location.assign spy where needed. The flake observation in implementation notes was concurrent-wave-execution noise (Wave 3 had 3 agents editing different files); my own post-wave verification got 476/476 in one run.
