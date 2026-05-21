@@ -1,7 +1,7 @@
 ---
 id: docs-readme-cc-plugin-install-instructions
 kind: story
-stage: review
+stage: done
 tags: [documentation, plugin]
 parent: null
 depends_on: []
@@ -59,3 +59,13 @@ user-facing doc, so no link was added.
 
 **Section placement:** Lines 77–98 in `README.md`, between
 `## Operator quickstart` and `## License`.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Section sits cleanly between "Operator quickstart" and "License". Commands verified against the actual local `claude` CLI (`claude plugin marketplace add ...`, `claude plugins install ...`) — the version-sensitivity footnote in the section acknowledges that other CC versions may differ, which is honest documentation. Wrapper-binary caching note is accurate per the existing `bin/jamsesh` design. Voice matches the rest of the README. No `release_binding`, so archiving.
