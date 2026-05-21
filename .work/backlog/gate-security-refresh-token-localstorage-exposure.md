@@ -5,7 +5,7 @@ stage: drafting
 tags: [security]
 parent: null
 depends_on: []
-release_binding: v0.3.0
+release_binding: null
 gate_origin: security
 created: 2026-05-20
 updated: 2026-05-20
@@ -43,3 +43,15 @@ server-side and hands the SPA only short-lived access tokens.
 
 The access token is also exposed but its blast radius is bounded by TTL;
 the refresh token is the load-bearing concern.
+
+## Autopilot deferral note (2026-05-20)
+
+Deferred from `release_binding: v0.3.0` by `/agile-workflow:autopilot --all`.
+Rationale: this is genuinely architectural — the remediation requires
+either (a) HttpOnly cookie + backend endpoint changes to set/read the
+cookie + refresh-endpoint scoping, or (b) a Backend-for-Frontend pattern
+where the SPA receives only short-lived access tokens. Either path is
+feature-scope (probably epic-scope) work requiring proper design and
+cross-stack implementation, not a single-stride story. Moved to backlog
+for scoping via `/agile-workflow:scope` in a future release. Per
+release-v0.3.0 file's documented escape hatch.

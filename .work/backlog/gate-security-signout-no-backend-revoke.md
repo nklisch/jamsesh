@@ -5,7 +5,7 @@ stage: drafting
 tags: [security]
 parent: null
 depends_on: []
-release_binding: v0.3.0
+release_binding: null
 gate_origin: security
 created: 2026-05-20
 updated: 2026-05-20
@@ -47,3 +47,12 @@ Add a best-effort `POST /api/auth/logout` (or
 `/api/auth/session/revoke`) call before clearing local state so the
 server can mark the refresh token revoked; ignore failures so offline
 sign-out still works locally.
+
+## Autopilot deferral note (2026-05-20)
+
+Deferred from `release_binding: v0.3.0` by `/agile-workflow:autopilot --all`.
+Rationale: requires a new backend endpoint (`POST /api/auth/logout` with
+DB-level refresh-token revocation) plus the frontend best-effort call —
+this is feature-scope work, not a single-stride story. Moved to backlog
+for proper scoping in a future release. Per release-v0.3.0 file's
+documented escape hatch.

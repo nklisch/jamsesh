@@ -5,7 +5,7 @@ stage: drafting
 tags: [security]
 parent: null
 depends_on: []
-release_binding: v0.3.0
+release_binding: null
 gate_origin: security
 created: 2026-05-20
 updated: 2026-05-20
@@ -47,3 +47,12 @@ correlation id (random UUID) in sessionStorage; have the backend echo
 the same id into the callback (or include it in the authorize-url
 `state`); at callback, assert the values match before posting to
 `/api/auth/oauth/callback`. Reject otherwise.
+
+## Autopilot deferral note (2026-05-20)
+
+Deferred from `release_binding: v0.3.0` by `/agile-workflow:autopilot --all`.
+Rationale: this is cross-stack (frontend correlation-id storage + backend
+state echo) and needs feature-scope design before implementation — it's
+larger than a single-stride story. Moved to backlog for proper scoping in
+a future release. Per release-v0.3.0 file's documented escape hatch:
+"clear `release_binding` to defer to a later release."
