@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>portal-session-attach-onboarding — Option 2: Full-screen ceremonial first-time, horizontal hero</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 10px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      font: 13px/1.4 var(--font-sans);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .mock-meta .state-toggle { display: inline-flex; gap: 4px; background: rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 3px; }
+    .mock-meta .state-toggle button { padding: 4px 10px; background: transparent; border: 0; color: var(--color-text-inverse); font: 12px var(--font-mono); cursor: pointer; border-radius: var(--radius-sm); opacity: 0.65; }
+    .mock-meta .state-toggle button.active { background: var(--color-text-inverse); color: var(--color-bg-inverse); opacity: 1; }
+
+    html, body { margin: 0; padding: 0; background: var(--color-bg-tertiary); }
+    body { font: var(--font-size-base)/var(--line-height-base) var(--font-sans); color: var(--color-text-primary); }
+
+    /* Faux SessionList behind everything */
+    .page-bg { padding: 24px; opacity: 0.3; pointer-events: none; }
+    .page-bg .topbar { display: flex; justify-content: space-between; padding: 12px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 16px; }
+    .page-bg .wordmark { font-weight: var(--font-weight-semibold); }
+    .page-bg .wordmark .dot { color: var(--color-accent); }
+    .page-bg .list-row { padding: 14px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 8px; display: flex; justify-content: space-between; }
+
+    /* ── First-time: full-screen ceremonial card ────────────────────────────── */
+    .ceremony-backdrop { position: fixed; inset: 56px 0 0 0; background: rgba(20, 22, 26, 0.55); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .ceremony-card { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-lg); max-width: 900px; width: 100%; padding: 40px 48px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+    .ceremony-eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; background: var(--color-accent-muted); color: var(--color-accent); border-radius: var(--radius-full); font: var(--font-weight-medium) var(--font-size-xs) var(--font-mono); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .ceremony-card h1 { margin: 0 0 12px; font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold); letter-spacing: -0.02em; line-height: var(--line-height-tight); }
+    .ceremony-card .lede { margin: 0 0 32px; font-size: var(--font-size-base); color: var(--color-text-secondary); max-width: 60ch; line-height: 1.6; }
+
+    .steps-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+    .step-card { padding: 20px; background: var(--color-bg-primary); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+    .step-card .num { width: 28px; height: 28px; border-radius: var(--radius-full); background: var(--color-bg-inverse); color: var(--color-text-inverse); font: var(--font-weight-semibold) 13px var(--font-mono); display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+    .step-card h3 { margin: 0 0 6px; font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
+    .step-card p { margin: 0 0 12px; font-size: var(--font-size-xs); color: var(--color-text-secondary); min-height: 2.5em; line-height: 1.5; }
+    .cmd-row { display: flex; gap: 6px; }
+    .cmd { flex: 1; background: var(--color-bg-inverse); color: var(--color-text-inverse); font: var(--font-size-xs) var(--font-mono); padding: 8px 10px; border-radius: var(--radius-sm); white-space: nowrap; overflow-x: auto; }
+    .cmd .prompt { color: var(--color-text-tertiary); user-select: none; }
+    .copy-btn { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 0 10px; font: var(--font-weight-medium) var(--font-size-xs) var(--font-sans); cursor: pointer; color: var(--color-text-primary); }
+    .copy-btn:hover { border-color: var(--color-border-strong); }
+    .copy-btn.copied { background: var(--color-success); border-color: var(--color-success); color: var(--color-text-inverse); }
+
+    .ceremony-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 24px; border-top: 1px solid var(--color-border); }
+    .checkbox-row { display: flex; gap: 8px; align-items: center; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .checkbox-row input { margin: 0; }
+    .ceremony-actions { display: flex; gap: 8px; }
+    .btn-primary, .btn-ghost { border-radius: var(--radius-md); padding: 10px 20px; font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans); cursor: pointer; }
+    .btn-primary { background: var(--color-bg-inverse); color: var(--color-text-inverse); border: 0; }
+    .btn-ghost { background: transparent; color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+
+    /* ── Condensed: post-dismissal pop in SessionViewShell header ────────────── */
+    .session-view-bg { padding: 0; opacity: 1; pointer-events: auto; }
+    .sv-chrome { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; background: var(--color-bg-secondary); border-bottom: 1px solid var(--color-border); }
+    .sv-chrome .left { display: flex; gap: 16px; align-items: center; }
+    .sv-chrome .wordmark { font-weight: var(--font-weight-semibold); }
+    .sv-chrome .wordmark .dot { color: var(--color-accent); }
+    .sv-chrome .session-name { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .sv-chrome .right { display: flex; gap: 8px; align-items: center; }
+    .setup-help-link { font-size: var(--font-size-xs); color: var(--color-text-link); cursor: pointer; text-decoration: underline dotted; }
+
+    .sv-body { padding: 24px; }
+    .attach-card { max-width: 700px; padding: 20px 24px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+    .attach-card h3 { margin: 0 0 4px; font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); }
+    .attach-card .sub { margin: 0 0 14px; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .attach-card .cmd-row { max-width: 480px; }
+    .attach-card .footer { margin-top: 12px; font-size: var(--font-size-xs); color: var(--color-text-tertiary); }
+    .attach-card .footer a { color: var(--color-text-link); cursor: pointer; text-decoration: underline dotted; }
+
+    .sv-placeholder { margin-top: 24px; padding: 16px; background: var(--color-bg-tertiary); border-radius: var(--radius-md); font-size: var(--font-size-xs); color: var(--color-text-tertiary); }
+
+    /* State-driven show/hide */
+    body.condensed-state .page-bg,
+    body.condensed-state .ceremony-backdrop { display: none; }
+    body:not(.condensed-state) .session-view-bg { display: none; }
+  </style>
+</head>
+<body class="first-time-state">
+  <header class="mock-meta">
+    <strong>Option 2 — Full-screen ceremonial first-time, horizontal hero</strong>
+    <span class="state-toggle">
+      <button class="active" data-state="first-time">first-time (full-screen)</button>
+      <button data-state="condensed">condensed (in-session)</button>
+    </span>
+  </header>
+
+  <!-- First-time: ceremonial full-screen card -->
+  <main class="page-bg">
+    <div class="topbar"><div class="wordmark">jam<span class="dot">·</span>sesh</div><div style="font-size: 13px; color: var(--color-text-secondary);">acme · sessions</div></div>
+    <div class="list-row"><strong>fix auth race</strong><span style="font-size: 12px; color: var(--color-text-tertiary);">just now</span></div>
+    <div class="list-row"><strong>spike new digest format</strong><span style="font-size: 12px; color: var(--color-text-tertiary);">2 hr ago</span></div>
+  </main>
+
+  <div class="ceremony-backdrop">
+    <article class="ceremony-card">
+      <div class="ceremony-eyebrow">Session created · fix auth race</div>
+      <h1>Let's get your Claude Code attached to this jam.</h1>
+      <p class="lede">Three commands — the first two are one-time setup, the third joins this specific session.
+      Once you've done this once, future jams just need the third command (or even just the copy button next to one).</p>
+
+      <div class="steps-row">
+        <div class="step-card">
+          <div class="num">1</div>
+          <h3>Add the marketplace</h3>
+          <p>Tells Claude Code where the jamsesh plugin lives. One-time per machine.</p>
+          <div class="cmd-row">
+            <code class="cmd"><span class="prompt">$ </span>claude plugin marketplace add nklisch/jamsesh</code>
+            <button class="copy-btn" data-cmd="claude plugin marketplace add nklisch/jamsesh">Copy</button>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="num">2</div>
+          <h3>Install the plugin</h3>
+          <p>Adds the <code>/jamsesh:*</code> slash commands and the local binary that drives git remote setup.</p>
+          <div class="cmd-row">
+            <code class="cmd"><span class="prompt">$ </span>claude plugins install jamsesh</code>
+            <button class="copy-btn" data-cmd="claude plugins install jamsesh">Copy</button>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="num">3</div>
+          <h3>Join this jam</h3>
+          <p>Run from a checkout of your source repo. The binary will OAuth, clone, and wire up hooks.</p>
+          <div class="cmd-row">
+            <code class="cmd"><span class="prompt">$ </span>/jamsesh:join 01926e42-…</code>
+            <button class="copy-btn" data-cmd="/jamsesh:join 01926e42-0000-7000-a000-000000000010">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ceremony-footer">
+        <label class="checkbox-row"><input type="checkbox" id="dont-show"> Got it — don't show this again. I'll grab the join command from the session view.</label>
+        <div class="ceremony-actions">
+          <button class="btn-ghost">Skip for now</button>
+          <button class="btn-primary">Open session view →</button>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <!-- Condensed: how it looks for a returning user inside SessionViewShell -->
+  <main class="session-view-bg">
+    <div class="sv-chrome">
+      <div class="left">
+        <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+        <span class="session-name">acme · fix auth race</span>
+      </div>
+      <div class="right">
+        <span class="setup-help-link">? Setup help</span>
+        <span style="font-size: 12px; color: var(--color-text-tertiary);">3 members</span>
+      </div>
+    </div>
+    <div class="sv-body">
+      <div class="attach-card">
+        <h3>Attach your Claude Code</h3>
+        <p class="sub">From a checkout of your source repo:</p>
+        <div class="cmd-row">
+          <code class="cmd"><span class="prompt">$ </span>/jamsesh:join 01926e42-0000-7000-a000-000000000010</code>
+          <button class="copy-btn" data-cmd="/jamsesh:join 01926e42-0000-7000-a000-000000000010">Copy</button>
+        </div>
+        <p class="footer">First time on this machine? <a onclick="document.body.classList.remove('condensed-state'); document.querySelectorAll('.state-toggle button').forEach(b => b.classList.toggle('active', b.dataset.state === 'first-time'));">Show the full setup walkthrough</a>.</p>
+      </div>
+      <div class="sv-placeholder">[tree, activity feed, comments would render below]</div>
+    </div>
+  </main>
+
+  <script>
+    document.querySelectorAll('.state-toggle button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.state-toggle button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.body.classList.toggle('condensed-state', btn.dataset.state === 'condensed');
+      });
+    });
+
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(btn.dataset.cmd); } catch (e) {}
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1200);
+      });
+    });
+  </script>
+</body>
+</html>

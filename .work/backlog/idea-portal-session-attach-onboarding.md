@@ -65,3 +65,35 @@ but the SPA never tells anyone that — they have to already know.
   portal only" path, given the portal IS a first-class surface per
   UX.md? Or is that out of scope for the attach-onboarding flow
   (spectating doesn't need a join).
+
+## Mockups
+
+- Compare: `.mockups/screens/portal-session-attach-onboarding/index.html`
+- **Selected: option-6** — Terminal-first ceremonial, both states sharing
+  the same modal shell. Signed off 2026-05-20.
+- Rationale: Two shell commands in a "your terminal" pane on top, then a
+  Claude-Code-styled pane below for the slash command. The CC pane embeds
+  the real `claudecode-color.svg` brand icon, uses CC's `#D97757` clay
+  accent, a white `❯` prompt indicator, and matches CC's slate-navy
+  chrome. The compact (returning) state is the same shell at a smaller
+  size — single CC pane, single command. Surface distinction
+  (shell vs Claude Code) is named explicitly in the lede prose and
+  reinforced by the visual chrome of each pane.
+- Iteration notes (for the eventual feature design):
+  1. First pass (Option 2) made first-time and returning views look like
+     two unrelated screens — confused the user. Refined into Option 5
+     where both states are the same modal-card shape (just bigger / smaller).
+  2. Three layout bugs caught during iteration: eyebrow stretching to
+     full width (column-flex `align-items: stretch`); third step-card
+     overflowing past modal edge (`min-width: auto` on flex/grid
+     children); rust-tinted status bar reading wrong (matched real CC's
+     slate bg).
+  3. Surface labeling matters: original mocks rendered all three
+     commands with a shell `$ ` prompt. The join command runs *inside*
+     Claude Code, not in a shell. Final design splits the panes
+     visually (shell pane top, CC pane bottom) and uses `❯` (CC's
+     prompt char) for the slash command.
+  4. CC pane brand fidelity: hand-drawn mascot wasn't close enough; the
+     real `claudecode-color.svg` is now embedded. Use CC's own colors
+     (`#D97757` for accent, white for the prompt chevron) inside the
+     pane, but keep the rest of the portal modal in Quiet Slate.

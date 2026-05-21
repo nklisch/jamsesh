@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>portal-session-attach-onboarding — Option 3: Condensed-first inline panel, expand-on-demand</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 10px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      font: 13px/1.4 var(--font-sans);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .mock-meta .state-toggle { display: inline-flex; gap: 4px; background: rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 3px; }
+    .mock-meta .state-toggle button { padding: 4px 10px; background: transparent; border: 0; color: var(--color-text-inverse); font: 12px var(--font-mono); cursor: pointer; border-radius: var(--radius-sm); opacity: 0.65; }
+    .mock-meta .state-toggle button.active { background: var(--color-text-inverse); color: var(--color-bg-inverse); opacity: 1; }
+
+    html, body { margin: 0; padding: 0; background: var(--color-bg-tertiary); }
+    body { font: var(--font-size-base)/var(--line-height-base) var(--font-sans); color: var(--color-text-primary); }
+
+    .page-bg { padding: 24px; opacity: 0.5; pointer-events: none; }
+    .page-bg .topbar { display: flex; justify-content: space-between; padding: 12px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 16px; }
+    .page-bg .wordmark { font-weight: var(--font-weight-semibold); }
+    .page-bg .wordmark .dot { color: var(--color-accent); }
+    .page-bg .list-row { padding: 14px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 8px; display: flex; justify-content: space-between; }
+
+    /* Drawer */
+    .drawer-backdrop { position: fixed; inset: 56px 0 0 0; background: rgba(0,0,0,0.45); z-index: 50; display: flex; justify-content: flex-end; }
+    .drawer { width: 420px; max-width: 100vw; height: 100%; background: var(--color-bg-primary); border-left: 1px solid var(--color-border); display: flex; flex-direction: column; overflow-y: auto; }
+    .drawer-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+    .drawer-header h2 { margin: 0; font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }
+    .drawer-header .close-btn { background: transparent; border: 0; color: var(--color-text-secondary); cursor: pointer; font-size: 16px; padding: 4px; line-height: 1; }
+
+    /* Read-only summary of the just-created session */
+    .summary { padding: 16px 24px; border-bottom: 1px solid var(--color-border); }
+    .summary .ok { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; background: var(--color-success); color: var(--color-text-inverse); border-radius: var(--radius-full); font: var(--font-weight-medium) 11px var(--font-mono); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .summary h3 { margin: 0 0 4px; font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); }
+    .summary dl { margin: 8px 0 0; display: grid; grid-template-columns: 70px 1fr; gap: 4px 12px; font-size: var(--font-size-xs); }
+    .summary dt { color: var(--color-text-tertiary); }
+    .summary dd { margin: 0; color: var(--color-text-secondary); }
+
+    /* Attach panel */
+    .attach { padding: 20px 24px; flex: 1; }
+    .attach-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+    .attach-head h3 { margin: 0; font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); }
+    .attach-head .first-time-link { background: transparent; border: 0; color: var(--color-text-link); font: var(--font-size-xs) var(--font-sans); cursor: pointer; text-decoration: underline dotted; padding: 0; }
+    .attach .intro { margin: 0 0 12px; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+
+    /* Setup accordion */
+    .setup-accordion { border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 16px; overflow: hidden; }
+    .setup-accordion .accordion-head { padding: 10px 12px; background: var(--color-bg-tertiary); display: flex; justify-content: space-between; align-items: center; cursor: pointer; font-size: var(--font-size-xs); }
+    .setup-accordion .accordion-head .left { display: flex; align-items: center; gap: 8px; color: var(--color-text-secondary); }
+    .setup-accordion .accordion-head .left .label { font: var(--font-weight-medium) var(--font-size-xs) var(--font-sans); }
+    .setup-accordion .accordion-head .chev { font-family: var(--font-mono); transition: transform 120ms; }
+    .setup-accordion.open .accordion-head .chev { transform: rotate(90deg); }
+    .setup-accordion .accordion-body { display: none; padding: 12px; border-top: 1px solid var(--color-border); }
+    .setup-accordion.open .accordion-body { display: block; }
+    .setup-accordion .setup-step { margin-bottom: 10px; }
+    .setup-accordion .setup-step:last-child { margin-bottom: 0; }
+    .setup-accordion .setup-step .step-label { font: var(--font-weight-medium) var(--font-size-xs) var(--font-sans); margin-bottom: 4px; color: var(--color-text-primary); display: flex; align-items: center; gap: 6px; }
+    .setup-accordion .setup-step .step-label .num { width: 18px; height: 18px; border-radius: var(--radius-full); background: var(--color-accent-muted); color: var(--color-accent); font: var(--font-weight-semibold) 10px var(--font-mono); display: flex; align-items: center; justify-content: center; }
+    .setup-accordion .setup-step .step-sub { margin: 0 0 6px 24px; font-size: 11px; color: var(--color-text-tertiary); }
+
+    .join-block { background: var(--color-bg-tertiary); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 14px; }
+    .join-block .join-label { display: flex; align-items: center; gap: 8px; font: var(--font-weight-semibold) var(--font-size-sm) var(--font-sans); margin-bottom: 8px; }
+    .join-block .join-label .badge { background: var(--color-accent); color: var(--color-text-inverse); padding: 2px 6px; border-radius: var(--radius-sm); font: var(--font-weight-medium) 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; }
+    .join-block .join-sub { margin: 0 0 10px; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+
+    .cmd-row { display: flex; gap: 6px; }
+    .cmd { flex: 1; background: var(--color-bg-inverse); color: var(--color-text-inverse); font: var(--font-size-xs) var(--font-mono); padding: 8px 10px; border-radius: var(--radius-sm); white-space: nowrap; overflow-x: auto; }
+    .cmd .prompt { color: var(--color-text-tertiary); user-select: none; }
+    .copy-btn { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 0 12px; font: var(--font-weight-medium) var(--font-size-xs) var(--font-sans); cursor: pointer; color: var(--color-text-primary); }
+    .copy-btn:hover { border-color: var(--color-border-strong); }
+    .copy-btn.copied { background: var(--color-success); border-color: var(--color-success); color: var(--color-text-inverse); }
+
+    .pref-row { padding: 12px 24px; border-top: 1px solid var(--color-border); display: flex; gap: 8px; align-items: center; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+    .pref-row input { margin: 0; }
+
+    .drawer-actions { padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; gap: 8px; justify-content: flex-end; }
+    .btn-primary, .btn-ghost { border-radius: var(--radius-md); padding: 8px 16px; font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans); cursor: pointer; }
+    .btn-primary { background: var(--color-bg-inverse); color: var(--color-text-inverse); border: 0; }
+    .btn-ghost { background: transparent; color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+
+    /* State-driven: condensed = accordion collapsed by default */
+    body.condensed-state .setup-accordion { display: none; }
+    body.condensed-state .attach-head .first-time-link::before { content: ''; }
+  </style>
+</head>
+<body class="first-time-state">
+  <header class="mock-meta">
+    <strong>Option 3 — Condensed-first inline panel, expand-on-demand</strong>
+    <span class="state-toggle">
+      <button class="active" data-state="first-time">first-time (accordion open)</button>
+      <button data-state="condensed">condensed (accordion hidden)</button>
+    </span>
+  </header>
+
+  <main class="page-bg">
+    <div class="topbar"><div class="wordmark">jam<span class="dot">·</span>sesh</div><div style="font-size: 13px; color: var(--color-text-secondary);">acme · sessions</div></div>
+    <div class="list-row"><strong>fix auth race</strong><span style="font-size: 12px; color: var(--color-text-tertiary);">just now</span></div>
+    <div class="list-row"><strong>spike new digest format</strong><span style="font-size: 12px; color: var(--color-text-tertiary);">2 hr ago</span></div>
+  </main>
+
+  <div class="drawer-backdrop">
+    <aside class="drawer">
+      <div class="drawer-header">
+        <h2>New session</h2>
+        <button class="close-btn" aria-label="Close">✕</button>
+      </div>
+
+      <div class="summary">
+        <span class="ok">✓ Created</span>
+        <h3>fix auth race</h3>
+        <dl>
+          <dt>scope</dt><dd>src/auth/**, tests/auth/**</dd>
+          <dt>mode</dt><dd>sync</dd>
+          <dt>id</dt><dd style="font: var(--font-size-xs) var(--font-mono);">01926e42-…</dd>
+        </dl>
+      </div>
+
+      <section class="attach">
+        <div class="attach-head">
+          <h3>Attach this jam</h3>
+          <button class="first-time-link" id="expand-link">First-time setup?</button>
+        </div>
+        <p class="intro">Run the join command in your local Claude Code from a checkout of the source repo.</p>
+
+        <!-- Accordion: marketplace + plugin install. Open by default for first-timers. -->
+        <details class="setup-accordion" open>
+          <summary class="accordion-head" style="list-style: none;">
+            <span class="left"><span class="chev">▸</span><span class="label">One-time machine setup (skip if already done)</span></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="setup-step">
+              <div class="step-label"><span class="num">1</span> Add the marketplace</div>
+              <p class="step-sub">Tells Claude Code where to find the plugin.</p>
+              <div class="cmd-row">
+                <code class="cmd"><span class="prompt">$ </span>claude plugin marketplace add nklisch/jamsesh</code>
+                <button class="copy-btn" data-cmd="claude plugin marketplace add nklisch/jamsesh">Copy</button>
+              </div>
+            </div>
+            <div class="setup-step">
+              <div class="step-label"><span class="num">2</span> Install the plugin</div>
+              <p class="step-sub">Adds the <code>/jamsesh:*</code> slash commands.</p>
+              <div class="cmd-row">
+                <code class="cmd"><span class="prompt">$ </span>claude plugins install jamsesh</code>
+                <button class="copy-btn" data-cmd="claude plugins install jamsesh">Copy</button>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Always-visible: the join command -->
+        <div class="join-block">
+          <div class="join-label"><span class="badge">Join</span><span>Run from your source checkout</span></div>
+          <p class="join-sub">The local <code>bin/jamsesh</code> binary will OAuth, clone, and wire up hooks.</p>
+          <div class="cmd-row">
+            <code class="cmd"><span class="prompt">$ </span>/jamsesh:join 01926e42-…</code>
+            <button class="copy-btn" data-cmd="/jamsesh:join 01926e42-0000-7000-a000-000000000010">Copy</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="pref-row">
+        <input type="checkbox" id="dont-expand"><label for="dont-expand">Don't auto-expand setup steps next time — I've done this before.</label>
+      </div>
+
+      <div class="drawer-actions">
+        <button class="btn-ghost">Close</button>
+        <button class="btn-primary">Open session view</button>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelectorAll('.state-toggle button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.state-toggle button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.body.classList.toggle('condensed-state', btn.dataset.state === 'condensed');
+      });
+    });
+
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try { await navigator.clipboard.writeText(btn.dataset.cmd); } catch (err) {}
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1200);
+      });
+    });
+
+    // "First-time setup?" link re-opens the accordion in condensed mode
+    document.getElementById('expand-link').addEventListener('click', () => {
+      document.body.classList.remove('condensed-state');
+      document.querySelectorAll('.state-toggle button').forEach(b => b.classList.toggle('active', b.dataset.state === 'first-time'));
+      const acc = document.querySelector('.setup-accordion');
+      acc.setAttribute('open', '');
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>portal-session-attach-onboarding — Compare 4 options</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; background: #0c0e12; color: #d9dde4; font-family: var(--font-sans); }
+    header {
+      padding: 18px 24px; border-bottom: 1px solid #1f232a;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    header h1 .sub { color: #8b8f99; font-weight: 400; margin-left: 8px; }
+    header .meta { font: 12px var(--font-mono); color: #8b8f99; }
+
+    .intro { padding: 12px 24px 18px; border-bottom: 1px solid #1f232a; font-size: 13px; color: #b4b8c2; max-width: 110ch; line-height: 1.5; }
+    .intro strong { color: #d9dde4; }
+    .intro .pole-tag { display: inline-block; padding: 1px 8px; border-radius: 9999px; background: rgba(255,255,255,0.06); color: #d9dde4; font: 11px var(--font-mono); margin: 0 2px; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr 1fr; gap: 0; height: calc((100vh - 144px) * 2); }
+    .cell { position: relative; border: 1px solid #1f232a; overflow: hidden; }
+    .cell + .cell { border-left: 0; }
+    .cell:nth-child(3), .cell:nth-child(4), .cell:nth-child(5), .cell:nth-child(6) { border-top: 0; }
+
+    .cell .label {
+      position: absolute; top: 8px; left: 8px; z-index: 10;
+      padding: 4px 10px; background: rgba(12, 14, 18, 0.92);
+      border: 1px solid #2a2f38; border-radius: 6px;
+      font: 11px var(--font-mono); color: #d9dde4;
+    }
+    .cell .label .name { color: #7ec8c9; }
+    .cell .open-link {
+      position: absolute; top: 8px; right: 8px; z-index: 10;
+      padding: 4px 10px; background: rgba(12, 14, 18, 0.92);
+      border: 1px solid #2a2f38; border-radius: 6px;
+      font: 11px var(--font-mono); color: #d9dde4; text-decoration: none;
+    }
+    .cell iframe { width: 100%; height: 100%; border: 0; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>portal-session-attach-onboarding <span class="sub">compare 4 directions</span></h1>
+    <span class="meta">.mockups/screens/portal-session-attach-onboarding/</span>
+  </header>
+
+  <div class="intro">
+    Closing the UX gap raised by the user: "How is a user supposed to actually
+    attach to a jam session? The UI doesn't provide any guidance during session
+    creation." All four options solve <strong>the same four requirements</strong> —
+    first-time walkthrough covering <code>marketplace add</code> + <code>plugins install</code>
+    + <code>/jamsesh:join</code>; a "don't show again" preference; a condensed view
+    for experienced users; an always-reachable affordance for forgetful users.
+    They differ in <em>where</em> the walkthrough lives, <em>how</em> it
+    progressively discloses, and <em>tone</em>:
+    <span class="pole-tag">instructional</span>
+    <span class="pole-tag">editorial / ceremonial</span>
+    <span class="pole-tag">respect-experienced</span>
+    <span class="pole-tag">dev-tool-native</span>.
+    Use each mock's state toggle (top of each iframe) to flip between the
+    first-time view and the condensed/dismissed view.
+  </div>
+
+  <div class="grid">
+    <div class="cell">
+      <div class="label">Option 1 · <span class="name">drawer success-takeover, sequential check-off</span></div>
+      <a class="open-link" href="option-1.html" target="_blank">open ↗</a>
+      <iframe src="option-1.html" loading="eager"></iframe>
+    </div>
+    <div class="cell">
+      <div class="label">Option 2 · <span class="name">full-screen ceremonial first-time, horizontal hero</span></div>
+      <a class="open-link" href="option-2.html" target="_blank">open ↗</a>
+      <iframe src="option-2.html" loading="eager"></iframe>
+    </div>
+    <div class="cell">
+      <div class="label">Option 3 · <span class="name">condensed-first inline panel, expand-on-demand</span></div>
+      <a class="open-link" href="option-3.html" target="_blank">open ↗</a>
+      <iframe src="option-3.html" loading="eager"></iframe>
+    </div>
+    <div class="cell">
+      <div class="label">Option 4 · <span class="name">terminal-prompt walkthrough, copy-as-action</span></div>
+      <a class="open-link" href="option-4.html" target="_blank">open ↗</a>
+      <iframe src="option-4.html" loading="eager"></iframe>
+    </div>
+    <div class="cell">
+      <div class="label">Option 5 · <span class="name">Option 2 refined — light ceremonial card, returning = same shell, smaller content (eyebrow stretch bug fixed)</span></div>
+      <a class="open-link" href="option-5.html" target="_blank">open ↗</a>
+      <iframe src="option-5.html" loading="eager"></iframe>
+    </div>
+    <div class="cell">
+      <div class="label">Option 6 · <span class="name">Terminal-first ceremonial — Option 5's journey shape, Option 4's terminal aesthetic; click-line-to-copy preserved</span></div>
+      <a class="open-link" href="option-6.html" target="_blank">open ↗</a>
+      <iframe src="option-6.html" loading="eager"></iframe>
+    </div>
+  </div>
+</body>
+</html>

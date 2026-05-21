@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>portal-session-attach-onboarding — Option 4: Terminal-prompt walkthrough, copy-as-action</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 10px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      font: 13px/1.4 var(--font-sans);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .mock-meta .state-toggle { display: inline-flex; gap: 4px; background: rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 3px; }
+    .mock-meta .state-toggle button { padding: 4px 10px; background: transparent; border: 0; color: var(--color-text-inverse); font: 12px var(--font-mono); cursor: pointer; border-radius: var(--radius-sm); opacity: 0.65; }
+    .mock-meta .state-toggle button.active { background: var(--color-text-inverse); color: var(--color-bg-inverse); opacity: 1; }
+
+    html, body { margin: 0; padding: 0; background: var(--color-bg-tertiary); }
+    body { font: var(--font-size-base)/var(--line-height-base) var(--font-sans); color: var(--color-text-primary); }
+
+    .page-bg { padding: 24px; opacity: 0.5; pointer-events: none; }
+    .page-bg .topbar { display: flex; justify-content: space-between; padding: 12px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 16px; }
+    .page-bg .wordmark { font-weight: var(--font-weight-semibold); }
+    .page-bg .wordmark .dot { color: var(--color-accent); }
+    .page-bg .list-row { padding: 14px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 8px; display: flex; justify-content: space-between; }
+    .page-bg .chrome-btn-hint { position: fixed; right: 24px; top: 80px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 6px 10px; font: var(--font-size-xs) var(--font-mono); color: var(--color-text-secondary); opacity: 0.85; }
+
+    /* Drawer */
+    .drawer-backdrop { position: fixed; inset: 56px 0 0 0; background: rgba(0,0,0,0.45); z-index: 50; display: flex; justify-content: flex-end; }
+    .drawer { width: 480px; max-width: 100vw; height: 100%; background: var(--color-bg-primary); border-left: 1px solid var(--color-border); display: flex; flex-direction: column; overflow-y: auto; }
+    .drawer-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+    .drawer-header h2 { margin: 0; font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }
+    .drawer-header .close-btn { background: transparent; border: 0; color: var(--color-text-secondary); cursor: pointer; font-size: 16px; padding: 4px; line-height: 1; }
+
+    .ok-strip { display: flex; gap: 10px; align-items: center; padding: 12px 24px; font-size: var(--font-size-sm); color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border); }
+    .ok-strip .pulse { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-success); }
+    .ok-strip strong { color: var(--color-text-primary); }
+
+    /* Terminal panel */
+    .terminal-wrap { padding: 16px 24px; flex: 1; }
+    .terminal-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--color-bg-inverse); color: var(--color-text-inverse); border-radius: var(--radius-md) var(--radius-md) 0 0; border: 1px solid var(--color-bg-inverse); }
+    .terminal-bar .dots { display: inline-flex; gap: 6px; }
+    .terminal-bar .dots span { width: 10px; height: 10px; border-radius: var(--radius-full); background: rgba(255,255,255,0.25); }
+    .terminal-bar .label { font: var(--font-weight-medium) var(--font-size-xs) var(--font-mono); opacity: 0.7; }
+    .terminal-bar .mode-toggle { display: inline-flex; gap: 0; border: 1px solid rgba(255,255,255,0.18); border-radius: var(--radius-sm); overflow: hidden; }
+    .terminal-bar .mode-toggle button { background: transparent; color: var(--color-text-inverse); border: 0; font: var(--font-size-xs) var(--font-mono); padding: 3px 10px; cursor: pointer; opacity: 0.55; }
+    .terminal-bar .mode-toggle button.active { background: rgba(255,255,255,0.10); opacity: 1; }
+
+    .terminal { background: #0c0e12; color: #d9dde4; font: var(--font-size-xs)/1.6 var(--font-mono); padding: 14px 16px; border-radius: 0 0 var(--radius-md) var(--radius-md); border: 1px solid var(--color-bg-inverse); border-top: 0; min-height: 360px; }
+    .term-line { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; border-radius: var(--radius-sm); padding-left: 6px; }
+    .term-line:hover { background: rgba(255,255,255,0.04); }
+    .term-line.copied { background: rgba(74, 140, 92, 0.18); }
+    .term-line .check { width: 14px; flex-shrink: 0; color: #4a8c5c; opacity: 0; font: var(--font-weight-bold) 12px var(--font-mono); }
+    .term-line.copied .check { opacity: 1; }
+    .term-line .prompt { color: #6f7480; user-select: none; }
+    .term-line .cmd-text { color: #d9dde4; }
+    .term-line .arg { color: #7ec8c9; }
+    .term-comment { display: block; padding: 8px 0 4px 22px; color: #6f7480; font-style: italic; }
+    .term-section-label { display: block; padding: 14px 0 4px 6px; color: #8b8f99; font: var(--font-size-xs) var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
+    .term-section-label:first-of-type { padding-top: 0; }
+
+    .term-footer { display: block; padding: 14px 0 0 6px; color: #6f7480; }
+    .term-footer .ok { color: #4a8c5c; }
+
+    /* Minimal-mode hides one-time setup */
+    body.minimal-state .term-section-label.one-time,
+    body.minimal-state .term-line.one-time,
+    body.minimal-state .term-comment.one-time { display: none; }
+
+    .pref-row { padding: 12px 24px; border-top: 1px solid var(--color-border); display: flex; gap: 8px; align-items: center; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+    .pref-row input { margin: 0; }
+
+    .drawer-actions { padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+    .drawer-actions .left-hint { font-size: var(--font-size-xs); color: var(--color-text-tertiary); }
+    .drawer-actions .right { display: flex; gap: 8px; }
+    .btn-primary, .btn-ghost { border-radius: var(--radius-md); padding: 8px 16px; font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans); cursor: pointer; }
+    .btn-primary { background: var(--color-bg-inverse); color: var(--color-text-inverse); border: 0; }
+    .btn-ghost { background: transparent; color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+  </style>
+</head>
+<body class="first-time-state">
+  <header class="mock-meta">
+    <strong>Option 4 — Terminal-prompt walkthrough, copy-as-action</strong>
+    <span class="state-toggle">
+      <button class="active" data-state="full">full (all 3 commands)</button>
+      <button data-state="minimal">minimal (join only)</button>
+    </span>
+  </header>
+
+  <main class="page-bg">
+    <div class="topbar"><div class="wordmark">jam<span class="dot">·</span>sesh</div><div style="font-size: 13px; color: var(--color-text-secondary);">acme · sessions</div></div>
+    <div class="list-row"><strong>fix auth race</strong><span style="font-size: 12px; color: var(--color-text-tertiary);">just now</span></div>
+    <div class="list-row"><strong>spike new digest format</strong><span style="font-size: 12px; color: var(--color-text-tertiary);">2 hr ago</span></div>
+    <div class="chrome-btn-hint">▷ Attach help</div>
+  </main>
+
+  <div class="drawer-backdrop">
+    <aside class="drawer">
+      <div class="drawer-header">
+        <h2>New session</h2>
+        <button class="close-btn" aria-label="Close">✕</button>
+      </div>
+
+      <div class="ok-strip">
+        <span class="pulse"></span>
+        <strong>fix auth race</strong>
+        <span>session is live · run the commands below to attach</span>
+      </div>
+
+      <section class="terminal-wrap">
+        <div class="terminal-bar">
+          <span class="dots"><span></span><span></span><span></span></span>
+          <span class="label">claude-code · attach</span>
+          <span class="mode-toggle">
+            <button class="active" data-mode="full">full</button>
+            <button data-mode="minimal">minimal</button>
+          </span>
+        </div>
+        <div class="terminal" id="terminal">
+          <span class="term-section-label one-time">One-time machine setup</span>
+          <span class="term-comment one-time"># Click a line to copy it.</span>
+          <div class="term-line one-time" data-cmd="claude plugin marketplace add nklisch/jamsesh">
+            <span class="check">✓</span>
+            <span class="prompt">$</span>
+            <span class="cmd-text">claude plugin marketplace add <span class="arg">nklisch/jamsesh</span></span>
+          </div>
+          <div class="term-line one-time" data-cmd="claude plugins install jamsesh">
+            <span class="check">✓</span>
+            <span class="prompt">$</span>
+            <span class="cmd-text">claude plugins install <span class="arg">jamsesh</span></span>
+          </div>
+
+          <span class="term-section-label">Join this jam</span>
+          <span class="term-comment"># Run from a checkout of your source repo. cd in first.</span>
+          <div class="term-line" data-cmd="/jamsesh:join 01926e42-0000-7000-a000-000000000010">
+            <span class="check">✓</span>
+            <span class="prompt">$</span>
+            <span class="cmd-text">/jamsesh:join <span class="arg">01926e42-…</span></span>
+          </div>
+
+          <span class="term-footer">
+            <span class="ok">→ </span>local <code>bin/jamsesh</code> will OAuth, clone, and wire up post-commit + SessionStart hooks.
+          </span>
+        </div>
+      </section>
+
+      <div class="pref-row">
+        <input type="checkbox" id="minimal-default"><label for="minimal-default">Open in minimal mode next time — I have the plugin installed.</label>
+      </div>
+
+      <div class="drawer-actions">
+        <span class="left-hint">▷ Same attach panel available from any session view header.</span>
+        <div class="right">
+          <button class="btn-ghost">Close</button>
+          <button class="btn-primary">Open session view</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    // Top state toggle drives the same thing as the terminal-bar mode toggle.
+    function setMode(mode) {
+      document.body.classList.toggle('minimal-state', mode === 'minimal');
+      document.querySelectorAll('.state-toggle button').forEach(b =>
+        b.classList.toggle('active', (b.dataset.state === 'minimal') === (mode === 'minimal'))
+      );
+      document.querySelectorAll('.terminal-bar .mode-toggle button').forEach(b =>
+        b.classList.toggle('active', b.dataset.mode === mode)
+      );
+    }
+    document.querySelectorAll('.state-toggle button').forEach(btn => {
+      btn.addEventListener('click', () => setMode(btn.dataset.state === 'minimal' ? 'minimal' : 'full'));
+    });
+    document.querySelectorAll('.terminal-bar .mode-toggle button').forEach(btn => {
+      btn.addEventListener('click', () => setMode(btn.dataset.mode));
+    });
+
+    // Click-line-to-copy with persistent green check
+    document.querySelectorAll('.term-line').forEach(line => {
+      line.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(line.dataset.cmd); } catch (e) {}
+        line.classList.add('copied');
+      });
+    });
+  </script>
+</body>
+</html>

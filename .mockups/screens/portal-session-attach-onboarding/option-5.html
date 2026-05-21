@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>portal-session-attach-onboarding — Option 5: Option 2 refined, both states post-create modal</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      padding: 10px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      font: 13px/1.4 var(--font-sans);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .mock-meta .state-toggle { display: inline-flex; gap: 4px; background: rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 3px; }
+    .mock-meta .state-toggle button { padding: 4px 10px; background: transparent; border: 0; color: var(--color-text-inverse); font: 12px var(--font-mono); cursor: pointer; border-radius: var(--radius-sm); opacity: 0.65; }
+    .mock-meta .state-toggle button.active { background: var(--color-text-inverse); color: var(--color-bg-inverse); opacity: 1; }
+
+    html, body { margin: 0; padding: 0; background: var(--color-bg-tertiary); }
+    body { font: var(--font-size-base)/var(--line-height-base) var(--font-sans); color: var(--color-text-primary); }
+
+    /* Faux SessionList behind the modal — always present in both states */
+    .page-bg { padding: 24px; opacity: 0.3; pointer-events: none; }
+    .page-bg .topbar { display: flex; justify-content: space-between; padding: 12px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 16px; }
+    .page-bg .wordmark { font-weight: var(--font-weight-semibold); }
+    .page-bg .wordmark .dot { color: var(--color-accent); }
+    .page-bg .list-row { padding: 14px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 8px; display: flex; justify-content: space-between; }
+    .page-bg .right { display: flex; gap: 12px; align-items: center; }
+    .page-bg .help-link { color: var(--color-text-link); font-size: var(--font-size-xs); text-decoration: underline dotted; }
+
+    /* Shared backdrop — same shape both states */
+    .modal-backdrop {
+      position: fixed; inset: 56px 0 0 0; background: rgba(20, 22, 26, 0.55);
+      z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .modal-card {
+      background: var(--color-bg-secondary); border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg); box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+      /* No flex/column here — block flow stacks children naturally, and avoids
+         the inline-flex eyebrow being stretched to the card's full width by
+         flex's default align-items: stretch on the cross axis. */
+    }
+
+    /* Shared eyebrow + heading shape */
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 4px 10px; background: var(--color-accent-muted); color: var(--color-accent);
+      border-radius: var(--radius-full); font: var(--font-weight-medium) var(--font-size-xs) var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+
+    /* ── Shared command rendering ───────────────────────────────────────────── */
+    /* min-width: 0 lets flex children actually clip when their content (the
+       nowrap monospaced command) exceeds the available width. Without this,
+       flex items default to min-width: auto = min-content = the full nowrap
+       command width, which forces parent overflow past the card edge. */
+    .cmd-row { display: flex; gap: 6px; min-width: 0; }
+    .cmd { flex: 1; min-width: 0; background: var(--color-bg-inverse); color: var(--color-text-inverse); font: var(--font-size-xs) var(--font-mono); padding: 8px 10px; border-radius: var(--radius-sm); white-space: nowrap; overflow-x: auto; }
+    .cmd .prompt { color: var(--color-text-tertiary); user-select: none; }
+    .copy-btn { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 0 12px; font: var(--font-weight-medium) var(--font-size-xs) var(--font-sans); cursor: pointer; color: var(--color-text-primary); }
+    .copy-btn:hover { border-color: var(--color-border-strong); }
+    .copy-btn.copied { background: var(--color-success); border-color: var(--color-success); color: var(--color-text-inverse); }
+
+    /* ── First-time: full-screen ceremonial card (same shape as Option 2) ──── */
+    .modal-card.first-time { max-width: 900px; width: 100%; padding: 40px 48px; }
+    .modal-card.first-time .eyebrow { margin-bottom: 16px; }
+    .modal-card.first-time h1 {
+      margin: 0 0 12px; font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em; line-height: var(--line-height-tight);
+    }
+    .modal-card.first-time .lede {
+      margin: 0 0 32px; font-size: var(--font-size-base); color: var(--color-text-secondary);
+      max-width: 60ch; line-height: 1.6;
+    }
+    .modal-card.first-time .steps-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 32px; }
+    /* min-width: 0 lets the grid cell shrink below its min-content (the nowrap
+       command's full width). Combined with minmax(0, 1fr) above, this lets the
+       third step-card actually fit inside the modal at narrow widths. */
+    .modal-card.first-time .step-card { padding: 20px; background: var(--color-bg-primary); border: 1px solid var(--color-border); border-radius: var(--radius-md); min-width: 0; position: relative; }
+    /* Surface chip — tells the user WHICH surface they're typing in. */
+    .surface-chip {
+      display: inline-block; padding: 2px 8px; border-radius: var(--radius-full);
+      font: var(--font-weight-medium) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px;
+    }
+    .surface-chip.surface-shell {
+      background: var(--color-bg-tertiary); color: var(--color-text-tertiary);
+      border: 1px solid var(--color-border);
+    }
+    .surface-chip.surface-claude {
+      background: var(--color-accent-muted); color: var(--color-accent);
+      border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+    }
+    /* CC-surface variant: subtly tinted card to make the third step visually
+       distinct from the two shell steps, since it's a different surface. */
+    .step-card.surface-cc { background: var(--color-accent-muted); border-color: color-mix(in srgb, var(--color-accent) 25%, var(--color-border)); }
+    /* CC prompt: accent color instead of muted, to match the chip. */
+    .cmd-cc .prompt-cc { color: var(--color-accent); }
+    .modal-card.first-time .step-card .num { width: 28px; height: 28px; border-radius: var(--radius-full); background: var(--color-bg-inverse); color: var(--color-text-inverse); font: var(--font-weight-semibold) 13px var(--font-mono); display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+    .modal-card.first-time .step-card h3 { margin: 0 0 6px; font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
+    .modal-card.first-time .step-card p { margin: 0 0 12px; font-size: var(--font-size-xs); color: var(--color-text-secondary); min-height: 2.5em; line-height: 1.5; }
+
+    .modal-card.first-time .card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 24px; border-top: 1px solid var(--color-border); }
+    .checkbox-row { display: flex; gap: 8px; align-items: center; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .checkbox-row input { margin: 0; }
+    .card-actions { display: flex; gap: 8px; }
+    .btn-primary, .btn-ghost { border-radius: var(--radius-md); padding: 10px 20px; font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans); cursor: pointer; }
+    .btn-primary { background: var(--color-bg-inverse); color: var(--color-text-inverse); border: 0; }
+    .btn-ghost { background: transparent; color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+
+    /* ── Returning: compact card, SAME shape, just smaller and less content ── */
+    /* Same eyebrow, same heading, same .cmd-row + .copy-btn — visually a sibling. */
+    .modal-card.compact { max-width: 480px; width: 100%; padding: 28px 32px; }
+    .modal-card.compact .eyebrow { margin-bottom: 14px; }
+    .modal-card.compact h1 {
+      margin: 0 0 10px; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em; line-height: var(--line-height-tight);
+    }
+    .modal-card.compact .lede {
+      margin: 0 0 20px; font-size: var(--font-size-sm); color: var(--color-text-secondary); line-height: 1.5;
+    }
+    .modal-card.compact .cmd-row { margin-bottom: 14px; }
+    .modal-card.compact .reopen-link {
+      display: inline-block; margin-bottom: 16px; font-size: var(--font-size-xs);
+      color: var(--color-text-link); cursor: pointer; text-decoration: underline dotted;
+    }
+    .modal-card.compact .card-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+
+    /* State-driven swap */
+    body.returning-state .modal-card.first-time { display: none; }
+    body:not(.returning-state) .modal-card.compact { display: none; }
+  </style>
+</head>
+<body class="first-time-state">
+  <header class="mock-meta">
+    <strong>Option 5 — Option 2 refined: both states are the same kind of post-create modal</strong>
+    <span class="state-toggle">
+      <button class="active" data-state="first-time">first-time (full)</button>
+      <button data-state="returning">returning (compact, same shape)</button>
+    </span>
+  </header>
+
+  <!-- Faux SessionList page — always dimmed behind the modal, same in both states -->
+  <main class="page-bg">
+    <div class="topbar">
+      <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+      <div class="right">
+        <span class="help-link">? Setup help</span>
+        <span style="font-size: 13px; color: var(--color-text-secondary);">acme · sessions</span>
+      </div>
+    </div>
+    <div class="list-row"><strong>fix auth race</strong><span style="font-size: 12px; color: var(--color-text-tertiary);">just now</span></div>
+    <div class="list-row"><strong>spike new digest format</strong><span style="font-size: 12px; color: var(--color-text-tertiary);">2 hr ago</span></div>
+    <div class="list-row"><strong>refactor router</strong><span style="font-size: 12px; color: var(--color-text-tertiary);">yesterday</span></div>
+  </main>
+
+  <!-- Modal: identical backdrop in both states; only the card inside changes size -->
+  <div class="modal-backdrop">
+
+    <!-- First-time: the full ceremonial 3-step card (same as original Option 2) -->
+    <article class="modal-card first-time">
+      <span class="eyebrow">Session created · fix auth race</span>
+      <h1>Let's get your Claude Code attached to this jam.</h1>
+      <p class="lede">Two <strong>shell</strong> commands to install the plugin (one-time per machine), then one <strong>slash command inside Claude Code</strong> to join this specific session. After the first time, future creates skip straight to the join command.</p>
+
+      <div class="steps-row">
+        <div class="step-card">
+          <span class="surface-chip surface-shell">in your terminal</span>
+          <div class="num">1</div>
+          <h3>Add the marketplace</h3>
+          <p>Tells Claude Code where the jamsesh plugin lives.</p>
+          <div class="cmd-row">
+            <code class="cmd"><span class="prompt">$ </span>claude plugin marketplace add nklisch/jamsesh</code>
+            <button class="copy-btn" data-cmd="claude plugin marketplace add nklisch/jamsesh">Copy</button>
+          </div>
+        </div>
+        <div class="step-card">
+          <span class="surface-chip surface-shell">in your terminal</span>
+          <div class="num">2</div>
+          <h3>Install the plugin</h3>
+          <p>Adds the <code>/jamsesh:*</code> slash commands and the local binary.</p>
+          <div class="cmd-row">
+            <code class="cmd"><span class="prompt">$ </span>claude plugins install jamsesh</code>
+            <button class="copy-btn" data-cmd="claude plugins install jamsesh">Copy</button>
+          </div>
+        </div>
+        <div class="step-card surface-cc">
+          <span class="surface-chip surface-claude">inside Claude Code</span>
+          <div class="num">3</div>
+          <h3>Join this jam</h3>
+          <p>Start Claude Code from a checkout of your source repo, then type this at the CC prompt.</p>
+          <div class="cmd-row">
+            <code class="cmd cmd-cc"><span class="prompt prompt-cc">▷ </span>/jamsesh:join 01926e42-…</code>
+            <button class="copy-btn" data-cmd="/jamsesh:join 01926e42-0000-7000-a000-000000000010">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <label class="checkbox-row"><input type="checkbox" id="dont-show"> Don't show the full walkthrough next time — I'll grab just the join command.</label>
+        <div class="card-actions">
+          <button class="btn-ghost">Skip for now</button>
+          <button class="btn-primary">Open session view →</button>
+        </div>
+      </div>
+    </article>
+
+    <!-- Returning: SAME modal-backdrop, SAME modal-card shape, just smaller content.
+         Same eyebrow, same heading style, same .cmd-row component — reads as the
+         compact sibling, not a different screen. -->
+    <article class="modal-card compact">
+      <span class="eyebrow">Session created · fix auth race</span>
+      <h1>Attach your Claude Code.</h1>
+      <p class="lede">Type this at the Claude Code prompt (CC running in a checkout of your source repo):</p>
+
+      <div class="cmd-row">
+        <code class="cmd cmd-cc"><span class="prompt prompt-cc">▷ </span>/jamsesh:join 01926e42-…</code>
+        <button class="copy-btn" data-cmd="/jamsesh:join 01926e42-0000-7000-a000-000000000010">Copy</button>
+      </div>
+
+      <span class="reopen-link" id="reopen-link">First-time setup? Show the full walkthrough →</span>
+
+      <div class="card-footer">
+        <button class="btn-ghost">Close</button>
+        <button class="btn-primary">Open session view →</button>
+      </div>
+    </article>
+
+  </div>
+
+  <script>
+    // State toggle drives which modal-card is visible. Backdrop + page-bg
+    // stay identical between states — that's what makes the two feel related.
+    document.querySelectorAll('.state-toggle button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.state-toggle button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.body.classList.toggle('returning-state', btn.dataset.state === 'returning');
+      });
+    });
+
+    // Copy buttons (shared style across both states)
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(btn.dataset.cmd); } catch (e) {}
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1200);
+      });
+    });
+
+    // "First-time setup?" link from compact → reopens full ceremonial view
+    document.getElementById('reopen-link').addEventListener('click', () => {
+      document.body.classList.remove('returning-state');
+      document.querySelectorAll('.state-toggle button').forEach(b =>
+        b.classList.toggle('active', b.dataset.state === 'first-time')
+      );
+    });
+  </script>
+</body>
+</html>
