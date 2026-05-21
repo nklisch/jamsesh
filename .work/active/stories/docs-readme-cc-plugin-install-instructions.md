@@ -1,7 +1,7 @@
 ---
 id: docs-readme-cc-plugin-install-instructions
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, plugin]
 parent: null
 depends_on: []
@@ -38,3 +38,24 @@ install commands would mislead users, so this addition was deferred from
 verified. Once confirmed, the README addition is a single-session story:
 insert the section with the verified commands and a short description of the
 wrapper caching behavior.
+
+## Implementation notes
+
+**Verification path:** Used the live `claude` CLI binary (`which claude` →
+`/home/nathan/.local/bin/claude`). Ran `claude plugins --help` and
+`claude plugin marketplace --help` to confirm the exact command surface.
+
+**Verified commands:**
+- `claude plugin marketplace add nklisch/jamsesh` — the `marketplace add`
+  subcommand takes a `<source>` arg; GitHub shorthand (`user/repo`) is
+  accepted per the help text ("URL, path, or GitHub repo").
+- `claude plugins install jamsesh` — `plugins install|i <plugin>` installs
+  from available marketplaces.
+
+**Link adjustments:** `docs/CC_PLUGIN.md` does not exist. Rather than link
+to a non-existent doc, the "see…" line was dropped. The plugin manifest
+(`.claude-plugin/plugin.json`) is the canonical reference but it's not a
+user-facing doc, so no link was added.
+
+**Section placement:** Lines 77–98 in `README.md`, between
+`## Operator quickstart` and `## License`.

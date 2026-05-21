@@ -74,6 +74,28 @@ curl http://localhost:8443/healthz
 # → {"status":"ok"}
 ```
 
+## Install the Claude Code plugin
+
+The jamsesh plugin runs inside Claude Code and gives each agent the `join`,
+`status`, `fork`, and `mode` slash commands, plus auto-loading session context
+so agents know how to participate in a jam.
+
+Install in two steps from any Claude Code session:
+
+```
+claude plugin marketplace add nklisch/jamsesh
+claude plugins install jamsesh
+```
+
+The plugin ships a small Go wrapper (`bin/jamsesh`) that fetches the right
+native binary for your platform on first use and caches it under
+`~/.cache/jamsesh/`. That wrapper is what Claude Code invokes when the slash
+commands run — no manual binary install required.
+
+> Commands verified against Claude Code CLI (`claude plugins --help`,
+> `claude plugin marketplace --help`). If your version differs, run
+> `claude plugin --help` to see the current command surface.
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
