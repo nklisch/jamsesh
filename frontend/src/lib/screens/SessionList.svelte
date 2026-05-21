@@ -4,6 +4,8 @@
   import ModePill from '$lib/components/ModePill.svelte';
   import AuthorDot from '$lib/components/AuthorDot.svelte';
   import NewSessionDrawer from '$lib/components/NewSessionDrawer.svelte';
+  import SessionAttachWalkthrough from '$lib/components/SessionAttachWalkthrough.svelte';
+  import AttachHelpLink from '$lib/components/AttachHelpLink.svelte';
   import { client } from '$lib/api/client';
   import { subscribe } from '$lib/ws.svelte';
   import { auth } from '$lib/auth.svelte';
@@ -22,6 +24,7 @@
   let loadError = $state<string | null>(null);
   let activeFilter = $state<FilterType>('all');
   let drawerOpen = $state(false);
+  let walkthroughSessionId = $state<string | null>(null);
 
   // Filtered sessions
   const filteredSessions = $derived(
@@ -55,6 +58,7 @@
   function handleSessionCreated(newSession: Session) {
     sessions = [newSession, ...sessions];
     drawerOpen = false;
+    walkthroughSessionId = newSession.id;
   }
 
   function updateSession(updated: Partial<Session> & { id: string }) {
@@ -140,6 +144,7 @@
   {#snippet children()}
     <div class="session-list-page">
       <div class="page-actions">
+        <AttachHelpLink sessionId={null} />
         <button class="new-btn" onclick={() => (drawerOpen = true)}>
           <span class="plus" aria-hidden="true">+</span> New session
         </button>
@@ -233,6 +238,17 @@
         onclose={() => (drawerOpen = false)}
       />
     {/if}
+
+    <SessionAttachWalkthrough
+      open={walkthroughSessionId !== null}
+      sessionId={walkthroughSessionId}
+      onclose={() => (walkthroughSessionId = null)}
+      onopenSession={() => {
+        const id = walkthroughSessionId;
+        walkthroughSessionId = null;
+        if (id) navigate(`/orgs/${orgId}/sessions/${id}`);
+      }}
+    />
   {/snippet}
 </Chrome>
 

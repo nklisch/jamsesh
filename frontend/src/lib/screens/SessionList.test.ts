@@ -15,9 +15,10 @@ vi.mock('$lib/auth.svelte', () => ({
   },
 }));
 
+const mockNavigate = vi.fn();
 vi.mock('$lib/router.svelte', () => ({
   current: { name: 'sessions', params: { orgId: 'org-1' } },
-  navigate: vi.fn(),
+  navigate: (...args: unknown[]) => mockNavigate(...args),
 }));
 
 const mockSubscribe = vi.fn().mockReturnValue(() => {});
@@ -26,8 +27,12 @@ vi.mock('$lib/ws.svelte', () => ({
 }));
 
 const mockGET = vi.fn();
+const mockPOST = vi.fn();
 vi.mock('$lib/api/client', () => ({
-  client: { GET: (...args: unknown[]) => mockGET(...args), POST: vi.fn() },
+  client: {
+    GET: (...args: unknown[]) => mockGET(...args),
+    POST: (...args: unknown[]) => mockPOST(...args),
+  },
 }));
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -47,11 +52,40 @@ function makeSession(overrides: Partial<Session> = {}): Session {
   };
 }
 
+/** Helper: open the new-session drawer, fill the name field, and submit. */
+async function createSessionViaDrawer(
+  newSession: Session,
+): Promise<void> {
+  mockPOST.mockResolvedValueOnce({ data: newSession, error: null });
+
+  // Open drawer
+  const newBtn = screen.getByRole('button', { name: /new session/i });
+  await fireEvent.click(newBtn);
+
+  // Fill required name field
+  const nameInput = screen.getByLabelText(/^name$/i);
+  await fireEvent.input(nameInput, { target: { value: newSession.name } });
+
+  // Submit form
+  const createBtn = screen.getByRole('button', { name: /create session/i });
+  await fireEvent.click(createBtn);
+
+  // Wait for async POST to resolve and state to update
+  await waitFor(() => {
+    expect(mockPOST).toHaveBeenCalled();
+  });
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('SessionList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -210,5 +244,77 @@ describe('SessionList', () => {
     await waitFor(() => {
       expect(screen.getByText('src/auth/**')).toBeInTheDocument();
     });
+  });
+
+  // ── SessionAttachWalkthrough integration ──────────────────────────────────
+
+  it('successful session creation opens the walkthrough with the new session id', async () => {
+    const newSession = makeSession({ id: 'sess-new', name: 'Brand New Session' });
+    mockGET.mockResolvedValue({ data: { items: [], next_cursor: null }, error: null });
+
+    render(SessionList, { props: { orgId: 'org-1' } });
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+
+    await createSessionViaDrawer(newSession);
+
+    // Walkthrough dialog should be in the DOM after successful creation.
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /attach claude code/i })).toBeInTheDocument();
+    });
+
+    // The new session's id appears in the join command shown inside the walkthrough.
+    await waitFor(() => {
+      expect(screen.getByText(`/jamsesh:join ${newSession.id}`)).toBeInTheDocument();
+    });
+  });
+
+  it('"Open session view →" inside walkthrough navigates to the session', async () => {
+    const newSession = makeSession({ id: 'sess-nav', name: 'Nav Session' });
+    mockGET.mockResolvedValue({ data: { items: [], next_cursor: null }, error: null });
+
+    render(SessionList, { props: { orgId: 'org-1' } });
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+
+    await createSessionViaDrawer(newSession);
+
+    // Wait for walkthrough to appear.
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /attach claude code/i })).toBeInTheDocument();
+    });
+
+    // Click "Open session view →"
+    const openBtn = screen.getByRole('button', { name: /open session view/i });
+    await fireEvent.click(openBtn);
+
+    expect(mockNavigate).toHaveBeenCalledWith(`/orgs/org-1/sessions/${newSession.id}`);
+  });
+
+  // ── Chrome AttachHelpLink ─────────────────────────────────────────────────
+
+  it('renders the "Setup help" link in the page actions area', async () => {
+    mockGET.mockResolvedValue({ data: { items: [], next_cursor: null }, error: null });
+
+    render(SessionList, { props: { orgId: 'org-1' } });
+
+    expect(screen.getByRole('button', { name: /setup help/i })).toBeInTheDocument();
+  });
+
+  it('clicking the chrome "Setup help" link opens walkthrough in chrome-help mode', async () => {
+    mockGET.mockResolvedValue({ data: { items: [], next_cursor: null }, error: null });
+
+    render(SessionList, { props: { orgId: 'org-1' } });
+
+    const helpBtn = screen.getByRole('button', { name: /setup help/i });
+    await fireEvent.click(helpBtn);
+
+    // Walkthrough dialog should be visible.
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /attach claude code/i })).toBeInTheDocument();
+    });
+
+    // In chrome-help mode (sessionId=null) the placeholder text is shown instead of a join cmd.
+    expect(
+      screen.getByText(/open a session view to copy its join command/i),
+    ).toBeInTheDocument();
   });
 });
