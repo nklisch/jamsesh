@@ -112,7 +112,9 @@
       font: var(--font-weight-medium) 14px/1 var(--font-mono);
       width: 12px; display: flex; align-items: center; justify-content: center;
     }
-    .cc-input .cc-cmd { flex: 1; min-width: 0; font: 13px var(--font-mono); color: #d9dde4; overflow-x: auto; white-space: nowrap; }
+    /* Truncate visually with ellipsis when the command is wider than the pane.
+       Copy still uses the full string from data-cmd, so nothing is lost. */
+    .cc-input .cc-cmd { flex: 1; min-width: 0; font: 13px var(--font-mono); color: #d9dde4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cc-input .cc-cmd .arg { color: #b5b8c4; }
     .cc-input .cc-check { width: 16px; flex-shrink: 0; color: #4a8c5c; opacity: 0; font: var(--font-weight-bold) 13px var(--font-mono); }
     .cc-input.copied .cc-check { opacity: 1; }
