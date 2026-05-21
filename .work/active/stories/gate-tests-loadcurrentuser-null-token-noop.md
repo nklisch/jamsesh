@@ -1,7 +1,7 @@
 ---
 id: gate-tests-loadcurrentuser-null-token-noop
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -73,3 +73,13 @@ code was then reverted and both test runs confirmed green (466/466).
 
 **No design-flaw escape needed:** The guard fires as expected — the null-token
 partition is real and the test exercises it correctly.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Test fits the existing unauthenticated-path cluster in auth.test.ts. Exercises the null-token partition of the cross-tenant guard at auth.svelte.ts:77. Negative-case (removing the `_token !== null` clause) confirmed the test catches the regression: with both `_token` and `tokenAtStart` null, `_token === tokenAtStart` is true and the response would be written.
