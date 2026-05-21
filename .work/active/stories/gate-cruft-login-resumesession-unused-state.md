@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-login-resumesession-unused-state
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -61,3 +61,13 @@ which are also plain `const`s initialized from URL params.
 **Verification:**
 - `npm run check`: 0 errors, 2 pre-existing warnings (unrelated)
 - `npm test`: 465/465 tests pass, including Login.test.ts resume-strip coverage
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: `$state` → `const` for a read-only-at-mount value. Matches the existing `_returnTo` / `returnTo` precedent in the same file (lines 37–41). Grep confirmed zero write sites for `resumeSession`. Template reads at lines 113, 118 work unchanged. 465→465 tests pass.
