@@ -49,6 +49,9 @@
     }
   });
 
+  // Known-safe OAuth provider hostnames. Add one entry per future provider.
+  const AUTHORIZE_HOST_ALLOWLIST = ['github.com'] as const;
+
   // OAuth start is a two-step flow: POST to mint a state nonce and
   // receive the provider's authorize_url, then navigate the browser to
   // that URL.
@@ -75,6 +78,26 @@
     }
 
     if (authorizeUrl) {
+      // Defense-in-depth: validate scheme and hostname before navigating.
+      // Rejects javascript: URIs, http: URLs, and any host not in the allowlist.
+      let parsed: URL;
+      try {
+        parsed = new URL(authorizeUrl);
+      } catch {
+        mode = 'oauth-error';
+        errorMsg = 'Authorization URL could not be validated. Please try again.';
+        oauthPending = false;
+        return;
+      }
+      if (
+        parsed.protocol !== 'https:' ||
+        !AUTHORIZE_HOST_ALLOWLIST.includes(parsed.hostname as (typeof AUTHORIZE_HOST_ALLOWLIST)[number])
+      ) {
+        mode = 'oauth-error';
+        errorMsg = 'Authorization URL could not be validated. Please try again.';
+        oauthPending = false;
+        return;
+      }
       window.location.assign(authorizeUrl);
       return;
     }
