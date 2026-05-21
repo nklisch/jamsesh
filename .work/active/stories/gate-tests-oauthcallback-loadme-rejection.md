@@ -1,7 +1,7 @@
 ---
 id: gate-tests-oauthcallback-loadme-rejection
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -68,3 +68,14 @@ way to fail-fast at the OAuthCallback boundary if that contract changes.
 4. Ran `npm test` — 467/467 pass. `npm run check` — 0 errors.
 
 **No backlog item needed** (Option 2 fixes the production bug in-session).
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The inner `try/catch` swallows the `loadCurrentUser` rejection silently — App.svelte's bootstrap effect retries on next render, but if it also fails the user lands on `/` with no orgs loaded. A `console.warn` inside the catch would aid observability without changing behavior. Optional.
+
+**Notes**: Option 2 (SUT fix + test) was the right call — the spec acceptance criterion at `spa-logged-in-landing-authed-redirect-fixes` explicitly requires "If `auth.loadCurrentUser()` rejects or hangs, the OAuthCallback path must STILL navigate." The inner `try/catch` is tightly scoped (only wraps the `loadCurrentUser` await, not the whole exchange flow), so real exchange failures still hit the outer catch as before. Negative-case verified.
