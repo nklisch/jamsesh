@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { client } from '$lib/api/client';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+  import AttachHelpLink from '$lib/components/AttachHelpLink.svelte';
   import AuthorDot from '$lib/components/AuthorDot.svelte';
   import TreeDag from '$lib/components/TreeDag.svelte';
   import ActivityFeed from '$lib/components/ActivityFeed.svelte';
@@ -149,6 +150,7 @@
       <span class="here">{session?.name ?? sessionId}</span>
     </nav>
     <div class="chrome-spacer"></div>
+    <AttachHelpLink sessionId={sessionId} />
     <ThemeToggle />
     {#if auth.currentUser}
       <AuthorDot authorId={auth.currentUser.id} size={26} title={auth.currentUser.displayName} />

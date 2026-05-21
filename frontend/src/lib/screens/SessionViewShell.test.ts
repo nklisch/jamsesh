@@ -59,6 +59,12 @@ function makeSession(overrides: Partial<Session> = {}): Session {
 describe('SessionViewShell', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      writable: true,
+      configurable: true,
+    });
     // Default GET mock: session data
     mockGET.mockImplementation((path: string) => {
       if (path.includes('/refs')) {
@@ -214,5 +220,24 @@ describe('SessionViewShell', () => {
     mockGET.mockReturnValue(new Promise(() => {})); // never resolves
     render(SessionViewShell, { props: { orgId: 'org-1', sessionId: 'sess-1' } });
     expect(screen.getByText(/loading session/i)).toBeInTheDocument();
+  });
+
+  it('renders AttachHelpLink in the SessionViewShell chrome', () => {
+    render(SessionViewShell, { props: { orgId: 'org-1', sessionId: 'sess-1' } });
+    expect(screen.getByRole('button', { name: /setup help/i })).toBeInTheDocument();
+  });
+
+  it('forwards the sessionId to AttachHelpLink and the walkthrough dialog displays it', async () => {
+    render(SessionViewShell, { props: { orgId: 'org-1', sessionId: 'sess-42' } });
+
+    const helpBtn = screen.getByRole('button', { name: /setup help/i });
+    await fireEvent.click(helpBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /attach claude code/i })).toBeInTheDocument();
+    });
+
+    // The walkthrough derives joinCmd = `/jamsesh:join <sessionId>` and renders it in the CC pane.
+    expect(screen.getByText('/jamsesh:join sess-42')).toBeInTheDocument();
   });
 });
