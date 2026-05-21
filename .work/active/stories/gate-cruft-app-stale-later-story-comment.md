@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-app-stale-later-story-comment
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -52,3 +52,13 @@ auth.loadCurrentUser via the _currentUser/_orgs check)."
   ```
 - `npm run check`: 0 errors, 2 pre-existing warnings (unrelated).
 - `npm test`: 41 test files, 464 tests — all pass before and after the edit.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Comment edit only — exact rewrite as spec'd, OAuthCallback.svelte:54 confirmed to already await loadCurrentUser before the cleanup. 464→464 tests pass; no behavior change.
