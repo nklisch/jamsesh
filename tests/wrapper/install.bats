@@ -39,8 +39,13 @@ teardown() {
   [ "$status" -eq 0 ]
   # The fake binary prints this exact string on stdout.
   [[ "$output" == "test-sentinel" ]]
-  # After exec the cached binary must exist.
-  local cached="${CLAUDE_PLUGIN_DATA}/bin/jamsesh-v0.2.0-${_os}-${_arch}"
+  # After exec the cached binary must exist. Read the wrapper's pinned
+  # JAMSESH_PLUGIN_VERSION at test time so the assertion tracks release-bumps
+  # (hardcoding the version here makes the test drift after every release).
+  local wrapper_version
+  wrapper_version=$(grep -E '^readonly JAMSESH_PLUGIN_VERSION=' "$(wrapper_bin)" \
+    | sed 's/^readonly JAMSESH_PLUGIN_VERSION="\(.*\)"/\1/')
+  local cached="${CLAUDE_PLUGIN_DATA}/bin/jamsesh-${wrapper_version}-${_os}-${_arch}"
   [ -x "${cached}" ]
 }
 
