@@ -5,7 +5,7 @@ stage: done
 tags: [infra, tooling]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.3.0
 gate_origin: null
 created: 2026-05-19
 updated: 2026-05-20

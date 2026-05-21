@@ -15,10 +15,31 @@ updated: 2026-05-20
 
 ## Bound items
 
-- `spa-logged-in-landing-and-org-bootstrap` (feature, [frontend, ui]) — SPA logged-in landing and org bootstrap
+### Feature: SPA logged-in landing + org bootstrap (4)
+
+- `spa-logged-in-landing-and-org-bootstrap` (feature, [frontend, ui])
   - `spa-logged-in-landing-auth-store-orgs-cache` (story) — Auth store extension + bootstrap effect
   - `spa-logged-in-landing-home-screen` (story) — Home screen + router wiring
   - `spa-logged-in-landing-authed-redirect-fixes` (story) — Authed-redirect fixes
+
+### Feature: bin/jamsesh regression harness (3)
+
+- `testing-bin-jamsesh-regression-harness` (feature, [testing, plugin])
+  - `testing-bin-jamsesh-regression-harness-bats-suite` (story) — bats test suite
+  - `testing-bin-jamsesh-regression-harness-ci-job` (story) — CI job wiring
+
+### Lone stories (4)
+
+- `bug-receive-pack-report-status-sideband-wrapping` — git receive-pack report-status sideband framing fix
+- `refactor-unify-refupdate-across-prereceive-postreceive` — unified RefUpdate type across hook handlers
+- `infra-claude-scheduled-tasks-lock-should-be-gitignored` — gitignore the .claude scheduled-tasks lock file
+- `docs-readme-cc-plugin-install-instructions` — README "Install the Claude Code plugin" section
+
+### Gate-driven (21)
+
+Items produced by the five quality gates (gate-security, gate-tests,
+gate-cruft, gate-docs, gate-patterns) when they ran on the v0.3.0 bundle.
+All 21 are at `stage: done`. See "Gate runs" below for finding counts.
 
 ## Gate runs
 

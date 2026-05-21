@@ -5,7 +5,7 @@ stage: done
 tags: [refactor, cleanup, portal, git]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.3.0
 gate_origin: refactor-design
 created: 2026-05-20
 updated: 2026-05-20
