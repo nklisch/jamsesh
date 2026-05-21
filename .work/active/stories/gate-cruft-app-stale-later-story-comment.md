@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-app-stale-later-story-comment
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -37,3 +37,18 @@ Drop the parenthetical "(in a later story)". Rewrite to state the
 current contract: "OAuthCallback awaits loadCurrentUser() explicitly
 before navigating, so this effect is a no-op there (guarded inside
 auth.loadCurrentUser via the _currentUser/_orgs check)."
+
+## Implementation notes
+
+- Verified `OAuthCallback.svelte:54` (`frontend/src/lib/screens/OAuthCallback.svelte`)
+  already has `await auth.loadCurrentUser();` — the "later story" has landed.
+- Edited `frontend/src/App.svelte` lines 47-49: removed the stale `(in a later story)`
+  parenthetical and reformatted the three-line comment to flow cleanly.
+- Exact rewrite applied:
+  ```
+  // OAuthCallback awaits loadCurrentUser() explicitly before navigating,
+  // so this effect is a no-op there (guarded inside auth.loadCurrentUser
+  // via the _currentUser/_orgs check).
+  ```
+- `npm run check`: 0 errors, 2 pre-existing warnings (unrelated).
+- `npm test`: 41 test files, 464 tests — all pass before and after the edit.
