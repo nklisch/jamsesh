@@ -51,7 +51,12 @@
 
       if (data) {
         auth.setTokens(data.access_token, data.refresh_token);
-        await auth.loadCurrentUser();
+        try {
+          await auth.loadCurrentUser();
+        } catch {
+          // /api/me failed — tokens are valid, navigate anyway.
+          // App.svelte's bootstrap effect will retry on next render.
+        }
         navigate(returnTo ?? '/');
         return;
       }

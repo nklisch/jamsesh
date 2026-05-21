@@ -149,6 +149,27 @@ describe('OAuthCallback', () => {
     );
   });
 
+  // ── loadCurrentUser rejection does not block navigate ─────────────────────
+
+  it('navigates to / even when loadCurrentUser rejects', async () => {
+    mockLoadCurrentUser.mockRejectedValueOnce(new Error('boom'));
+    mockPOST.mockResolvedValue({
+      data: {
+        access_token: 'access-tok',
+        refresh_token: 'refresh-tok',
+        access_expires_at: new Date().toISOString(),
+        refresh_expires_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+    sessionStorage.removeItem('oauth.return_to');
+    render(OAuthCallback);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'));
+    // setTokens must have fired — user is signed in even though /api/me failed.
+    expect(mockSetTokens).toHaveBeenCalled();
+  });
+
   // ── Provider fallback ─────────────────────────────────────────────────────
 
   it('uses github as provider fallback when oauth.provider not in sessionStorage', async () => {
