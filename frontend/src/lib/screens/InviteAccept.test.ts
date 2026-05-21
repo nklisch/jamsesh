@@ -67,6 +67,13 @@ describe('InviteAccept', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setHash('#token=tok-abc');
+    // Ensure the walkthrough opens in 'full' mode (not compact) and
+    // navigator.clipboard is available for the copy buttons in the walkthrough.
+    localStorage.clear();
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
   });
 
   afterEach(() => {
@@ -167,7 +174,7 @@ describe('InviteAccept', () => {
 
   // ── Accept flow ────────────────────────────────────────────────────────────
 
-  it('POSTs with the token in the body and navigates to session on 200', async () => {
+  it('POSTs with the token in the body on accept click', async () => {
     mockGET.mockResolvedValue({ data: makeDetails(), error: null });
     mockPOST.mockResolvedValue({
       data: { id: 'sess-1', name: 'spec refinement' },
@@ -190,9 +197,11 @@ describe('InviteAccept', () => {
       );
     });
 
+    // navigate is deferred — walkthrough modal should be open instead
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/orgs/org-1/sessions/sess-1');
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('disables Accept button while POST is in flight', async () => {
@@ -208,6 +217,71 @@ describe('InviteAccept', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /joining/i })).toBeDisabled();
+    });
+  });
+
+  // ── Walkthrough integration ────────────────────────────────────────────────
+
+  it('POST 200 opens walkthrough modal and defers navigate', async () => {
+    mockGET.mockResolvedValue({ data: makeDetails(), error: null });
+    mockPOST.mockResolvedValue({
+      data: { id: 'sess-1', name: 'spec refinement' },
+      error: null,
+      response: { status: 200 },
+    });
+    render(InviteAccept, { props: DEFAULT_PROPS });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /accept/i })).toBeInTheDocument());
+    await fireEvent.click(screen.getByRole('button', { name: /accept/i }));
+
+    // Walkthrough dialog should appear
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    // navigate should NOT have been called yet
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('closing the walkthrough (ESC) navigates to the session', async () => {
+    mockGET.mockResolvedValue({ data: makeDetails(), error: null });
+    mockPOST.mockResolvedValue({
+      data: { id: 'sess-1', name: 'spec refinement' },
+      error: null,
+      response: { status: 200 },
+    });
+    render(InviteAccept, { props: DEFAULT_PROPS });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /accept/i })).toBeInTheDocument());
+    await fireEvent.click(screen.getByRole('button', { name: /accept/i }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+
+    // Trigger ESC to close
+    await fireEvent.keyDown(window, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/orgs/org-1/sessions/sess-1');
+    });
+  });
+
+  it('"Open session view" button navigates to the session', async () => {
+    mockGET.mockResolvedValue({ data: makeDetails(), error: null });
+    mockPOST.mockResolvedValue({
+      data: { id: 'sess-1', name: 'spec refinement' },
+      error: null,
+      response: { status: 200 },
+    });
+    render(InviteAccept, { props: DEFAULT_PROPS });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /accept/i })).toBeInTheDocument());
+    await fireEvent.click(screen.getByRole('button', { name: /accept/i }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+
+    // Click "Open session view →" button inside the walkthrough
+    const openBtn = screen.getByRole('button', { name: /open session view/i });
+    await fireEvent.click(openBtn);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/orgs/org-1/sessions/sess-1');
     });
   });
 

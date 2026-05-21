@@ -4,6 +4,7 @@
   import { auth } from '$lib/auth.svelte';
   import { navigate } from '$lib/router.svelte';
   import type { components } from '$lib/api/types.gen';
+  import SessionAttachWalkthrough from '$lib/components/SessionAttachWalkthrough.svelte';
 
   type SessionInviteDetails = components['schemas']['SessionInviteDetails'];
 
@@ -17,7 +18,7 @@
   //  loading  → ready (GET 200)
   //  loading  → error (GET non-200, missing token)
   //  ready    → accepting (POST in flight)
-  //  accepting → navigate away (POST 200)
+  //  accepting → walkthrough open (POST 200) — navigation deferred until walkthrough closes
   //  accepting → rejection (POST 403 auth.org_membership_required)
   //  accepting → error (POST other failure)
 
@@ -27,6 +28,7 @@
   let inviteDetails = $state<SessionInviteDetails | null>(null);
   let errorCode = $state<string | null>(null);
   let token = $state<string | null>(null);
+  let walkthroughOpen = $state(false);
 
   // ── Mount: extract token + fetch invite details ───────────────────────────
 
@@ -86,7 +88,11 @@
     );
 
     if (data) {
-      navigate(`/orgs/${orgId}/sessions/${sessionId}`);
+      // Open the walkthrough and defer navigation until it closes.
+      // Option A: stay in 'accepting' viewState while the modal is open —
+      // the backdrop dims the "Joining…" indicator behind it, which is
+      // simpler than introducing a new 'attaching' state.
+      walkthroughOpen = true;
       return;
     }
 
@@ -250,6 +256,19 @@
 
   </main>
 </div>
+
+<SessionAttachWalkthrough
+  open={walkthroughOpen}
+  sessionId={sessionId}
+  onclose={() => {
+    walkthroughOpen = false;
+    navigate(`/orgs/${orgId}/sessions/${sessionId}`);
+  }}
+  onopenSession={() => {
+    walkthroughOpen = false;
+    navigate(`/orgs/${orgId}/sessions/${sessionId}`);
+  }}
+/>
 
 <style>
   .page {
