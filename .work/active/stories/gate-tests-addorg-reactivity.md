@@ -1,7 +1,7 @@
 ---
 id: gate-tests-addorg-reactivity
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -84,3 +84,14 @@ Inside the harness's `$effect`, the counter increment is `effectRunCount = untra
 ### Run results
 
 Both runs consistent. 42 test files / 465 tests pass. `npm run check` reports 0 errors (2 pre-existing warnings unrelated to this change).
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `AuthOrgsReactivityHarness.test.svelte` naming is unusual (the file is a Svelte component imported by the test, not a test file). Vitest's default test glob doesn't match `.test.svelte`, so it works — but a name like `AuthOrgsReactivityHarness.svelte` placed alongside the test would be clearer to a future reader. Cosmetic.
+
+**Notes**: The test defends what the spec requires — "consumer effects fire after addOrg" — via a mounted component reading `auth.orgs` in a `$effect`, asserting the run-count increments after `addOrg`. Negative case (no-op `addOrg`) correctly fails. The genuine Svelte-5 finding ("push-in-place is also reactive via `$state` proxy, so push-vs-reassign isn't distinguishable from outside") is recorded in implementation notes; the existing reference-inequality test in `auth.test.ts` still distinguishes them internally for the implementation contract.
