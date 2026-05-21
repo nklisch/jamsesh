@@ -1,7 +1,7 @@
 ---
 id: gate-tests-org-row-preventdefault
 kind: story
-stage: review
+stage: done
 tags: [testing]
 parent: null
 depends_on: []
@@ -73,3 +73,13 @@ the old one does not. Reverted; both tests pass green.
 
 **npm run check:** 0 errors, 2 pre-existing warnings (unrelated files).
 **npm test (twice):** 472/472 tests pass.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Added a `dispatchEvent`-based test that pins `event.defaultPrevented === true`. The existing weak test had its title cleaned up so it no longer falsely claims to assert preventDefault — good test-integrity hygiene. Negative-case (removing `e.preventDefault()` from Home.svelte:93) confirmed the new test catches the regression while the existing navigate-fires test does not. Both tests now pin distinct properties.
