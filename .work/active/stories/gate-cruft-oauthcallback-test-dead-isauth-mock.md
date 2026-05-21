@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-oauthcallback-test-dead-isauth-mock
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -46,3 +46,13 @@ exercises.
 - Removed the `isAuthenticated: false` line from the `vi.mock('$lib/auth.svelte', ...)` block in `OAuthCallback.test.ts`.
 - `npm run check`: 0 errors, 2 pre-existing warnings (unrelated files).
 - `npm test OAuthCallback`: 15/15 tests pass. No test relied on the dead field.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: One-line removal of dead mock field. SUT (`OAuthCallback.svelte`) confirmed not to read `auth.isAuthenticated`. All 15 OAuthCallback tests still pass.
