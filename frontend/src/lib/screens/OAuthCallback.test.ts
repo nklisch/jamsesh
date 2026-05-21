@@ -22,7 +22,6 @@ vi.mock('$lib/auth.svelte', () => ({
   auth: {
     setTokens: (...args: unknown[]) => mockSetTokens(...args),
     loadCurrentUser: () => mockLoadCurrentUser(),
-    isAuthenticated: false,
   },
 }));
 

@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-oauthcallback-test-dead-isauth-mock
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -39,3 +39,10 @@ confirmed). The field is defensive scaffolding.
 ## Removal
 Delete line 25. The mock surface should be the minimum the SUT
 exercises.
+
+## Implementation notes
+
+- Confirmed `OAuthCallback.svelte` has zero references to `auth.isAuthenticated` (grep returned empty).
+- Removed the `isAuthenticated: false` line from the `vi.mock('$lib/auth.svelte', ...)` block in `OAuthCallback.test.ts`.
+- `npm run check`: 0 errors, 2 pre-existing warnings (unrelated files).
+- `npm test OAuthCallback`: 15/15 tests pass. No test relied on the dead field.
