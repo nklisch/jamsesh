@@ -61,7 +61,7 @@ Technical boundaries and decisions for jamsesh. Present truth, not roadmap.
 - Stores user-level state in `${CLAUDE_PLUGIN_DATA}/` (persistent across plugin
   updates) — OAuth tokens, session memberships, per-session ref bindings, last
   digest sequence numbers.
-- Plugin manifest at `.claude-plugin/plugin.json`, with `.mcp.json` configuring
+- Plugin manifest at `plugins/jamsesh/.claude-plugin/plugin.json`, with `.mcp.json` configuring
   the CC MCP client to connect to the portal's HTTPS-MCP endpoint using
   Bearer auth via a `headersHelper` script (so the auth header is read fresh
   from local state on each MCP connection).

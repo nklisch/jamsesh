@@ -87,10 +87,10 @@ claude plugin marketplace add nklisch/jamsesh
 claude plugins install jamsesh
 ```
 
-The plugin ships a small Go wrapper (`bin/jamsesh`) that fetches the right
-native binary for your platform on first use and caches it under
-`~/.cache/jamsesh/`. That wrapper is what Claude Code invokes when the slash
-commands run — no manual binary install required.
+The plugin ships a small Go wrapper (`plugins/jamsesh/bin/jamsesh`) that
+fetches the right native binary for your platform on first use and caches it
+under `~/.cache/jamsesh/`. That wrapper is what Claude Code invokes when the
+slash commands run — no manual binary install required.
 
 > Commands verified against Claude Code CLI (`claude plugins --help`,
 > `claude plugin marketplace --help`). If your version differs, run

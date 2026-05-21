@@ -130,15 +130,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: assert bin/jamsesh version matches tag
+      - name: assert plugins/jamsesh/bin/jamsesh version matches tag
         run: |
           set -euo pipefail
           expected="${GITHUB_REF_NAME}"
-          actual=$(grep '^readonly JAMSESH_PLUGIN_VERSION=' bin/jamsesh \
+          actual=$(grep '^readonly JAMSESH_PLUGIN_VERSION=' plugins/jamsesh/bin/jamsesh \
                    | sed -E 's/.*="([^"]+)".*/\1/')
           if [[ "${actual}" != "${expected}" ]]; then
-            echo "::error::bin/jamsesh JAMSESH_PLUGIN_VERSION='${actual}' but tag is '${expected}'."
-            echo "::error::Bump the constant in bin/jamsesh before pushing the tag (see docs/RELEASING.md)."
+            echo "::error::plugins/jamsesh/bin/jamsesh JAMSESH_PLUGIN_VERSION='${actual}' but tag is '${expected}'."
+            echo "::error::Bump the constant in plugins/jamsesh/bin/jamsesh before pushing the tag (see docs/RELEASING.md)."
             exit 1
           fi
 

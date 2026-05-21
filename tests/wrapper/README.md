@@ -1,7 +1,11 @@
-# `tests/wrapper/` — bats regression suite for `bin/jamsesh`
+# `tests/wrapper/` — bats regression suite for `plugins/jamsesh/bin/jamsesh`
 
-Pins the contract of the `bin/jamsesh` wrapper script: download, sha256
-verification, optional cosign verification, caching, and env-var overrides.
+Pins the contract of the `plugins/jamsesh/bin/jamsesh` wrapper script:
+download, sha256 verification, optional cosign verification, caching, and
+env-var overrides. The bats files still refer to "the wrapper" or
+"`bin/jamsesh`" in their own commentary because the binary's relative
+location inside the installed plugin remains `bin/jamsesh` — only the
+checked-in source path changed.
 
 ## Requirements
 
@@ -62,7 +66,7 @@ Each test gets an isolated environment:
 
 ## Smoke verification
 
-After any change to `bin/jamsesh`, run the suite and verify it catches regressions:
+After any change to `plugins/jamsesh/bin/jamsesh`, run the suite and verify it catches regressions:
 
 | Intentional break                         | Tests that fail                                    |
 |-------------------------------------------|----------------------------------------------------|

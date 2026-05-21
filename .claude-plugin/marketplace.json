@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schemas.anthropic.com/claude-plugin/marketplace.json",
+  "name": "jamsesh",
+  "description": "Marketplace for the jamsesh Claude Code plugin — multi-agent jamming for codebases.",
+  "owner": {
+    "name": "jamsesh maintainers",
+    "url": "https://github.com/nklisch/jamsesh"
+  },
+  "plugins": [
+    {
+      "name": "jamsesh",
+      "source": "./plugins/jamsesh",
+      "description": "Multi-agent jamming for codebases — coordinated Claude Code sessions producing PR-shaped branches without merge headaches.",
+      "version": "0.3.0",
+      "author": {
+        "name": "jamsesh maintainers",
+        "url": "https://github.com/nklisch/jamsesh"
+      },
+      "homepage": "https://github.com/nklisch/jamsesh",
+      "repository": "https://github.com/nklisch/jamsesh",
+      "license": "Apache-2.0",
+      "keywords": [
+        "git",
+        "collaboration",
+        "multi-agent",
+        "session",
+        "merge",
+        "jam"
+      ],
+      "category": "collaboration"
+    }
+  ]
+}

@@ -30,7 +30,7 @@ the frozen file. When `go test ./fixtures/ccdriver/...` fails with a
 
 1. **You changed a payload struct unintentionally.** Revert the struct change.
 2. **Claude Code's hook protocol changed.** If you have confirmed the new
-   shape from the upstream spec (`hooks/hooks.json` + `cmd/jamsesh/hooks/`),
+   shape from the upstream spec (`plugins/jamsesh/hooks/hooks.json` + `cmd/jamsesh/hooks/`),
    regenerate all frozen files:
 
    ```

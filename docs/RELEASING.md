@@ -26,9 +26,10 @@ a `v*` tag to GitHub triggers `.github/workflows/release.yml`, which:
 8. Builds and pushes the multi-arch `ghcr.io/nklisch/jamsesh` Docker image
    with semver tags + `latest`, signed via cosign.
 9. Plugin install: users install from `nklisch/jamsesh` directly. The
-   `bin/jamsesh` wrapper script in the plugin fetches the matching binary
-   from the release's GitHub assets on first run, verifies via sha256 +
-   optional cosign, and caches under `${CLAUDE_PLUGIN_DATA}/bin/`.
+   `plugins/jamsesh/bin/jamsesh` wrapper script in the plugin fetches the
+   matching binary from the release's GitHub assets on first run, verifies
+   via sha256 + optional cosign, and caches under
+   `${CLAUDE_PLUGIN_DATA}/bin/`.
 
 The substrate's release-deploy skill (`/agile-workflow:release-deploy`)
 handles steps the maintainer takes locally before pushing the tag —
@@ -52,8 +53,9 @@ CHANGELOG entry. That skill is documented in
    scripts/release-bump.sh vX.Y.Z
    ```
 
-   The script edits three files (`bin/jamsesh`, `deploy/compose/.env.example`,
-   `.claude-plugin/plugin.json`), commits them as `release-prep: vX.Y.Z`,
+   The script edits three files (`plugins/jamsesh/bin/jamsesh`,
+   `deploy/compose/.env.example`, `plugins/jamsesh/.claude-plugin/plugin.json`),
+   commits them as `release-prep: vX.Y.Z`,
    creates an annotated tag, and pushes `main` then the tag to `origin`.
    The tag push triggers `release.yml`.
 
@@ -74,14 +76,14 @@ CHANGELOG entry. That skill is documented in
      > deploy/compose/.env.example.tmp && mv deploy/compose/.env.example.tmp deploy/compose/.env.example
 
    # Bump plugin wrapper
-   sed 's/^readonly JAMSESH_PLUGIN_VERSION=.*/readonly JAMSESH_PLUGIN_VERSION="vX.Y.Z"/' bin/jamsesh \
-     > bin/jamsesh.tmp && mv bin/jamsesh.tmp bin/jamsesh
+   sed 's/^readonly JAMSESH_PLUGIN_VERSION=.*/readonly JAMSESH_PLUGIN_VERSION="vX.Y.Z"/' plugins/jamsesh/bin/jamsesh \
+     > plugins/jamsesh/bin/jamsesh.tmp && mv plugins/jamsesh/bin/jamsesh.tmp plugins/jamsesh/bin/jamsesh
 
    # Bump plugin manifest (bare version, no 'v' prefix)
-   jq --ascii-output --arg v "X.Y.Z" '.version = $v' .claude-plugin/plugin.json \
-     > .claude-plugin/plugin.json.tmp && mv .claude-plugin/plugin.json.tmp .claude-plugin/plugin.json
+   jq --ascii-output --arg v "X.Y.Z" '.version = $v' plugins/jamsesh/.claude-plugin/plugin.json \
+     > plugins/jamsesh/.claude-plugin/plugin.json.tmp && mv plugins/jamsesh/.claude-plugin/plugin.json.tmp plugins/jamsesh/.claude-plugin/plugin.json
 
-   git add bin/jamsesh deploy/compose/.env.example .claude-plugin/plugin.json
+   git add plugins/jamsesh/bin/jamsesh deploy/compose/.env.example plugins/jamsesh/.claude-plugin/plugin.json
    git commit -m "release-prep: vX.Y.Z"
    git tag -a vX.Y.Z -m "Release vX.Y.Z"
    git push origin main

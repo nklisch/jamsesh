@@ -251,5 +251,5 @@ wrapper_bin() {
   # Resolve relative to this helpers file so the suite can run from any cwd.
   local helpers_dir
   helpers_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  printf '%s/../../bin/jamsesh\n' "${helpers_dir}"
+  printf '%s/../../plugins/jamsesh/bin/jamsesh\n' "${helpers_dir}"
 }

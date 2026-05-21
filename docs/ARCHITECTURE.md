@@ -10,8 +10,8 @@ How jamsesh is organized.
 │                                                             │
 │  ┌─────────────────┐  ┌──────────────────────────────────┐  │
 │  │ Hooks call into │  │ MCP client (HTTPS) points at     │  │
-│  │ bin/jamsesh     │  │ portal MCP endpoint with user    │  │
-│  │ (binary in PATH)│  │ OAuth token via headersHelper    │  │
+│  │ plugins/jamsesh │  │ portal MCP endpoint with user    │  │
+│  │ /bin/jamsesh    │  │ OAuth token via headersHelper    │  │
 │  └────────┬────────┘  └─────────────┬────────────────────┘  │
 └───────────┼─────────────────────────┼───────────────────────┘
             │                         │

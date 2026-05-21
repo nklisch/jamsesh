@@ -9,9 +9,9 @@
 #   2. Pre-flight checks (clean tree, on main, tag not yet taken,
 #      all three target files exist).
 #   3. Edits in-place:
-#        bin/jamsesh                  — readonly JAMSESH_PLUGIN_VERSION="vX.Y.Z"
-#        deploy/compose/.env.example  — JAMSESH_VERSION=vX.Y.Z
-#        .claude-plugin/plugin.json   — .version = "X.Y.Z"  (no v prefix)
+#        plugins/jamsesh/bin/jamsesh                — readonly JAMSESH_PLUGIN_VERSION="vX.Y.Z"
+#        deploy/compose/.env.example                — JAMSESH_VERSION=vX.Y.Z
+#        plugins/jamsesh/.claude-plugin/plugin.json — .version = "X.Y.Z"  (no v prefix)
 #   4. Stages those three files (explicit paths only — never git add -A).
 #   5. Commits  "release-prep: vX.Y.Z"
 #   6. Annotated tag "vX.Y.Z"
@@ -56,7 +56,7 @@ show_sed_diff() {
 #   Portable in-place edit using a temp file (works on Linux and macOS).
 #   Preserves the original file's mode — without the explicit chmod the temp
 #   file inherits the default umask (typically 0644) and the mv strips the
-#   executable bit on bin/jamsesh.
+#   executable bit on plugins/jamsesh/bin/jamsesh.
 sed_inplace() {
   local file="$1" pattern="$2" replacement="$3"
   local tmp="${file}.tmp"
@@ -94,9 +94,9 @@ BARE_VERSION="${VERSION#v}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-BIN_JAMSESH="$REPO_ROOT/bin/jamsesh"
+BIN_JAMSESH="$REPO_ROOT/plugins/jamsesh/bin/jamsesh"
 ENV_EXAMPLE="$REPO_ROOT/deploy/compose/.env.example"
-PLUGIN_JSON="$REPO_ROOT/.claude-plugin/plugin.json"
+PLUGIN_JSON="$REPO_ROOT/plugins/jamsesh/.claude-plugin/plugin.json"
 
 # ── pre-flight checks ─────────────────────────────────────────────────────────
 
