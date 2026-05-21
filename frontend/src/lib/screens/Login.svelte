@@ -23,7 +23,7 @@
   // Optional session name surfaced when arriving via an invite link.
   // Consumed by the "resume strip" — callers pass via query param; routing
   // support lands in epic-portal-ui-session-view-shell.
-  let resumeSession = $state<string | null>(_searchParams.get('resume'));
+  const resumeSession: string | null = _searchParams.get('resume');
 
   // `return_to` — set by the App.svelte auth gate when an unauthenticated
   // user lands on a protected route that benefits from post-login resumption

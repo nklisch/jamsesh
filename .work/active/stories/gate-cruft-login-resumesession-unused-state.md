@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-login-resumesession-unused-state
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -33,3 +33,31 @@ overhead.
 
 ## Removal
 Change to `const resumeSession: string | null = _searchParams.get('resume');`.
+
+## Implementation notes
+
+**Grep findings:** `resumeSession` appears at exactly 3 sites in `Login.svelte`:
+- Line 26: declaration (changed)
+- Line 113: `{#if resumeSession}` — read-only template branch
+- Line 118: `{resumeSession}` interpolation — read-only
+
+Zero write sites confirmed. The `$state` wrap was unnecessary overhead.
+
+**Change applied:** `frontend/src/lib/screens/Login.svelte` line 26
+
+Before:
+```ts
+let resumeSession = $state<string | null>(_searchParams.get('resume'));
+```
+
+After:
+```ts
+const resumeSession: string | null = _searchParams.get('resume');
+```
+
+This follows the existing precedent of `_returnTo` / `returnTo` (lines 37–41)
+which are also plain `const`s initialized from URL params.
+
+**Verification:**
+- `npm run check`: 0 errors, 2 pre-existing warnings (unrelated)
+- `npm test`: 465/465 tests pass, including Login.test.ts resume-strip coverage
