@@ -1,7 +1,7 @@
 ---
 id: release-v0.3.0
 kind: release
-stage: quality-gate
+stage: released
 tags: []
 parent: null
 depends_on: []
@@ -100,3 +100,35 @@ Progress since the previous readiness check (earlier 2026-05-20):
 - Re-run `/agile-workflow:release-deploy v0.3.0` once all bound items
   are at `stage: done` — the orchestrator is idempotent and picks up
   where it left off.
+
+## Shipped (2026-05-20)
+
+**Mapping**: tag-based (annotated `v0.3.0`, pushed to origin/main).
+
+**Release commit**: `e0c2886` (release-prep: v0.3.0)
+**Release tag**: `v0.3.0`
+
+**Bound items shipped**: 32
+
+| Source | Count |
+|---|---|
+| Feature: spa-logged-in-landing-and-org-bootstrap + 3 child stories | 4 |
+| Feature: testing-bin-jamsesh-regression-harness + 2 child stories | 3 |
+| Gate-driven (security/tests/cruft/docs/patterns) | 21 |
+| Lone stories (bug-fix, refactor, infra, docs) | 4 |
+
+**Gate finding totals** (from the 5 gate runs on 2026-05-20):
+- gate-security: 5 findings (1 medium, 4 low) — 2 shipped, 3 deferred to backlog
+- gate-tests: 11 findings (4 high, 4 medium, 2 low, 1 informational) — all shipped
+- gate-cruft: 6 findings (1 high, 4 medium, 1 low) — all shipped
+- gate-docs: 2 findings — all shipped
+- gate-patterns: 6 patterns extracted (tracking item `gate-patterns-v0.3.0` shipped)
+
+**Frontend test count**: 465 → 476 across the cycle.
+
+**Deferred to backlog (3)**: cross-stack security work needing feature-scope
+design. See backlog items `gate-security-refresh-token-localstorage-exposure`,
+`gate-security-signout-no-backend-revoke`, `gate-security-oauth-state-no-client-binding`.
+
+**Next**: CI workflow triggered by tag push on origin — multi-arch binary
+build + cosign keyless signing. Watch with `gh run watch`.
