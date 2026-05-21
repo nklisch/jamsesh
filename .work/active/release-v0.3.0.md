@@ -28,59 +28,54 @@ updated: 2026-05-20
 - **gate-docs** (2026-05-20) — 2 findings (2 high, 0 medium). 1 foundation-doc-assertion (UX.md), 1 pattern-skill-staleness. 2 active stories.
 - **gate-patterns** (2026-05-20) — 6 patterns extracted, 0 inconsistencies. Tracking item `gate-patterns-v0.3.0` at stage:done.
 
-## Readiness check (2026-05-20)
+## Readiness check (2026-05-20, refresh)
 
-NOT READY. All 5 gates have run. 16 active items + 7 backlog items remain
-with `release_binding: v0.3.0`.
+NOT READY. 15 of 28 bound items are at `stage: done`. 13 stories remain
+at `stage: drafting`. All 5 gates have already run; no re-run needed.
+
+Progress since the previous readiness check (earlier 2026-05-20):
+- All 4 `gate-tests-*` and 1 `gate-cruft-*` items that were at
+  `implementing` (High severity) are now `done`.
+- Both `gate-docs-*` High-severity items are now `done`.
+- `gate-patterns-v0.3.0` is `done`.
+- The 3 Low-severity items that were originally listed as "backlog Lows"
+  are also now `done` (`gate-tests-picker-submit-name-trim`,
+  `gate-tests-unknown-role-titlecase`,
+  `gate-cruft-router-mock-dead-current-field`).
 
 ### Active items blocking ship (must reach `stage: done`)
 
-**security** (1)
-- `gate-security-refresh-token-localstorage-exposure` (drafting / Medium)
+**security** (5) — all at `drafting`
+- `gate-security-refresh-token-localstorage-exposure` (Medium)
+- `gate-security-signout-no-backend-revoke` (Low, originally backlog)
+- `gate-security-authorize-url-no-scheme-host-validation` (Low, originally backlog)
+- `gate-security-oauth-state-no-client-binding` (Low, originally backlog)
+- `gate-security-401-blanket-signout` (Low, originally backlog)
 
-**tests** (8)
-- `gate-tests-router-root-route-home` (implementing / High)
-- `gate-tests-signout-resets-loadingme` (implementing / High)
-- `gate-tests-app-authed-on-login-redirect` (implementing / High)
-- `gate-tests-app-bootstrap-effect` (implementing / High)
-- `gate-tests-org-row-preventdefault` (drafting / Medium)
-- `gate-tests-oauthcallback-loadme-rejection` (drafting / Medium)
-- `gate-tests-addorg-reactivity` (drafting / Medium)
-- `gate-tests-loadcurrentuser-null-token-noop` (drafting / Medium)
+**tests** (4) — all at `drafting` / Medium
+- `gate-tests-org-row-preventdefault`
+- `gate-tests-oauthcallback-loadme-rejection`
+- `gate-tests-addorg-reactivity`
+- `gate-tests-loadcurrentuser-null-token-noop`
 
-**cruft** (5)
-- `gate-cruft-home-test-redundant-setorgs` (implementing / High)
-- `gate-cruft-app-stale-later-story-comment` (drafting / Medium)
-- `gate-cruft-oauthcallback-test-dead-isauth-mock` (drafting / Medium)
-- `gate-cruft-login-resumesession-unused-state` (drafting / Medium)
-- `gate-cruft-login-test-unused-spyon-location` (drafting / Medium)
-
-**docs** (2)
-- `gate-docs-ux-md-home-landing-surface` (implementing / High)
-- `gate-docs-openapi-fetch-middleware-pattern-citation` (implementing / High)
-
-### Backlog items bound to v0.3.0 (deferred Lows — see note)
-
-- `gate-security-signout-no-backend-revoke`
-- `gate-security-authorize-url-no-scheme-host-validation`
-- `gate-security-oauth-state-no-client-binding`
-- `gate-security-401-blanket-signout`
-- `gate-tests-picker-submit-name-trim`
-- `gate-tests-unknown-role-titlecase`
-- `gate-cruft-router-mock-dead-current-field`
-
-These are Low-severity findings filed to backlog by their respective
-gate skills (per spec). They carry `release_binding: v0.3.0` to record
-where they surfaced, but the gate skill specs flag them as "not
-stage-managed". Treat as informational: either drain them inline or
-clear `release_binding` to defer to a later release.
+**cruft** (4) — all at `drafting` / Medium
+- `gate-cruft-app-stale-later-story-comment`
+- `gate-cruft-oauthcallback-test-dead-isauth-mock`
+- `gate-cruft-login-resumesession-unused-state`
+- `gate-cruft-login-test-unused-spyon-location`
 
 ### How to drive these to done
 
-- `/agile-workflow:implement-orchestrator` — drain the queue, the
+- `/agile-workflow:implement-orchestrator` — drain the queue. The
   `gate-cruft-*` items in particular parallelize well as they're
   mechanical.
-- `/agile-workflow:implement` on a specific id for inline work.
+- `/agile-workflow:implement <id>` on a specific id for inline work.
+- For the 4 Low-severity `gate-security-*` items originally tagged as
+  "backlog Lows", an alternative is to clear `release_binding: v0.3.0`
+  from their frontmatter to defer them to a later release rather than
+  drain them now. The release file's original note (above) is
+  preserved in git history; the gate-skill spec marks Low-severity
+  items as "not stage-managed".
 - Re-run `/agile-workflow:release-deploy v0.3.0` once all bound items
   are at `stage: done` — the orchestrator is idempotent and picks up
   where it left off.
