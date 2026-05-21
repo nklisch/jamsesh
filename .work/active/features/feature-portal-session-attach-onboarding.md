@@ -1,11 +1,11 @@
 ---
 id: feature-portal-session-attach-onboarding
 kind: feature
-stage: review
+stage: done
 tags: [ui]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.3.1
 gate_origin: null
 created: 2026-05-20
 updated: 2026-05-20

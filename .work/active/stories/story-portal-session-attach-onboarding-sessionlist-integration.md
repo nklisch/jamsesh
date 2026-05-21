@@ -1,13 +1,13 @@
 ---
 id: story-portal-session-attach-onboarding-sessionlist-integration
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: feature-portal-session-attach-onboarding
 depends_on:
   - story-portal-session-attach-onboarding-walkthrough-component
   - story-portal-session-attach-onboarding-help-link
-release_binding: null
+release_binding: v0.3.1
 gate_origin: null
 created: 2026-05-20
 updated: 2026-05-21

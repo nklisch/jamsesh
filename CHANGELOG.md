@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.3.1
+
+Released 2026-05-21. Patch release adding the portal's session-attach
+onboarding — users finally get told how to actually attach a Claude Code
+instance to a jam after creating or accepting an invite — plus a refresh
+of the in-plugin SKILL.md guidance for distributed agent consumers.
+
+### Features
+
+- **Portal session-attach onboarding** — new `SessionAttachWalkthrough`
+  modal appears after a successful session create (in `SessionList` via
+  `NewSessionDrawer`) and after accepting an invite (in `InviteAccept`),
+  walking the user through the three commands needed to attach: `claude
+  plugin marketplace add nklisch/jamsesh`, `claude plugins install
+  jamsesh`, then `/jamsesh:join <session-id>` inside Claude Code. The
+  modal has two states — full ceremonial walkthrough for first-time
+  users, compact one-line view (just the join command) for returning
+  users. Persists "don't show again" per-browser via localStorage. An
+  always-reachable `AttachHelpLink` ("Setup help") lives in the
+  `SessionList` and `SessionViewShell` chrome for users who dismissed
+  the full walkthrough but need to re-reference the commands. The CC
+  pane inside the modal mimics Claude Code's actual TUI chrome (real
+  `claudecode-color.svg` icon, slate-navy bg, `#D97757` clay accent,
+  `❯` prompt indicator) so the surface distinction (your terminal vs.
+  Claude Code) is unmistakable. Closes
+  `feature-portal-session-attach-onboarding` (feature, 5 stories).
+
+### Documentation
+
+- **`skills/jamsesh/SKILL.md` refocused for distributed agent consumers**
+  — guidance the CC plugin auto-loads is now written from the agent's
+  point of view rather than the plugin author's. Affects every CC
+  instance running the jamsesh plugin (commit `196518c`).
+
+### Internal
+
+- **bats wrapper test fix** — `tests/wrapper/install.bats:43` hardcoded
+  `v0.2.0` in the cached-binary path assertion, which silently broke
+  after the v0.3.0 release bumped `bin/jamsesh`'s
+  `JAMSESH_PLUGIN_VERSION`. Test now reads the version from the wrapper
+  at test time so it tracks future bumps automatically (commit
+  `33258ce`).
+- 4 backlog ideas parked during the cycle for later scoping
+  (`idea-ephemeral-jam-playground` and others) — internal substrate
+  housekeeping, not user-visible.
+
 ## v0.3.0
 
 Released 2026-05-20. The SPA gets its first real authenticated landing
