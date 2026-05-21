@@ -1,7 +1,7 @@
 ---
 id: release-v0.3.1
 kind: release
-stage: quality-gate
+stage: released
 tags: []
 parent: null
 depends_on: []
@@ -39,3 +39,17 @@ Skipped for this patch.
   item — picked up automatically because the tag includes all commits.
 - `bug-fix` for the drifted bats assertion (`33258ce`) shipped without a
   substrate item; included in the changelog under Internal.
+
+## Shipped (2026-05-21)
+
+**Mapping**: tag-based (annotated `v0.3.1`, pushed to `origin/main`).
+
+**Release commit**: `0ba55f7` (release-prep: v0.3.1)
+**Release tag**: `v0.3.1`
+
+**Bound items shipped**: 6 (1 feature + 5 stories)
+
+**Frontend test count**: 520 (unchanged — feature was already drained
+and validated before binding).
+
+**Gates skipped per user direction** ("ignore normal limitations").
