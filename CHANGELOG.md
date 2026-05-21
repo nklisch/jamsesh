@@ -1,5 +1,128 @@
 # Changelog
 
+## v0.3.0
+
+Released 2026-05-20. The SPA gets its first real authenticated landing
+surface: after sign-in, users see their orgs and either auto-route into
+the single-org case or pick from a list. The `bin/jamsesh` wrapper gets
+a regression harness so the multi-arch download flow can't silently
+break. Security and test-coverage gates ran on the bundle and produced
+21 items (all drained), tightening the 401-blanket-signout path,
+adding scheme/host validation to the OAuth redirect, and pinning a
+handful of behavioral contracts that were spec'd but not tested.
+
+### Features
+
+- **Logged-in landing screen and org bootstrap** — after authenticating,
+  the SPA now hydrates `/api/me` once, caches the user + org membership in
+  the auth rune store, and renders one of three states: loading (orgs
+  null), empty (zero orgs → "create your first org" CTA), or picker
+  (2+ orgs). Single-org accounts auto-route to
+  `/orgs/<id>/sessions`. The auth store gained `currentUser`, `orgs`,
+  `loadCurrentUser()`, and `addOrg()`, plus a cross-tenant guard that
+  discards stale `/api/me` responses if `signOut` raced the call.
+  `Login.svelte` and `OAuthCallback.svelte` redirect into the new
+  surface. Closes `spa-logged-in-landing-and-org-bootstrap` (feature,
+  3 stories).
+- **`bin/jamsesh` regression harness** — a bats test suite plus CI job
+  exercises the wrapper's binary-fetch + cache path end-to-end on every
+  push. Catches platform-tarball regressions and `/var/cache/jamsesh/`
+  layout drift before they reach users. Closes
+  `testing-bin-jamsesh-regression-harness` (feature, 2 stories).
+- **Claude Code plugin install instructions in README** — verified
+  `claude plugin marketplace add nklisch/jamsesh` and
+  `claude plugins install jamsesh` against the live CC CLI; section
+  sits between "Operator quickstart" and "License". Closes
+  `docs-readme-cc-plugin-install-instructions`.
+
+### Security
+
+- **OAuth authorize_url scheme/host allowlist** — `Login.svelte`'s
+  `signInWithGitHub` now parses the backend-returned `authorize_url`
+  with `new URL(...)` and rejects anything that isn't `https:` or
+  isn't on a hostname allowlist (currently `['github.com']`). Defends
+  the SPA against a misconfigured backend (or future provider plugin)
+  that returns a `javascript:` URI or an off-allowlist host. Closes
+  `gate-security-authorize-url-no-scheme-host-validation`.
+- **401 handler scoped to auth-domain failures only** — the global
+  `unauthorizedMiddleware` in `frontend/src/lib/api/client.ts`
+  previously called `auth.signOut()` on any 401, which would silently
+  sign users out on a per-resource authorization failure (e.g. a stale
+  per-org scope). It now reads the typed error envelope from a
+  `response.clone()` and only invokes signOut when `error` starts with
+  `auth.` (prefix-match, so future `auth.*` codes route through
+  automatically). Opaque 401s fail open — surface to the caller. Closes
+  `gate-security-401-blanket-signout`.
+
+### Fixes
+
+- **`receive-pack` report-status sideband framing** — when streaming the
+  receive-pack reply over the git smart-HTTP transport, the report-status
+  packet was double-wrapped on the sideband channel for some clients.
+  Hook now writes single-framed. Closes
+  `bug-receive-pack-report-status-sideband-wrapping`.
+
+### Refactor
+
+- **Unified `RefUpdate` type across pre-receive and post-receive hooks**
+  — the same shape was defined twice with slightly different field
+  names. Now lives in one place; both hook handlers import the single
+  definition. Pure refactor, no behavior change. Closes
+  `refactor-unify-refupdate-across-prereceive-postreceive`.
+
+### Tests
+
+10 coverage gaps surfaced by `gate-tests` and drained as stories. Most
+add a single test pinning a behavior the parent feature's spec named
+but didn't enforce. One (`gate-tests-oauthcallback-loadme-rejection`)
+also fixed the underlying contract violation it surfaced — wraps
+`await auth.loadCurrentUser()` in its own try/catch inside
+`OAuthCallback.svelte` so a rejected `/api/me` doesn't block the
+post-exchange navigate. Items: `gate-tests-router-root-route-home`,
+`gate-tests-signout-resets-loadingme`,
+`gate-tests-app-authed-on-login-redirect`,
+`gate-tests-app-bootstrap-effect`,
+`gate-tests-org-row-preventdefault`,
+`gate-tests-oauthcallback-loadme-rejection`,
+`gate-tests-addorg-reactivity`,
+`gate-tests-loadcurrentuser-null-token-noop`,
+`gate-tests-picker-submit-name-trim`,
+`gate-tests-unknown-role-titlecase`. Frontend test count: 465 → 476
+across the cycle.
+
+### Internal
+
+- **Cruft cleanup** (6 items) — dead mock fields, unused `$state` wraps,
+  unobserved `vi.spyOn` scaffolding, stale forward-reference comments,
+  redundant test setup. `gate-cruft-*` series.
+- **Pattern extraction** — 6 new pattern skills captured under
+  `.claude/skills/patterns/` covering the Svelte 5 rune-store wrapper,
+  snippet-children component shape, openapi-fetch middleware client,
+  openapi-fetch result branching, same-origin return-to guard, and the
+  jsdom `window.location` defineProperty stubbing pattern. Tracking
+  item: `gate-patterns-v0.3.0`.
+- **Foundation-doc drift fixes** — `docs/UX.md` updated to describe
+  the new home-landing surface; openapi-fetch middleware pattern
+  citation added to the patterns index. `gate-docs-*`.
+- **Gitignored `.claude/scheduled_tasks.json` lock** — the session-local
+  cron lock file no longer dirties `git status`. Closes
+  `infra-claude-scheduled-tasks-lock-should-be-gitignored`.
+
+### Deferred to backlog
+
+Three security findings surfaced by `gate-security` were classified as
+feature-scope work (cross-stack: frontend + backend coordination
+required) rather than single-stride stories. Their `release_binding`
+was cleared and they were moved to `.work/backlog/` for proper scoping
+in a future release:
+
+- `gate-security-refresh-token-localstorage-exposure` (Medium) — needs
+  HttpOnly cookie or Backend-for-Frontend pattern.
+- `gate-security-signout-no-backend-revoke` (Low) — needs new
+  `POST /api/auth/logout` endpoint with refresh-token revocation.
+- `gate-security-oauth-state-no-client-binding` (Low) — needs frontend
+  correlation-id storage + backend echo through the OAuth `state`.
+
 ## v0.2.0
 
 Released 2026-05-19. GitHub OAuth sign-in works end-to-end for the first
