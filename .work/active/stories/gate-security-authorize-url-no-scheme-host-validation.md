@@ -1,7 +1,7 @@
 ---
 id: gate-security-authorize-url-no-scheme-host-validation
 kind: story
-stage: review
+stage: done
 tags: [security]
 parent: null
 depends_on: []
@@ -84,3 +84,13 @@ validation; all 472 tests pass on two consecutive runs.
 ### Design-flaw check
 No GitHub Enterprise or other hostname variant is wired in the codebase
 (`provider: 'github'` is hardcoded). Simple `github.com` allowlist is safe.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Defense-in-depth URL validation with `new URL()` parse in try/catch plus protocol + hostname allowlist guard. The allowlist `['github.com'] as const` is well-typed and extendable in one line. 4 negative-case tests cover javascript:, http:, off-allowlist, and malformed; happy-path regression test continues to pass. Negative-case (reverting validation block) confirmed all 4 new tests caught the regression.
