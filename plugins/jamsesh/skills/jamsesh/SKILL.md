@@ -1,78 +1,88 @@
 ---
 name: jamsesh
-description: Operational primer for jamsesh — dual-mode model, commit trailers, addressed comments, conflict resolution, digest reading, MCP tools
+description: Operational primer for agents participating in a jamsesh — what a live multi-agent git session feels like, the streaming digest, two ref modes (sync/isolated), commit trailers, auto-merge, conflict resolution, addressed comments, and the four MCP tools you'll call
 auto-load: true
 triggers:
   - "jamsesh"
   - "jam session"
-  - "git commit"
   - "session"
 ---
 
 # Jamsesh — Operational Primer
 
-This skill loads automatically when the jamsesh plugin is active. It contains
-everything you need to operate correctly in a session. For design rationale,
-see `docs/VISION.md`; for full schema references, see `docs/PROTOCOL.md` and
-`docs/UX.md`.
+You are an agent participating in a **jamsesh** — a live, multi-agent
+collaboration session on a shared git repository hosted by a portal server.
+This skill is everything you need to act correctly inside one. Deep detail
+lives in the reference files listed in section 9, loaded on demand.
+
+> This skill is the canonical context for participating in a jam. The
+> other skills in this plugin (`join`, `fork`, `status`, `mode`,
+> `finalize`) are thin CLI wrappers — they assume you've already absorbed
+> this primer.
+
+> **Scope note.** This skill teaches you how to participate in a jam from
+> the project you're working in. It does **not** describe how the jamsesh
+> server is implemented. You do not need to know the internals — focus on
+> what to do, not how it works under the hood.
 
 ---
 
-## 1. What jamsesh does
+## 1. What you're working in
 
-Jamsesh is a multi-agent collaboration substrate built on real git. A small
-team of humans each drive their own Claude Code instance against a shared
-session repository hosted by a portal server. Every change you make is a real
-commit on your own branch ref. A server-side auto-merger continuously
-integrates non-conflicting work from all sync-mode participants into a shared
-`draft` ref, so the artifact converges live as the jam proceeds. When the jam
-ends, a human curates the final commit sequence in the portal and runs a
-generated cherry-pick script against their local source repo. No shared
-agent, no bespoke version control — it's git all the way down, with a thin
-social layer on top.
+You are not alone. Right now, in this same session:
 
-You are one participant. Your commits appear on your ref. Peers' commits
-appear on their refs. The digest injected before each of your turns tells you
-what changed since you last acted.
+- **Other agents** are also acting, each driven by their own human.
+- **Other humans** are reading, commenting, and steering their agents.
+- A **server-side auto-merger** continuously integrates everyone's
+  non-conflicting commits into a shared `draft` ref. Most of the time
+  this is invisible — you commit, it gets merged, peers see it on their
+  next turn.
 
----
+Each participant has their own ref under `jam/<session>/<user>/<branch>`.
+**Your commits land on your ref.** You do not push to a shared branch
+directly — that's what the auto-merger is for.
 
-## 2. Dual mode
+Before each of your turns, a **digest** is injected into your context
+(see section 5). It tells you what changed since you last acted: peer
+commits, comments addressed to you, conflict events, mode changes. Read
+it first.
 
-Every ref in `jam/<session>/<user>/*` has a mode: **sync** or **isolated**.
-
-**Sync mode** — the default for most sessions. Every commit you push is
-immediately tried against the current `draft` tip by the auto-merger. If the
-merge succeeds, `draft` advances and all peers start from a richer shared
-base on their next turn. If it conflicts, a `conflict.detected` event fires,
-addressed to you and the owner of the conflicting draft commit.
-
-**Isolated mode** — private exploration. The auto-merger ignores your commits.
-You accumulate work without disturbing `draft` or generating conflict events
-for peers. Use isolated mode when:
-- You are exploring a risky or speculative approach that may be discarded.
-- The human driving you explicitly asks for a branch that should not
-  auto-merge until reviewed.
-- You expect high conflict probability and want to resolve them in one batch
-  rather than turn-by-turn.
-
-**Switching modes** — use the `/jamsesh:mode` skill or call `bin/jamsesh mode
-sync|isolated` directly. When you switch from isolated to sync, all commits
-accumulated since you went isolated will be pushed and tried by the
-auto-merger. Expect conflicts proportional to how far `draft` has drifted.
-
-**Never push directly.** The `PreToolUse` hook intercepts `git push` and
-returns `deny`. The `PostToolUse` hook handles pushing after every commit.
-Do not attempt to work around this.
+If something feels strange — an unfamiliar file change, a commit you
+didn't make, a working tree that's suddenly different — it's almost
+always one of: a peer committed, the auto-merger advanced `draft`, or a
+hook auto-committed at the end of your previous turn. Run
+`/jamsesh:status` before assuming something is broken.
 
 ---
 
-## 3. Commit trailers
+## 2. Two modes: sync and isolated
 
-Every commit you create in a session **must** carry three trailers. The
-portal's `pre-receive` hook rejects pushes that omit any of them.
+Your ref is in one of two modes at any time.
 
-**Required on every session commit:**
+**Sync (default).** Every commit you push is immediately tried against
+`draft` by the auto-merger. Clean merges advance `draft`. Conflicts
+produce a `conflict.detected` event addressed to you. Use sync for
+normal collaborative work.
+
+**Isolated.** The auto-merger ignores your commits. You accumulate work
+privately. Peers don't see conflicts caused by your ref. Use isolated
+for:
+
+- speculative or risky exploration that may be discarded
+- a large, conflict-prone refactor you want to land in one batch
+- when the driving human asks for it
+
+Switch with `/jamsesh:mode sync` or `/jamsesh:mode isolated`. When you
+go isolated → sync, all accumulated commits are tried by the
+auto-merger at once; expect conflicts proportional to how far `draft`
+drifted.
+
+---
+
+## 3. Commit trailers (required)
+
+Every commit in a session **must** carry three trailers in its footer.
+The portal's pre-receive hook rejects pushes that omit any of them.
 
 ```
 Jam-Session: <session-id>
@@ -80,14 +90,12 @@ Jam-Turn: <turn-number>
 Jam-Author: <your-user-handle>
 ```
 
-The `SessionStart` and `UserPromptSubmit` hooks inject the correct values for
-`Jam-Session` and `Jam-Author` into your context at the start of each session
-and each turn. The turn number increments each time you start a new turn
-(each human prompt). Use the value provided in the injected context. If you
-are unsure, call `bin/jamsesh status` to retrieve current session state.
+`Jam-Session` and `Jam-Author` are injected into your context by session
+lifecycle hooks. `Jam-Turn` increments each new turn (each new human
+prompt). Use the values from your injected context. If you're unsure,
+run `/jamsesh:status` to fetch the current values.
 
-**Format your `git commit` messages with trailers in the footer**, separated
-from the body by a blank line:
+Example commit:
 
 ```
 feat(auth): add magic-link token validation
@@ -100,237 +108,143 @@ Jam-Turn: 7
 Jam-Author: alice
 ```
 
-**Optional trailers recognized by the system:**
+**Optional trailer you may set:**
 
-`Resolves-Conflict: <conflict-event-id>` — Include this when your commit is
-a resolution of a reported conflict. The auto-merger reads this trailer on
-push; if the three-way merge now succeeds, the conflict event is
-automatically closed. This is the only way to close a conflict event
-programmatically. The conflict event id comes from the `conflict.detected`
-event payload in your digest (field `id`).
+- `Resolves-Conflict: <conflict-event-id>` — set on a commit that
+  resolves a reported conflict (see section 6). This is the only way to
+  close a conflict event programmatically.
 
-`Auto-Merger: true` — Set on commits the auto-merger creates. You will see
-these in the git log; do not set this yourself.
+**Trailers set by the system (informational only — do not set yourself):**
+`Auto-Merger: true`, `Source-Commit: <sha>`, `Jam-Auto-Commit: true`. If
+you see these in the log, the system put them there.
 
-`Source-Commit: <sha>` — Set by the auto-merger on merge commits, pointing
-at the source commit being integrated. Informational; do not set manually.
-
-`Jam-Auto-Commit: true` — Set on commits created automatically by the `Stop`
-hook (when it auto-commits a dirty working tree at turn end). You do not set
-this; the hook does.
+**Never run `git push` yourself.** A `PreToolUse` hook denies it. A
+`PostToolUse` hook pushes after every commit. Do not try to work around
+this — if a push didn't happen, run `/jamsesh:status` to find out why.
 
 ---
 
-## 4. Addressed comments
+## 4. Comments — how participants talk
 
-Comments are how participants direct attention across agent and human
-boundaries. An agent posts a comment via the `post_comment` MCP tool (see
-Section 7). A human posts via the portal UI. Both end up in the same data
-model and both flow into the digest of addressed recipients.
+Comments are the cross-agent / cross-human attention layer. You post via
+the `post_comment` MCP tool; humans post via the portal UI. Both end up
+in the same model. Comments addressed to you appear in your next digest.
 
-**Addressing targets** (the `addressed_to` field):
+Each comment has:
 
-- `@<user-handle>` — addressed to that human. Their agents will see it in
-  their digests on their next turns.
-- `@<user-handle>/<branch>` — addressed to a specific agent instance binding
-  on that user's named ref. Use when the comment is about something specific
-  to one ref rather than the user in general.
-- `@all-agents` — broadcast to all agent instances in the session.
-- `@all-humans` — broadcast to all human participants.
-- `@everyone` — broadcast to all participants (agents and humans).
-- `@auto-merger` — informational addressing to the auto-merger. The
-  auto-merger does not act on comments; use this for audit annotations.
-- Omit `addressed_to` entirely — the comment is an `fyi` to the session at
-  large, visible in the activity feed but not injected into any specific
-  digest.
+- **`addressed_to`** — who it's directed at: a specific user, a specific
+  ref, a broadcast group, or omitted (fyi to session at large).
+- **`kind`** — `question`, `suggestion`, `action-request`, or `fyi`.
+- **`anchor`** — commit sha, optionally a file path and line range.
 
-**Comment kinds** (the `kind` field):
+**Be sparing.** Every addressed comment occupies context in the
+recipient's next turn. Use `action-request` only when you genuinely need
+the recipient to act. Use `question` only when blocked. Prefer `fyi` or
+`suggestion`.
 
-- `question` — you need an answer before proceeding. Use sparingly; each
-  question creates an obligation for the recipient.
-- `suggestion` — you have a recommendation but the recipient can ignore it.
-  Good for non-blocking style or approach notes.
-- `action-request` — you are asking the recipient to do something specific.
-  Stronger than suggestion; the recipient should acknowledge it (resolve the
-  comment when acted on).
-- `fyi` — informational. No response expected. Default when `kind` is omitted.
+**Resolve comments addressed to you** after acting on them — call
+`resolve_comment` with the comment id. Resolved comments drop out of
+future digests.
 
-**When to post a comment:**
-
-Post a comment when you want a peer (human or agent) to know something that
-will not be obvious from the commit diff alone. Avoid excessive commenting —
-every addressed comment occupies context in the recipient's next turn. Use
-`action-request` only when you genuinely need the recipient to act. Use
-`question` only when you are blocked. Prefer `suggestion` or `fyi` for
-everything else.
-
-**Resolving comments:** call `resolve_comment` MCP tool when you have acted
-on an `action-request` or answered a `question` addressed to you. Resolved
-comments are removed from future digests.
+> Full addressing targets, kind semantics, and when-to-post / when-not
+> guidance: **`references/comments.md`**.
 
 ---
 
-## 5. Reading the digest
+## 5. Your digest
 
-The digest is injected into your context by the `UserPromptSubmit` hook
-before every turn. It covers everything that happened since your last turn
-(`last_seen_seq` cursor). Structure:
+The digest is injected at the start of every turn. It contains
+everything since your last seen point:
 
-**Commits from peers** — git log excerpts grouped by ref: commit SHA,
-author, subject, files changed. Read these to understand what your peers have
-produced. The diff is not included; use standard `git show <sha>` or `git
-diff <sha>^!` to inspect changes that are relevant to your current task.
+- **Peer commits** — sha, author, subject, files changed (no diff). Use
+  `git show <sha>` to inspect when relevant to your current task.
+- **Comments addressed to you** — full body, anchor, kind, sender.
+- **Conflict events addressed to you** — see section 6.
+- **Mode changes** — refs that switched sync ↔ isolated.
+- **Session state summary** — `draft` tip SHA, your bound ref, your
+  mode, count of open conflicts addressed to you.
 
-**Comments addressed to you** — the full comment body, anchor (commit, file,
-line range), kind, and sender. Act on `action-request` comments before
-proceeding with your current task unless the human driving you says otherwise.
-Resolve the comment after acting.
+Act on `action-request` comments and conflict events before continuing
+your current task, unless the driving human says otherwise.
 
-**Conflict events addressed to you** — see Section 6.
+If the digest is empty or has nothing relevant, proceed normally — do
+not invent acknowledgments of empty sections.
 
-**Mode changes** — if any ref switched modes since your last turn, it
-appears here. Relevant when you are about to merge or depend on a peer's ref.
-
-**Session state summary** — current `draft` tip SHA, your bound ref, your
-current mode, open conflicts addressed to you (count). Use `/jamsesh:status`
-for a fuller picture on demand.
-
-If the digest carries nothing relevant to your current task, proceed normally.
-Do not manufacture acknowledgment of empty sections.
+For state not in the digest (e.g. all unresolved comments in the
+session), call `query_session_state`.
 
 ---
 
-## 6. Conflict resolution flow
+## 6. Conflicts — they happen, and they auto-resolve when you do your part
 
-A conflict event means the auto-merger attempted to merge a commit from your
-ref into `draft` and encountered a three-way merge conflict. The event is
-addressed to you and to the owner of the conflicting draft commit.
+Most of your commits are auto-merged silently. Occasionally the
+auto-merger hits a three-way merge conflict and emits a
+`conflict.detected` event addressed to you. **This is normal — don't
+panic.** The loop:
 
-**Step 1 — Recognize.** The digest includes a `conflict.detected` entry. It
-tells you: the conflict event id, the commit that failed to merge, the
-current `draft` tip at the time of the attempt, the common ancestor SHA, and
-the conflicted files and line ranges.
+1. **Read the event** in your digest. It carries the conflict event id,
+   the failing commit, the current `draft` tip, the common ancestor,
+   and the conflicted files / line ranges.
+2. **Fetch** so you can see the current `draft` tip locally.
+3. **Rebase** your ref onto `draft`. Resolve conflicts normally (inspect
+   both sides, synthesize, `git add`, `git rebase --continue`).
+4. **Trailer the resolution.** Add `Resolves-Conflict: <event-id>` to
+   the topmost rebased commit (via `git commit --amend`) or to a new
+   dedicated resolution commit.
+5. **Push happens automatically.** The hook pushes; the auto-merger
+   retries; on success the conflict event closes and peers' next
+   digests no longer carry it.
 
-**Step 2 — Fetch.** Run `git fetch` (the `UserPromptSubmit` hook has already
-done this if you are at turn start, but run it again if you are mid-turn).
-Verify you can see the current `draft` tip: `git log --oneline draft` (or
-whatever the local tracking ref is named).
+If `draft` advanced again during your rebase and a fresh conflict event
+appears, repeat. For complex multi-party conflicts, consider
+`/jamsesh:mode isolated` to accumulate a larger resolution batch — or
+ask the driving human.
 
-**Step 3 — Rebase onto draft.** Rebase your ref onto the current `draft` tip:
-
-```bash
-git rebase jam/draft
-```
-
-During rebase, you will encounter the same conflicts the auto-merger found.
-Resolve them normally (read both sides, apply the correct synthesis, `git add`,
-`git rebase --continue`). The conflicted files and line ranges from the event
-payload tell you exactly where to look.
-
-**Step 4 — Commit with the resolution trailer.** After a successful rebase,
-your rebased commits already carry the required session trailers. Add one
-more trailer to the topmost commit (or a new explicit resolution commit):
-
-```
-Resolves-Conflict: <conflict-event-id>
-```
-
-Use `git commit --amend` to add the trailer to the last commit, or create a
-new "resolve conflict" commit with the trailer in its footer.
-
-**Step 5 — The hook pushes.** The `PostToolUse` hook detects your commit and
-pushes. The auto-merger retries the merge. If it succeeds, the conflict event
-closes automatically and peers' next digests no longer show the open conflict.
-
-If a conflict recurs because `draft` advanced again during your rebase, repeat
-from Step 2. Complex multi-party conflicts may require coordinating with the
-human driving you or using `/jamsesh:mode isolated` to accumulate a larger
-resolution batch before switching back to sync.
+> Exact commands, edge cases, and what each event payload field means:
+> **`references/conflicts.md`**.
 
 ---
 
 ## 7. MCP tools
 
-Four tools are available via the `jamsesh` MCP server. All require
-`session_id` — read the current session id from the injected context or call
-`bin/jamsesh status`.
+Four tools are exposed by the `jamsesh` MCP server. All take
+`session_id` — read it from your injected context or `/jamsesh:status`.
 
-**`post_comment`** — post a comment on a commit, file, or line range.
+- **`post_comment`** — leave a comment on a commit, file, or line
+  range. Use to flag something for a peer or the driving human.
+- **`resolve_comment`** — mark a comment resolved after acting on it.
+- **`fork`** — create a new ref under your namespace from any commit
+  (yours or a peer's). Use when the human asks to branch from a peer's
+  work.
+- **`query_session_state`** — on-demand fetch for state your digest
+  didn't include (all unresolved comments, current `draft` tip, peer
+  refs, etc.).
 
-```
-post_comment(
-  session_id: "sess_01j9abc123",
-  commit_sha: "a1b2c3d",
-  file_path: "internal/auth/token.go",    // optional
-  line_range: {start: 42, end: 55},        // optional
-  body: "This token validation should also check expiry.",
-  addressed_to: "@bob/feature-auth",       // optional
-  kind: "suggestion"                        // optional, defaults to fyi
-)
-```
-
-Use when: you want a peer to see something specific in your commit; you are
-leaving a note for the human driving you (address to `@<your-user>`); you
-want the activity feed to carry a non-code signal.
-
-**`resolve_comment`** — mark a comment resolved.
-
-```
-resolve_comment(
-  session_id: "sess_01j9abc123",
-  comment_id: "cmt_77xyz",
-  resolution_note: "Applied in commit a1b2c3d."  // optional
-)
-```
-
-Use when: you have acted on an `action-request`; you have answered a
-`question`; a comment is stale and no longer applies.
-
-**`fork`** — server-side ref manipulation to create or move a ref.
-
-```
-fork(
-  session_id: "sess_01j9abc123",
-  target_commit_sha: "a1b2c3d",
-  target_ref: "feature-x",          // optional; creates jam/<session>/<user>/feature-x
-  mode: "isolated"                   // optional; defaults to session default
-)
-```
-
-Use when: the human asks you to branch from a specific peer commit; you need
-a new ref under your namespace without touching the current bound ref.
-
-**`query_session_state`** — on-demand query for state not in the digest.
-
-```
-query_session_state(
-  session_id: "sess_01j9abc123",
-  include: ["unresolved_comments", "open_conflicts", "draft_tip"],
-  filter: {comments_addressed_to: "@alice/main"}
-)
-```
-
-Use when: you need state that the digest didn't include (e.g., all unresolved
-comments in the session, not just those addressed to you); you want to verify
-the current `draft_tip` SHA before rebasing.
+> Full signatures and example calls: **`references/mcp-tools.md`**.
 
 ---
 
-## 8. Pointers
+## 8. Quick mental model
 
-This skill is an operational primer — it covers the mechanics you need in
-every session but does not attempt to be a complete reference.
+- **You see**: your local repo, your ref, your digest.
+- **You produce**: commits with the required trailers, plus comments.
+- **You don't**: push manually, edit shared refs, run the auto-merger.
+- **You will sometimes**: rebase to resolve a conflict, switch modes,
+  fork from a peer's commit.
 
-For deeper context:
+---
 
-- **`docs/VISION.md`** — why jamsesh exists, the problem it solves, and what
-  it deliberately is not.
-- **`docs/PROTOCOL.md`** — full schema for commit trailers, comment schema,
-  conflict event schema, WebSocket event types, all four MCP tool signatures,
-  lifecycle hook contracts, local state layout, and HTTP error codes.
-- **`docs/UX.md`** — every user-facing flow in detail: creating a session,
-  joining, posting comments from both CC and the portal UI, forking from a
-  peer, switching modes, and the finalize flow.
+## 9. References (load when needed)
 
-If something in this skill conflicts with those docs, the docs win — they are
-the canonical source. Report the discrepancy to the session's human.
+- **`references/conflicts.md`** — full conflict-resolution flow with
+  exact commands and edge cases.
+- **`references/comments.md`** — addressing targets and kind semantics,
+  full matrix, when-to-post / when-not.
+- **`references/mcp-tools.md`** — full MCP tool signatures and example
+  invocations.
+
+This skill is self-contained for the operational mechanics of
+participating in a jam. If you find yourself wanting to know **why**
+something exists or **how** the portal implements it internally, you
+don't need to — surface anything contradictory or surprising to the
+driving human.
