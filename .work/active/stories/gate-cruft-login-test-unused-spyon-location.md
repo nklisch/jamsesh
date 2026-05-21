@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-login-test-unused-spyon-location
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -45,3 +45,19 @@ by any assertion.
 Delete the `vi.spyOn(window, 'location', 'get').mockReturnValue(...)`
 block from `beforeEach`. The `afterEach` `vi.restoreAllMocks()` plus
 per-test `Object.defineProperty` handles cleanup and stubbing already.
+
+## Implementation notes
+
+Grep for `vi.spyOn(window, 'location'` in `Login.test.ts` confirmed exactly
+one instance — the `beforeEach` block. No other usage depended on it.
+
+Deleted the `// Reset location.assign spy before each test` comment and the
+4-line `vi.spyOn(window, 'location', 'get').mockReturnValue(...)` call.
+`beforeEach` now contains only `vi.clearAllMocks()` and
+`mockAuth.isAuthenticated = false`.
+
+`npm run check` — 0 errors, 2 pre-existing warnings.
+`npm test` run twice — 472/472 pass both times. One first-run flaky failure
+in `Home.test.ts` and Login OAuth URL validation tests (from concurrent story
+`gate-security-authorize-url-no-scheme-host-validation`) resolved on re-run;
+neither is related to this change.

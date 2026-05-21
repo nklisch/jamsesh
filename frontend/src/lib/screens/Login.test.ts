@@ -25,11 +25,6 @@ describe('Login', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuth.isAuthenticated = false;
-    // Reset location.assign spy before each test
-    vi.spyOn(window, 'location', 'get').mockReturnValue({
-      ...window.location,
-      assign: vi.fn(),
-    } as any);
   });
 
   afterEach(() => {
@@ -152,6 +147,108 @@ describe('Login', () => {
         'https://github.com/login/oauth/authorize?state=abc',
       );
     });
+  });
+
+  // ── authorize_url validation (defense-in-depth) ───────────────────────────
+
+  it('rejects a non-https authorize_url and shows the error UI', async () => {
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, assign: assignSpy },
+      writable: true,
+      configurable: true,
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response(
+        JSON.stringify({ authorize_url: 'http://github.com/login/oauth/authorize?state=abc' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(Login);
+    await fireEvent.click(screen.getByText('Continue with GitHub').closest('button')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Authorization URL could not be validated/)).toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a javascript: authorize_url and shows the error UI', async () => {
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, assign: assignSpy },
+      writable: true,
+      configurable: true,
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response(
+        JSON.stringify({ authorize_url: 'javascript:alert(1)' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(Login);
+    await fireEvent.click(screen.getByText('Continue with GitHub').closest('button')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Authorization URL could not be validated/)).toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects an off-allowlist host authorize_url and shows the error UI', async () => {
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, assign: assignSpy },
+      writable: true,
+      configurable: true,
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response(
+        JSON.stringify({ authorize_url: 'https://evil.com/authorize' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(Login);
+    await fireEvent.click(screen.getByText('Continue with GitHub').closest('button')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Authorization URL could not be validated/)).toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed authorize_url and shows the error UI', async () => {
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, assign: assignSpy },
+      writable: true,
+      configurable: true,
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response(
+        JSON.stringify({ authorize_url: 'not a url' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(Login);
+    await fireEvent.click(screen.getByText('Continue with GitHub').closest('button')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Authorization URL could not be validated/)).toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 
   it('submitting the magic-link form with 2xx response transitions to magic-link-sent', async () => {
