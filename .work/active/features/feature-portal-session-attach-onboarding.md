@@ -1,7 +1,7 @@
 ---
 id: feature-portal-session-attach-onboarding
 kind: feature
-stage: implementing
+stage: review
 tags: [ui]
 parent: null
 depends_on: []
@@ -488,3 +488,52 @@ established during v0.3.0's gate-test stories.
   will overflow on screens narrower than ~800px. Park a follow-up
   backlog idea (`idea-attach-onboarding-mobile-responsive`) only if a
   user reports it.
+
+## Implementation summary (2026-05-21)
+
+All five child stories landed across three orchestrator waves. Feature stage
+advances `implementing → review`.
+
+### Stories shipped
+
+| Story | Commit | Stage | Tests added |
+|---|---|---|---|
+| `story-portal-session-attach-onboarding-walkthrough-component` | `ab007f4` | review | 25 (new SessionAttachWalkthrough.test.ts) |
+| `story-portal-session-attach-onboarding-help-link` | `6be95b2` | review | 10 (new AttachHelpLink.test.ts) |
+| `story-portal-session-attach-onboarding-inviteaccept-integration` | `44d8b87` | review | +3 (InviteAccept.test.ts) |
+| `story-portal-session-attach-onboarding-sessionlist-integration` | `23106f8` | review | +4 (SessionList.test.ts) |
+| `story-portal-session-attach-onboarding-sessionviewshell-affordance` | `993ceca` | review | +2 (SessionViewShell.test.ts) |
+
+### Wave plan executed
+
+- **Wave 1**: walkthrough-component alone (foundation)
+- **Wave 2**: help-link + inviteaccept-integration (both gated only on Wave 1)
+- **Wave 3**: sessionlist-integration + sessionviewshell-affordance (gated on
+  help-link from Wave 2)
+
+### Cross-cutting deviations
+
+- **SessionList chrome placement**: the design body suggested the topbar; the
+  implementing agent placed the link in `.page-actions` alongside the "New
+  session" button because `Chrome.svelte` exposes no topbar slot.
+  Functionally equivalent; visually the same right-aligned chrome region.
+  Documented in story body for visibility.
+- **SessionViewShell chrome placement**: link sits in `.app-chrome` immediately
+  before `<ThemeToggle/>`. Natural alongside existing chrome controls.
+
+### Verification (final)
+
+- **Frontend tests**: 520 / 520 pass across 44 files (two consecutive runs).
+  Net delta over the feature: +44 tests (from 476 at start of v0.3.0 cycle to
+  520 now, ~+44 from this feature alone).
+- **svelte-check**: 0 errors, 2 pre-existing warnings (unrelated:
+  ModeSwitchDialog state-referenced-locally; FinalizeView unused CSS).
+- **Negative-case discipline**: every story verified its core assertions
+  catch regressions (mutation → confirmed failure → restored → confirmed pass).
+  Documented per-story in implementation notes.
+
+### Next
+
+- `/agile-workflow:review feature-portal-session-attach-onboarding` (or
+  `/agile-workflow:review --all` to drain all five stories + the feature in
+  one batch).
