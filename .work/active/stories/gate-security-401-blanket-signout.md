@@ -1,7 +1,7 @@
 ---
 id: gate-security-401-blanket-signout
 kind: story
-stage: review
+stage: done
 tags: [security]
 parent: null
 depends_on: []
@@ -99,3 +99,13 @@ correct. No update was needed. The backend currently only emits 401s for
 auth failures (no per-resource authorization 401s observed in the spec
 or server code), so this story is defense-in-depth for a scenario that
 could arise as the authorization model evolves.
+
+## Review (2026-05-20)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: `auth.*` prefix-match strategy is correct — robust to future codes added by the backend without frontend changes. Body cloned before reading (preserves the single-shot stream for downstream openapi-fetch callers). Opaque-body fail-open is the right default per the story spec (surface to caller). 4 new tests cover all branches: non-auth 401, opaque 401, alternative auth.* subcode, and a non-401 sanity check. Negative-case (reverting to blanket signOut) confirmed the tests catch the regression. The SUT comment block was updated to describe the new contract clearly.
