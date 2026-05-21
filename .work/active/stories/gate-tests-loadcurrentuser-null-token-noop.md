@@ -1,7 +1,7 @@
 ---
 id: gate-tests-loadcurrentuser-null-token-noop
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing]
 parent: null
 depends_on: []

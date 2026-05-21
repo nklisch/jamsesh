@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-login-resumesession-unused-state
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup]
 parent: null
 depends_on: []

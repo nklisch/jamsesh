@@ -1,7 +1,7 @@
 ---
 id: docs-readme-cc-plugin-install-instructions
 kind: story
-stage: drafting
+stage: implementing
 tags: [documentation, plugin]
 parent: null
 depends_on: []

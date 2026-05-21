@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-oauthcallback-test-dead-isauth-mock
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup]
 parent: null
 depends_on: []

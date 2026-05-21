@@ -1,7 +1,7 @@
 ---
 id: gate-security-authorize-url-no-scheme-host-validation
 kind: story
-stage: drafting
+stage: implementing
 tags: [security]
 parent: null
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-login-test-unused-spyon-location
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup]
 parent: null
 depends_on: []
