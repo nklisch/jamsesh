@@ -71,3 +71,50 @@ Abuse caps wire in:
 - This feature's user-visible shapes (countdown badges, warning banners,
   destruction confirmation page) are covered in flow steps 03, 06, 07a,
   7b, 7c. No additional feature-tier mocks.
+
+## Design decisions
+
+Locked at `--only-questions` time. Feature-design Phase 5 inherits these
+as fixed input.
+
+- **Joiner overflow** (session at max participants when URL clicked):
+  hard error with retry hint. `POST /api/playground/sessions/{id}/join`
+  returns `409 playground.session_full` with a `{ retry_after_seconds,
+  alternative: "/playground" }` body; the joiner UI renders a friendly
+  "this session is full (5/5)" page, a "try again in a few minutes"
+  note, and a CTA to start their own playground. No spectator role,
+  no waitlist substrate, no new UI tier — fits the strict-ephemeral,
+  low-ceremony philosophy.
+
+- **Idle activity definition**: substantive collaboration only. The
+  idle timer resets on (1) any `git push` that lands a commit, (2)
+  any `POST /comments`, (3) any `POST /finalize-attempt`. Presence
+  WS pings, page loads, tree-view selection events, and other UI
+  interactions do NOT reset the timer. Catches real activity; doesn't
+  reward zombie browser tabs or a CC plugin background-fetching from
+  a closed session. Implementation: the destruction-sweep worker reads
+  `last_substantive_activity_at` (new column on `sessions`, updated
+  by the three event paths above) rather than `events.created_at`.
+
+- **Bearer-issuance API shape**: single atomic endpoint.
+  `POST /api/playground/sessions/{id}/join` accepts
+  `{ nickname }` in the body, validates capacity, runs the
+  full join transaction (mint anonymous account row, mint
+  `session_members` row, mint bearer with TTL synced to session
+  hard-cap), returns
+  `{ bearer, nickname, session: <session_summary> }` in one
+  round-trip. The nickname-suggest UX is client-side: the SPA
+  pre-fills the suggestion locally (the JOIN endpoint runs server-
+  side collision retry if the proposed nickname is taken). No
+  separate suggest/reserve endpoint — keeps the substrate small
+  and removes the suggest/confirm race window.
+
+- **Pronounceable-handle wordlist source**: hardcoded in the portal
+  binary via Go's `embed` package. Two `.txt` files in
+  `internal/portal/playground/wordlist/` — `adjectives.txt`
+  (~256 entries) and `animals.txt` (~256 entries). Curated at PR
+  time and reviewed for offensive content, accessibility, and
+  pronunciation. Combined space ≈ 65k handles; per-session uniqueness
+  check (small) plus collision-retry on the JOIN transaction handles
+  duplicates. Zero deployment friction, deterministic across portal
+  pods, refresh requires a release (rare and appropriate).
