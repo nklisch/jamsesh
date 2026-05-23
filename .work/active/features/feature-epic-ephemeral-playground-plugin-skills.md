@@ -71,3 +71,85 @@ next turn's reply.
   output of this feature's CLI surface)
 - No additional feature-tier mocks needed — CLI surfaces are text, not
   visual
+
+## Design decisions
+
+Locked at `--only-questions` time. Feature-design Phase 5 inherits these
+as fixed input.
+
+- **Skill consolidation — single `/jam` entry point**: collapse the
+  originally-planned `/jamsesh:new`, `/jamsesh:playground:new`, and
+  the extended `/jamsesh:join` into **one** skill (likely
+  `/jamsesh:jam` to honor CC's `plugin:skill` namespace convention;
+  exact slash form resolved in design pass — `/jam` is the intended
+  user-visible identifier, the plugin prefix follows CC's contract).
+  The single skill body teaches the agent: "When the user wants to
+  start, create, or join a jam in any form — playground or durable,
+  new or existing — invoke `jamsesh <subcommand> $ARGUMENTS`. The
+  binary subcommands are `new`, `new --playground`, `join <url|id>`.
+  Use the user's natural-language request to pick the right one and
+  the right flags. If anything is ambiguous, ask the human in CC."
+  Underlying binary keeps its existing subcommand structure (`jamsesh
+  new`, `jamsesh new --playground`, `jamsesh join` — owned by
+  `cli-first-creation` and `session-lifecycle`); the consolidation is
+  purely at the **skill** layer, leveraging agent intelligence to
+  translate intent to subcommand invocation. Parallel skill audit for
+  `/jamsesh:status`, `:fork`, `:mode`, `:finalize` is parked as
+  `idea-skill-surface-consolidation-audit` (out of scope for this
+  playground epic; the broader audit is a separate concern).
+
+- **Bearer storage model — unified per-session**: both durable and
+  playground sessions store their bearers at
+  `${CLAUDE_PLUGIN_DATA}/sessions/<session-id>/token` (mode 0600). The
+  legacy account-wide `${CLAUDE_PLUGIN_DATA}/token` is migrated
+  forward on first run after upgrade: the binary enumerates the
+  user's bound sessions, fans the account-wide token out into
+  per-session files, and leaves the legacy path as a stub pointing at
+  the new layout. After migration, `jamsesh mcp-headers` and the git
+  Basic-auth resolver always look up by CC session_id → per-session
+  token. Symmetric across session kinds; no kind-branching in
+  resolution paths. The refresh-token model (account-wide refresh
+  exchanged for short-lived access) still applies to durable sessions
+  — refresh tokens stay account-wide (`refresh_token` file unchanged);
+  per-session files carry only the short-lived access bearer.
+
+- **`/jamsesh:status` under playground-only (no account-wide OAuth)**:
+  works seamlessly. After the unified per-session storage lands,
+  status enumerates `${CLAUDE_PLUGIN_DATA}/sessions/*/token`, calls
+  each session's `GET /api/sessions/{id}/status` with its bearer, and
+  composites the output. No required account-wide token. Anonymous-
+  only users (never ran OAuth) get full status functionality for
+  their playground sessions. Output groups results by session kind
+  (durable vs playground) for clarity.
+
+- **Destruction-warning surfacing to the agent**:
+  `playground.destruction_warning` event in the UserPromptSubmit
+  digest, fired ~5 min before the closer of (idle_timeout_at,
+  hard_cap_at). Payload shape:
+  `{ kind: "playground.destruction_warning", reason: "idle"|"hard_cap",
+     ends_at: <ISO8601>, remaining_seconds: <int>,
+     session_id: <id> }`. The digest's "urgent" section surfaces it
+  alongside addressed comments. The auto-loaded
+  `plugins/jamsesh/skills/jamsesh/SKILL.md` (this feature's update)
+  instructs the agent: "When you see a `playground.destruction_warning`
+  event, surface the warning to the human in your next reply,
+  including `ends_at` and the imperative `Run `jamsesh finalize
+  --local` now if you want to keep this work.`" The agent treats this
+  with the same attention-grabbing weight as an addressed comment —
+  human-actionable, time-sensitive. Threshold (5 min) is hardcoded as
+  the warning trigger; the destruction sweep is responsible for
+  computing the threshold crossing and emitting the event idempotently
+  (per-session, only-once-per-warning-kind).
+
+### Scope expansion note
+
+The `/jam` consolidation is a non-additive change to the skill
+surface — `/jamsesh:new` and `/jamsesh:playground:new` (originally
+planned) do not get added as standalone skills. Instead `/jam` is the
+sole new skill, and `/jamsesh:join` is consolidated into it (its
+slash command continues to exist as an alias for backward
+compatibility for users with the existing plugin installed, but its
+SKILL.md body changes to "deprecated alias — use `/jam` instead").
+This is a slight expansion of the original feature brief (which only
+extended `/jamsesh:join`); the substantive work is comparable, just
+re-organized.
