@@ -58,6 +58,18 @@ the transition for users who learned the original surface.
   pattern to be established before generalizing it. Lands last in
   the epic's implementation sequence.
 
+### Hand-off contract with `plugin-skills` (wave 3)
+
+`plugin-skills` creates `plugins/jamsesh/skills/jam/SKILL.md` with the
+create / join intent-vocabulary. This feature **extends** that body
+**additively** — appending the status / fork / mode vocabulary and the
+auto-loaded SKILL.md updates — and never rewrites or replaces the
+wave-3-authored content. When this feature's design pass runs, the
+first action against `plugins/jamsesh/skills/jam/SKILL.md` is a Read,
+not a Write; the body is amended via `Edit`, not overwritten via
+`Write`. This guards against a wave-4 agent silently clobbering
+wave-3 output.
+
 ## Foundation references
 - `docs/ARCHITECTURE.md` § Claude Code plugin package — current
   skill directory layout this feature consolidates
