@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>playground-onboarding · 06 joiner-session</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column;
+    }
+
+    .flow-hybrid {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px;
+      background: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-size-sm)/1 var(--font-sans);
+      flex-shrink: 0;
+    }
+    .flow-hybrid__prev, .flow-hybrid__next {
+      color: var(--color-text-secondary); text-decoration: none;
+      padding: 4px 8px; border-radius: 4px;
+    }
+    .flow-hybrid__prev:hover, .flow-hybrid__next:hover { background: var(--color-bg-tertiary); }
+    .flow-hybrid__crumbs {
+      flex: 1; display: flex; gap: 4px; align-items: center;
+      justify-content: center; font-size: var(--font-size-xs);
+    }
+    .flow-hybrid__crumbs a {
+      color: var(--color-text-tertiary); text-decoration: none;
+      padding: 3px 7px; border-radius: 3px; font-family: var(--font-mono);
+    }
+    .flow-hybrid__crumbs a:hover { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+    .flow-hybrid__current {
+      color: var(--color-text-primary) !important;
+      background: var(--color-accent-muted) !important;
+      font-weight: var(--font-weight-medium);
+    }
+    .flow-hybrid__future { opacity: 0.5; }
+
+    .layout { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+    .app-chrome {
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-base) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .playground-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 9px;
+      background: var(--color-warning-muted);
+      color: var(--color-warning);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .breadcrumb {
+      display: flex; gap: 6px; align-items: center;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .breadcrumb .here {
+      color: var(--color-text-primary);
+      font-weight: var(--font-weight-medium);
+    }
+    .chrome-spacer { flex: 1; }
+    .countdown {
+      display: inline-flex; align-items: baseline; gap: 8px;
+      padding: 5px 10px;
+      background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font: var(--font-size-xs) var(--font-mono);
+    }
+    .countdown__label { color: var(--color-text-tertiary); }
+    .countdown__hard { color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+    .countdown__sep { color: var(--color-text-tertiary); }
+    .countdown__idle { color: var(--color-warning); font-weight: var(--font-weight-medium); }
+    .anon-handle {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 9px 4px 4px;
+      background: var(--color-bg-tertiary);
+      border-radius: var(--radius-md);
+      font: var(--font-size-xs) var(--font-mono);
+    }
+    .anon-handle .ad {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--author-6);
+      color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+    }
+
+    /* Joiner banner — first-time-on-this-session welcome */
+    .joiner-welcome {
+      background: linear-gradient(90deg, var(--color-accent-muted), transparent);
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--color-border);
+      display: flex; gap: 14px; align-items: center;
+      font-size: var(--font-size-sm);
+      flex-shrink: 0;
+    }
+    .joiner-welcome .icon {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--color-accent);
+      color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .joiner-welcome .text { color: var(--color-text-primary); flex: 1; }
+    .joiner-welcome .text strong { font-weight: var(--font-weight-semibold); }
+    .joiner-welcome .text code {
+      background: var(--color-bg-tertiary);
+      padding: 1px 5px; border-radius: 3px;
+      font: var(--font-size-xs) var(--font-mono);
+    }
+    .joiner-welcome .dismiss {
+      background: transparent; border: 0;
+      color: var(--color-text-tertiary);
+      cursor: pointer; font-size: 16px;
+      padding: 0 4px;
+    }
+
+    .session-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 20px; align-items: start;
+      flex-shrink: 0;
+    }
+    .session-header h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+    }
+    .session-header .goal {
+      margin: 0 0 10px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      max-width: 680px;
+      font-style: italic;
+    }
+    .session-header .meta-strip {
+      display: flex; gap: 14px; align-items: center;
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+      font-family: var(--font-mono);
+    }
+    .session-header .meta-strip code {
+      background: var(--color-bg-tertiary);
+      padding: 1px 5px; border-radius: 3px;
+      color: var(--color-text-secondary);
+      font-family: var(--font-mono);
+    }
+    .header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .header-btn {
+      padding: 7px 14px;
+      background: var(--color-bg-secondary);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .header-btn.primary {
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      border-color: var(--color-bg-inverse);
+    }
+
+    .body {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr) 300px;
+      flex: 1; min-height: 0;
+    }
+    .pane { overflow: hidden; display: flex; flex-direction: column; background: var(--color-bg-primary); }
+    .pane.tree { border-right: 1px solid var(--color-border); }
+    .pane.right { border-left: 1px solid var(--color-border); }
+    .pane-head {
+      padding: 10px 14px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+      flex-shrink: 0;
+    }
+    .pane-scroll { flex: 1; overflow-y: auto; }
+
+    .ref-group { padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+    .ref-header {
+      padding: 6px 14px;
+      display: flex; gap: 8px; align-items: center;
+      font: var(--font-size-xs) var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .ref-header .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .ref-header .name { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .mode-mini {
+      margin-left: auto;
+      padding: 1px 6px; border-radius: 3px;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .mode-mini.sync { background: var(--color-accent-muted); color: var(--color-accent); }
+    .mode-mini.draft { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+    .commit-list { list-style: none; padding: 0; margin: 0; }
+    .commit-item {
+      padding: 5px 14px 5px 30px; position: relative;
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 8px; align-items: center;
+      cursor: pointer;
+    }
+    .commit-item:hover { background: var(--color-bg-tertiary); }
+    .commit-item.selected {
+      background: var(--color-accent-muted);
+      border-left: 2px solid var(--color-accent);
+      padding-left: 28px;
+    }
+    .commit-item::before {
+      content: ''; position: absolute;
+      left: 18px; top: 12px;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--commit-color);
+    }
+    .commit-item .msg { font-size: var(--font-size-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .commit-item .sha { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+    .commit-item.merge .msg::before { content: '⇈ '; color: var(--color-accent); }
+
+    .artifact-head {
+      padding: 10px 18px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .file-path { font: var(--font-size-sm) var(--font-mono); }
+    .file-path .dir { color: var(--color-text-secondary); }
+    .file-viewer {
+      flex: 1; overflow-y: auto;
+      padding: 18px 0;
+      font: 13px/1.55 var(--font-mono);
+    }
+    .line { display: grid; grid-template-columns: 50px 1fr; gap: 16px; padding: 0 18px; }
+    .line .num { color: var(--color-text-tertiary); text-align: right; font-size: 12px; user-select: none; }
+    .line .code { color: var(--color-text-primary); white-space: pre; }
+    .line.h { background: var(--color-accent-muted); }
+    .kw { color: #b9518e; }
+    .str { color: var(--color-success); }
+    .cmt { color: var(--color-text-tertiary); font-style: italic; }
+
+    .presence-section, .feed-section { padding: 14px; }
+    .presence-section { border-bottom: 1px solid var(--color-border); }
+    .section-title {
+      margin: 0 0 10px;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .presence-row {
+      display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: center;
+      padding: 5px 0; font-size: var(--font-size-sm);
+    }
+    .presence-row .ad {
+      width: 22px; height: 22px; border-radius: 50%; position: relative;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 9px var(--font-mono);
+    }
+    .presence-row .ad.online::after {
+      content: ''; position: absolute; right: -2px; bottom: -2px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--color-success);
+      border: 2px solid var(--color-bg-primary);
+    }
+    .presence-row .name { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .presence-row .where { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+    .feed-list { display: flex; flex-direction: column; gap: 4px; }
+    .feed-item {
+      padding: 8px 10px; border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      line-height: 1.45;
+    }
+    .feed-item .who { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .feed-item .when { font: 10px var(--font-mono); color: var(--color-text-tertiary); display: block; margin-top: 2px; }
+    .feed-item.you { background: var(--color-accent-muted); }
+  </style>
+</head>
+<body>
+  <header class="flow-hybrid">
+    <a href="05-joiner-nickname-picker.html" class="flow-hybrid__prev">← prev</a>
+    <nav class="flow-hybrid__crumbs">
+      <a href="01-prospect-landing.html">1 prospect-landing</a>
+      <a href="02-create-cli-output.html">2 create-cli</a>
+      <a href="03-creator-session.html">3 creator-session</a>
+      <a href="04-share-link.html">4 share-link</a>
+      <a href="05-joiner-nickname-picker.html">5 joiner-picker</a>
+      <a href="06-joiner-session.html" aria-current="step" class="flow-hybrid__current">6 joiner-session</a>
+      <a href="07-session-end.html">7 session-end</a>
+    </nav>
+    <a href="07-session-end.html" class="flow-hybrid__next">next →</a>
+  </header>
+
+  <div class="layout">
+    <div class="app-chrome">
+      <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+      <span class="playground-chip">⏳ playground</span>
+      <span class="breadcrumb">
+        <span class="here">auth-refresh demo</span>
+      </span>
+      <div class="chrome-spacer"></div>
+      <span class="countdown">
+        <span class="countdown__label">ends in</span>
+        <span class="countdown__hard">21h 12m</span>
+        <span class="countdown__sep">·</span>
+        <span class="countdown__label">idle</span>
+        <span class="countdown__idle">14m 02s</span>
+      </span>
+      <span class="anon-handle" title="Your anonymous identity for this session">
+        <span class="ad">qf</span>
+        quiet-fox
+      </span>
+    </div>
+
+    <div class="joiner-welcome">
+      <span class="icon">✓</span>
+      <span class="text">
+        <strong>Welcome, quiet-fox.</strong>
+        Bind your local Claude Code to this session with
+        <code>jamsesh playground join &lt;session-url&gt;</code> in your checkout to participate as an agent driver. View-only here is fine too.
+      </span>
+      <button class="dismiss" title="Dismiss">×</button>
+    </div>
+
+    <div class="session-header">
+      <div>
+        <h1>auth-refresh demo</h1>
+        <p class="goal">Tighten the session-token flow before it lands in epic-portal-foundation. Document the OAuth callback contract and the magic-link "binding expired" error path.</p>
+        <div class="meta-strip">
+          <span>scope <code>**</code></span>
+          <span>·</span>
+          <span>default mode <code>sync</code></span>
+          <span>·</span>
+          <span>2 members</span>
+          <span>·</span>
+          <span>4 commits</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="header-btn">Comment</button>
+        <button class="header-btn primary">Finalize</button>
+      </div>
+    </div>
+
+    <div class="body">
+      <aside class="pane tree">
+        <div class="pane-head">tree</div>
+        <div class="pane-scroll">
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--author-5)"></span>
+              <span class="name">amber-otter/main</span>
+              <span class="mode-mini sync">sync</span>
+            </div>
+            <ul class="commit-list">
+              <li class="commit-item" style="--commit-color: var(--author-5)">
+                <span class="msg">Sketch refresh-token rotation</span>
+                <span class="sha">8c14a02</span>
+              </li>
+              <li class="commit-item selected" style="--commit-color: var(--author-5)">
+                <span class="msg">Document callback contract</span>
+                <span class="sha">3f0211e</span>
+              </li>
+            </ul>
+          </div>
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--author-6)"></span>
+              <span class="name">quiet-fox/main</span>
+              <span class="mode-mini sync">sync</span>
+            </div>
+            <ul class="commit-list">
+              <li style="padding: 8px 14px 8px 30px; color: var(--color-text-tertiary); font-size: 11px; font-style: italic;">
+                No commits yet — your next commit lands here.
+              </li>
+            </ul>
+          </div>
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--color-text-tertiary)"></span>
+              <span class="name">jam/draft</span>
+              <span class="mode-mini draft">draft</span>
+            </div>
+            <ul class="commit-list">
+              <li class="commit-item merge" style="--commit-color: var(--color-accent)">
+                <span class="msg">Auto-merge amber-otter/main @ 3f0211e</span>
+                <span class="sha">b91f04a</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+
+      <main class="pane">
+        <div class="artifact-head">
+          <span class="file-path"><span class="dir">docs/auth/</span>callback-contract.md</span>
+        </div>
+        <div class="file-viewer">
+          <div class="line"><span class="num">1</span><span class="code"><span class="cmt"># OAuth callback contract</span></span></div>
+          <div class="line"><span class="num">2</span><span class="code"></span></div>
+          <div class="line h"><span class="num">3</span><span class="code">The callback URL is registered with the provider at OAuth app</span></div>
+          <div class="line h"><span class="num">4</span><span class="code">creation time. It must match the provider's expected redirect URI</span></div>
+          <div class="line h"><span class="num">5</span><span class="code">exactly — no wildcards, no path-suffix matching.</span></div>
+          <div class="line"><span class="num">6</span><span class="code"></span></div>
+          <div class="line"><span class="num">7</span><span class="code"><span class="cmt">## Parameters carried back</span></span></div>
+          <div class="line"><span class="num">8</span><span class="code"></span></div>
+          <div class="line"><span class="num">9</span><span class="code">- <span class="kw">code</span>: the auth code to exchange</span></div>
+          <div class="line"><span class="num">10</span><span class="code">- <span class="kw">state</span>: anti-forgery token (must equal pre-auth value)</span></div>
+        </div>
+      </main>
+
+      <aside class="pane right">
+        <div class="presence-section">
+          <h2 class="section-title">presence</h2>
+          <div class="presence-row">
+            <span class="ad online" style="background: var(--author-5)">am</span>
+            <div>
+              <span class="name">amber-otter <em style="font-style: normal; color: var(--color-text-tertiary); font-weight: var(--font-weight-regular); font-size: 11px;">(host)</em></span>
+              <div class="where">amber-otter/main @ 3f0211e</div>
+            </div>
+          </div>
+          <div class="presence-row">
+            <span class="ad online" style="background: var(--author-6)">qf</span>
+            <div>
+              <span class="name">quiet-fox <em style="font-style: normal; color: var(--color-text-tertiary); font-weight: var(--font-weight-regular); font-size: 11px;">(you)</em></span>
+              <div class="where">quiet-fox/main · viewing</div>
+            </div>
+          </div>
+        </div>
+        <div class="feed-section">
+          <h2 class="section-title">activity</h2>
+          <div class="feed-list">
+            <div class="feed-item you">
+              <span class="who">quiet-fox</span> joined as anonymous participant.
+              <span class="when">just now</span>
+            </div>
+            <div class="feed-item">
+              <span class="who">amber-otter</span> committed <em>Document callback contract</em>.
+              <span class="when">2 min ago</span>
+            </div>
+            <div class="feed-item" style="background: var(--color-accent-muted); color: var(--color-accent);">
+              <span style="font-weight: var(--font-weight-medium);">auto-merger</span> merged <code style="font: 11px var(--font-mono);">3f0211e</code> into draft.
+              <span class="when">2 min ago</span>
+            </div>
+            <div class="feed-item">
+              <span class="who">amber-otter</span> committed <em>Sketch refresh-token rotation</em>.
+              <span class="when">8 min ago</span>
+            </div>
+            <div class="feed-item">
+              <span class="who">amber-otter</span> created the session.
+              <span class="when">12 min ago</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>

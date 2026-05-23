@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>playground-onboarding · 01 prospect-landing</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; min-height: 100%; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+    }
+
+    /* Hybrid flow chrome — identical across every page */
+    .flow-hybrid {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px;
+      background: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-size-sm)/1 var(--font-sans);
+    }
+    .flow-hybrid__prev, .flow-hybrid__next {
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .flow-hybrid__prev:hover, .flow-hybrid__next:hover {
+      background: var(--color-bg-tertiary);
+    }
+    .flow-hybrid__crumbs {
+      flex: 1;
+      display: flex; gap: 4px; align-items: center;
+      justify-content: center;
+      font-size: var(--font-size-xs);
+    }
+    .flow-hybrid__crumbs a {
+      color: var(--color-text-tertiary);
+      text-decoration: none;
+      padding: 3px 7px;
+      border-radius: 3px;
+      font-family: var(--font-mono);
+    }
+    .flow-hybrid__crumbs a:hover {
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-secondary);
+    }
+    .flow-hybrid__current {
+      color: var(--color-text-primary) !important;
+      background: var(--color-accent-muted) !important;
+      font-weight: var(--font-weight-medium);
+    }
+    .flow-hybrid__future { opacity: 0.5; }
+
+    /* Page-specific */
+    .top-bar {
+      padding: 16px 32px;
+      display: flex; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-lg) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .top-bar .spacer { flex: 1; }
+    .top-bar .sign-in {
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      font-size: var(--font-size-sm);
+    }
+    .top-bar .sign-in:hover { color: var(--color-text-link); }
+
+    .hero {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 80px 32px 48px;
+      text-align: center;
+    }
+    .hero .eyebrow {
+      font: var(--font-weight-medium) var(--font-size-xs)/1 var(--font-mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-accent);
+      margin-bottom: 16px;
+    }
+    .hero h1 {
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.025em;
+      line-height: 1.15;
+      margin: 0 0 16px;
+    }
+    .hero .lede {
+      font-size: var(--font-size-lg);
+      color: var(--color-text-secondary);
+      line-height: var(--line-height-base);
+      margin: 0 0 32px;
+      max-width: 560px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .install-card {
+      max-width: 640px;
+      margin: 0 auto;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-lg);
+      padding: 28px 32px;
+      text-align: left;
+      box-shadow: var(--shadow-md, 0 4px 24px rgba(20, 22, 26, 0.04));
+    }
+    .install-card .step-label {
+      display: flex; gap: 10px; align-items: center;
+      font: var(--font-weight-semibold) var(--font-size-xs)/1 var(--font-sans);
+      color: var(--color-text-secondary);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin: 0 0 8px;
+    }
+    .install-card .step-num {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+      letter-spacing: 0;
+    }
+    .cmd-box {
+      position: relative;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      border-radius: var(--radius-md);
+      padding: 14px 56px 14px 16px;
+      font: var(--font-size-sm)/1.4 var(--font-mono);
+      margin: 0 0 24px;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .cmd-box .copy-btn {
+      position: absolute;
+      top: 8px; right: 8px;
+      background: rgba(250, 250, 250, 0.1);
+      color: var(--color-text-inverse);
+      border: 1px solid rgba(250, 250, 250, 0.2);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font: var(--font-weight-medium) 11px var(--font-sans);
+      cursor: pointer;
+    }
+    .cmd-box .copy-btn:hover { background: rgba(250, 250, 250, 0.18); }
+    .install-card .skip-link {
+      display: block;
+      text-align: center;
+      margin-top: 8px;
+      color: var(--color-text-link);
+      text-decoration: none;
+      font-size: var(--font-size-sm);
+    }
+    .install-card .skip-link:hover { text-decoration: underline; }
+
+    .ephemeral-note {
+      max-width: 640px;
+      margin: 24px auto 0;
+      padding: 14px 18px;
+      border-radius: var(--radius-md);
+      background: var(--color-warning-muted);
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      display: flex; gap: 10px; align-items: flex-start;
+    }
+    .ephemeral-note strong {
+      color: var(--color-warning);
+      font-weight: var(--font-weight-semibold);
+    }
+
+    .what-is {
+      max-width: 720px;
+      margin: 48px auto 80px;
+      padding: 0 32px;
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+    }
+    .what-card {
+      padding: 18px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-secondary);
+    }
+    .what-card h3 {
+      margin: 0 0 6px;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      color: var(--color-text-primary);
+    }
+    .what-card p {
+      margin: 0;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      line-height: var(--line-height-base);
+    }
+
+    .doc-foot {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px 32px 60px;
+      text-align: center;
+      color: var(--color-text-tertiary);
+      font-size: var(--font-size-sm);
+    }
+    .doc-foot a { color: var(--color-text-link); text-decoration: none; }
+    .doc-foot a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header class="flow-hybrid">
+    <a href="index.html" class="flow-hybrid__prev">← overview</a>
+    <nav class="flow-hybrid__crumbs">
+      <a href="01-prospect-landing.html" aria-current="step" class="flow-hybrid__current">1 prospect-landing</a>
+      <a href="02-create-cli-output.html">2 create-cli</a>
+      <a href="03-creator-session.html" class="flow-hybrid__future">3 creator-session</a>
+      <a href="04-share-link.html" class="flow-hybrid__future">4 share-link</a>
+      <a href="05-joiner-nickname-picker.html" class="flow-hybrid__future">5 joiner-picker</a>
+      <a href="06-joiner-session.html" class="flow-hybrid__future">6 joiner-session</a>
+      <a href="07-session-end.html" class="flow-hybrid__future">7 session-end</a>
+    </nav>
+    <a href="02-create-cli-output.html" class="flow-hybrid__next">next →</a>
+  </header>
+
+  <div class="top-bar">
+    <div class="wordmark">jamsesh<span class="dot">.</span></div>
+    <div class="spacer"></div>
+    <a href="#" class="sign-in">Sign in →</a>
+  </div>
+
+  <section class="hero">
+    <div class="eyebrow">Playground · no account needed</div>
+    <h1>Run a multi-agent jam in under a minute.</h1>
+    <p class="lede">
+      A throwaway session you can spin up from your own repo, share with collaborators by URL, and let the auto-merger weave your agents' commits together — without OAuth, an org, or a single config file.
+    </p>
+
+    <div class="install-card">
+      <p class="step-label"><span class="step-num">1</span> Install the Claude Code plugin <span style="font-weight: var(--font-weight-regular); color: var(--color-text-tertiary); margin-left: 6px; text-transform: none; letter-spacing: 0;">(run inside any Claude Code session)</span></p>
+      <div class="cmd-box">
+        claude plugin marketplace add nklisch/jamsesh && claude plugins install jamsesh
+        <button class="copy-btn">Copy</button>
+      </div>
+
+      <p class="step-label"><span class="step-num">2</span> From any local checkout <span style="font-weight: var(--font-weight-regular); color: var(--color-text-tertiary); margin-left: 6px; text-transform: none; letter-spacing: 0;">(or run <code style="font-family: var(--font-mono); font-size: 11px;">jamsesh new --playground</code> if you prefer the unified create-command)</span></p>
+      <div class="cmd-box">
+        jamsesh playground new
+        <button class="copy-btn">Copy</button>
+      </div>
+
+      <a href="02-create-cli-output.html" class="skip-link">I already have jamsesh installed →</a>
+
+      <p style="margin: 18px 0 0; text-align: center; font-size: var(--font-size-xs); color: var(--color-text-tertiary);">
+        Not using Claude Code? <a href="#" style="color: var(--color-text-link); text-decoration: none;">See standalone CLI install →</a>
+      </p>
+    </div>
+
+    <div class="ephemeral-note">
+      <span>⏳</span>
+      <span><strong>Ephemeral.</strong> Sessions last up to <strong>24h from creation</strong> or <strong>30 min of inactivity</strong>, whichever first. No data persists past destruction — finalize locally before the window closes if you want to keep work.</span>
+    </div>
+  </section>
+
+  <section class="what-is">
+    <div class="what-card">
+      <h3>Real git</h3>
+      <p>Every push hits a real bare repo. No parallel VCS. Recovery is `git fetch`.</p>
+    </div>
+    <div class="what-card">
+      <h3>Auto-merger</h3>
+      <p>Non-conflicting commits weave into a shared draft as they arrive — no end-of-session merge ordeal.</p>
+    </div>
+    <div class="what-card">
+      <h3>Addressed comments</h3>
+      <p>Drop a line for `@quiet-fox` or `@all-agents` and it lands in their next turn's digest.</p>
+    </div>
+  </section>
+
+  <div class="doc-foot">
+    Self-hosting jamsesh? <a href="#">See SELF_HOST.md</a> · Want a durable account instead? <a href="#">Sign up →</a>
+  </div>
+</body>
+</html>

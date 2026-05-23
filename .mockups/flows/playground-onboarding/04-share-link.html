@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>playground-onboarding · 04 share-link</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column;
+    }
+
+    .flow-hybrid {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px;
+      background: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-size-sm)/1 var(--font-sans);
+      flex-shrink: 0;
+    }
+    .flow-hybrid__prev, .flow-hybrid__next {
+      color: var(--color-text-secondary); text-decoration: none;
+      padding: 4px 8px; border-radius: 4px;
+    }
+    .flow-hybrid__prev:hover, .flow-hybrid__next:hover { background: var(--color-bg-tertiary); }
+    .flow-hybrid__crumbs {
+      flex: 1; display: flex; gap: 4px; align-items: center;
+      justify-content: center; font-size: var(--font-size-xs);
+    }
+    .flow-hybrid__crumbs a {
+      color: var(--color-text-tertiary); text-decoration: none;
+      padding: 3px 7px; border-radius: 3px; font-family: var(--font-mono);
+    }
+    .flow-hybrid__crumbs a:hover { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+    .flow-hybrid__current {
+      color: var(--color-text-primary) !important;
+      background: var(--color-accent-muted) !important;
+      font-weight: var(--font-weight-medium);
+    }
+    .flow-hybrid__future { opacity: 0.5; }
+
+    /* Background = dimmed session view */
+    .session-stage {
+      flex: 1;
+      position: relative;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3C/svg%3E");
+      background-color: var(--color-bg-primary);
+      overflow: hidden;
+    }
+    .dim-veil {
+      position: absolute; inset: 0;
+      background: rgba(20, 22, 26, 0.55);
+      z-index: 10;
+    }
+
+    /* Faded mockup of the session view behind the modal */
+    .faded-view {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      filter: blur(0.4px);
+    }
+    .faded-chrome {
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .faded-chrome .word {
+      font: var(--font-weight-semibold) var(--font-size-base) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .faded-chrome .word .dot { color: var(--color-accent); }
+    .pchip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 9px;
+      background: var(--color-warning-muted);
+      color: var(--color-warning);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .faded-chrome .here { color: var(--color-text-primary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); }
+    .faded-chrome .spacer { flex: 1; }
+    .faded-chrome .countdown {
+      display: inline-flex; align-items: baseline; gap: 8px;
+      padding: 5px 10px; background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      font: var(--font-size-xs) var(--font-mono); color: var(--color-text-secondary);
+    }
+    .faded-body {
+      flex: 1;
+      display: grid; grid-template-columns: 240px 1fr 300px;
+      background: var(--color-bg-primary);
+    }
+    .faded-body > div { border-right: 1px solid var(--color-border); }
+    .faded-body > div:last-child { border-right: 0; }
+    .faded-body .pane-label {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-tertiary);
+    }
+    .faded-body .stub {
+      padding: 18px; color: var(--color-text-tertiary); font-size: var(--font-size-sm);
+    }
+
+    /* Share modal */
+    .share-modal {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(560px, calc(100% - 48px));
+      background: var(--color-bg-secondary);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 32px 64px rgba(20, 22, 26, 0.32), 0 8px 24px rgba(20, 22, 26, 0.12);
+      z-index: 20;
+      overflow: hidden;
+    }
+    .share-modal__head {
+      padding: 20px 24px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .share-modal__head h2 {
+      margin: 0;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.01em;
+    }
+    .share-modal__head .close {
+      background: transparent; border: 0;
+      color: var(--color-text-tertiary);
+      cursor: pointer; font-size: 20px;
+      padding: 0 4px;
+      text-decoration: none;
+    }
+    .share-modal__head .close:hover { color: var(--color-text-primary); }
+
+    .share-modal__body { padding: 20px 24px 6px; }
+
+    .share-row__label {
+      display: block;
+      font: var(--font-weight-semibold) var(--font-size-xs) var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-text-secondary);
+      margin: 14px 0 8px;
+    }
+    .share-row__label:first-of-type { margin-top: 0; }
+
+    .url-row {
+      display: flex; gap: 8px;
+    }
+    .url-input {
+      flex: 1;
+      padding: 10px 14px;
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      font: var(--font-size-sm) var(--font-mono);
+      color: var(--color-text-primary);
+    }
+    .copy-btn {
+      padding: 10px 18px;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      border: 0;
+      border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .copy-btn:hover { opacity: 0.9; }
+    .copy-btn.copied {
+      background: var(--color-success);
+    }
+
+    .cli-row {
+      position: relative;
+      padding: 12px 56px 12px 14px;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      border-radius: var(--radius-md);
+      font: var(--font-size-sm) var(--font-mono);
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .cli-row .copy-mini {
+      position: absolute; top: 8px; right: 8px;
+      background: rgba(250, 250, 250, 0.12);
+      color: var(--color-text-inverse);
+      border: 1px solid rgba(250, 250, 250, 0.2);
+      border-radius: 4px;
+      padding: 4px 9px;
+      font: var(--font-weight-medium) 10px var(--font-sans);
+      cursor: pointer;
+    }
+
+    .ephemeral-banner {
+      margin: 16px 0 4px;
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      background: var(--color-warning-muted);
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      display: flex; gap: 10px; align-items: flex-start;
+      border-left: 3px solid var(--color-warning);
+    }
+    .ephemeral-banner strong {
+      color: var(--color-warning);
+      font-weight: var(--font-weight-semibold);
+    }
+    .ephemeral-banner code {
+      background: rgba(20, 22, 26, 0.08);
+      padding: 1px 4px; border-radius: 3px;
+      font: 11px var(--font-mono);
+    }
+
+    .share-modal__foot {
+      padding: 14px 24px 18px;
+      display: flex; justify-content: flex-end; gap: 8px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-primary);
+    }
+    .modal-btn {
+      padding: 8px 14px;
+      background: var(--color-bg-secondary);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .modal-btn.primary {
+      background: var(--color-accent);
+      color: var(--color-text-inverse);
+      border-color: var(--color-accent);
+    }
+  </style>
+</head>
+<body>
+  <header class="flow-hybrid">
+    <a href="03-creator-session.html" class="flow-hybrid__prev">← prev</a>
+    <nav class="flow-hybrid__crumbs">
+      <a href="01-prospect-landing.html">1 prospect-landing</a>
+      <a href="02-create-cli-output.html">2 create-cli</a>
+      <a href="03-creator-session.html">3 creator-session</a>
+      <a href="04-share-link.html" aria-current="step" class="flow-hybrid__current">4 share-link</a>
+      <a href="05-joiner-nickname-picker.html">5 joiner-picker</a>
+      <a href="06-joiner-session.html" class="flow-hybrid__future">6 joiner-session</a>
+      <a href="07-session-end.html" class="flow-hybrid__future">7 session-end</a>
+    </nav>
+    <a href="05-joiner-nickname-picker.html" class="flow-hybrid__next">next →</a>
+  </header>
+
+  <div class="session-stage">
+    <!-- Faded mock of the underlying session view -->
+    <div class="faded-view">
+      <div class="faded-chrome">
+        <div class="word">jam<span class="dot">·</span>sesh</div>
+        <span class="pchip">⏳ playground</span>
+        <span class="here">auth-refresh demo</span>
+        <div class="spacer"></div>
+        <span class="countdown">ends in 23h 56m · idle 29m 32s</span>
+      </div>
+      <div class="faded-body">
+        <div>
+          <div class="pane-label">tree</div>
+          <div class="stub">jam/base · amber-otter/main · jam/draft</div>
+        </div>
+        <div>
+          <div class="pane-label">artifact</div>
+          <div class="stub">— empty state —</div>
+        </div>
+        <div>
+          <div class="pane-label">presence · activity</div>
+          <div class="stub">amber-otter (you)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dim-veil"></div>
+
+    <div class="share-modal" role="dialog" aria-labelledby="share-title">
+      <div class="share-modal__head">
+        <h2 id="share-title">Share this playground session</h2>
+        <a href="03-creator-session.html" class="close" title="Close (back to creator session)">×</a>
+      </div>
+
+      <div class="share-modal__body">
+        <label class="share-row__label">Session URL</label>
+        <div class="url-row">
+          <input class="url-input" value="https://jamsesh.example.com/playground/s/7f8q-amber-otter" readonly>
+          <button class="copy-btn">Copy link</button>
+        </div>
+
+        <label class="share-row__label">Or share the CLI one-liner</label>
+        <div class="cli-row">
+          jamsesh playground join https://jamsesh.example.com/playground/s/7f8q-amber-otter
+          <button class="copy-mini">Copy</button>
+        </div>
+
+        <div class="ephemeral-banner">
+          <span>⏳</span>
+          <span>
+            <strong>Anyone with this link can join</strong> — there's no allowlist, no auth, no approval step.
+            This session ends <code>2026-05-24 14:30 UTC</code> (24h cap) or after <code>30 min idle</code>,
+            whichever first. When the window closes, the session and every comment, ref, and event in it are destroyed.
+          </span>
+        </div>
+      </div>
+
+      <div class="share-modal__foot">
+        <a href="03-creator-session.html" class="modal-btn">Done</a>
+        <a href="05-joiner-nickname-picker.html" class="modal-btn primary">Open joiner view (preview)</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

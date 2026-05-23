@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>playground-onboarding · 02 create-cli-output</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; min-height: 100%; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+    }
+
+    .flow-hybrid {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px;
+      background: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-size-sm)/1 var(--font-sans);
+    }
+    .flow-hybrid__prev, .flow-hybrid__next {
+      color: var(--color-text-secondary); text-decoration: none;
+      padding: 4px 8px; border-radius: 4px;
+    }
+    .flow-hybrid__prev:hover, .flow-hybrid__next:hover { background: var(--color-bg-tertiary); }
+    .flow-hybrid__crumbs {
+      flex: 1; display: flex; gap: 4px; align-items: center;
+      justify-content: center; font-size: var(--font-size-xs);
+    }
+    .flow-hybrid__crumbs a {
+      color: var(--color-text-tertiary); text-decoration: none;
+      padding: 3px 7px; border-radius: 3px; font-family: var(--font-mono);
+    }
+    .flow-hybrid__crumbs a:hover { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+    .flow-hybrid__current {
+      color: var(--color-text-primary) !important;
+      background: var(--color-accent-muted) !important;
+      font-weight: var(--font-weight-medium);
+    }
+    .flow-hybrid__future { opacity: 0.5; }
+
+    .page-wrap {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 64px 32px 48px;
+    }
+    .page-eyebrow {
+      font: var(--font-weight-medium) var(--font-size-xs)/1 var(--font-mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-text-tertiary);
+      margin-bottom: 12px;
+    }
+    .page-title {
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+    }
+    .page-subtitle {
+      color: var(--color-text-secondary);
+      margin: 0 0 32px;
+      font-size: var(--font-size-base);
+    }
+
+    /* Terminal mock */
+    .terminal {
+      background: #0d1117;
+      color: #c9d1d9;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 24px 64px rgba(20, 22, 26, 0.18), 0 4px 12px rgba(20, 22, 26, 0.08);
+      overflow: hidden;
+      font: var(--font-size-sm)/1.55 var(--font-mono);
+    }
+    .terminal__chrome {
+      background: #161b22;
+      padding: 10px 14px;
+      display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid #30363d;
+    }
+    .terminal__dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: #3d4146;
+    }
+    .terminal__dot.r { background: #ed6a5e; }
+    .terminal__dot.y { background: #f5bf4f; }
+    .terminal__dot.g { background: #61c554; }
+    .terminal__title {
+      color: #8b949e;
+      font-size: 11px;
+      margin-left: 12px;
+      font-family: var(--font-mono);
+    }
+
+    .terminal__body { padding: 20px 24px; min-height: 360px; }
+    .term-line { margin: 0; white-space: pre-wrap; }
+    .term-prompt { color: #79b8ff; }
+    .term-user { color: #c9d1d9; }
+    .term-info { color: #8b949e; }
+    .term-ok { color: #56d364; }
+    .term-key { color: #d2a8ff; font-weight: 500; }
+    .term-link { color: #79b8ff; text-decoration: underline; text-underline-offset: 3px; }
+    .term-warn { color: #f5bf4f; }
+    .term-cursor {
+      display: inline-block;
+      width: 8px; height: 14px;
+      background: #c9d1d9;
+      vertical-align: text-bottom;
+      animation: blink 1s steps(2) infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+    .term-spacer { display: block; height: 6px; }
+
+    .next-cta {
+      margin-top: 32px;
+      display: flex; gap: 20px; align-items: center; justify-content: space-between;
+      padding: 18px 24px;
+      background: var(--color-accent-muted);
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(31, 107, 112, 0.18);
+    }
+    .next-cta .text {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-primary);
+    }
+    .next-cta .text strong { font-weight: var(--font-weight-semibold); }
+    .next-cta a {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      background: var(--color-bg-inverse);
+      color: var(--color-text-inverse);
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+    }
+    .next-cta a:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <header class="flow-hybrid">
+    <a href="01-prospect-landing.html" class="flow-hybrid__prev">← prev</a>
+    <nav class="flow-hybrid__crumbs">
+      <a href="01-prospect-landing.html">1 prospect-landing</a>
+      <a href="02-create-cli-output.html" aria-current="step" class="flow-hybrid__current">2 create-cli</a>
+      <a href="03-creator-session.html">3 creator-session</a>
+      <a href="04-share-link.html" class="flow-hybrid__future">4 share-link</a>
+      <a href="05-joiner-nickname-picker.html" class="flow-hybrid__future">5 joiner-picker</a>
+      <a href="06-joiner-session.html" class="flow-hybrid__future">6 joiner-session</a>
+      <a href="07-session-end.html" class="flow-hybrid__future">7 session-end</a>
+    </nav>
+    <a href="03-creator-session.html" class="flow-hybrid__next">next →</a>
+  </header>
+
+  <div class="page-wrap">
+    <div class="page-eyebrow">Your terminal · after `jamsesh playground new`</div>
+    <h1 class="page-title">Session created — share the link and open in browser.</h1>
+    <p class="page-subtitle">
+      The CLI pushes your local HEAD as the session base ref, mints your anonymous handle, and prints the join URL. No OAuth, no org picker — you're in.
+    </p>
+
+    <div class="terminal">
+      <div class="terminal__chrome">
+        <div class="terminal__dot r"></div>
+        <div class="terminal__dot y"></div>
+        <div class="terminal__dot g"></div>
+        <div class="terminal__title">~/proj/auth-refresh — bash</div>
+      </div>
+      <div class="terminal__body">
+<pre class="term-line"><span class="term-prompt">$</span> <span class="term-user">jamsesh playground new</span></pre>
+<pre class="term-line"><span class="term-info">→ Connecting to https://jamsesh.example.com…</span></pre>
+<pre class="term-line"><span class="term-info">→ Pushing local HEAD as base ref (ref: jam/&lt;session-id&gt;/base)…</span>   <span class="term-ok">done</span></pre>
+<pre class="term-line"><span class="term-info">→ Minting anonymous identity…</span>                                       <span class="term-ok">amber-otter</span></pre>
+<pre class="term-line"><span class="term-info">→ Binding to ref jam/&lt;session-id&gt;/amber-otter/main (sync mode)…</span>  <span class="term-ok">done</span></pre>
+<span class="term-spacer"></span>
+<pre class="term-line"><span class="term-ok">✓ Playground session is live.</span></pre>
+<span class="term-spacer"></span>
+<pre class="term-line">  <span class="term-key">Session URL:</span>  <span class="term-link">https://jamsesh.example.com/playground/s/7f8q-amber-otter</span></pre>
+<pre class="term-line">  <span class="term-key">You are:</span>     amber-otter</pre>
+<pre class="term-line">  <span class="term-key">Ends:</span>        in <span class="term-warn">24h</span> (or after <span class="term-warn">30 min idle</span>), whichever first</pre>
+<pre class="term-line">  <span class="term-key">Capacity:</span>    up to 5 participants</pre>
+<span class="term-spacer"></span>
+<pre class="term-line"><span class="term-info">Share the URL with collaborators — anyone with the link can join.</span></pre>
+<pre class="term-line"><span class="term-info">Run `jamsesh status` anytime to see participants, refs, and remaining time.</span></pre>
+<span class="term-spacer"></span>
+<pre class="term-line">Open in browser? [<span class="term-key">Y</span>/n] <span class="term-cursor"></span></pre>
+      </div>
+    </div>
+
+    <div class="next-cta">
+      <div class="text">
+        <strong>Hit Y</strong> and your default browser opens the session view. Or just paste the URL above into any browser tab.
+      </div>
+      <a href="03-creator-session.html">Continue →</a>
+    </div>
+  </div>
+</body>
+</html>

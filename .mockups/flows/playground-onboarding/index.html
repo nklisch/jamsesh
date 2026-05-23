@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>playground-onboarding · overview</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; min-height: 100%; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+    }
+
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 56px 32px 80px;
+    }
+
+    .meta {
+      display: flex; gap: 12px; align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .meta .kind {
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--color-accent);
+      padding: 3px 8px;
+      background: var(--color-accent-muted);
+      border-radius: 4px;
+    }
+    .meta .top {
+      font: var(--font-weight-medium) var(--font-size-xs) var(--font-mono);
+      color: var(--color-text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.025em;
+      line-height: 1.1;
+    }
+    .lede {
+      margin: 0 0 16px;
+      font-size: var(--font-size-lg);
+      color: var(--color-text-secondary);
+      max-width: 720px;
+      line-height: var(--line-height-base);
+    }
+    .topology-note {
+      margin: 0 0 40px;
+      padding: 14px 18px;
+      background: var(--color-bg-secondary);
+      border-left: 3px solid var(--color-accent);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      max-width: 720px;
+    }
+    .topology-note strong { color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+
+    /* Sequence ribbon */
+    .ribbon {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .step-card {
+      flex: 1 1 calc(33.333% - 16px);
+      min-width: 280px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      display: flex; flex-direction: column;
+      text-decoration: none;
+      color: var(--color-text-primary);
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+      position: relative;
+    }
+    .step-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--color-border-strong);
+      box-shadow: 0 8px 32px rgba(20, 22, 26, 0.08), 0 2px 8px rgba(20, 22, 26, 0.04);
+    }
+    .step-card__head {
+      display: flex; gap: 10px; align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .step-card__num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 13px var(--font-mono);
+      flex-shrink: 0;
+    }
+    .step-card__slug {
+      font: var(--font-weight-medium) var(--font-size-xs) var(--font-mono);
+      color: var(--color-text-tertiary);
+      letter-spacing: 0.04em;
+    }
+    .step-card__title {
+      margin: 0 0 6px;
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-semibold);
+    }
+    .step-card__body {
+      margin: 0 0 12px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      line-height: 1.5;
+      flex: 1;
+    }
+    .step-card__chips {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      margin-top: auto;
+    }
+    .chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 8px;
+      background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font: 10px var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .chip.crossjump {
+      background: var(--color-warning-muted);
+      color: var(--color-warning);
+      border-color: rgba(148, 101, 35, 0.25);
+    }
+    .chip.terminus {
+      background: var(--color-accent-muted);
+      color: var(--color-accent);
+      border-color: rgba(31, 107, 112, 0.25);
+    }
+
+    /* Hybrid legend */
+    .legend {
+      margin: 0 0 24px;
+      padding: 18px 22px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+    }
+    .legend h3 {
+      margin: 0 0 12px;
+      font: var(--font-weight-semibold) 11px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-secondary);
+    }
+    .legend ul {
+      margin: 0; padding: 0; list-style: none;
+      display: flex; flex-direction: column; gap: 6px;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .legend li { display: flex; gap: 10px; align-items: baseline; }
+    .legend code {
+      font: var(--font-size-xs) var(--font-mono);
+      background: var(--color-bg-tertiary);
+      padding: 1px 5px; border-radius: 3px;
+      color: var(--color-text-primary);
+    }
+
+    .signoff {
+      margin-top: 56px;
+      padding: 20px 24px;
+      background: var(--color-bg-secondary);
+      border: 1px dashed var(--color-border-strong);
+      border-radius: var(--radius-md);
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      max-width: 720px;
+    }
+    .signoff strong { color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="meta">
+      <span class="kind">flow</span>
+      <span class="top">topology: hybrid · voice: polished · viewport: desktop-first</span>
+    </div>
+    <h1>playground-onboarding</h1>
+    <p class="lede">
+      The first-touch journey for prospective jamsesh users: arrive at the portal, install the CLI,
+      spin up a real ephemeral session from a local checkout, share a join URL, watch collaborators
+      join with auto-minted handles, and (eventually) see the session age out and destroy itself.
+    </p>
+
+    <div class="topology-note">
+      <strong>Hybrid topology.</strong> The primary path is sequential (1 → 7), but the share-link
+      surface (step 4) is a modal cross-jump from the creator session (step 3), and the post-destruction
+      page (step 7c) loops back to step 1 as a "try another" CTA. Step 7 is intentionally a single page
+      stacking three sub-states because they're all variants on session-end, not independent moments.
+    </div>
+
+    <div class="legend">
+      <h3>How to read</h3>
+      <ul>
+        <li><span class="chip">step</span> default-sequence card</li>
+        <li><span class="chip crossjump">↩ from N</span> reachable from a non-adjacent step (cross-jump)</li>
+        <li><span class="chip terminus">↻ loops to N</span> end-of-flow loops back into the sequence</li>
+      </ul>
+    </div>
+
+    <div class="ribbon">
+      <a class="step-card" href="01-prospect-landing.html">
+        <div class="step-card__head">
+          <span class="step-card__num">1</span>
+          <span class="step-card__slug">prospect-landing</span>
+        </div>
+        <h3 class="step-card__title">Unauthenticated portal landing</h3>
+        <p class="step-card__body">
+          Pitch + install one-liner + `jamsesh playground new` command. "I already have it installed" link skips straight to step 2.
+        </p>
+        <div class="step-card__chips">
+          <span class="chip crossjump">↩ from 7c</span>
+        </div>
+      </a>
+
+      <a class="step-card" href="02-create-cli-output.html">
+        <div class="step-card__head">
+          <span class="step-card__num">2</span>
+          <span class="step-card__slug">create-cli</span>
+        </div>
+        <h3 class="step-card__title">Terminal: after `jamsesh playground new`</h3>
+        <p class="step-card__body">
+          The CLI's stdout — pushes local HEAD as base, mints the creator's nickname, prints the share URL and the expiry summary. "Open in browser? [Y/n]" prompt.
+        </p>
+        <div class="step-card__chips"></div>
+      </a>
+
+      <a class="step-card" href="03-creator-session.html">
+        <div class="step-card__head">
+          <span class="step-card__num">3</span>
+          <span class="step-card__slug">creator-session</span>
+        </div>
+        <h3 class="step-card__title">Creator session view (anon mode)</h3>
+        <p class="step-card__body">
+          SessionViewShell with playground chip, countdown badge (hard-cap + idle), no org name, anon handle in chrome. "You're alone — share the URL" nudge banner.
+        </p>
+        <div class="step-card__chips"></div>
+      </a>
+
+      <a class="step-card" href="04-share-link.html">
+        <div class="step-card__head">
+          <span class="step-card__num">4</span>
+          <span class="step-card__slug">share-link</span>
+        </div>
+        <h3 class="step-card__title">Share-link composer modal</h3>
+        <p class="step-card__body">
+          Modal overlay on creator session view: copy URL, copy CLI one-liner, ephemeral reminder with concrete end-time. "Done" closes back to step 3.
+        </p>
+        <div class="step-card__chips">
+          <span class="chip crossjump">↩ from 3</span>
+        </div>
+      </a>
+
+      <a class="step-card" href="05-joiner-nickname-picker.html">
+        <div class="step-card__head">
+          <span class="step-card__num">5</span>
+          <span class="step-card__slug">joiner-picker</span>
+        </div>
+        <h3 class="step-card__title">Joiner nickname picker</h3>
+        <p class="step-card__body">
+          Joiner clicks share URL: session card (host, goal, end-time) + nickname input pre-filled with server suggestion ("quiet-fox"), reroll button, customize-then-join.
+        </p>
+        <div class="step-card__chips"></div>
+      </a>
+
+      <a class="step-card" href="06-joiner-session.html">
+        <div class="step-card__head">
+          <span class="step-card__num">6</span>
+          <span class="step-card__slug">joiner-session</span>
+        </div>
+        <h3 class="step-card__title">Joiner session view</h3>
+        <p class="step-card__body">
+          Same SessionViewShell, joiner perspective: host and joiner in presence, joiner's empty ref alongside host's commits, "welcome — bind via CLI" banner.
+        </p>
+        <div class="step-card__chips"></div>
+      </a>
+
+      <a class="step-card" href="07-session-end.html">
+        <div class="step-card__head">
+          <span class="step-card__num">7</span>
+          <span class="step-card__slug">session-end</span>
+        </div>
+        <h3 class="step-card__title">Session-end (3 sub-states)</h3>
+        <p class="step-card__body">
+          7a idle-timeout warning (5 min before), 7b hard-cap warning (5 min before), 7c post-destruction page with stats + "try another" + "sign up for durable" CTAs.
+        </p>
+        <div class="step-card__chips">
+          <span class="chip terminus">↻ loops to 1</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="signoff">
+      <strong>Sign-off check.</strong> Walk through 1 → 7 with the share-link cross-jump from 3 → 4 → 3.
+      Verify: countdown chip surfaces both timers, anonymous handles read naturally in presence and activity feeds, the
+      destruction page reads as a clean ending (not a failure), and the loop from 7c → 1 feels like an
+      invitation rather than a paywall push.
+    </div>
+  </div>
+</body>
+</html>

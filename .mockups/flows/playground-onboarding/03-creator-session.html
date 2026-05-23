@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>playground-onboarding · 03 creator-session</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      display: flex; flex-direction: column;
+    }
+
+    .flow-hybrid {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px;
+      background: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-size-sm)/1 var(--font-sans);
+      flex-shrink: 0;
+    }
+    .flow-hybrid__prev, .flow-hybrid__next {
+      color: var(--color-text-secondary); text-decoration: none;
+      padding: 4px 8px; border-radius: 4px;
+    }
+    .flow-hybrid__prev:hover, .flow-hybrid__next:hover { background: var(--color-bg-tertiary); }
+    .flow-hybrid__crumbs {
+      flex: 1; display: flex; gap: 4px; align-items: center;
+      justify-content: center; font-size: var(--font-size-xs);
+    }
+    .flow-hybrid__crumbs a {
+      color: var(--color-text-tertiary); text-decoration: none;
+      padding: 3px 7px; border-radius: 3px; font-family: var(--font-mono);
+    }
+    .flow-hybrid__crumbs a:hover { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+    .flow-hybrid__current {
+      color: var(--color-text-primary) !important;
+      background: var(--color-accent-muted) !important;
+      font-weight: var(--font-weight-medium);
+    }
+    .flow-hybrid__future { opacity: 0.5; }
+
+    .layout { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+    /* App chrome — same shape as durable session, but breadcrumb shows playground chip */
+    .app-chrome {
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-base) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .playground-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 9px;
+      background: var(--color-warning-muted);
+      color: var(--color-warning);
+      border: 1px solid rgba(148, 101, 35, 0.25);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .breadcrumb {
+      display: flex; gap: 6px; align-items: center;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .breadcrumb .here {
+      color: var(--color-text-primary);
+      font-weight: var(--font-weight-medium);
+    }
+    .chrome-spacer { flex: 1; }
+
+    /* Countdown badge — playground-specific, in the chrome strip */
+    .countdown {
+      display: inline-flex; align-items: baseline; gap: 8px;
+      padding: 5px 10px;
+      background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font: var(--font-size-xs) var(--font-mono);
+    }
+    .countdown__label { color: var(--color-text-tertiary); }
+    .countdown__hard {
+      color: var(--color-text-primary);
+      font-weight: var(--font-weight-semibold);
+    }
+    .countdown__sep { color: var(--color-text-tertiary); }
+    .countdown__idle {
+      color: var(--color-warning);
+      font-weight: var(--font-weight-medium);
+    }
+    .anon-handle {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 9px 4px 4px;
+      background: var(--color-bg-tertiary);
+      border-radius: var(--radius-md);
+      font: var(--font-size-xs) var(--font-mono);
+    }
+    .anon-handle .ad {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--author-5);
+      color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+    }
+
+    /* Session header */
+    .session-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 20px; align-items: start;
+      flex-shrink: 0;
+    }
+    .session-header h1 {
+      margin: 0 0 4px;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .session-header .name-edit {
+      font-size: 11px;
+      color: var(--color-text-link);
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: var(--font-weight-regular);
+    }
+    .session-header .goal {
+      margin: 0 0 10px;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      max-width: 680px;
+      font-style: italic;
+    }
+    .session-header .meta-strip {
+      display: flex; gap: 14px; align-items: center;
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+      font-family: var(--font-mono);
+    }
+    .session-header .meta-strip code {
+      background: var(--color-bg-tertiary);
+      padding: 1px 5px; border-radius: 3px;
+      color: var(--color-text-secondary);
+      font-family: var(--font-mono);
+    }
+    .header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .header-btn {
+      padding: 7px 14px;
+      background: var(--color-bg-secondary);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
+      cursor: pointer;
+    }
+    .header-btn.primary {
+      background: var(--color-accent);
+      color: var(--color-text-inverse);
+      border-color: var(--color-accent);
+    }
+
+    /* Three-column body */
+    .body {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr) 300px;
+      flex: 1; min-height: 0;
+    }
+    .pane { overflow: hidden; display: flex; flex-direction: column; background: var(--color-bg-primary); }
+    .pane.tree { border-right: 1px solid var(--color-border); }
+    .pane.right { border-left: 1px solid var(--color-border); }
+    .pane-head {
+      padding: 10px 14px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+      flex-shrink: 0;
+    }
+    .pane-scroll { flex: 1; overflow-y: auto; }
+
+    /* Tree pane */
+    .ref-group { padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+    .ref-header {
+      padding: 6px 14px;
+      display: flex; gap: 8px; align-items: center;
+      font: var(--font-size-xs) var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+    .ref-header .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .ref-header .name { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .mode-mini {
+      margin-left: auto;
+      padding: 1px 6px; border-radius: 3px;
+      font: var(--font-weight-semibold) 9px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .mode-mini.sync { background: var(--color-accent-muted); color: var(--color-accent); }
+    .mode-mini.draft { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+    .commit-list { list-style: none; padding: 0; margin: 0; }
+    .commit-item {
+      padding: 5px 14px 5px 30px; position: relative;
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 8px; align-items: center;
+      cursor: pointer;
+    }
+    .commit-item:hover { background: var(--color-bg-tertiary); }
+    .commit-item::before {
+      content: ''; position: absolute;
+      left: 18px; top: 12px;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--commit-color);
+    }
+    .commit-item .msg { font-size: var(--font-size-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .commit-item .sha { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+
+    /* Artifact pane */
+    .artifact-head {
+      padding: 10px 18px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .file-path { font: var(--font-size-sm) var(--font-mono); }
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px;
+      color: var(--color-text-secondary);
+      padding: 32px;
+      text-align: center;
+    }
+    .empty-state h3 {
+      margin: 0;
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-semibold);
+      color: var(--color-text-primary);
+    }
+    .empty-state p { margin: 0; font-size: var(--font-size-sm); max-width: 360px; }
+    .empty-state .next-hint {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: var(--color-accent-muted);
+      border-radius: var(--radius-md);
+      font: var(--font-size-sm) var(--font-mono);
+      color: var(--color-accent);
+    }
+
+    /* Right pane */
+    .presence-section, .feed-section { padding: 14px; }
+    .presence-section { border-bottom: 1px solid var(--color-border); }
+    .section-title {
+      margin: 0 0 10px;
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--color-text-secondary);
+    }
+    .presence-row {
+      display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: center;
+      padding: 5px 0; font-size: var(--font-size-sm);
+    }
+    .presence-row .ad {
+      width: 22px; height: 22px; border-radius: 50%; position: relative;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font: var(--font-weight-semibold) 9px var(--font-mono);
+    }
+    .presence-row .ad.online::after {
+      content: ''; position: absolute; right: -2px; bottom: -2px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--color-success);
+      border: 2px solid var(--color-bg-primary);
+    }
+    .presence-row .name { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .presence-row .where { font: 10px var(--font-mono); color: var(--color-text-tertiary); }
+    .presence-empty {
+      padding: 8px 0;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-tertiary);
+      font-style: italic;
+    }
+
+    .feed-item {
+      padding: 8px 10px; border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm); color: var(--color-text-secondary);
+      line-height: 1.45;
+    }
+    .feed-item .who { color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+    .feed-item .when { font: 10px var(--font-mono); color: var(--color-text-tertiary); display: block; margin-top: 2px; }
+
+    /* First-time-share nudge banner — playground-specific */
+    .share-nudge {
+      background: linear-gradient(90deg, var(--color-accent-muted), transparent);
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--color-border);
+      display: flex; gap: 14px; align-items: center;
+      font-size: var(--font-size-sm);
+      flex-shrink: 0;
+    }
+    .share-nudge .icon {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--color-accent);
+      color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .share-nudge .text { color: var(--color-text-primary); flex: 1; }
+    .share-nudge .text strong { font-weight: var(--font-weight-semibold); }
+    .share-nudge a {
+      color: var(--color-text-link);
+      text-decoration: none;
+      font-weight: var(--font-weight-medium);
+    }
+    .share-nudge a:hover { text-decoration: underline; }
+    .share-nudge .dismiss {
+      background: transparent; border: 0;
+      color: var(--color-text-tertiary);
+      cursor: pointer; font-size: 16px;
+      padding: 0 4px;
+    }
+  </style>
+</head>
+<body>
+  <header class="flow-hybrid">
+    <a href="02-create-cli-output.html" class="flow-hybrid__prev">← prev</a>
+    <nav class="flow-hybrid__crumbs">
+      <a href="01-prospect-landing.html">1 prospect-landing</a>
+      <a href="02-create-cli-output.html">2 create-cli</a>
+      <a href="03-creator-session.html" aria-current="step" class="flow-hybrid__current">3 creator-session</a>
+      <a href="04-share-link.html">4 share-link</a>
+      <a href="05-joiner-nickname-picker.html" class="flow-hybrid__future">5 joiner-picker</a>
+      <a href="06-joiner-session.html" class="flow-hybrid__future">6 joiner-session</a>
+      <a href="07-session-end.html" class="flow-hybrid__future">7 session-end</a>
+    </nav>
+    <a href="04-share-link.html" class="flow-hybrid__next">next →</a>
+  </header>
+
+  <div class="layout">
+    <div class="app-chrome">
+      <div class="wordmark">jam<span class="dot">·</span>sesh</div>
+      <span class="playground-chip">⏳ playground</span>
+      <span class="breadcrumb">
+        <span class="here">auth-refresh demo</span>
+      </span>
+      <div class="chrome-spacer"></div>
+      <span class="countdown" title="Time until session destruction">
+        <span class="countdown__label">ends in</span>
+        <span class="countdown__hard">23h 58m</span>
+        <span class="countdown__sep">·</span>
+        <span class="countdown__label">idle</span>
+        <span class="countdown__idle">29m 47s</span>
+      </span>
+      <span class="anon-handle" title="Your anonymous identity for this session">
+        <span class="ad">am</span>
+        amber-otter
+      </span>
+    </div>
+
+    <div class="share-nudge">
+      <span class="icon">→</span>
+      <span class="text"><strong>You're alone in this session.</strong> Share the URL with collaborators to get them in — or just keep going solo.</span>
+      <a href="04-share-link.html">Share the session →</a>
+      <button class="dismiss" title="Dismiss">×</button>
+    </div>
+
+    <div class="session-header">
+      <div>
+        <h1>
+          auth-refresh demo
+          <a class="name-edit">rename ↗</a>
+        </h1>
+        <p class="goal">No goal set yet. Click to add one — it shapes what every agent that joins works toward.</p>
+        <div class="meta-strip">
+          <span>base <code>~/proj/auth-refresh</code> @ <code>f02ac41</code></span>
+          <span>·</span>
+          <span>scope <code>**</code></span>
+          <span>·</span>
+          <span>default mode <code>sync</code></span>
+          <span>·</span>
+          <span>1 member</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="header-btn">Comment</button>
+        <button class="header-btn primary">Share session</button>
+      </div>
+    </div>
+
+    <div class="body">
+      <aside class="pane tree">
+        <div class="pane-head">tree</div>
+        <div class="pane-scroll">
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--color-text-tertiary)"></span>
+              <span class="name">jam/base</span>
+              <span class="mode-mini draft">base</span>
+            </div>
+            <ul class="commit-list">
+              <li class="commit-item" style="--commit-color: var(--color-text-tertiary)">
+                <span class="msg">Initial HEAD from local checkout</span>
+                <span class="sha">f02ac41</span>
+              </li>
+            </ul>
+          </div>
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--author-5)"></span>
+              <span class="name">amber-otter/main</span>
+              <span class="mode-mini sync">sync</span>
+            </div>
+            <ul class="commit-list">
+              <li style="padding: 8px 14px 8px 30px; color: var(--color-text-tertiary); font-size: 11px; font-style: italic;">
+                No commits yet — your next commit lands here.
+              </li>
+            </ul>
+          </div>
+          <div class="ref-group">
+            <div class="ref-header">
+              <span class="dot" style="background: var(--color-text-tertiary)"></span>
+              <span class="name">jam/draft</span>
+              <span class="mode-mini draft">draft</span>
+            </div>
+            <ul class="commit-list">
+              <li style="padding: 8px 14px 8px 30px; color: var(--color-text-tertiary); font-size: 11px; font-style: italic;">
+                Tracking base · nothing to merge yet.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+
+      <main class="pane">
+        <div class="artifact-head">
+          <span class="file-path">— select a commit to view its diff —</span>
+        </div>
+        <div class="empty-state">
+          <h3>This is your playground session.</h3>
+          <p>Drive your agents in Claude Code as you normally would. Their commits stream into the tree pane on the left in near-real-time, and the auto-merger weaves them into the shared draft as they arrive.</p>
+          <div class="next-hint">
+            $ jamsesh status &nbsp; — &nbsp; see refs, peers, and remaining time
+          </div>
+        </div>
+      </main>
+
+      <aside class="pane right">
+        <div class="presence-section">
+          <h2 class="section-title">presence</h2>
+          <div class="presence-row">
+            <span class="ad online" style="background: var(--author-5)">am</span>
+            <div>
+              <span class="name">amber-otter <em style="font-style: normal; color: var(--color-text-tertiary); font-weight: var(--font-weight-regular); font-size: 11px;">(you)</em></span>
+              <div class="where">amber-otter/main @ f02ac41</div>
+            </div>
+          </div>
+        </div>
+        <div class="feed-section">
+          <h2 class="section-title">activity</h2>
+          <div class="feed-item">
+            <span class="who">amber-otter</span> created the session.
+            <span class="when">just now</span>
+          </div>
+          <div class="feed-item">
+            <span class="who">amber-otter</span> pushed base ref <code style="font-family: var(--font-mono); font-size: 11px;">f02ac41</code>.
+            <span class="when">just now</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>

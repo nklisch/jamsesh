@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>playground-onboarding · 05 joiner-nickname-picker</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; min-height: 100%; }
+    body {
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+    }
+
+    .flow-hybrid {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px;
+      background: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border);
+      font: var(--font-size-sm)/1 var(--font-sans);
+    }
+    .flow-hybrid__prev, .flow-hybrid__next {
+      color: var(--color-text-secondary); text-decoration: none;
+      padding: 4px 8px; border-radius: 4px;
+    }
+    .flow-hybrid__prev:hover, .flow-hybrid__next:hover { background: var(--color-bg-tertiary); }
+    .flow-hybrid__crumbs {
+      flex: 1; display: flex; gap: 4px; align-items: center;
+      justify-content: center; font-size: var(--font-size-xs);
+    }
+    .flow-hybrid__crumbs a {
+      color: var(--color-text-tertiary); text-decoration: none;
+      padding: 3px 7px; border-radius: 3px; font-family: var(--font-mono);
+    }
+    .flow-hybrid__crumbs a:hover { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+    .flow-hybrid__current {
+      color: var(--color-text-primary) !important;
+      background: var(--color-accent-muted) !important;
+      font-weight: var(--font-weight-medium);
+    }
+    .flow-hybrid__future { opacity: 0.5; }
+
+    .top-bar {
+      padding: 16px 32px;
+      display: flex; align-items: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .wordmark {
+      font: var(--font-weight-semibold) var(--font-size-lg) var(--font-sans);
+      letter-spacing: -0.03em;
+    }
+    .wordmark .dot { color: var(--color-accent); }
+    .playground-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 9px;
+      background: var(--color-warning-muted);
+      color: var(--color-warning);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-semibold) 10px var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      margin-left: 12px;
+    }
+    .top-bar .spacer { flex: 1; }
+
+    .joiner-wrap {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 60px 32px 48px;
+    }
+    .join-eyebrow {
+      font: var(--font-weight-medium) var(--font-size-xs)/1 var(--font-mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-accent);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .join-headline {
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-semibold);
+      letter-spacing: -0.02em;
+      text-align: center;
+      margin: 0 0 6px;
+    }
+    .join-headline .name {
+      color: var(--color-accent);
+    }
+    .join-sub {
+      text-align: center;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-base);
+      margin: 0 0 36px;
+    }
+
+    .session-card {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+    .session-card .row {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 12px;
+      align-items: baseline;
+      padding: 6px 0;
+      font-size: var(--font-size-sm);
+    }
+    .session-card .row .label {
+      color: var(--color-text-tertiary);
+      font: var(--font-weight-medium) var(--font-size-xs) var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .session-card .row .val {
+      color: var(--color-text-primary);
+    }
+    .session-card .row .val.muted {
+      color: var(--color-text-secondary);
+      font-style: italic;
+    }
+    .session-card .row .val code {
+      background: var(--color-bg-tertiary);
+      padding: 1px 5px; border-radius: 3px;
+      font: var(--font-size-xs) var(--font-mono);
+    }
+
+    .nickname-form {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: 0 4px 24px rgba(20, 22, 26, 0.04);
+    }
+    .field-label {
+      display: block;
+      font: var(--font-weight-semibold) var(--font-size-xs) var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-secondary);
+      margin: 0 0 8px;
+    }
+    .nickname-input-wrap {
+      position: relative;
+      display: flex; gap: 8px; align-items: center;
+    }
+    .nickname-avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--author-6);
+      color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font: var(--font-weight-semibold) 13px var(--font-mono);
+      flex-shrink: 0;
+    }
+    .nickname-input {
+      flex: 1;
+      padding: 12px 16px;
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border-strong);
+      border-radius: var(--radius-md);
+      font: var(--font-weight-medium) var(--font-size-lg) var(--font-mono);
+      color: var(--color-text-primary);
+      letter-spacing: -0.01em;
+    }
+    .nickname-input:focus {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+      border-color: var(--color-accent);
+    }
+    .reroll-btn {
+      padding: 10px;
+      background: var(--color-bg-tertiary);
+      color: var(--color-text-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      font-size: 14px;
+      width: 40px; height: 40px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .reroll-btn:hover { background: var(--color-border); color: var(--color-text-primary); }
+    .hint-row {
+      margin: 10px 0 0;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      display: flex; gap: 6px; align-items: center;
+    }
+    .hint-row .info-icon {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: var(--color-text-tertiary);
+      color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 9px;
+      font-weight: var(--font-weight-bold);
+    }
+
+    .join-btn {
+      width: 100%;
+      margin-top: 24px;
+      padding: 14px;
+      background: var(--color-accent);
+      color: var(--color-text-inverse);
+      border: 0;
+      border-radius: var(--radius-md);
+      font: var(--font-weight-semibold) var(--font-size-base) var(--font-sans);
+      cursor: pointer;
+    }
+    .join-btn:hover { background: var(--color-accent-hover); }
+
+    .ephemeral-mini {
+      margin-top: 20px;
+      padding: 12px 16px;
+      background: var(--color-warning-muted);
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      text-align: center;
+      border-left: 3px solid var(--color-warning);
+    }
+    .ephemeral-mini strong {
+      color: var(--color-warning);
+      font-weight: var(--font-weight-semibold);
+    }
+
+    .doc-foot {
+      text-align: center;
+      margin-top: 28px;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-tertiary);
+    }
+    .doc-foot a { color: var(--color-text-link); text-decoration: none; }
+    .doc-foot a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header class="flow-hybrid">
+    <a href="04-share-link.html" class="flow-hybrid__prev">← prev</a>
+    <nav class="flow-hybrid__crumbs">
+      <a href="01-prospect-landing.html">1 prospect-landing</a>
+      <a href="02-create-cli-output.html">2 create-cli</a>
+      <a href="03-creator-session.html">3 creator-session</a>
+      <a href="04-share-link.html">4 share-link</a>
+      <a href="05-joiner-nickname-picker.html" aria-current="step" class="flow-hybrid__current">5 joiner-picker</a>
+      <a href="06-joiner-session.html">6 joiner-session</a>
+      <a href="07-session-end.html" class="flow-hybrid__future">7 session-end</a>
+    </nav>
+    <a href="06-joiner-session.html" class="flow-hybrid__next">next →</a>
+  </header>
+
+  <div class="top-bar">
+    <div class="wordmark">jamsesh<span class="dot">.</span></div>
+    <span class="playground-chip">⏳ playground</span>
+    <div class="spacer"></div>
+  </div>
+
+  <section class="joiner-wrap">
+    <div class="join-eyebrow">You were invited to a playground</div>
+    <h1 class="join-headline">Joining <span class="name">auth-refresh demo</span></h1>
+    <p class="join-sub">Pick a handle and hop in — no account, no email needed.</p>
+
+    <div class="session-card">
+      <div class="row">
+        <span class="label">Hosted by</span>
+        <span class="val">amber-otter</span>
+      </div>
+      <div class="row">
+        <span class="label">Goal</span>
+        <span class="val muted">No goal set yet</span>
+      </div>
+      <div class="row">
+        <span class="label">Members</span>
+        <span class="val">1 currently online</span>
+      </div>
+      <div class="row">
+        <span class="label">Ends</span>
+        <span class="val">in <code>23h 54m</code> · or after <code>30 min idle</code></span>
+      </div>
+    </div>
+
+    <form class="nickname-form" onsubmit="event.preventDefault();">
+      <label class="field-label" for="nick">You'll join as</label>
+      <div class="nickname-input-wrap">
+        <span class="nickname-avatar">qf</span>
+        <input id="nick" class="nickname-input" type="text" value="quiet-fox">
+        <button type="button" class="reroll-btn" title="Pick a different suggestion">⟲</button>
+      </div>
+      <p class="hint-row">
+        <span class="info-icon">i</span>
+        We suggested <strong style="color: var(--color-text-secondary);">quiet-fox</strong> — keep it, or pick your own (2-24 chars, letters / digits / dashes).
+      </p>
+
+      <button type="submit" class="join-btn">Join as quiet-fox →</button>
+
+      <div class="ephemeral-mini">
+        ⏳ <strong>Playground sessions are throwaway.</strong> When the window closes, your handle, comments, and commits in this session are destroyed. Finalize locally first if you want to keep work.
+      </div>
+    </form>
+
+    <div class="doc-foot">
+      <a href="#">What's a playground session?</a> · <a href="#">How do I install the CLI to participate?</a>
+    </div>
+  </section>
+</body>
+</html>
