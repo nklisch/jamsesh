@@ -61,7 +61,70 @@ which redirect a 401 triggers.
   session), step 07 (warning banners + post-destruction page)
 - **Do NOT re-mock at the feature tier.** The flow is the source of
   truth for visual decisions on this feature
-- If the `NewSessionDrawer` rework chooses option A (CLI-prompt
-  output), that's a new screen state not covered in the parent flow
-  — invoke `/ux-ui-design:screens` for that specific surface during
-  this feature's design pass
+- The reworked `NewSessionDrawer` (CLI + skill output generator) is a
+  new screen state not covered in the parent flow. Invoke
+  `/ux-ui-design:screens new-session-drawer-cli-output` for that
+  surface during this feature's full design pass.
+
+## Design decisions
+
+Locked at `--only-questions` time. Feature-design Phase 5 inherits these
+as fixed input.
+
+- **`NewSessionDrawer` rework**: convert to a CLI + skill command-output
+  generator. The drawer keeps its existing form (goal / scope / mode /
+  org / invitees) but, instead of POSTing to the portal's create API,
+  it renders the resolved command in **two formats** the user can copy:
+  1. **Skill form** (for users in a CC session): `/jamsesh:new --org X
+     --goal '<text>' --scope '<glob>' --mode <sync|isolated>
+     --invite a@x,b@x` — pastable directly into the CC composer; the
+     `/jamsesh:new` skill (owned by `plugin-skills` feature) invokes the
+     binary with the same flags
+  2. **Raw CLI form** (for users in a bash terminal): `jamsesh new ...`
+     with the same flags — pastable into a checkout's terminal
+  Both forms wrap the same underlying invocation. The drawer becomes
+  "what to ask your agent to do" + "what to type yourself" — exactly
+  parallel to the agent-primary mental model locked in for
+  `cli-first-creation`. The portal no longer creates sessions
+  directly; the creator's local checkout always does the
+  push-as-base. This is option A from the parent epic body's
+  decomposition risk, now resolved.
+
+- **Countdown update mechanism**: client-side ticker + initial server
+  payload. On session-load (and on every `playground.activity_reset`
+  WS event), the SPA receives `{ created_at, hard_cap_at,
+  idle_timeout_at, last_substantive_activity_at }`; a 1-second JS
+  ticker recomputes the "ends in" / "idle in" values locally. Pure
+  client-side math between server updates — no WS chatter for the
+  countdown itself. The 5-min-before-destruction warning banners are
+  triggered when the client-computed remaining time crosses the
+  threshold (rendered locally without waiting for a server event).
+  Resilient to brief WS drops; the countdown stays correct as long
+  as the SPA has the most recent server payload.
+
+- **Post-destruction URL behavior**: real URL serves a 410-gone
+  confirmation page. The destruction routine (in
+  `session-lifecycle`) writes a `tombstones` row keyed by `session_id`
+  before deleting the session row, capturing summary stats: members
+  count, commits count, auto-merges count, duration, end_reason. The
+  SPA renders the destruction confirmation page from this tombstone
+  data, with the route returning HTTP 410 Gone. Anyone visiting the
+  URL after destruction — original participants returning later,
+  joiners arriving too late — sees the destruction summary and the
+  "try another playground" CTA. Tombstones for playground sessions
+  themselves have a TTL (TBD in design pass — likely 30 days) after
+  which they're purged.
+
+- **Auth-gate exemption pattern**: restructure routes into explicit
+  `public` and `auth-required` groups. Refactor `router.svelte.ts` so
+  every route declares `requiresAuth: boolean` (default true). The auth
+  gate in `App.svelte` reads the current route's flag rather than
+  maintaining a separate allowlist. Migrate the existing login,
+  magic-link, and oauth-callback routes from the gate's hardcoded
+  allowlist into the new flag. Playground routes (`/playground`,
+  `/playground/s/:token`) declare `requiresAuth: false` (anonymous-mode
+  is checked separately by the playground-aware components). One source
+  of truth for auth-required-ness; refactors a pre-existing wart in
+  the same stride. Note: this is a small refactor outside the strictly
+  playground-scoped surface — documented here so design-time accounts
+  for it.
