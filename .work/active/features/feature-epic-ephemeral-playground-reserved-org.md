@@ -62,3 +62,49 @@ visible. Those live in `session-lifecycle`.
 ## Mockups
 No UI surface — config + startup substrate. The parent epic's flow
 mocks cover everything user-visible.
+
+## Design decisions
+
+Locked at `--only-questions` time. Feature-design Phase 5 inherits these
+as fixed input.
+
+- **Reserved org slug**: hardcoded `playground`. Single canonical value
+  across every deployment. Docs, support material, observability
+  dashboards, and `pre-receive` checks can hard-reference `org:playground`
+  without env-var lookup. If an operator has a pre-existing real org
+  named `playground` and tries to enable the feature, the startup
+  provisioning hook detects the slug collision (the existing row has
+  no `org_protected: true`), logs a clear conflict error, and refuses
+  to enable playground until the operator renames their org. No silent
+  upgrade-then-merge surprise.
+
+- **Disable-flip behavior** (`JAMSESH_PLAYGROUND_ENABLED` true → false):
+  reject new creates immediately; let active sessions age out
+  naturally. `POST /api/playground/sessions` returns
+  `503 playground.disabled`; the join endpoint also returns 503 for new
+  joiners. Existing in-flight sessions keep running through their
+  normal idle / hard-cap lifecycles — the destruction sweep continues
+  to fire even when the create endpoint is off. Within 24h (hard cap),
+  the deployment is naturally playground-free. Lowest surprise to
+  in-flight participants. Operators who need an immediate shutdown
+  can still trigger a manual destruction sweep via ops tooling
+  (out-of-scope for this feature).
+
+- **`org_protected` scope**: block delete + rename only. The flag
+  rejects `DELETE /api/orgs/{id}` and `PATCH /api/orgs/{id}` mutations
+  to name/slug. Member-add operations against the playground org are
+  still allowed (preserves flexibility for a future ops/observability
+  use case where a human is added to inspect the playground org's
+  sessions). Other writes (session create, member-leave, etc.) go
+  through their own auth + tenancy checks; `org_protected` is
+  specifically about the org row's identity stability.
+
+- **Provisioning on upgrade**: only when the operator opts in. Existing
+  deployments stay byte-identical after upgrading to the version that
+  ships playground. No `playground` org row appears until the operator
+  explicitly sets `JAMSESH_PLAYGROUND_ENABLED=true` and restarts the
+  portal. First-opt-in startup seeds the org row idempotently. Loss:
+  `org_protected: true` can't be enforced on a pre-existing user-owned
+  `playground` org row that survives an upgrade — addressed by the
+  startup-conflict check from the first decision above (the conflict
+  detection runs every boot, not just at first provisioning).
