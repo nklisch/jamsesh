@@ -43,6 +43,9 @@ portal never touches the source repo.
   end-of-session ordeal
 - A finalized branch you push to your source repo on your own terms
 - Full recovery from any failure via `git fetch`
+- An optional zero-friction playground mode for first contact — ephemeral,
+  anonymous sessions that need no account and no org, so a prospective team
+  can spin up a real jam and feel the substrate before committing to setup
 
 ## What it isn't
 
@@ -57,3 +60,8 @@ Small teams (2–5 humans) running Claude Code together on shared artifacts.
 Doc-writing jams, spec refinement, design exploration, focused code refactors.
 Teams that already work in git and want their AI collaboration to look like the
 rest of their work — diff-able, recoverable, attributable.
+
+The playground mode targets the same audience earlier in their evaluation
+arc — prospective teams who want to feel a real multi-agent jam before
+standing up a portal, OAuth provider, or org. The playground is a sample,
+not a separate product; the durable substrate is where the real work lives.

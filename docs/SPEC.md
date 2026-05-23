@@ -79,7 +79,11 @@ Technical boundaries and decisions for jamsesh. Present truth, not roadmap.
 - **Self-host-capable.** A single binary plus a SQLite file is a complete
   install. No required external services.
 - **Multi-tenant by design.** Every persisted entity carries an `org_id`. Every
-  API route is org-scoped. Default org for fresh installs.
+  API route is org-scoped. Default org for fresh installs. When the playground
+  is enabled, ephemeral anonymous sessions live inside a reserved
+  system-owned `playground` org that's auto-provisioned at install time — the
+  sessions feel org-less to participants but remain org-scoped at the data
+  layer, preserving the invariant.
 - **Portal holds no source-remote credentials.** The source remote is only
   touched by the human's own machine.
 
@@ -193,8 +197,17 @@ user creates.
   and the authenticated user's identity.
 - **Token revocation** at the user level kills access to all sessions. Removal
   from a single session revokes that membership without touching the token.
+- **Anonymous playground identities** are issued by the portal at join time
+  for playground sessions. Each anonymous identity gets a session-scoped
+  bearer that's valid for the session lifetime only and is revoked on session
+  destruction. The bearer plugs into the same MCP / REST / git-Basic surfaces
+  as a normal user token — handlers don't branch on identity kind, only on
+  membership. Anonymous identities have no account row outside the session's
+  `session_members` and never appear in `org_members`.
 
 ## Lifecycle
+
+### Durable sessions (org-bound)
 
 - **Creation:** any authenticated account in an org creates a session, supplies
   required fields, pushes HEAD as base.
@@ -206,6 +219,29 @@ user creates.
 - **Retention:** 90 days of read-only access post-end. After that, the bare
   repo and social state are archived; the session URL returns a summary stub.
 
+### Ephemeral playground sessions (operator-opt-in)
+
+Available when the deployment sets `JAMSESH_PLAYGROUND_ENABLED=true`. Live
+inside the reserved `playground` org. Strictly throwaway — no claim path to
+durable. Open-join via the session URL alone (no invite, no portal account).
+
+- **Creation:** anyone with network access to the portal can spin one up via
+  the public playground landing surface. Anonymous identity is issued by the
+  portal; the creator gets a join URL to share.
+- **Join:** open via the URL. Each joiner is issued an anonymous identity by
+  the portal at first hit. CC clients use an anonymous bearer (issued by the
+  portal at join time) for MCP + git Basic auth.
+- **Active:** identical to durable sessions — refs, comments, conflicts,
+  draft, modes all work the same. Identities are anonymous but addressable
+  for the session lifetime.
+- **End:** triggered when the session window closes (the exact trigger —
+  finalize-driven, idle timeout, hard wall-clock cap, or some combination —
+  is fixed in the epic's design phase). At end, the session and all its data
+  are destroyed; there is no retention period.
+- **Abuse posture:** hosted instances ship with sane per-IP session-create
+  caps and per-session content/push throughput caps on by default;
+  self-hosters opt the playground on and tune their own limits.
+
 ## Deployment shape
 
 - Single Go binary (`jamsesh-portal`).
@@ -215,7 +251,10 @@ user creates.
 - Runs as a systemd service, container, or unmanaged process.
 - Key env vars: `JAMSESH_BIND` (`:8443`), `JAMSESH_DB_DRIVER` (`sqlite` |
   `postgres`), `JAMSESH_DB_DSN`, `JAMSESH_STORAGE`, `JAMSESH_PORTAL_URL`,
-  `JAMSESH_TLS_MODE` (`behind_proxy` | `native`).
+  `JAMSESH_TLS_MODE` (`behind_proxy` | `native`),
+  `JAMSESH_PLAYGROUND_ENABLED` (`false` by default; flip to `true` to expose
+  the ephemeral-anonymous playground surface and auto-provision the reserved
+  `playground` org on startup).
 - Database connection pool is configurable: `JAMSESH_DB_MAX_OPEN_CONNS` (25),
   `JAMSESH_DB_MAX_IDLE_CONNS` (5), `JAMSESH_DB_CONN_MAX_LIFETIME` (30m). Postgres
   migrations are serialized via `pg_advisory_lock` — safe for concurrent pod starts.
@@ -242,9 +281,10 @@ Things that are not v1 but the architecture accommodates without breaking
 changes:
 
 - SAML/SSO and enterprise identity providers
-- Public (open-join) sessions
 - Multiple git identities per portal account
 - Non-Claude-Code agent runtimes — the lifecycle contract is documented in
   PROTOCOL so other runtimes can implement against a spec
 - Live cursors and richer presence features in the portal UI
 - Session recordings as scrubbable timelines
+- Claim-to-durable on playground sessions (no path from ephemeral to durable
+  in v1; finalize-out to a local source repo is the only carry-out)
