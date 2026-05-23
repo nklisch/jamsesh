@@ -98,15 +98,19 @@ fixed framing and decompose inside them.
 
 ## Decomposition
 
-Six child features cover the work. The CLI-first unification adds two
-features (1 and 6) on top of the original four playground-specific arcs.
-The dependency graph parallelizes into three waves:
+Seven child features cover the work. The CLI-first unification adds
+features 1 and 6 on top of the original four playground-specific arcs;
+feature 7 (`skill-consolidation`) was folded in mid-feature-design after
+the `/jam` consolidation pattern in `plugin-skills` made the broader
+skill-surface audit a natural extension of the same arc.
+The dependency graph parallelizes into four waves:
 
 - **Wave 1** (no deps, all parallel): `cli-first-creation`,
   `anon-bearer`, `reserved-org`
 - **Wave 2** (depends on all of wave 1): `session-lifecycle`
 - **Wave 3** (each depends on session-lifecycle, parallel with each other):
   `portal-ui`, `plugin-skills`
+- **Wave 4** (depends on plugin-skills): `skill-consolidation`
 
 ### Child features
 
@@ -174,9 +178,26 @@ The dependency graph parallelizes into three waves:
   it to `${CLAUDE_PLUGIN_DATA}/sessions/<session-id>/token`); update the
   auto-loaded `skills/jamsesh/SKILL.md` to teach agents about playground
   semantics (ephemeral, no persistent identity, destruction trigger,
-  finalize-to-keep-work imperative). Depends on:
+  finalize-to-keep-work imperative). **Note**: `--only-questions` round
+  re-shaped this feature significantly — the three planned skills collapsed
+  into a single `/jam` skill driven by agent intent; see this feature's
+  `## Design decisions` section for the consolidation rationale and the
+  unified per-session bearer storage migration. Depends on:
   `[feature-epic-ephemeral-playground-cli-first-creation,
     feature-epic-ephemeral-playground-session-lifecycle]`.
+
+- `feature-epic-ephemeral-playground-skill-consolidation` — generalizes
+  the `/jam` consolidation pattern that `plugin-skills` establishes to
+  the rest of the CC plugin's skill surface: audits the existing narrow
+  slashes (`/jamsesh:status`, `:fork`, `:mode`, `:finalize`) for
+  intent-driven consolidation, implements the chosen consolidation per
+  the audit findings, and ships backward-compatible deprecated aliases
+  for every replaced narrow skill. Folded into this epic at the user's
+  direction after the `/jam` pattern was locked in during the
+  `plugin-skills` `--only-questions` round; the work is interrelated
+  enough that scoping it separately would have created an artificial
+  split. Depends on:
+  `[feature-epic-ephemeral-playground-plugin-skills]`.
 
 ### Decomposition risks
 
@@ -212,6 +233,17 @@ The dependency graph parallelizes into three waves:
   destroying the playground org. Mitigation: gate at the data layer
   (`org_protected: true` boolean column on `orgs` set on the playground
   row at provisioning time), not at handler level — defense in depth.
+
+- **Skill-consolidation has user-visible churn**. Wave 4
+  (`skill-consolidation`) deprecates familiar slash commands like
+  `/jamsesh:fork` and `/jamsesh:mode` in favor of intent-driven entries
+  like `/jam fork` or unified `/jam` invocations. Existing users who
+  learned the original surface need backward-compatible aliases and a
+  clear deprecation timeline. Mitigation: every deprecated slash keeps
+  working (its SKILL.md body becomes "deprecated alias — use `/jam ...`
+  instead") for the full release in which consolidation lands; full
+  removal waits at least one minor version cycle. Document the deprecation
+  prominently in the release notes for the version that ships this epic.
 
 ## Mockups
 
