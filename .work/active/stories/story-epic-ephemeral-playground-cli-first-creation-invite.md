@@ -1,0 +1,84 @@
+---
+id: story-epic-ephemeral-playground-cli-first-creation-invite
+kind: story
+stage: implementing
+tags: [plugin]
+parent: feature-epic-ephemeral-playground-cli-first-creation
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-23
+updated: 2026-05-23
+---
+
+# `jamsesh invite` subcommand (CLI side)
+
+## Scope
+
+Implements the standalone `jamsesh invite <session-id> <emails>` Go
+subcommand (Unit 9 from the parent feature's design body). Both the
+inline `--invite` flag on `jamsesh new` AND the standalone subcommand
+ultimately call the same underlying helper (`sendInvitesIfRequested` +
+`parseInviteEmails`) — this story owns the helper implementation; the
+sibling `-new` story calls into it.
+
+Does NOT include: the `jamsesh new` subcommand (Story `-new` owns it),
+the post-receive `base_sha` stamping fix (Story `-base-sha` owns it).
+
+## First action: verify the invite endpoint shape
+
+The parent feature's design body assumed
+`POST /api/sessions/{id}/invites` but did NOT confirm during the
+Explore phase. Before writing CLI code, read `docs/openapi.yaml` and
+find the actual invite endpoint:
+
+- If `POST /api/sessions/{id}/invites` exists: proceed as designed
+- If the path is `POST /api/orgs/{org}/sessions/{id}/invites`:
+  adjust `sendInvitesIfRequested` to fetch the org from session state
+  (read `${CLAUDE_PLUGIN_DATA}/sessions/<id>/org_id`)
+- If no invite endpoint exists: this is an unexpected scope expansion —
+  STOP and append a `## Blocker` section to this story body; autopilot
+  will skip and surface. The portal-side invite endpoint creation is a
+  much larger ask (handler + storage + email-sender wiring) and shouldn't
+  be silently absorbed into this story.
+
+## Units delivered
+
+1. `cmd/jamsesh/sessioncmd/invite.go` — `InviteCommand()`,
+   `inviteAction()`, plus the shared helpers `parseInviteEmails()` and
+   `sendInvitesIfRequested()` (the latter called by Story `-new`'s
+   `newAction` for the `--invite` flag pathway)
+2. `cmd/jamsesh/main.go` — register `sessioncmd.InviteCommand()` in the
+   top-level command list (next to `NewCommand()`)
+3. `cmd/jamsesh/sessioncmd/invite_test.go` — test suite per the parent
+   feature's Testing section (4 test functions enumerated for Story B)
+
+## Acceptance criteria
+
+- [ ] `jamsesh invite sess123 a@x.com,b@y.com` sends two invites, prints
+      per-email status, exit 0
+- [ ] `jamsesh invite sess123 a@x.com b@y.com c@z.com` (space-separated
+      positional args) ALSO works (parsing joins them)
+- [ ] Missing session ID or emails → usage error, exit 1
+- [ ] Partial failure (e.g., one email returns 400 invalid-email) →
+      stderr lists per-email outcomes, exit 1
+- [ ] `parseInviteEmails` handles commas, spaces, mixed whitespace,
+      empty entries (trimmed) — covered by table-driven test
+- [ ] Tests run in under 2s; no real network
+
+## Notes for the implementing agent
+
+- The agent-primary mental model from the parent feature applies here
+  too: humans typically have their CC agent invoke this via a future
+  `/jamsesh:invite` skill (owned by plugin-skills feature). Keep the
+  output parseable enough that an agent reading it can summarize the
+  outcome to the human ("invited alice and bob; carol's email bounced").
+- Per the locked feature decision, invites are non-atomic — partial
+  success is reported but doesn't fail the whole batch.
+- This story's helpers (`parseInviteEmails`, `sendInvitesIfRequested`)
+  are called by Story `-new`. They must land in this story's file
+  (`invite.go`); Story `-new`'s file imports from the same package.
+  Implementation note: Story `-new` and Story `-invite` are
+  parallel-implemented; if Story `-new`'s author lands first, they may
+  inline the helpers temporarily — Story `-invite`'s author then moves
+  them to `invite.go` and updates the call site. Either order works.
