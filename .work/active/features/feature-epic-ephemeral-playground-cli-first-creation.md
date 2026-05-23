@@ -58,3 +58,68 @@ a no-op).
   is parallel: same shape, different identity (real account vs.
   anonymous handle) and different lifecycle indicators (no countdown).
   No additional mocks needed at the feature tier.
+
+## Design decisions
+
+Locked at `--only-questions` time. Feature-design Phase 5 inherits these
+as fixed input.
+
+### Overarching: agent-primary mental model
+
+The primary user of `jamsesh new` is **a human in a Claude Code session
+whose agent invokes the binary on their behalf**, not a human typing
+in bash directly. Every UX decision below has two arms:
+
+- **Agent path** (primary): the agent reads the human's natural-language
+  request ("spin up a session for the auth refresh, scope to `docs/auth/**`,
+  goal: tighten the OAuth callback contract"), maps that to explicit
+  flags, and invokes `jamsesh new --org <id> --goal '<text>'
+  --scope '<glob>' --mode <sync|isolated>`. The agent never sees stdin
+  prompts because the CC bash tool doesn't drive a TTY; flags are the
+  only deterministic interface. If params are missing, the agent
+  asks the human inside CC, not via the binary's prompt.
+- **Direct-human path** (fallback): a developer in their own terminal
+  runs `jamsesh new` directly — the binary detects TTY, drops into
+  interactive prompts. Useful for ops, debugging, scripting; not the
+  primary case.
+
+This framing belongs in the `/jamsesh:new` SKILL.md body (owned by the
+`plugin-skills` sibling feature) so the agent is taught the parameter
+mapping and the "ask in CC, never via stdin" rule.
+
+### Decisions
+
+- **Org picker when user has multiple orgs**: interactive picker with
+  the most-recently-used org pre-selected (TTY only); `--org <id>` flag
+  required when stdin is not a TTY (i.e. agent invocation). The agent
+  pattern: parse the human's request for the org reference, error out
+  early if ambiguous (the skill body teaches "if the human's request
+  doesn't pin an org, ask them which one"). Hard-fails on non-TTY
+  without `--org` rather than silently picking — silent picks risk
+  agent-driven creates in the wrong tenant.
+
+- **Invite handling**: both inline `--invite alice@x,bob@x` flag on
+  `jamsesh new` AND a separate `jamsesh invite <session-id> <emails>`
+  subcommand. The agent uses `--invite` when the human's create request
+  mentions collaborators in one breath; the separate subcommand
+  exists for follow-up adds. Both produce identical invite rows.
+
+- **Post-create HEAD-push failure**: the session row stays live with
+  `base_sha: NULL`; the CLI prints a clear retry command
+  (`git push <session-remote> HEAD:jam/<session-id>/base`). The
+  `/jamsesh:new` skill body instructs the agent to: (1) retry the push
+  automatically once, (2) on second failure, surface the error to the
+  human with the explicit retry command. The portal's `pre-receive`
+  validates the first push and stamps `base_sha` then — schema already
+  allows nullable `base_sha`, so this is consistent with existing
+  semantics. No transactional packfile-on-create refactor.
+
+- **Required vs optional fields at creation**: goal and writable scope
+  are **optional with defaults** — goal defaults to empty (settable
+  later via the portal UI or a planned `jamsesh edit`), writable scope
+  defaults to `**` (permissive). Interactive prompts ask but `enter`
+  accepts defaults; flags (`--goal`, `--scope`, `--mode`) override. Same
+  agent-friendliness: when the human's create request omits a field,
+  the agent passes the flag-default value (or asks if scope-default
+  `**` is too permissive for the human's intent) rather than blocking
+  on a required field.
