@@ -116,20 +116,26 @@ why this feature looks the way it does.
 
 ### Decisions
 
-- **Consolidation shape**: most existing slashes fold into
-  `/jamsesh:jam`; `/jamsesh:finalize` stays standalone. The
-  `/jamsesh:jam` skill body becomes the single intent-driven entry
-  for status, fork, mode, plus the create / join paths inherited from
-  `plugin-skills` — agent reads the user's natural-language request
-  (e.g., "switch this ref to isolated", "fork from amber-otter's tip",
-  "what's the session state?") and invokes the right binary
-  subcommand (`jamsesh status`, `jamsesh fork --from <ref>`,
-  `jamsesh mode isolated`). `/jamsesh:finalize` keeps its own slash
-  because the multi-step gravity (preview → confirm → run-locally)
-  and the local-vs-portal split make it a genuinely different shape
-  that doesn't compress cleanly into a single intent-driven entry.
-  The slash form `/jamsesh:jam` is pinned (CC plugin-namespace
-  convention; `/jam` was a working name and not the canonical slash).
+- **Consolidation shape**: most existing skills fold into a single
+  `jam` skill; `finalize` stays standalone. The `jam` skill body
+  becomes the single intent-driven entry for status, fork, mode, plus
+  the create / join paths inherited from `plugin-skills` — agent
+  reads the user's natural-language request (e.g., "switch this ref
+  to isolated", "fork from amber-otter's tip", "what's the session
+  state?") and invokes the right binary subcommand (`jamsesh status`,
+  `jamsesh fork --from <ref>`, `jamsesh mode isolated`). `finalize`
+  keeps its own skill because the multi-step gravity (preview →
+  confirm → run-locally) and the local-vs-portal split make it a
+  genuinely different shape that doesn't compress cleanly into a
+  single intent-driven entry.
+
+  Note on naming: the skill is `jam` (directory:
+  `plugins/jamsesh/skills/jam/`, frontmatter `name: jam`). CC
+  automatically presents and invokes it as `/jamsesh:jam` per the
+  plugin-namespace convention (plugin name + `:` + skill name). Both
+  forms refer to the same skill — "`/jam`" (informal shorthand) and
+  "`/jamsesh:jam`" (CC's displayed full form) are not competing
+  names. The same goes for `finalize` (`/jamsesh:finalize`).
 
 - **Old slashes deleted outright, no aliases**: `/jamsesh:status`,
   `/jamsesh:fork`, `/jamsesh:mode`, and `/jamsesh:join` (the last
