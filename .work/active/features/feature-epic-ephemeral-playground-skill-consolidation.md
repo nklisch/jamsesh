@@ -91,3 +91,87 @@ size grows from 6 features to 7. The CLI binary's subcommand surface
 remains the responsibility of the existing wave-1/wave-2 features
 (`cli-first-creation` and `session-lifecycle`); this feature touches
 only the **skill** layer at `plugins/jamsesh/skills/`.
+
+## Design decisions
+
+Locked at `--only-questions` time. Feature-design Phase 5 inherits these
+as fixed input.
+
+### Pre-launch reality (overarching)
+
+Jamsesh has not yet shipped a public release with the existing skill
+surface in use by end users — every decision below is made on the
+basis that **there are no installed-base users to migrate**. Backward-
+compatible aliases, deprecation windows, picker-visibility hygiene, and
+gradual cutover patterns are all moot. The consolidation is a
+"rip-the-bandaid" rework that lands atomically alongside the playground
+epic; the canonical slash surface emerges in the same release that
+ships this epic.
+
+If this assumption ever flips (post-launch with real users), this
+feature's decisions are explicitly **not durable for that world** — a
+revisit would need to introduce aliases, deprecation hints, and a
+deprecation window. Documented here so a future maintainer understands
+why this feature looks the way it does.
+
+### Decisions
+
+- **Consolidation shape**: most existing slashes fold into
+  `/jamsesh:jam`; `/jamsesh:finalize` stays standalone. The
+  `/jamsesh:jam` skill body becomes the single intent-driven entry
+  for status, fork, mode, plus the create / join paths inherited from
+  `plugin-skills` — agent reads the user's natural-language request
+  (e.g., "switch this ref to isolated", "fork from amber-otter's tip",
+  "what's the session state?") and invokes the right binary
+  subcommand (`jamsesh status`, `jamsesh fork --from <ref>`,
+  `jamsesh mode isolated`). `/jamsesh:finalize` keeps its own slash
+  because the multi-step gravity (preview → confirm → run-locally)
+  and the local-vs-portal split make it a genuinely different shape
+  that doesn't compress cleanly into a single intent-driven entry.
+  The slash form `/jamsesh:jam` is pinned (CC plugin-namespace
+  convention; `/jam` was a working name and not the canonical slash).
+
+- **Old slashes deleted outright, no aliases**: `/jamsesh:status`,
+  `/jamsesh:fork`, `/jamsesh:mode`, and `/jamsesh:join` (the last
+  inherited from `plugin-skills`' original decision that planned an
+  alias) are removed entirely in the same release that ships
+  `/jamsesh:jam`. No SKILL.md left behind, no deprecated-alias
+  forwarding, no deprecation hint text. Pre-launch reality —
+  there's no installed-base muscle memory to preserve.
+
+- **No deprecation window**: the cut is atomic with the release. v0.4.0
+  (or whichever release ships this epic) ships `/jamsesh:jam` +
+  `/jamsesh:finalize` as the only top-level slashes for the plugin.
+
+- **Discoverability**: trivially clean post-cut — the `/` slash-picker
+  shows `/jamsesh:jam` and `/jamsesh:finalize` from this plugin, and
+  nothing else. No picker-visibility flag work needed (no aliases to
+  hide).
+
+### Scope of work this resolves
+
+In implementation terms, this feature deletes the following files:
+
+- `plugins/jamsesh/skills/status/SKILL.md`
+- `plugins/jamsesh/skills/fork/SKILL.md`
+- `plugins/jamsesh/skills/mode/SKILL.md`
+- `plugins/jamsesh/skills/join/SKILL.md` (inherited deletion from
+  `plugin-skills`' updated decision — see that feature's body)
+
+And creates / updates:
+
+- `plugins/jamsesh/skills/jam/SKILL.md` (new — single intent-driven
+  skill covering status / fork / mode / create / join surfaces; this
+  feature owns the body, `plugin-skills` owns its creation as part of
+  wave 3 and this feature extends the body in wave 4)
+- `plugins/jamsesh/skills/finalize/SKILL.md` (existing — body may need
+  light updates to align with the new mental model, but the skill
+  stays)
+- `plugins/jamsesh/skills/jamsesh/SKILL.md` (auto-loaded — updated to
+  teach the agent the consolidated pattern: `/jamsesh:jam` for almost
+  everything, `/jamsesh:finalize` for the finalize multi-step)
+
+The exact body for `plugins/jamsesh/skills/jam/SKILL.md` — the
+subcommand vocabulary the agent is taught, the intent-mapping
+examples, the ambiguity-handling rules — is content for this feature's
+full design pass (Phase 5).

@@ -234,16 +234,19 @@ The dependency graph parallelizes into four waves:
   (`org_protected: true` boolean column on `orgs` set on the playground
   row at provisioning time), not at handler level — defense in depth.
 
-- **Skill-consolidation has user-visible churn**. Wave 4
-  (`skill-consolidation`) deprecates familiar slash commands like
-  `/jamsesh:fork` and `/jamsesh:mode` in favor of intent-driven entries
-  like `/jam fork` or unified `/jam` invocations. Existing users who
-  learned the original surface need backward-compatible aliases and a
-  clear deprecation timeline. Mitigation: every deprecated slash keeps
-  working (its SKILL.md body becomes "deprecated alias — use `/jam ...`
-  instead") for the full release in which consolidation lands; full
-  removal waits at least one minor version cycle. Document the deprecation
-  prominently in the release notes for the version that ships this epic.
+- **Skill-consolidation requires careful release-note framing.** Wave 4
+  (`skill-consolidation`) deletes `/jamsesh:status`, `:fork`, `:mode`,
+  and `:join` outright in favor of the consolidated `/jamsesh:jam`
+  intent-driven entry (with `/jamsesh:finalize` retained). Per that
+  feature's `--only-questions` decisions, the pre-launch reality means
+  there are no installed-base users — no backward-compat aliases, no
+  deprecation window, no picker-hygiene work. Risk: if a soft-launch
+  user has been kicking the tires and learned the old surface between
+  now and the release that ships this epic, they'll hit dead slashes
+  with no migration hint. Mitigation: include a prominent "skill
+  surface consolidated" section in the release notes for the version
+  that ships this epic; if any soft-launch usage is detected before
+  release, this feature's decisions get revisited.
 
 ## Mockups
 

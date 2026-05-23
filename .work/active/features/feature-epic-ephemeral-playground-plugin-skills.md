@@ -77,26 +77,26 @@ next turn's reply.
 Locked at `--only-questions` time. Feature-design Phase 5 inherits these
 as fixed input.
 
-- **Skill consolidation — single `/jam` entry point**: collapse the
-  originally-planned `/jamsesh:new`, `/jamsesh:playground:new`, and
-  the extended `/jamsesh:join` into **one** skill (likely
-  `/jamsesh:jam` to honor CC's `plugin:skill` namespace convention;
-  exact slash form resolved in design pass — `/jam` is the intended
-  user-visible identifier, the plugin prefix follows CC's contract).
-  The single skill body teaches the agent: "When the user wants to
-  start, create, or join a jam in any form — playground or durable,
-  new or existing — invoke `jamsesh <subcommand> $ARGUMENTS`. The
-  binary subcommands are `new`, `new --playground`, `join <url|id>`.
-  Use the user's natural-language request to pick the right one and
-  the right flags. If anything is ambiguous, ask the human in CC."
-  Underlying binary keeps its existing subcommand structure (`jamsesh
-  new`, `jamsesh new --playground`, `jamsesh join` — owned by
+- **Skill consolidation — single `/jamsesh:jam` entry point**: collapse
+  the originally-planned `/jamsesh:new`, `/jamsesh:playground:new`,
+  and `/jamsesh:join` into **one** skill at `/jamsesh:jam` (canonical
+  slash form, honoring CC's `plugin:skill` namespace convention). The
+  single skill body teaches the agent: "When the user wants to start,
+  create, or join a jam in any form — playground or durable, new or
+  existing — invoke `jamsesh <subcommand> $ARGUMENTS`. The binary
+  subcommands are `new`, `new --playground`, `join <url|id>`. Use the
+  user's natural-language request to pick the right one and the right
+  flags. If anything is ambiguous, ask the human in CC." Underlying
+  binary keeps its existing subcommand structure (`jamsesh new`,
+  `jamsesh new --playground`, `jamsesh join` — owned by
   `cli-first-creation` and `session-lifecycle`); the consolidation is
   purely at the **skill** layer, leveraging agent intelligence to
-  translate intent to subcommand invocation. Parallel skill audit for
-  `/jamsesh:status`, `:fork`, `:mode`, `:finalize` is parked as
-  `idea-skill-surface-consolidation-audit` (out of scope for this
-  playground epic; the broader audit is a separate concern).
+  translate intent to subcommand invocation. The broader audit
+  pattern — generalizing this same consolidation to `/jamsesh:status`,
+  `:fork`, `:mode`, `:finalize` — is owned by the sibling feature
+  `feature-epic-ephemeral-playground-skill-consolidation` (wave 4),
+  which also extends the `/jamsesh:jam` skill body with the
+  status/fork/mode vocabulary.
 
 - **Bearer storage model — unified per-session**: both durable and
   playground sessions store their bearers at
@@ -143,13 +143,20 @@ as fixed input.
 
 ### Scope expansion note
 
-The `/jam` consolidation is a non-additive change to the skill
+The `/jamsesh:jam` consolidation is a non-additive change to the skill
 surface — `/jamsesh:new` and `/jamsesh:playground:new` (originally
-planned) do not get added as standalone skills. Instead `/jam` is the
-sole new skill, and `/jamsesh:join` is consolidated into it (its
-slash command continues to exist as an alias for backward
-compatibility for users with the existing plugin installed, but its
-SKILL.md body changes to "deprecated alias — use `/jam` instead").
+planned) do not get added as standalone skills. Instead `/jamsesh:jam`
+is the sole new skill at this feature's tier, and `/jamsesh:join` is
+**deleted outright** (no backward-compat alias). Per the
+`skill-consolidation` sibling feature's `--only-questions` decisions,
+the pre-launch reality means there are no installed-base users to
+migrate; deprecation-alias hygiene is unnecessary work that would
+ship dead code on day one. The deletion of `/jamsesh:join`'s
+SKILL.md file is owned by this feature (since it's a direct
+consequence of `/jamsesh:jam`'s creation here); the parallel
+deletions of `/jamsesh:status`, `:fork`, `:mode` SKILL.md files are
+owned by the `skill-consolidation` feature in wave 4.
+
 This is a slight expansion of the original feature brief (which only
 extended `/jamsesh:join`); the substantive work is comparable, just
 re-organized.
