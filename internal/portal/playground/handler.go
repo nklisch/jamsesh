@@ -101,7 +101,22 @@ func (h *Handler) CreatePlaygroundSession(ctx context.Context, req openapi.Creat
 		}
 		name = "playground-" + strings.ToLower(shortID)
 	}
+	// Enforce OpenAPI maxLength constraints as defense-in-depth: oapi-codegen
+	// decodes the body without validating schema constraints, so the 1 MiB
+	// router body limit is otherwise the only ceiling.
+	if len([]rune(name)) > 200 {
+		return openapi.CreatePlaygroundSession400JSONResponse(openapi.ErrorEnvelope{
+			Error:   "session.invalid_name",
+			Message: "name exceeds maximum length of 200 characters",
+		}), nil
+	}
 	goal := body.Goal
+	if len([]rune(goal)) > 4096 {
+		return openapi.CreatePlaygroundSession400JSONResponse(openapi.ErrorEnvelope{
+			Error:   "session.invalid_goal",
+			Message: "goal exceeds maximum length of 4096 characters",
+		}), nil
+	}
 	scope := strings.TrimSpace(body.Scope)
 	if scope == "" {
 		scope = `["**"]`

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -1262,6 +1263,124 @@ func TestCreatePlaygroundSession_RepoCreateFails_DestructionSweepCleansUp(t *tes
 // letters/digits/dashes rule enforced by JoinPlaygroundSession. Invalid
 // nicknames must return 400 playground.invalid_nickname. Valid nicknames
 // and the empty-nickname (server-mints) case must succeed (200).
+// ---------------------------------------------------------------------------
+// Tests: CreatePlaygroundSession — maxLength enforcement (defense-in-depth)
+// ---------------------------------------------------------------------------
+
+// TestCreatePlaygroundSession_NameMaxLength verifies that:
+//   - A name exactly at the 200-rune limit is accepted (201).
+//   - A name one rune over the limit (201 runes) is rejected (400, session.invalid_name).
+//   - A name consisting of multi-byte UTF-8 runes is counted by rune, not byte.
+func TestCreatePlaygroundSession_NameMaxLength(t *testing.T) {
+	for _, h := range stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t), defaultCfg())
+
+			// exactly 200 ASCII runes — should be accepted
+			atLimit := strings.Repeat("a", 200)
+			resp := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"name": atLimit,
+			})
+			if resp.StatusCode != http.StatusCreated {
+				t.Errorf("name at limit (200): want 201, got %d", resp.StatusCode)
+			}
+
+			// 201 ASCII runes — should be rejected
+			overLimit := strings.Repeat("a", 201)
+			resp2 := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"name": overLimit,
+			})
+			if resp2.StatusCode != http.StatusBadRequest {
+				t.Errorf("name over limit (201): want 400, got %d", resp2.StatusCode)
+			}
+			var errBody openapi.ErrorEnvelope
+			decodeJSON(t, resp2, &errBody)
+			if errBody.Error != "session.invalid_name" {
+				t.Errorf("want error=session.invalid_name, got %q", errBody.Error)
+			}
+			if errBody.Message == "" {
+				t.Error("want non-empty message")
+			}
+
+			// 200 multi-byte runes (é = 2 bytes each = 400 bytes total) — exactly at
+			// the rune limit; must be accepted (rune-based, not byte-based).
+			atLimitUnicode := strings.Repeat("é", 200)
+			resp3 := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"name": atLimitUnicode,
+			})
+			if resp3.StatusCode != http.StatusCreated {
+				t.Errorf("name at limit with unicode (200 runes): want 201, got %d", resp3.StatusCode)
+			}
+
+			// 201 multi-byte runes — over the limit
+			overLimitUnicode := strings.Repeat("é", 201)
+			resp4 := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"name": overLimitUnicode,
+			})
+			if resp4.StatusCode != http.StatusBadRequest {
+				t.Errorf("name over limit with unicode (201 runes): want 400, got %d", resp4.StatusCode)
+			}
+		})
+	}
+}
+
+// TestCreatePlaygroundSession_GoalMaxLength verifies that:
+//   - A goal exactly at the 4096-rune limit is accepted (201).
+//   - A goal one rune over the limit (4097 runes) is rejected (400, session.invalid_goal).
+func TestCreatePlaygroundSession_GoalMaxLength(t *testing.T) {
+	for _, h := range stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t), defaultCfg())
+
+			// exactly 4096 runes — should be accepted
+			atLimit := strings.Repeat("g", 4096)
+			resp := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"goal": atLimit,
+			})
+			if resp.StatusCode != http.StatusCreated {
+				t.Errorf("goal at limit (4096): want 201, got %d", resp.StatusCode)
+			}
+
+			// 4097 runes — should be rejected
+			overLimit := strings.Repeat("g", 4097)
+			resp2 := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"goal": overLimit,
+			})
+			if resp2.StatusCode != http.StatusBadRequest {
+				t.Errorf("goal over limit (4097): want 400, got %d", resp2.StatusCode)
+			}
+			var errBody openapi.ErrorEnvelope
+			decodeJSON(t, resp2, &errBody)
+			if errBody.Error != "session.invalid_goal" {
+				t.Errorf("want error=session.invalid_goal, got %q", errBody.Error)
+			}
+			if errBody.Message == "" {
+				t.Error("want non-empty message")
+			}
+
+			// 4096 multi-byte runes (é = 2 bytes each) — exactly at limit; accepted
+			atLimitUnicode := strings.Repeat("é", 4096)
+			resp3 := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"goal": atLimitUnicode,
+			})
+			if resp3.StatusCode != http.StatusCreated {
+				t.Errorf("goal at limit with unicode (4096 runes): want 201, got %d", resp3.StatusCode)
+			}
+
+			// 4097 multi-byte runes — over the limit
+			overLimitUnicode := strings.Repeat("é", 4097)
+			resp4 := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"goal": overLimitUnicode,
+			})
+			if resp4.StatusCode != http.StatusBadRequest {
+				t.Errorf("goal over limit with unicode (4097 runes): want 400, got %d", resp4.StatusCode)
+			}
+		})
+	}
+}
+
 func TestJoinPlaygroundSession_NicknameValidation(t *testing.T) {
 	type tc struct {
 		name     string
