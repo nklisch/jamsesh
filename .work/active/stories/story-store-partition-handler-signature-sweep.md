@@ -1,7 +1,7 @@
 ---
 id: story-store-partition-handler-signature-sweep
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: feature-refactor-store-narrow-handler-signatures
 depends_on: []
@@ -115,3 +115,44 @@ After landing, sibling story
 `story-store-partition-test-fixture-sweep` narrows the test mock
 fixtures to match (the test compile errors from this story's narrowing
 are what the sibling story addresses).
+
+## Implementation notes
+
+### Packages touched (10 packages, 20 files modified)
+
+| Package | Interface(s) declared | Notes |
+|---|---|---|
+| `handlerauth` | `orgMemberStore`, `sessionMemberStore` | Narrowed `RequireOrgMember` and `RequireSessionMember` free-function params |
+| `comments` | `commentsStore` | Covers Service + Handler; includes CommentStore, SessionStore, SessionMemberStore, PlaygroundSessionStore, WithTx |
+| `storage` | `storageStore` | ArchivedSessionStore + SessionStore |
+| `tokens` | `tokensStore` | OAuthTokenStore + AccountStore + WithTx |
+| `events` | `eventStore` | EventLogStore + PresenceStore + WithTx |
+| `auth` | `provisionStore`, `oauthHandlerStore`, `magicLinkHandlerStore` | provisionStore reused by both handler types; RequireOrgRole narrowed to OrgMemberStore; CreateOrgWithSlug narrowed to OrgStore |
+| `accounts` | `accountsStore` | OrgStore + OrgMemberStore + OrgInviteStore + WithTx |
+| `automerger` | `workerStore`, `applierStore` | Worker: SessionStore + RefModeStore; Applier: ConflictEventStore |
+| `playground` | `handlerStore`, `workerStore`, `destructionStore` | workerStore embeds destructionStore (Worker wires its store into Destruction) |
+| `sessions` | `sessionsStore` | 9 sub-interfaces + WithTx — wide by necessity (multi-domain handler) |
+| `finalize` | `finalizeStore` | FinalizeLockStore + SessionStore + SessionMemberStore + OrgMemberStore + AccountStore; also narrows free functions checkSessionMembership and lookupAccountID |
+| `githttp` | `githttpStore` | SessionStore + SessionMemberStore + PlaygroundSessionStore |
+| `wsgateway` | `wsgatewayStore` | SessionMemberStore only |
+| `mcpendpoint` | `mcpStore` | SessionMemberStore + SessionStore + AccountStore + RefModeStore + ConflictEventStore |
+| `lease` | (uses store.LeaseStore directly) | PostgresManager, pgHandle, factory.New, RunRetention all narrowed to store.LeaseStore |
+
+### Final grep count
+
+`grep -rn "store\.Store" internal/portal --include='*.go' | grep -v _test.go | wc -l` → **0**
+
+All production references eliminated. `cmd/portal/main.go` still passes `store.Store` at the wiring site (the adapter satisfies every sub-interface); no production consumer references the umbrella anymore.
+
+### Intentional exceptions
+
+None. All consumers were successfully narrowed. The `sessions` package is the widest (9 sub-interfaces + WithTx) but this reflects genuine multi-domain scope for the sessions HTTP handler, not excess coupling.
+
+### WithTx callbacks
+
+All `WithTx(ctx, func(TxStore) error)` callbacks inside service methods were left unchanged per the design. The `WithTx` method itself is included in composed interfaces only where the consumer calls it on its own store field.
+
+### Build and test verification
+
+- `go build ./...` clean
+- `go test ./...` clean — all packages green
