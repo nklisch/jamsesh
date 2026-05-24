@@ -1,0 +1,33 @@
+---
+id: gate-tests-joinerpicker-410-race-recovery
+kind: story
+stage: drafting
+tags: [testing, ui, playground]
+parent: null
+depends_on: []
+release_binding: v0.4.0
+gate_origin: tests
+created: 2026-05-24
+updated: 2026-05-24
+---
+
+# `JoinerPicker` 410 race-recovery test missing
+
+## Priority
+Low
+
+## Spec reference
+Item: `story-epic-ephemeral-playground-portal-ui-anonymous-entry`
+
+Acceptance criterion: AC: "on 409: renders the 'session full' message", "on 410: redirects to the tombstone page", "does not fire POST if viewState is already joining."
+
+## Gap type
+complementary coverage
+
+## Suggested test
+Test asserts that if a 410 races a user double-click on the join button,
+only the first request fires AND the user is redirected (not re-rendered into
+the picker with an error).
+
+## Test location (suggested)
+`frontend/src/lib/screens/JoinerPicker.test.ts`
