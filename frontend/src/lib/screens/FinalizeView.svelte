@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { client } from '$lib/api/client';
   import { subscribe } from '$lib/ws.svelte';
   import { auth } from '$lib/auth.svelte';
   import { navigate } from '$lib/router.svelte';
@@ -10,32 +9,14 @@
   import LockBanner from '$lib/components/finalize/LockBanner.svelte';
   import RefGroupList from '$lib/components/finalize/RefGroupList.svelte';
   import CommandRunner from '$lib/components/finalize/CommandRunner.svelte';
+  import { finalizeLock } from '$lib/finalize/useFinalizeLock.svelte';
+  import { finalizePlan } from '$lib/finalize/useFinalizePlan.svelte';
+  import { finalizeCuration } from '$lib/finalize/useFinalizeCuration.svelte';
+  import { finalizeExecution } from '$lib/finalize/useFinalizeExecution.svelte';
+  import type { RefGroup } from '$lib/finalize/useFinalizeCuration.svelte';
   import type { components } from '$lib/api/types.gen';
 
-  type LockStatus = components['schemas']['LockStatus'];
-  type PlanResponse = components['schemas']['PlanResponse'];
   type PlanMode = components['schemas']['PlanMode'];
-  type PlanCommit = components['schemas']['PlanCommit'];
-  type Ref = components['schemas']['Ref'];
-
-  // Client-side source-pool grouping. Until the plan endpoint exposes
-  // an explicit `available_refs` field, we derive groups from the
-  // session refs list (one card per ref). Commits-per-ref expansion
-  // is left as a stub; v1 surfaces the ref tip + a single "add tip"
-  // affordance plus whatever the plan already carries as
-  // `selected_commits`.
-  type SourceCommit = {
-    sha: string;
-    author_name: string;
-    author_id: string;
-    subject: string;
-  };
-  type RefGroup = {
-    ref: string;
-    kind: 'draft' | 'isolated' | 'sync';
-    tip_sha: string;
-    commits: SourceCommit[];
-  };
 
   let {
     orgId,
@@ -45,292 +26,119 @@
     sessionId: string;
   } = $props();
 
-  // ── Connection / lock state ─────────────────────────────────────────
-  let lock = $state<LockStatus | null>(null);
-  let lockConflict = $state<{ holderAccountId: string } | null>(null);
-  let lockError = $state<string | null>(null);
-  let lockLoading = $state(true);
-
-  // ── Curation state (single source of truth) ─────────────────────────
-  let selectedShas = $state<string[]>([]);
-  let availableGroups = $state<RefGroup[]>([]);
-  let mode = $state<PlanMode>('squash');
-  let targetBranch = $state<string>('');
-  let commitMessage = $state<string>(''); // squash-only
-
-  // ── Plan readout ────────────────────────────────────────────────────
-  let plan = $state<PlanResponse | null>(null);
-  let planLoading = $state(false);
-
-  // ── Execution UX ────────────────────────────────────────────────────
-  let copiedRunCommand = $state<boolean>(false);
-  let markShippedInFlight = $state<boolean>(false);
-  let sessionEnded = $state<boolean>(false);
-
-  // ── Derived ─────────────────────────────────────────────────────────
-  const distinctAuthors = $derived(plan?.co_authors ?? []);
-  const isCaller = $derived(plan?.lock_status?.is_caller ?? lock?.is_caller ?? false);
-  const canRun = $derived(
-    selectedShas.length > 0 &&
-      targetBranch.trim().length > 0 &&
-      (mode === 'preserve' || commitMessage.trim().length > 0),
-  );
+  // ── Orchestration-level derived ──────────────────────────────────────────
+  // interactionsDisabled crosses three modules; computed here as the orchestrator.
   const interactionsDisabled = $derived(
-    lockConflict !== null || sessionEnded || !isCaller,
+    finalizeLock.conflict !== null ||
+      finalizeExecution.sessionEnded ||
+      !finalizeCuration.isCaller,
   );
-  const planId = $derived(plan?.plan_id ?? '');
-  const runCommand = $derived(planId ? `jamsesh finalize-run ${planId}` : '');
+  const runCommand = $derived(
+    finalizePlan.planId ? `jamsesh finalize-run ${finalizePlan.planId}` : '',
+  );
 
-  // ── PATCH debounce (NOT in $state — identity changes shouldn't drive UI) ─
-  let patchTimer: ReturnType<typeof setTimeout> | null = null;
-  let patchSeq = 0;
-
-  function schedulePatch() {
+  // ── Curation mutation helpers (call schedulePatch after each) ────────────
+  function triggerPatch() {
     if (interactionsDisabled) return;
-    if (patchTimer !== null) clearTimeout(patchTimer);
-    patchTimer = setTimeout(() => {
-      void flushPatch();
-    }, 300);
-  }
-
-  async function flushPatch(): Promise<void> {
-    if (!lock) return;
-    patchTimer = null;
-    const seq = ++patchSeq;
-    const body = {
-      selected_commit_shas: selectedShas,
-      target_branch: targetBranch,
-      base_sha: plan?.base_sha ?? '',
-      mode,
-      commit_message: mode === 'squash' ? commitMessage : null,
-    };
-    const { error } = await client.PATCH(
-      '/api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}',
-      {
-        params: { path: { orgID: orgId, sessionID: sessionId, lockID: lock.lock_id } },
-        body,
-      },
-    );
-    if (seq !== patchSeq) return; // stale; a newer PATCH has been scheduled/fired
-    if (error) {
-      lockError = errorMessage(error, 'Failed to update curation state.');
-      return;
-    }
-    await refetchPlan();
-  }
-
-  function errorMessage(err: unknown, fallback: string): string {
-    if (err && typeof err === 'object' && 'message' in err) {
-      const m = (err as { message?: unknown }).message;
-      if (typeof m === 'string' && m.length > 0) return m;
-    }
-    return fallback;
-  }
-
-  async function refetchPlan(): Promise<void> {
-    if (!lock) return;
-    planLoading = true;
-    const { data, error } = await client.GET(
-      '/api/orgs/{orgID}/sessions/{sessionID}/finalize-plan',
-      {
-        params: {
-          path: { orgID: orgId, sessionID: sessionId },
-          query: { lock_id: lock.lock_id },
-        },
-      },
-    );
-    planLoading = false;
-    if (!error && data) {
-      plan = data;
-      // Refresh the squash commit message from the server when the
-      // user hasn't edited it (the editor is uncontrolled at the
-      // textarea level but parent holds the truth).
-      if (data.mode === 'squash' && (data.commit_message ?? '') !== '' && commitMessage === '') {
-        commitMessage = data.commit_message ?? '';
-      }
-      // Adopt server-side target_branch / mode if local is empty
-      // (first plan load case).
-      if (!targetBranch) targetBranch = data.target_branch ?? '';
-      if (selectedShas.length === 0) {
-        selectedShas = data.selected_commits.map((c) => c.sha);
-      }
-    }
-  }
-
-  // Build groups from the session refs list. This is the v1
-  // approximation of `available_refs`; the design's RefGroup shape
-  // expects per-ref commit lists, but the current API only returns
-  // ref tips. We expose each ref as a single-commit group.
-  function deriveGroupsFromRefs(refs: Ref[], planCommits: PlanCommit[]): RefGroup[] {
-    const byRef = new Map<string, RefGroup>();
-    const planByPos = new Map(planCommits.map((c) => [c.sha, c]));
-    for (const r of refs) {
-      const kind: RefGroup['kind'] = r.ref.includes('/draft')
-        ? 'draft'
-        : r.mode === 'isolated'
-          ? 'isolated'
-          : 'sync';
-      const planMatch = planByPos.get(r.sha);
-      const commit: SourceCommit = planMatch
-        ? {
-            sha: planMatch.sha,
-            author_name: planMatch.author_name,
-            author_id: planMatch.account_id ?? planMatch.author_email,
-            subject: planMatch.subject,
-          }
-        : {
-            sha: r.sha,
-            author_name: r.ref.split('/').slice(-2, -1)[0] ?? r.ref,
-            author_id: r.ref,
-            subject: shortRefName(r.ref),
-          };
-      byRef.set(r.ref, { ref: r.ref, kind, tip_sha: r.sha, commits: [commit] });
-    }
-    return Array.from(byRef.values());
-  }
-
-  function shortRefName(ref: string): string {
-    return ref.replace(/^refs\/heads\//, '');
-  }
-
-  async function loadRefs(): Promise<void> {
-    const { data, error } = await client.GET('/api/orgs/{orgID}/sessions/{sessionID}/refs', {
-      params: { path: { orgID: orgId, sessionID: sessionId } },
+    finalizePlan.schedulePatch({
+      orgId,
+      sessionId,
+      lockId: finalizeLock.status?.lock_id ?? '',
+      selectedShas: finalizeCuration.selectedShas,
+      targetBranch: finalizeCuration.targetBranch,
+      baseSha: finalizePlan.plan?.base_sha ?? '',
+      mode: finalizeCuration.mode,
+      commitMessage: finalizeCuration.commitMessage,
+      onError: (msg) => finalizeLock.setError(msg),
+      onSuccess: () =>
+        void finalizePlan.refetch(orgId, sessionId, finalizeLock.status!.lock_id, (msg) =>
+          finalizeLock.setError(msg),
+        ),
     });
-    if (!error && data) {
-      availableGroups = deriveGroupsFromRefs(data.refs, plan?.selected_commits ?? []);
-    }
   }
 
-  // ── Lock acquisition ────────────────────────────────────────────────
+  function addCommit(sha: string) {
+    finalizeCuration.addCommit(sha);
+    triggerPatch();
+  }
+
+  function removeCommit(sha: string) {
+    finalizeCuration.removeCommit(sha);
+    triggerPatch();
+  }
+
+  function moveUp(index: number) {
+    finalizeCuration.moveUp(index);
+    triggerPatch();
+  }
+
+  function moveDown(index: number) {
+    finalizeCuration.moveDown(index);
+    triggerPatch();
+  }
+
+  function addAllInGroup(group: RefGroup) {
+    finalizeCuration.addAllInGroup(group);
+    triggerPatch();
+  }
+
+  function setMode(next: PlanMode) {
+    finalizeCuration.setMode(next);
+    triggerPatch();
+  }
+
+  function setTargetBranch(e: Event) {
+    finalizeCuration.setTargetBranch((e.currentTarget as HTMLInputElement).value);
+    triggerPatch();
+  }
+
+  function setCommitMessage(next: string) {
+    finalizeCuration.setCommitMessage(next);
+    triggerPatch();
+  }
+
+  // ── Lock flow ─────────────────────────────────────────────────────────────
   async function acquireLock(opts: { override?: boolean } = {}): Promise<void> {
-    lockLoading = true;
-    lockError = null;
-    const { data, error, response } = await client.POST(
-      '/api/orgs/{orgID}/sessions/{sessionID}/finalize/lock',
-      {
-        params: { path: { orgID: orgId, sessionID: sessionId } },
-        body: { override: opts.override === true },
-      },
-    );
-    lockLoading = false;
-    if (error) {
-      if (response?.status === 409) {
-        // ErrorEnvelope: { error, message, details? }
-        const env = error as { details?: Record<string, unknown> };
-        const holderId = (env.details?.held_by_account_id as string | undefined) ?? '';
-        lockConflict = { holderAccountId: holderId };
-        return;
+    await finalizeLock.acquire(orgId, sessionId, opts);
+    if (finalizeLock.status && !finalizeLock.conflict) {
+      // Set isCaller immediately from lock — don't wait for plan fetch.
+      finalizeCuration.setIsCaller(finalizeLock.status.is_caller);
+      const plan = await finalizePlan.refetch(
+        orgId,
+        sessionId,
+        finalizeLock.status.lock_id,
+        (msg) => finalizeLock.setError(msg),
+      );
+      if (plan) {
+        finalizeCuration.setDistinctAuthors(plan.co_authors ?? []);
+        // Refine isCaller from plan (server may have updated it).
+        finalizeCuration.setIsCaller(plan.lock_status?.is_caller ?? finalizeLock.status.is_caller);
+        finalizeCuration.adoptFromPlan({
+          targetBranch: plan.target_branch ?? '',
+          commitMessage: plan.mode === 'squash' ? (plan.commit_message ?? '') : '',
+          selectedShas: plan.selected_commits.map((c) => c.sha),
+        });
       }
-      lockError = errorMessage(error, 'Failed to acquire lock.');
-      return;
-    }
-    if (data) {
-      lock = data;
-      lockConflict = null;
-      await refetchPlan();
-      await loadRefs();
+      await finalizeCuration.loadRefs(
+        orgId,
+        sessionId,
+        finalizePlan.plan?.selected_commits ?? [],
+      );
     }
   }
 
   async function overrideLock(): Promise<void> {
-    if (patchTimer !== null) clearTimeout(patchTimer);
-    patchTimer = null;
+    finalizePlan.cancelPendingPatch();
     await acquireLock({ override: true });
   }
 
-  // ── Mark shipped ────────────────────────────────────────────────────
-  async function markShipped(): Promise<void> {
-    if (markShippedInFlight) return;
-    markShippedInFlight = true;
-    // Cancel any pending PATCH; we're about to end the session.
-    if (patchTimer !== null) clearTimeout(patchTimer);
-    patchTimer = null;
-    const { error } = await client.POST(
-      '/api/orgs/{orgID}/sessions/{sessionID}/mark-shipped',
-      {
-        params: { path: { orgID: orgId, sessionID: sessionId } },
-        body: { final_branch_name: targetBranch.trim() || null },
-      },
-    );
-    markShippedInFlight = false;
-    if (error) {
-      lockError = errorMessage(error, 'Failed to mark shipped.');
-      return;
-    }
-    sessionEnded = true;
-  }
-
-  // ── Curation mutations ──────────────────────────────────────────────
-  function addCommit(sha: string) {
-    if (selectedShas.includes(sha)) return;
-    selectedShas = [...selectedShas, sha];
-    schedulePatch();
-  }
-
-  function removeCommit(sha: string) {
-    selectedShas = selectedShas.filter((s) => s !== sha);
-    schedulePatch();
-  }
-
-  function moveUp(index: number) {
-    if (index <= 0) return;
-    const next = [...selectedShas];
-    [next[index - 1], next[index]] = [next[index], next[index - 1]];
-    selectedShas = next;
-    schedulePatch();
-  }
-
-  function moveDown(index: number) {
-    if (index >= selectedShas.length - 1) return;
-    const next = [...selectedShas];
-    [next[index + 1], next[index]] = [next[index], next[index + 1]];
-    selectedShas = next;
-    schedulePatch();
-  }
-
-  function addAllInGroup(group: RefGroup) {
-    const additions = group.commits
-      .map((c) => c.sha)
-      .filter((sha) => !selectedShas.includes(sha));
-    if (additions.length === 0) return;
-    selectedShas = [...selectedShas, ...additions];
-    schedulePatch();
-  }
-
-  function setMode(next: PlanMode) {
-    if (mode === next) return;
-    mode = next;
-    schedulePatch();
-  }
-
-  function setTargetBranch(e: Event) {
-    targetBranch = (e.currentTarget as HTMLInputElement).value;
-    schedulePatch();
-  }
-
-  function setCommitMessage(next: string) {
-    commitMessage = next;
-    schedulePatch();
-  }
-
-  // ── WS reactions ────────────────────────────────────────────────────
-  // Backend currently emits: session.finalizing (one-shot on
-  // active→finalizing), session.ended (with reason), mode.changed.
-  // There's no dedicated lock-acquired/released event; override
-  // detection happens via PATCH returning 409 (handled in flushPatch).
+  // ── WS subscriptions ─────────────────────────────────────────────────────
   const unsubs: Array<() => void> = [];
 
   function startSubscriptions(): void {
     unsubs.push(
       subscribe(sessionId, 'session.finalizing', () => {
-        // Someone (possibly us, possibly an overrider) just started
-        // finalizing. If we don't hold the lock, render the conflict
-        // banner. If we DO hold it, no-op.
-        if (lock && isCaller) return;
-        // Best-effort: re-check by re-reading the lock status; the
-        // simplest signal is to acquire (which is idempotent for the
-        // current holder; 409 if held by someone else).
+        if (finalizeLock.status && finalizeCuration.isCaller) return;
         void acquireLock({ override: false });
       }),
     );
@@ -338,18 +146,22 @@
       subscribe(sessionId, 'session.ended', (env) => {
         const payload = env as { reason?: string };
         if (payload.reason === 'shipped') {
-          sessionEnded = true;
+          finalizeExecution.endSession();
         } else if (payload.reason === 'abandon' || payload.reason === 'timeout') {
-          lockError = `Session ended (${payload.reason}).`;
+          finalizeLock.setError(`Session ended (${payload.reason}).`);
         }
       }),
     );
     unsubs.push(
       subscribe(sessionId, 'mode.changed', () => {
-        // A ref-mode flip may shift the source-pool grouping. Refetch
-        // refs and the plan to repopulate.
-        void loadRefs();
-        void refetchPlan();
+        void finalizeCuration.loadRefs(
+          orgId,
+          sessionId,
+          finalizePlan.plan?.selected_commits ?? [],
+        );
+        void finalizePlan.refetch(orgId, sessionId, finalizeLock.status?.lock_id ?? '', (msg) =>
+          finalizeLock.setError(msg),
+        );
       }),
     );
   }
@@ -360,6 +172,11 @@
   }
 
   onMount(() => {
+    // Reset all module singletons so this render starts with clean state.
+    finalizeLock.reset();
+    finalizePlan.reset();
+    finalizeCuration.reset();
+    finalizeExecution.reset();
     void (async () => {
       await acquireLock();
       startSubscriptions();
@@ -367,18 +184,10 @@
   });
 
   onDestroy(() => {
-    // Cancel pending PATCH; ditch WS subscriptions.
-    if (patchTimer !== null) clearTimeout(patchTimer);
-    patchTimer = null;
+    finalizePlan.cancelPendingPatch();
     stopSubscriptions();
-    // Best-effort release of the lock if we still hold it and the
-    // session hasn't ended (we don't await — the page is going away).
-    if (lock && !sessionEnded && isCaller) {
-      const { lock_id } = lock;
-      void client.DELETE(
-        '/api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}',
-        { params: { path: { orgID: orgId, sessionID: sessionId, lockID: lock_id } } },
-      );
+    if (finalizeLock.status && !finalizeExecution.sessionEnded && finalizeCuration.isCaller) {
+      void finalizeLock.release(orgId, sessionId);
     }
   });
 </script>
@@ -406,26 +215,26 @@
   </header>
 
   <LockBanner
-    {lockConflict}
-    {lockError}
-    {lock}
-    {isCaller}
-    {sessionEnded}
+    lockConflict={finalizeLock.conflict}
+    lockError={finalizeLock.error}
+    lock={finalizeLock.status}
+    isCaller={finalizeCuration.isCaller}
+    sessionEnded={finalizeExecution.sessionEnded}
     onWait={() => navigate(`/orgs/${orgId}/sessions/${sessionId}`)}
     onOverride={() => void overrideLock()}
-    onDismissError={() => { lockError = null; }}
+    onDismissError={() => finalizeLock.dismissError()}
   />
 
   <!-- Page head -->
   <section class="page-head">
     <h1>Finalize session</h1>
     <div class="sub">
-      {#if plan}
-        Base <code>{plan.base_sha.slice(0, 7)}</code> ·
+      {#if finalizePlan.plan}
+        Base <code>{finalizePlan.plan.base_sha.slice(0, 7)}</code> ·
         pick the commits to ship.
-      {:else if lockLoading}
+      {:else if finalizeLock.loading}
         Loading lock…
-      {:else if lockConflict}
+      {:else if finalizeLock.conflict}
         Held by another member.
       {:else}
         Preparing plan…
@@ -433,28 +242,28 @@
     </div>
   </section>
 
-  {#if !lockConflict}
+  {#if !finalizeLock.conflict}
     <!-- Mode bar -->
     <section class="mode-bar" aria-label="Finalization mode">
       <h3>Finalization mode</h3>
       <div class="seg" role="group" aria-label="Mode selector">
         <button
           type="button"
-          class:on={mode === 'squash'}
+          class:on={finalizeCuration.mode === 'squash'}
           onclick={() => setMode('squash')}
-          aria-pressed={mode === 'squash'}
+          aria-pressed={finalizeCuration.mode === 'squash'}
           disabled={interactionsDisabled}
         >Squash into one commit</button>
         <button
           type="button"
-          class:on={mode === 'preserve'}
+          class:on={finalizeCuration.mode === 'preserve'}
           onclick={() => setMode('preserve')}
-          aria-pressed={mode === 'preserve'}
+          aria-pressed={finalizeCuration.mode === 'preserve'}
           disabled={interactionsDisabled}
         >Preserve all commits</button>
       </div>
       <div class="mode-help">
-        {#if mode === 'squash'}
+        {#if finalizeCuration.mode === 'squash'}
           <strong>Squash</strong> creates a single commit on the
           target branch with every contributor as a
           <code>Co-authored-by</code> trailer.
@@ -470,9 +279,10 @@
       <!-- Source pool -->
       <section class="panel source" aria-label="Available commits">
         <RefGroupList
-          refs={availableGroups}
-          selected={new Set(selectedShas)}
-          onToggle={(sha) => (selectedShas.includes(sha) ? removeCommit(sha) : addCommit(sha))}
+          refs={finalizeCuration.availableGroups}
+          selected={new Set(finalizeCuration.selectedShas)}
+          onToggle={(sha) =>
+            finalizeCuration.selectedShas.includes(sha) ? removeCommit(sha) : addCommit(sha)}
           onAddAll={(group) => addAllInGroup(group)}
           disabled={interactionsDisabled}
         />
@@ -483,7 +293,7 @@
         <div class="panel-head cart-head">
           <h2>Your final branch</h2>
           <span class="reorder-hint" aria-hidden="true">▲ ▼ to reorder</span>
-          <div class="meta">{selectedShas.length} selected</div>
+          <div class="meta">{finalizeCuration.selectedShas.length} selected</div>
         </div>
 
         <div class="cart-config">
@@ -492,30 +302,30 @@
             <input
               id="target-branch"
               type="text"
-              value={targetBranch}
+              value={finalizeCuration.targetBranch}
               oninput={setTargetBranch}
               disabled={interactionsDisabled}
               placeholder="jamsesh/feature-name"
             />
           </div>
 
-          {#if mode === 'squash'}
+          {#if finalizeCuration.mode === 'squash'}
             <div class="msg-editor">
               <SquashMessageEditor
-                message={commitMessage}
+                message={finalizeCuration.commitMessage}
                 onmessagechange={setCommitMessage}
-                coAuthors={distinctAuthors}
+                coAuthors={finalizeCuration.distinctAuthors}
               />
             </div>
           {/if}
         </div>
 
         <div class="cart-body">
-          {#if selectedShas.length === 0}
+          {#if finalizeCuration.selectedShas.length === 0}
             <p class="empty">No commits selected. Toggle commits on the left to add them.</p>
           {/if}
-          {#each selectedShas as sha, index (sha)}
-            {@const cartCommit = plan?.selected_commits.find((c) => c.sha === sha)}
+          {#each finalizeCuration.selectedShas as sha, index (sha)}
+            {@const cartCommit = finalizePlan.plan?.selected_commits.find((c) => c.sha === sha)}
             <div class="cart-item">
               <span class="num">{index + 1}</span>
               <div class="body">
@@ -540,7 +350,7 @@
                 <button
                   type="button"
                   aria-label="Move down"
-                  disabled={interactionsDisabled || index === selectedShas.length - 1}
+                  disabled={interactionsDisabled || index === finalizeCuration.selectedShas.length - 1}
                   onclick={() => moveDown(index)}
                 >▼</button>
               </div>
@@ -556,20 +366,20 @@
         </div>
 
         <footer class="cart-foot">
-          {#if plan}
+          {#if finalizePlan.plan}
             <div class="summary-block">
-              {#if mode === 'squash'}
-                This will create a branch <strong>{targetBranch || '<target>'}</strong>
-                from base commit <code>{plan.base_sha.slice(0, 7)}</code>,
-                then squash {selectedShas.length} commits from
-                {distinctAuthors.length} author{distinctAuthors.length === 1 ? '' : 's'} into
+              {#if finalizeCuration.mode === 'squash'}
+                This will create a branch <strong>{finalizeCuration.targetBranch || '<target>'}</strong>
+                from base commit <code>{finalizePlan.plan.base_sha.slice(0, 7)}</code>,
+                then squash {finalizeCuration.selectedShas.length} commits from
+                {finalizeCuration.distinctAuthors.length} author{finalizeCuration.distinctAuthors.length === 1 ? '' : 's'} into
                 one commit. Conflicts during the squash will be left in
                 your working tree for you to resolve. Nothing will be
                 pushed.
               {:else}
-                This will create a branch <strong>{targetBranch || '<target>'}</strong>
-                from base commit <code>{plan.base_sha.slice(0, 7)}</code>,
-                then cherry-pick {selectedShas.length} commits in order.
+                This will create a branch <strong>{finalizeCuration.targetBranch || '<target>'}</strong>
+                from base commit <code>{finalizePlan.plan.base_sha.slice(0, 7)}</code>,
+                then cherry-pick {finalizeCuration.selectedShas.length} commits in order.
                 Conflicts during cherry-pick will be left in your
                 working tree for you to resolve. Nothing will be pushed.
               {/if}
@@ -579,26 +389,26 @@
           <div class="stats" aria-label="Stats">
             <div class="stat">
               <span class="label">Commits</span>
-              <span class="val">{selectedShas.length}</span>
+              <span class="val">{finalizeCuration.selectedShas.length}</span>
             </div>
             <div class="stat">
               <span class="label">Authors</span>
-              <span class="val">{distinctAuthors.length}</span>
+              <span class="val">{finalizeCuration.distinctAuthors.length}</span>
             </div>
             <div class="stat">
               <span class="label">Mode</span>
-              <span class="val">{mode}</span>
+              <span class="val">{finalizeCuration.mode}</span>
             </div>
           </div>
 
           <CommandRunner
             command={runCommand}
             ready={!!runCommand}
-            disabled={interactionsDisabled || !canRun}
-            oncopy={() => { copiedRunCommand = true; }}
+            disabled={interactionsDisabled || !finalizeCuration.canRun}
+            oncopy={() => finalizeExecution.markCopied()}
           />
 
-          {#if sessionEnded}
+          {#if finalizeExecution.sessionEnded}
             <div class="shipped-state">
               <strong>Shipped!</strong> Session marked as ended.
               <button class="btn ghost" type="button" onclick={() => navigate(`/orgs/${orgId}/sessions`)}>
@@ -609,12 +419,19 @@
             <button
               class="ship-btn"
               type="button"
-              onclick={() => void markShipped()}
-              disabled={interactionsDisabled || markShippedInFlight}
+              onclick={() =>
+                void finalizeExecution.markShipped(
+                  orgId,
+                  sessionId,
+                  finalizeCuration.targetBranch,
+                  () => finalizePlan.cancelPendingPatch(),
+                  (msg) => finalizeLock.setError(msg),
+                )}
+              disabled={interactionsDisabled || finalizeExecution.markShippedInFlight}
             >
-              {markShippedInFlight ? 'Marking…' : 'Mark as shipped'}
+              {finalizeExecution.markShippedInFlight ? 'Marking…' : 'Mark as shipped'}
             </button>
-            {#if copiedRunCommand}
+            {#if finalizeExecution.copiedRunCommand}
               <p class="ship-hint">Once you've run the command and pushed, click "Mark as shipped".</p>
             {/if}
           {/if}
