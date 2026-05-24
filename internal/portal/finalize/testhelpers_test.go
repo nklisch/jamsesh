@@ -152,13 +152,24 @@ func contextWithAccount(ctx context.Context, acct *store.Account) context.Contex
 // exercised.
 var _ = finalize.FinalizeLockTTL
 
+// testFinalizeStore mirrors the unexported finalizeStore interface so
+// newFinalizeHandlerWith can accept narrow mock types without requiring them
+// to implement the full store.Store umbrella.
+type testFinalizeStore interface {
+	store.FinalizeLockStore
+	store.SessionStore
+	store.SessionMemberStore
+	store.OrgMemberStore
+	store.AccountStore
+}
+
 // newFinalizeHandlerWith builds a finalize.Handler backed by the supplied
-// store. Dep-failure tests use this to inject a wrapping store that returns
-// transient errors from selected store methods, exercising the
-// deperr.WrapDBIfTransient discipline at handler return paths.
-func newFinalizeHandlerWith(t *testing.T, s store.Store) *finalize.Handler {
+// narrow store. baseStore is used for support services (events.Log,
+// tokens.Service) that require the full store interface; this is typically
+// the same real store the narrow mock wraps.
+func newFinalizeHandlerWith(t *testing.T, s testFinalizeStore, baseStore store.Store) *finalize.Handler {
 	t.Helper()
-	log := events.New(s)
-	tokSvc := tokens.New(s)
+	log := events.New(baseStore)
+	tokSvc := tokens.New(baseStore)
 	return finalize.New(s, &stubStorage{}, log, tokSvc, "https://portal.test")
 }

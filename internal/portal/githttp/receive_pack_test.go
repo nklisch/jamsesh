@@ -883,18 +883,100 @@ var _ objectstore.Backend = (*errBackend)(nil)
 // base_sha stamping tests
 // ---------------------------------------------------------------------------
 
-// passthroughStore wraps a real store.Store and allows selectively overriding
+// passthroughStore wraps a real store and allows selectively overriding
 // SetSessionBaseSHA for failure-injection tests.
+//
+// Implements githttpStore (SessionStore + SessionMemberStore +
+// PlaygroundSessionStore), delegating all methods except SetSessionBaseSHA
+// to the real store (when setBaseSHAFn is non-nil the override fires;
+// otherwise the real store is used).
 type passthroughStore struct {
-	store.Store
+	realStore    store.Store
 	setBaseSHAFn func(ctx context.Context, p store.SetSessionBaseSHAParams) error
 }
 
+// SessionStore delegation (SetSessionBaseSHA overridden below)
+func (s *passthroughStore) CreateSession(ctx context.Context, p store.CreateSessionParams) (store.Session, error) {
+	return s.realStore.CreateSession(ctx, p)
+}
+func (s *passthroughStore) GetSession(ctx context.Context, orgID, id string) (store.Session, error) {
+	return s.realStore.GetSession(ctx, orgID, id)
+}
+func (s *passthroughStore) GetSessionByID(ctx context.Context, id string) (store.Session, error) {
+	return s.realStore.GetSessionByID(ctx, id)
+}
+func (s *passthroughStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]store.Session, error) {
+	return s.realStore.ListSessionsForOrg(ctx, orgID)
+}
+func (s *passthroughStore) ListSessionsForOrgWithCursor(ctx context.Context, p store.ListSessionsForOrgWithCursorParams) ([]store.Session, error) {
+	return s.realStore.ListSessionsForOrgWithCursor(ctx, p)
+}
+func (s *passthroughStore) UpdateSessionStatus(ctx context.Context, p store.UpdateSessionStatusParams) error {
+	return s.realStore.UpdateSessionStatus(ctx, p)
+}
+func (s *passthroughStore) UpdateSessionGoalScopeMode(ctx context.Context, p store.UpdateSessionGoalScopeModeParams) error {
+	return s.realStore.UpdateSessionGoalScopeMode(ctx, p)
+}
 func (s *passthroughStore) SetSessionBaseSHA(ctx context.Context, p store.SetSessionBaseSHAParams) error {
 	if s.setBaseSHAFn != nil {
 		return s.setBaseSHAFn(ctx, p)
 	}
-	return s.Store.SetSessionBaseSHA(ctx, p)
+	return s.realStore.SetSessionBaseSHA(ctx, p)
+}
+func (s *passthroughStore) SetSessionEndReason(ctx context.Context, p store.SetSessionEndReasonParams) error {
+	return s.realStore.SetSessionEndReason(ctx, p)
+}
+func (s *passthroughStore) SetFinalizeLock(ctx context.Context, p store.SetFinalizeLockParams) error {
+	return s.realStore.SetFinalizeLock(ctx, p)
+}
+func (s *passthroughStore) ClearFinalizeLock(ctx context.Context, p store.ClearFinalizeLockParams) error {
+	return s.realStore.ClearFinalizeLock(ctx, p)
+}
+func (s *passthroughStore) DeleteSession(ctx context.Context, p store.DeleteSessionParams) error {
+	return s.realStore.DeleteSession(ctx, p)
+}
+
+// SessionMemberStore delegation
+func (s *passthroughStore) AddSessionMember(ctx context.Context, p store.AddSessionMemberParams) error {
+	return s.realStore.AddSessionMember(ctx, p)
+}
+func (s *passthroughStore) GetSessionMember(ctx context.Context, p store.GetSessionMemberParams) (store.SessionMember, error) {
+	return s.realStore.GetSessionMember(ctx, p)
+}
+func (s *passthroughStore) ListSessionMembers(ctx context.Context, p store.ListSessionMembersParams) ([]store.SessionMember, error) {
+	return s.realStore.ListSessionMembers(ctx, p)
+}
+func (s *passthroughStore) RemoveSessionMember(ctx context.Context, p store.RemoveSessionMemberParams) error {
+	return s.realStore.RemoveSessionMember(ctx, p)
+}
+func (s *passthroughStore) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]store.SessionMembership, error) {
+	return s.realStore.ListSessionMembershipsForAccount(ctx, accountID)
+}
+func (s *passthroughStore) NicknameTakenInSession(ctx context.Context, p store.NicknameTakenInSessionParams) (bool, error) {
+	return s.realStore.NicknameTakenInSession(ctx, p)
+}
+func (s *passthroughStore) CountSessionMembers(ctx context.Context, p store.CountSessionMembersParams) (int64, error) {
+	return s.realStore.CountSessionMembers(ctx, p)
+}
+
+// PlaygroundSessionStore delegation
+func (s *passthroughStore) ResetSessionIdleTimer(ctx context.Context, p store.ResetSessionIdleTimerParams) error {
+	return s.realStore.ResetSessionIdleTimer(ctx, p)
+}
+func (s *passthroughStore) ListExpiredPlaygroundSessions(ctx context.Context, p store.ListExpiredPlaygroundSessionsParams) ([]store.Session, error) {
+	return s.realStore.ListExpiredPlaygroundSessions(ctx, p)
+}
+func (s *passthroughStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	return s.realStore.PurgeExpiredTombstones(ctx, before)
+}
+func (s *passthroughStore) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessID string) ([]string, error) {
+	return s.realStore.ListAnonymousSessionMemberIDs(ctx, orgID, sessID)
+}
+func (s *passthroughStore) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return s.realStore.DeleteAccountsByIDs(ctx, ids)
+}
+func (s *passthroughStore) CountSessionEventsByType(ctx context.Context, orgID, eventType string) (int64, error) {
+	return s.realStore.CountSessionEventsByType(ctx, orgID, eventType)
 }
 
 // TestPostReceive_BaseRefStampsBaseSHA verifies that pushing the base ref
@@ -1225,7 +1307,7 @@ func TestPostReceive_SetBaseSHAFailureIsNonFatal(t *testing.T) {
 	// Wrap the real store so only SetSessionBaseSHA fails.
 	var setBaseSHACalled bool
 	wrappedStore := &passthroughStore{
-		Store: s,
+		realStore: s,
 		setBaseSHAFn: func(_ context.Context, _ store.SetSessionBaseSHAParams) error {
 			setBaseSHACalled = true
 			return errors.New("transient DB error injected by test")
