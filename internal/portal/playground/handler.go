@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -28,6 +29,11 @@ import (
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
+
+// nicknameRE is the compiled pattern for valid user-supplied nicknames:
+// 2-24 ASCII letters, digits, or dashes. The length bounds are enforced
+// separately so errors can be distinguished if needed.
+var nicknameRE = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
 // Config holds the playground-specific tuning knobs threaded from the main
 // portal config. It is populated once at startup and treated as immutable.
@@ -246,10 +252,17 @@ func (h *Handler) JoinPlaygroundSession(ctx context.Context, req openapi.JoinPla
 		}), nil
 	}
 
-	// Determine nickname: use client suggestion if provided, else pick one.
+	// Validate and resolve nickname.
 	var candidates []string
 	if req.Body != nil && strings.TrimSpace(req.Body.Nickname) != "" {
-		candidates = []string{strings.TrimSpace(req.Body.Nickname)}
+		trimmed := strings.TrimSpace(req.Body.Nickname)
+		if len(trimmed) < 2 || len(trimmed) > 24 || !nicknameRE.MatchString(trimmed) {
+			return openapi.JoinPlaygroundSession400JSONResponse(openapi.ErrorEnvelope{
+				Error:   "playground.invalid_nickname",
+				Message: "nickname must be 2-24 characters, letters/digits/dashes only",
+			}), nil
+		}
+		candidates = []string{trimmed}
 	}
 	nickname := h.uniqueHandle(ctx, sessionID, candidates...)
 

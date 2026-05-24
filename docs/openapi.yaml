@@ -1556,10 +1556,13 @@ components:
       properties:
         nickname:
           type: string
-          maxLength: 64
+          minLength: 2
+          maxLength: 24
+          pattern: "^[a-zA-Z0-9-]+$"
           description: |
             Requested display handle (e.g. "amber-otter"). Optional; server picks
             one if absent. Server retries on collision with a fresh wordlist pick.
+            Must be 2-24 characters, letters/digits/dashes only.
           example: "quiet-fox"
 
     PlaygroundSessionCreated:
@@ -3276,6 +3279,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlaygroundJoinResult'
+        '400':
+          description: |
+            Bad request. Possible error codes:
+            - `playground.invalid_nickname` — nickname does not meet the 2-24 char, letters/digits/dashes rule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':

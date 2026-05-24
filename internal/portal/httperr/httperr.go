@@ -170,6 +170,16 @@ func ErrMagicLinkNotEnabled() *Error {
 	}
 }
 
+// ErrInvalidNickname is emitted when a join request supplies a nickname that
+// violates the 2-24 char, letters/digits/dashes rule. Returns 400.
+func ErrInvalidNickname() *Error {
+	return &Error{
+		Code:       "playground.invalid_nickname",
+		Message:    "nickname must be 2-24 characters, letters/digits/dashes only",
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
 // ErrReservedDomain is emitted when a magic-link request uses an email
 // address in a domain reserved for internal use (e.g. @playground.local,
 // which is synthesised for anonymous playground accounts). Returns 400.
