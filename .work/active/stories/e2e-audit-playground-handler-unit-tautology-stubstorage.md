@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-handler-unit-tautology-stubstorage
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
