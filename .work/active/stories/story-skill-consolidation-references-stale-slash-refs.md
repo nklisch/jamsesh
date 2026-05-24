@@ -1,9 +1,9 @@
 ---
-id: idea-skill-consolidation-references-stale-slash-refs
+id: story-skill-consolidation-references-stale-slash-refs
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, documentation]
-parent: null
+parent: feature-epic-ephemeral-playground-skill-consolidation
 depends_on: []
 release_binding: null
 gate_origin: null
