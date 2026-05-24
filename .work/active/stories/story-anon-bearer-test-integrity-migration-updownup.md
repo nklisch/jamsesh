@@ -1,7 +1,7 @@
 ---
 id: story-anon-bearer-test-integrity-migration-updownup
 kind: story
-stage: review
+stage: done
 tags: [testing, migrations]
 parent: feature-anon-bearer-test-integrity
 depends_on: []
@@ -151,3 +151,25 @@ since 00018 has a FK to oauth_tokens.session_id that 00016 introduces.
   in 00016 (or any prerequisite Down) were broken, e.g. forgetting to
   delete `anonymous_session_bearer` rows before recreating the table
   without that CHECK value.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design body precisely. The goose
+`DownTo` semantics correction (DownTo(N) leaves DB at N, not N-1) is well
+captured in both the helper's doc comment AND the story implementation
+notes — that's exactly the right place for a future-caller-saving note.
+Helper is unexported and verified test-only (`grep migrateDown
+internal/db/*.go` returns matches only in `migrate_test.go`). Down
+assertions correctly run before re-Up so they can't be satisfied by the
+re-Up's re-creation. Test passes on SQLite (`go test ./internal/db/...`
+→ green).
+
+Sibling `story-anon-bearer-test-integrity-transactional-rollback` still
+at stage:review — parent feature stays at stage:review until that
+sibling lands.
