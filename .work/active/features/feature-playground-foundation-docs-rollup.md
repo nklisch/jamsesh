@@ -46,10 +46,23 @@ should be light: confirm the framing (present-tense, no "previously"
 prose per rolling-foundation principle) and sequence the children
 (they can land in parallel — no inter-dependency).
 
+## Design decisions
+
+- **Optional add-ons** (all selected): the two children carry their required updates AND the following previously-optional touches:
+  - PROTOCOL.md: addressing-convention note for anonymous handles (e.g. `amber-otter` participates in `@<handle>` mentions identically to durable handles) — adds to the protocol-destruction-warning story's scope.
+  - PROTOCOL.md: cross-link `docs/openapi.yaml` schema anchors next to each event-type entry so readers can jump to canonical payload field definitions — adds to the protocol-destruction-warning story's scope.
+  - ARCHITECTURE.md: update the ASCII portal block diagram (lines ~20–31) to include the destruction worker alongside auto-merger workers — adds to the architecture-destruction-worker story's scope.
+
+  Rationale: the optional touches close drift the original ephemeral-playground epic had implicitly committed to and keep diagram-vs-prose in sync. Cheap to land in the same PRs.
+
 ## Acceptance (rollup)
 
 - Both children at stage:done with verdicts ≥ approve
 - No drift between PROTOCOL.md and `docs/openapi.yaml` for the
   destruction-warning event
+- PROTOCOL.md addressing-convention section mentions anonymous handles
+- PROTOCOL.md event-type entries cross-link to their openapi.yaml schemas
 - `docs/ARCHITECTURE.md` Components list reads cleanly with the
   destruction worker entry alongside auto-merger workers
+- `docs/ARCHITECTURE.md` ASCII portal block diagram includes the
+  destruction worker alongside auto-merger workers
