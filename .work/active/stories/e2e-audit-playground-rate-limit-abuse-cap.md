@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-rate-limit-abuse-cap
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-failure
 depends_on: []
@@ -72,6 +72,39 @@ from the same client. Assert:
 For per-IP isolation: drive request 4 from a second client connecting to
 the same portal — assert it gets 201, demonstrating the limit is per-IP
 not global.
+
+## Implementation notes
+
+**File:** `tests/e2e/failure/playground_rate_limit_abuse_cap_test.go`
+
+**Rate-limit arithmetic correction:** The story sketch used `CreatePerIPHour=3`
+which yields `perMinute=ceil(3/60)=1, burst=1` — only the 1st request succeeds.
+To satisfy "requests 1-3 return 201, 4th returns 429" we need `burst=3`, which
+requires `CreatePerIPHour=180` (perMinute=3). The test uses 180 and documents
+this in a comment.
+
+**Error code:** The ratelimit package emits `{"error":"rate_limited",...}`, not
+`"playground.rate_limited"`. The story sketch's assertion was updated to match
+production (`error: "rate_limited"`).
+
+**Per-IP isolation approach:** Used `X-Forwarded-For` headers rather than
+toxiproxy. The portal runs with `JAMSESH_TLS_MODE=behind_proxy` (set by the
+fixture), which enables chi's `RealIP` middleware — it rewrites `r.RemoteAddr`
+from the leftmost `X-Forwarded-For` value. The ratelimit store reads
+`r.RemoteAddr` after that rewrite, so distinct `X-Forwarded-For` values
+simulate distinct source IPs without spinning up extra containers.
+
+**Test structure:** Two subtests share one portal fixture (one container boot):
+- `fourth_create_blocked`: 3×201 then 429 + Retry-After + `rate_limited` envelope.
+- `per_ip_isolation`: exhausts clientA, verifies clientB gets 201.
+
+Because both subtests use different IPs they do not contaminate each other's
+token buckets. The pre-mortem isolation risk (process-global limiter) is
+mitigated by the per-IP design — subtests using distinct IPs are inherently
+isolated without needing separate portal instances.
+
+**Verification:** `go test ./failure/ -run TestPlayground_RateLimit -count=1 -v`
+passes in ~9s. Both subtests green on first run.
 
 ## Test sketch
 
