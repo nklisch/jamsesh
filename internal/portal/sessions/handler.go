@@ -32,9 +32,23 @@ import (
 // Defined locally to avoid an import cycle. Value must match playground.ReservedOrgID.
 const playgroundOrgID = "org_playground"
 
+// sessionsStore is the minimal store interface consumed by Handler.
+type sessionsStore interface {
+	store.SessionStore
+	store.SessionMemberStore
+	store.OrgStore
+	store.OrgMemberStore
+	store.AccountStore
+	store.PlaygroundSessionStore
+	store.SessionInviteStore
+	store.RefModeStore
+	store.EventLogStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
+}
+
 // Handler implements the openapi.StrictServerInterface session lifecycle methods.
 type Handler struct {
-	store     store.Store
+	store     sessionsStore
 	storage   storage.Service
 	events    *events.Log
 	sender    senders.Sender
@@ -47,13 +61,13 @@ type Handler struct {
 
 // New constructs a Handler with the real system clock. Production callers use
 // this.
-func New(s store.Store, stor storage.Service, log *events.Log, sender senders.Sender, portalURL string) *Handler {
+func New(s sessionsStore, stor storage.Service, log *events.Log, sender senders.Sender, portalURL string) *Handler {
 	return NewWithClock(s, stor, log, sender, portalURL, realClock{})
 }
 
 // NewWithClock constructs a Handler with the supplied clock. Used by unit
 // tests (fakeClock) and the e2etest-tagged binary (testclock.AdvanceableClock).
-func NewWithClock(s store.Store, stor storage.Service, log *events.Log, sender senders.Sender, portalURL string, clock Clock) *Handler {
+func NewWithClock(s sessionsStore, stor storage.Service, log *events.Log, sender senders.Sender, portalURL string, clock Clock) *Handler {
 	return &Handler{store: s, storage: stor, events: log, sender: sender, portalURL: portalURL, clock: clock}
 }
 
