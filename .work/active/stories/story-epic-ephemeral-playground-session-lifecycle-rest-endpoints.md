@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-rest-endpoints
 kind: story
-stage: review
+stage: done
 tags: [portal, playground]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: []
@@ -102,3 +102,51 @@ router uses a `MountAPI` hook pattern and does not have a separate
 playground-handler field). The `playground.Handler` was added to
 `combinedHandler` in `cmd/portal/main.go` and 4 delegate methods were
 added to satisfy `StrictServerInterface`.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+
+**Important** (filed as backlog items, all `stage: implementing`):
+- `bug-playground-wordlist-duplicate-adjectives` — `adjectives.txt`
+  has 62 duplicate entries (effective ~177 unique adjectives instead
+  of ~239), biasing `Pick()` distribution and shrinking the handle
+  space.
+- `bug-playground-handler-missing-test-coverage` — three explicit
+  story ACs are not tested: (1) join after `hard_cap_at` elapsed →
+  410, (2) bare-repo create failure rollback path, (3) tests run only
+  under SQLite, not Postgres (story design required both via a
+  `stores(t)` harness).
+- `bug-playground-create-skips-writable-scope-validation` — playground
+  CreateSession stores the user-supplied `scope` verbatim without the
+  `validateWritableScope` check the durable session handler enforces;
+  a malformed scope poisons the session until destruction.
+
+**Nits** (not filed):
+- `docs/openapi.yaml:3251` (GetPlaygroundSession): description text
+  says "403 for a valid bearer that does not belong to a member" but
+  the responses block declares only 401 and the handler returns 401
+  with `auth.not_a_member`. Update description for consistency.
+- `internal/db/migrations/{sqlite,postgres}/00018_playground_sessions.sql`:
+  `last_substantive_activity_at` is added as nullable and back-filled
+  but never enforced NOT NULL. Schema files carry a comment
+  acknowledging this. Application code always inserts a value, so
+  functionally fine — would be nice to add the NOT NULL constraint in
+  a follow-up migration for postgres (sqlite ALTER limitations make
+  this expensive to enforce there).
+
+**Notes**:
+- Build clean (`go build ./...`), vet clean (`go vet ./...`), package
+  tests pass.
+- The bearer-issuance-outside-TX deviation from the design is well
+  documented in implementation notes and the partial-failure path is
+  handled by destruction sweep — appropriate trade-off for SQLite.
+- Router wiring landed in `cmd/portal/main.go` rather than the
+  documented `router.go`, with a clear rationale in the implementation
+  notes — matches the actual codebase pattern.
+- OpenAPI spec extensions are well-structured and generated code is
+  committed (no `make generate` drift).
+- Tombstone idempotency confirmed via `ON CONFLICT (session_id) DO NOTHING`
+  in both dialects.
