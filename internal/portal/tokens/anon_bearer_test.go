@@ -253,16 +253,63 @@ func (o *txStoreOverride) CreateAnonymousBearer(ctx context.Context, arg store.C
 	return store.OAuthToken{}, o.bearerErr
 }
 
-// storeOverride embeds the real Store and overrides only WithTx to wrap the
-// TxStore passed to fn. Same embedding trick — every other Store method
-// delegates to the embedded real Store.
+// storeOverride implements tokensStore (OAuthTokenStore + AccountStore + WithTx)
+// and overrides only WithTx to wrap the TxStore passed to fn. All other methods
+// delegate to the real store.
 type storeOverride struct {
-	store.Store
+	realStore store.Store
 	bearerErr error
 }
 
+// OAuthTokenStore delegation
+func (o *storeOverride) CreateOAuthToken(ctx context.Context, p store.CreateOAuthTokenParams) (store.OAuthToken, error) {
+	return o.realStore.CreateOAuthToken(ctx, p)
+}
+func (o *storeOverride) CreateAnonymousBearer(ctx context.Context, p store.CreateAnonymousBearerParams) (store.OAuthToken, error) {
+	return o.realStore.CreateAnonymousBearer(ctx, p)
+}
+func (o *storeOverride) RevokeBearersForSession(ctx context.Context, p store.RevokeBearersForSessionParams) error {
+	return o.realStore.RevokeBearersForSession(ctx, p)
+}
+func (o *storeOverride) GetOAuthTokenByHash(ctx context.Context, h string) (store.OAuthToken, error) {
+	return o.realStore.GetOAuthTokenByHash(ctx, h)
+}
+func (o *storeOverride) TouchOAuthTokenLastUsed(ctx context.Context, p store.TouchOAuthTokenLastUsedParams) error {
+	return o.realStore.TouchOAuthTokenLastUsed(ctx, p)
+}
+func (o *storeOverride) RevokeOAuthToken(ctx context.Context, p store.RevokeOAuthTokenParams) error {
+	return o.realStore.RevokeOAuthToken(ctx, p)
+}
+func (o *storeOverride) RevokeAllOAuthTokensForAccount(ctx context.Context, p store.RevokeAllOAuthTokensForAccountParams) error {
+	return o.realStore.RevokeAllOAuthTokensForAccount(ctx, p)
+}
+func (o *storeOverride) ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]store.OAuthToken, error) {
+	return o.realStore.ListOAuthTokensForAccount(ctx, accountID)
+}
+
+// AccountStore delegation
+func (o *storeOverride) CreateAccount(ctx context.Context, p store.CreateAccountParams) (store.Account, error) {
+	return o.realStore.CreateAccount(ctx, p)
+}
+func (o *storeOverride) CreateAnonymousAccount(ctx context.Context, p store.CreateAnonymousAccountParams) (store.Account, error) {
+	return o.realStore.CreateAnonymousAccount(ctx, p)
+}
+func (o *storeOverride) GetAccountByID(ctx context.Context, id string) (store.Account, error) {
+	return o.realStore.GetAccountByID(ctx, id)
+}
+func (o *storeOverride) GetAccountByEmail(ctx context.Context, email string) (store.Account, error) {
+	return o.realStore.GetAccountByEmail(ctx, email)
+}
+func (o *storeOverride) GetAccountByGitHubUserID(ctx context.Context, id *string) (store.Account, error) {
+	return o.realStore.GetAccountByGitHubUserID(ctx, id)
+}
+func (o *storeOverride) UpdateAccountDisplayName(ctx context.Context, p store.UpdateAccountDisplayNameParams) error {
+	return o.realStore.UpdateAccountDisplayName(ctx, p)
+}
+
+// WithTx override (wraps TxStore to inject bearer error)
 func (o *storeOverride) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
-	return o.Store.WithTx(ctx, func(tx store.TxStore) error {
+	return o.realStore.WithTx(ctx, func(tx store.TxStore) error {
 		return fn(&txStoreOverride{TxStore: tx, bearerErr: o.bearerErr})
 	})
 }
@@ -314,7 +361,7 @@ func TestIssueAnonymousSessionBearer_TransactionalRollback(t *testing.T) {
 	realStore, sqlDB, sessID := openStoreAndSQLWithSession(t)
 
 	injectErr := errors.New("synthetic bearer-insert failure")
-	overlay := &storeOverride{Store: realStore, bearerErr: injectErr}
+	overlay := &storeOverride{realStore: realStore, bearerErr: injectErr}
 	svc := tokens.New(overlay)
 
 	const nickname = "fern-moth"

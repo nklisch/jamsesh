@@ -53,15 +53,27 @@ func TestRunRetention_CancelExits(t *testing.T) {
 // Unit test: deterministic cutoff regression (no real-time wait)
 // ---------------------------------------------------------------------------
 
-// retentionStub is a minimal store.Store stub that records the cutoff passed
-// to DeleteReleasedLeasesOlderThan and unblocks a channel on first call.
-// All other Store methods panic — they are not exercised by RunRetention.
+// retentionStub implements store.LeaseStore — the only interface RunRetention
+// requires. Records the cutoff passed to DeleteReleasedLeasesOlderThan and
+// unblocks a channel on first call. The four other LeaseStore methods are
+// never exercised by RunRetention and panic if called accidentally.
 type retentionStub struct {
-	store.Store // embed to satisfy the interface; unimplemented methods panic
-
 	mu     sync.Mutex
 	called []time.Time
 	notify chan struct{}
+}
+
+func (s *retentionStub) IssueLeaseFencingToken(_ context.Context) (int64, error) {
+	panic("not implemented")
+}
+func (s *retentionStub) InsertLease(_ context.Context, _ store.InsertLeaseParams) (store.Lease, error) {
+	panic("not implemented")
+}
+func (s *retentionStub) MarkLeaseReleased(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+func (s *retentionStub) UpdateLeaseHeartbeat(_ context.Context, _ string) error {
+	panic("not implemented")
 }
 
 func newRetentionStub() *retentionStub {
