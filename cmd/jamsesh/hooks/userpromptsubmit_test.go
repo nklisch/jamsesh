@@ -132,7 +132,7 @@ func TestUserPromptSubmit_drainQueueSuccess(t *testing.T) {
 	ref := "jam/" + sessionID + "/" + accountID + "/main"
 
 	// Pre-populate the retry queue with one entry.
-	dir := setupHookEnv(t, "http://placeholder", sessionID, orgID, ref, accountID)
+	setupHookEnv(t, "http://placeholder", sessionID, orgID, ref, accountID)
 	q := &retryqueue.Queue{SessionID: sessionID}
 	_ = q.Enqueue(retryqueue.Entry{CommitSHA: "abc123", Attempts: 1})
 
@@ -154,7 +154,6 @@ func TestUserPromptSubmit_drainQueueSuccess(t *testing.T) {
 
 	// Update JAMSESH_PORTAL_URL to real test server.
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
-	_ = dir
 
 	in := strings.NewReader(`{"session_id":"cc","transcript_path":"","cwd":""}`)
 	var out bytes.Buffer
@@ -186,7 +185,7 @@ func TestUserPromptSubmit_drainQueueTransientReEnqueue(t *testing.T) {
 	)
 	ref := "jam/" + sessionID + "/" + accountID + "/main"
 
-	dir := setupHookEnv(t, "http://placeholder", sessionID, orgID, ref, accountID)
+	setupHookEnv(t, "http://placeholder", sessionID, orgID, ref, accountID)
 	q := &retryqueue.Queue{SessionID: sessionID}
 	_ = q.Enqueue(retryqueue.Entry{CommitSHA: "deadbeef", Attempts: 1})
 
@@ -205,7 +204,6 @@ func TestUserPromptSubmit_drainQueueTransientReEnqueue(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
-	_ = dir
 
 	in := strings.NewReader(`{"session_id":"cc","transcript_path":"","cwd":""}`)
 	var out bytes.Buffer
