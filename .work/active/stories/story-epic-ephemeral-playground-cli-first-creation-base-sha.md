@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-cli-first-creation-base-sha
 kind: story
-stage: review
+stage: done
 tags: [portal]
 parent: feature-epic-ephemeral-playground-cli-first-creation
 depends_on: []
@@ -123,3 +123,19 @@ they're playground-or-pre-launch sessions so this doesn't matter.
 - `go vet ./internal/portal/githttp/... ./internal/db/store/...` — passes
 - `go test ./internal/portal/githttp/... ./internal/db/store/...` — all pass (SQLite path; no `JAMSESH_TEST_PG_DSN` set)
 - Note: `go build ./...` has pre-existing failures in `internal/portal/tokens/` (`IssueAnonymousSessionBearer` missing from service_impl) from an in-progress sibling story in the same epic. These are unrelated to this story's changes.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `findBaseRefUpdate` (`internal/portal/githttp/receive_pack.go:382-386`) contains a dead `strings.Count(rest, "/") != 1` guard after an exact-string equality check on `u.Ref == want`. Since `want` already pins the exact two-segment shape and session IDs are ULIDs (no slashes), the count branch is unreachable. Author flags this in the comment ("Shouldn't happen given the exact-string match above"). Harmless; could be deleted in a future tidy-up.
+
+**Notes**:
+- Verified post-receive stamping placement: inserted immediately after the draft-ref seeding loop (line ~287) and before `Emitter.EmitForUpdates` (line ~310). Failure path is non-fatal (warn-log only), preserving the RPO=0 contract — the event-emission/object-storage sync stays the gating point for push success.
+- Verified the re-stamp protection chain: (a) `findBaseRefUpdate` only matches `refs/heads/jam/<sessionID>/base`; (b) pre-receive (`internal/portal/prereceive/refs.go:104-109`) rejects any push to the base ref once refs exist. So a second push to base is impossible, and a user ref ending in `/base` like `refs/heads/jam/<id>/<accountID>/base` does not match. Correct by construction; SQL has no `WHERE base_sha IS NULL` guard but doesn't need one.
+- Foundation docs unchanged: `docs/UX.md:63` describes the failure case (`base_sha: null` when push fails); the success case this story implements is fully consistent. No drift.
+- Build/vet/test verified locally: `go build ./internal/portal/githttp/... ./internal/db/store/...` OK, `go vet` OK, the three new tests pass (SQLite path; PG path gated on `JAMSESH_TEST_PG_DSN`).
+- Test design is sound: `passthroughStore` embedding override + `setBaseSHAFn` function field is a clean failure-injection seam, and the assertions cover both the warn log path (via `setBaseSHACalled`) and the durability path (ref present in bare repo after push).
