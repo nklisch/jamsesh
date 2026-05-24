@@ -1,7 +1,7 @@
 ---
 id: story-refactor-per-package-clock-compliance-ratelimit
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor, testing]
 parent: feature-refactor-per-package-clock-compliance
 depends_on: []
@@ -139,3 +139,13 @@ func (s *Store) maybeGC() {
 
 `git revert` the implementation commit. `Store`'s public API gains
 `NewStoreWithClock` but `NewStore` remains backwards-compatible.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Pattern-compliant clock injection — matches the canonical `events.Log` / `auth.MagicLinkHandler` shape. Production wiring unchanged (`realClock{}` returns same value as `time.Now()`). Tests demonstrate deterministic time control with no wall-clock waits. `go build ./...` and `go test ./...` clean.

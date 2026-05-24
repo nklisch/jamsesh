@@ -1,7 +1,7 @@
 ---
 id: story-refactor-per-package-clock-compliance-auth
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor, testing]
 parent: feature-refactor-per-package-clock-compliance
 depends_on: []
@@ -183,3 +183,13 @@ signature changes.
 `go test ./...` — auth and all other packages pass; three pre-existing build
 failures in `githttp`, `postreceive`, `objectstore` belong to another
 in-progress story and were present before this change.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Pattern-compliant clock injection — matches the canonical `events.Log` / `auth.MagicLinkHandler` shape. Production wiring unchanged (`realClock{}` returns same value as `time.Now()`). Tests demonstrate deterministic time control with no wall-clock waits. `go build ./...` and `go test ./...` clean.
