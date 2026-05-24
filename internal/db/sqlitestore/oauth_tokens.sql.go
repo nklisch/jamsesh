@@ -7,13 +7,58 @@ package sqlitestore
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
+
+const createAnonymousBearer = `-- name: CreateAnonymousBearer :one
+INSERT INTO oauth_tokens (id, account_id, token_hash, kind, session_id,
+                          issued_at, expires_at)
+VALUES (?, ?, ?, 'anonymous_session_bearer', ?, ?, ?)
+RETURNING id, account_id, token_hash, kind, session_id, issued_at, expires_at, last_used_at, revoked_at
+`
+
+type CreateAnonymousBearerParams struct {
+	ID        string         `json:"id"`
+	AccountID string         `json:"account_id"`
+	TokenHash string         `json:"token_hash"`
+	SessionID sql.NullString `json:"session_id"`
+	IssuedAt  time.Time      `json:"issued_at"`
+	ExpiresAt time.Time      `json:"expires_at"`
+}
+
+// Inserts an anonymous-session-scoped bearer row. The session_id FK
+// ensures the bearer is cascade-deleted when the session is destroyed
+// (ON DELETE CASCADE). expires_at is set by the caller, typically to
+// the session's hard-cap deadline.
+func (q *Queries) CreateAnonymousBearer(ctx context.Context, arg CreateAnonymousBearerParams) (OauthToken, error) {
+	row := q.db.QueryRowContext(ctx, createAnonymousBearer,
+		arg.ID,
+		arg.AccountID,
+		arg.TokenHash,
+		arg.SessionID,
+		arg.IssuedAt,
+		arg.ExpiresAt,
+	)
+	var i OauthToken
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.TokenHash,
+		&i.Kind,
+		&i.SessionID,
+		&i.IssuedAt,
+		&i.ExpiresAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
 
 const createOAuthToken = `-- name: CreateOAuthToken :one
 INSERT INTO oauth_tokens (id, account_id, token_hash, kind, issued_at, expires_at, last_used_at, revoked_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, account_id, token_hash, kind, issued_at, expires_at, last_used_at, revoked_at
+RETURNING id, account_id, token_hash, kind, session_id, issued_at, expires_at, last_used_at, revoked_at
 `
 
 type CreateOAuthTokenParams struct {
@@ -44,6 +89,7 @@ func (q *Queries) CreateOAuthToken(ctx context.Context, arg CreateOAuthTokenPara
 		&i.AccountID,
 		&i.TokenHash,
 		&i.Kind,
+		&i.SessionID,
 		&i.IssuedAt,
 		&i.ExpiresAt,
 		&i.LastUsedAt,
@@ -53,7 +99,7 @@ func (q *Queries) CreateOAuthToken(ctx context.Context, arg CreateOAuthTokenPara
 }
 
 const getOAuthTokenByHash = `-- name: GetOAuthTokenByHash :one
-SELECT id, account_id, token_hash, kind, issued_at, expires_at, last_used_at, revoked_at
+SELECT id, account_id, token_hash, kind, session_id, issued_at, expires_at, last_used_at, revoked_at
 FROM oauth_tokens
 WHERE token_hash = ?
 `
@@ -66,6 +112,7 @@ func (q *Queries) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (Oa
 		&i.AccountID,
 		&i.TokenHash,
 		&i.Kind,
+		&i.SessionID,
 		&i.IssuedAt,
 		&i.ExpiresAt,
 		&i.LastUsedAt,
@@ -75,7 +122,7 @@ func (q *Queries) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (Oa
 }
 
 const listOAuthTokensForAccount = `-- name: ListOAuthTokensForAccount :many
-SELECT id, account_id, token_hash, kind, issued_at, expires_at, last_used_at, revoked_at
+SELECT id, account_id, token_hash, kind, session_id, issued_at, expires_at, last_used_at, revoked_at
 FROM oauth_tokens
 WHERE account_id = ?
 ORDER BY issued_at DESC
@@ -95,6 +142,7 @@ func (q *Queries) ListOAuthTokensForAccount(ctx context.Context, accountID strin
 			&i.AccountID,
 			&i.TokenHash,
 			&i.Kind,
+			&i.SessionID,
 			&i.IssuedAt,
 			&i.ExpiresAt,
 			&i.LastUsedAt,
@@ -126,6 +174,27 @@ type RevokeAllOAuthTokensForAccountParams struct {
 
 func (q *Queries) RevokeAllOAuthTokensForAccount(ctx context.Context, arg RevokeAllOAuthTokensForAccountParams) error {
 	_, err := q.db.ExecContext(ctx, revokeAllOAuthTokensForAccount, arg.RevokedAt, arg.AccountID)
+	return err
+}
+
+const revokeBearersForSession = `-- name: RevokeBearersForSession :exec
+UPDATE oauth_tokens
+   SET revoked_at = ?
+ WHERE session_id = ?
+   AND revoked_at IS NULL
+`
+
+type RevokeBearersForSessionParams struct {
+	RevokedAt *time.Time     `json:"revoked_at"`
+	SessionID sql.NullString `json:"session_id"`
+}
+
+// Marks every bearer (any kind) associated with a session as revoked.
+// Used by the session destruction routine in session-lifecycle feature
+// as the first step of the cascade: revoke bearers, delete dependent
+// rows, delete session row, cascade.
+func (q *Queries) RevokeBearersForSession(ctx context.Context, arg RevokeBearersForSessionParams) error {
+	_, err := q.db.ExecContext(ctx, revokeBearersForSession, arg.RevokedAt, arg.SessionID)
 	return err
 }
 

@@ -118,6 +118,7 @@ func pgAccount(row pgstore.Account) Account {
 		DisplayName:  row.DisplayName,
 		GithubUserID: pgTextToPtr(row.GithubUserID),
 		CreatedAt:    row.CreatedAt,
+		IsAnonymous:  row.IsAnonymous,
 	}
 }
 
@@ -197,6 +198,7 @@ func pgOAuthToken(row pgstore.OauthToken) OAuthToken {
 		AccountID:  row.AccountID,
 		TokenHash:  row.TokenHash,
 		Kind:       row.Kind,
+		SessionID:  pgTextToPtr(row.SessionID),
 		IssuedAt:   row.IssuedAt,
 		ExpiresAt:  row.ExpiresAt,
 		LastUsedAt: row.LastUsedAt,
@@ -295,6 +297,19 @@ func (a *postgresAdapter) CreateAccount(ctx context.Context, p CreateAccountPara
 		DisplayName:  p.DisplayName,
 		GithubUserID: ptrToPgText(p.GithubUserID),
 		CreatedAt:    p.CreatedAt,
+	})
+	if err != nil {
+		return Account{}, mapPostgresErr(err)
+	}
+	return pgAccount(row), nil
+}
+
+func (a *postgresAdapter) CreateAnonymousAccount(ctx context.Context, p CreateAnonymousAccountParams) (Account, error) {
+	row, err := a.q.CreateAnonymousAccount(ctx, pgstore.CreateAnonymousAccountParams{
+		ID:          p.ID,
+		Email:       p.Email,
+		DisplayName: p.DisplayName,
+		CreatedAt:   p.CreatedAt,
 	})
 	if err != nil {
 		return Account{}, mapPostgresErr(err)
@@ -598,6 +613,28 @@ func (a *postgresAdapter) CreateOAuthToken(ctx context.Context, p CreateOAuthTok
 		return OAuthToken{}, mapPostgresErr(err)
 	}
 	return pgOAuthToken(row), nil
+}
+
+func (a *postgresAdapter) CreateAnonymousBearer(ctx context.Context, p CreateAnonymousBearerParams) (OAuthToken, error) {
+	row, err := a.q.CreateAnonymousBearer(ctx, pgstore.CreateAnonymousBearerParams{
+		ID:        p.ID,
+		AccountID: p.AccountID,
+		TokenHash: p.TokenHash,
+		SessionID: pgtype.Text{String: p.SessionID, Valid: true},
+		IssuedAt:  p.IssuedAt,
+		ExpiresAt: p.ExpiresAt,
+	})
+	if err != nil {
+		return OAuthToken{}, mapPostgresErr(err)
+	}
+	return pgOAuthToken(row), nil
+}
+
+func (a *postgresAdapter) RevokeBearersForSession(ctx context.Context, p RevokeBearersForSessionParams) error {
+	return mapPostgresErr(a.q.RevokeBearersForSession(ctx, pgstore.RevokeBearersForSessionParams{
+		RevokedAt: &p.RevokedAt,
+		SessionID: pgtype.Text{String: p.SessionID, Valid: true},
+	}))
 }
 
 func (a *postgresAdapter) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error) {
@@ -1125,6 +1162,13 @@ func (s *postgresTxStore) CreateAccount(ctx context.Context, p CreateAccountPara
 	}
 	return pgAccount(row), nil
 }
+func (s *postgresTxStore) CreateAnonymousAccount(ctx context.Context, p CreateAnonymousAccountParams) (Account, error) {
+	row, err := s.q.CreateAnonymousAccount(ctx, pgstore.CreateAnonymousAccountParams{ID: p.ID, Email: p.Email, DisplayName: p.DisplayName, CreatedAt: p.CreatedAt})
+	if err != nil {
+		return Account{}, mapPostgresErr(err)
+	}
+	return pgAccount(row), nil
+}
 func (s *postgresTxStore) GetAccountByID(ctx context.Context, id string) (Account, error) {
 	row, err := s.q.GetAccountByID(ctx, id)
 	if err != nil {
@@ -1297,6 +1341,26 @@ func (s *postgresTxStore) CreateOAuthToken(ctx context.Context, p CreateOAuthTok
 		return OAuthToken{}, mapPostgresErr(err)
 	}
 	return pgOAuthToken(row), nil
+}
+func (s *postgresTxStore) CreateAnonymousBearer(ctx context.Context, p CreateAnonymousBearerParams) (OAuthToken, error) {
+	row, err := s.q.CreateAnonymousBearer(ctx, pgstore.CreateAnonymousBearerParams{
+		ID:        p.ID,
+		AccountID: p.AccountID,
+		TokenHash: p.TokenHash,
+		SessionID: pgtype.Text{String: p.SessionID, Valid: true},
+		IssuedAt:  p.IssuedAt,
+		ExpiresAt: p.ExpiresAt,
+	})
+	if err != nil {
+		return OAuthToken{}, mapPostgresErr(err)
+	}
+	return pgOAuthToken(row), nil
+}
+func (s *postgresTxStore) RevokeBearersForSession(ctx context.Context, p RevokeBearersForSessionParams) error {
+	return mapPostgresErr(s.q.RevokeBearersForSession(ctx, pgstore.RevokeBearersForSessionParams{
+		RevokedAt: &p.RevokedAt,
+		SessionID: pgtype.Text{String: p.SessionID, Valid: true},
+	}))
 }
 func (s *postgresTxStore) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error) {
 	row, err := s.q.GetOAuthTokenByHash(ctx, tokenHash)

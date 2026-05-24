@@ -2,7 +2,10 @@ package tokens
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -172,6 +175,77 @@ func (s *service) Refresh(ctx context.Context, raw string) (Pair, error) {
 	}
 
 	return s.Issue(ctx, acct.ID)
+}
+
+// randID generates a crypto-random URL-safe hex ID of the specified byte
+// length. The returned string is 2*n characters long (hex-encoded).
+func randID(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("tokens: rand ID: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// IssueAnonymousSessionBearer creates a fresh anonymous account row and a
+// session-scoped bearer for it in a single transaction. The bearer's expires_at
+// is set to now+ttl. Returns the unhashed rawToken, the generated accountID,
+// and expiresAt on success.
+func (s *service) IssueAnonymousSessionBearer(ctx context.Context, sessionID, nickname string, ttl time.Duration) (string, string, time.Time, error) {
+	if nickname == "" {
+		return "", "", time.Time{}, errors.New("tokens: nickname must not be empty")
+	}
+	if sessionID == "" {
+		return "", "", time.Time{}, errors.New("tokens: sessionID must not be empty")
+	}
+
+	idSuffix, err := randID(16)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	accountID := "anon_" + idSuffix
+	email := accountID + "@playground.local"
+	now := s.clock.Now().UTC()
+
+	var rawToken string
+	var expiresAt time.Time
+
+	txErr := s.store.WithTx(ctx, func(q store.TxStore) error {
+		_, err := q.CreateAnonymousAccount(ctx, store.CreateAnonymousAccountParams{
+			ID:          accountID,
+			Email:       email,
+			DisplayName: nickname,
+			CreatedAt:   now,
+		})
+		if err != nil {
+			return fmt.Errorf("create anon account: %w", err)
+		}
+
+		raw, hash, err := generateToken()
+		if err != nil {
+			return fmt.Errorf("generate token: %w", err)
+		}
+		rawToken = raw
+		expiresAt = now.Add(ttl)
+
+		_, err = q.CreateAnonymousBearer(ctx, store.CreateAnonymousBearerParams{
+			ID:        "tok_" + uuid.New().String(),
+			AccountID: accountID,
+			TokenHash: hash,
+			SessionID: sessionID,
+			IssuedAt:  now,
+			ExpiresAt: expiresAt,
+		})
+		if err != nil {
+			return fmt.Errorf("create anon bearer: %w", err)
+		}
+		return nil
+	})
+	if txErr != nil {
+		return "", "", time.Time{}, txErr
+	}
+
+	return rawToken, accountID, expiresAt, nil
 }
 
 func (s *service) Revoke(ctx context.Context, callerAccountID string, raw string, revokeAll bool) error {

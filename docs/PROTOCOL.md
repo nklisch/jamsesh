@@ -299,6 +299,13 @@ Comments are first-class entities in the portal database.
 - `@auto-merger` — addressed to the auto-merger (informational; the
   auto-merger does not act on comments)
 
+Anonymous session participants use the same `@<nickname>` form as durable
+accounts. The addressing layer does not distinguish identity kind — it looks
+up by `accounts.display_name` for the session, which works identically for
+anonymous and durable accounts. A comment addressed to `@amber-otter` reaches
+the anonymous participant with that display name the same way it reaches a
+durable account holder.
+
 ## Conflict event schema
 
 Emitted by the auto-merger when a three-way merge fails.

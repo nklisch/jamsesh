@@ -12,7 +12,8 @@ CREATE TABLE accounts (
     email TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
     github_user_id TEXT,
-    created_at DATETIME NOT NULL
+    created_at DATETIME NOT NULL,
+    is_anonymous INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE org_members (
@@ -55,13 +56,16 @@ CREATE TABLE oauth_tokens (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     token_hash TEXT NOT NULL UNIQUE,
-    kind TEXT NOT NULL CHECK (kind IN ('access','refresh')),
+    kind TEXT NOT NULL CHECK (kind IN ('access','refresh','anonymous_session_bearer')),
+    session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
     issued_at DATETIME NOT NULL,
     expires_at DATETIME NOT NULL,
     last_used_at DATETIME,
     revoked_at DATETIME
 );
 CREATE INDEX oauth_tokens_account_idx ON oauth_tokens(account_id);
+CREATE INDEX oauth_tokens_session_idx ON oauth_tokens(session_id)
+  WHERE session_id IS NOT NULL;
 
 CREATE TABLE magic_link_tokens (
     id TEXT PRIMARY KEY,

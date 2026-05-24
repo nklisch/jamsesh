@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-anon-bearer
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: epic-ephemeral-playground
 depends_on: []
@@ -610,3 +610,38 @@ Multi-dialect via the `stores(t)` harness per the project's
   field. Sweep test files for `Account{...}` literals during
   implementation; existing patterns mostly use factory functions
   (`mustCreateAccount`) which absorb the change automatically.
+
+## Implementation notes
+
+All 7 units implemented. The implementation differed from the design guide in
+the following noteworthy ways:
+
+**SQLite unicode arrow truncation bug**: SQL comments containing the unicode
+arrow character `→` (U+2192) caused sqlc to truncate the query body —
+`AND revoked_at IS NULL` became `AND revoked_at I`. Replaced all unicode
+arrows in SQL comments with plain ASCII equivalents. This is an undocumented
+sqlc limitation; worth noting for any future SQL with non-ASCII comment
+characters.
+
+**Inline stub for handlerauth test**: `internal/portal/handlerauth/handlerauth_test.go`
+contains a `stubStore` that satisfies `store.Store`. Adding `CreateAnonymousAccount`,
+`CreateAnonymousBearer`, and `RevokeBearersForSession` as panic stubs was
+required to keep the compile-time interface check passing. This is test debt
+debt inherent to the blanket-stub pattern — each new store method requires
+touching every existing stub.
+
+**`@playground.local` suffix not reserved in magic-link validation**: confirmed
+during Unit 7 that `internal/portal/auth/magic_link.go` accepts any
+well-formed email with no domain-suffix filtering. A user could register
+`anon_<anything>@playground.local` via magic-link and potentially collide
+with a synthetic anonymous-account email. This is a real (if low-probability)
+issue. Parked as follow-up item (see backlog).
+
+**WithTx parameter type**: the feature design guide showed `func(store.Querier)
+error` as the WithTx callback type but the actual interface is
+`func(store.TxStore) error`. Used `TxStore` throughout.
+
+**randID implementation**: no existing randID helper was found in the tokens
+package. Implemented `randID(n int) (string, error)` using `crypto/rand` +
+`encoding/hex` as a private helper, consistent with the token generation
+approach already used for `generateToken()`.

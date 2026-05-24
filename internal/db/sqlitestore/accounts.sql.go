@@ -14,7 +14,7 @@ import (
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (id, email, display_name, github_user_id, created_at)
 VALUES (?, ?, ?, ?, ?)
-RETURNING id, email, display_name, github_user_id, created_at
+RETURNING id, email, display_name, github_user_id, created_at, is_anonymous
 `
 
 type CreateAccountParams struct {
@@ -40,12 +40,49 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.DisplayName,
 		&i.GithubUserID,
 		&i.CreatedAt,
+		&i.IsAnonymous,
+	)
+	return i, err
+}
+
+const createAnonymousAccount = `-- name: CreateAnonymousAccount :one
+INSERT INTO accounts (id, email, display_name, github_user_id, created_at, is_anonymous)
+VALUES (?, ?, ?, NULL, ?, 1)
+RETURNING id, email, display_name, github_user_id, created_at, is_anonymous
+`
+
+type CreateAnonymousAccountParams struct {
+	ID          string    `json:"id"`
+	Email       string    `json:"email"`
+	DisplayName string    `json:"display_name"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// Creates an anonymous account for a playground session participant.
+// The synthetic email satisfies the NOT NULL UNIQUE constraint without
+// requiring schema relaxation; the @playground.local suffix and the
+// random ID prefix guarantee uniqueness.
+func (q *Queries) CreateAnonymousAccount(ctx context.Context, arg CreateAnonymousAccountParams) (Account, error) {
+	row := q.db.QueryRowContext(ctx, createAnonymousAccount,
+		arg.ID,
+		arg.Email,
+		arg.DisplayName,
+		arg.CreatedAt,
+	)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.GithubUserID,
+		&i.CreatedAt,
+		&i.IsAnonymous,
 	)
 	return i, err
 }
 
 const getAccountByEmail = `-- name: GetAccountByEmail :one
-SELECT id, email, display_name, github_user_id, created_at
+SELECT id, email, display_name, github_user_id, created_at, is_anonymous
 FROM accounts
 WHERE email = ?
 `
@@ -59,12 +96,13 @@ func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account,
 		&i.DisplayName,
 		&i.GithubUserID,
 		&i.CreatedAt,
+		&i.IsAnonymous,
 	)
 	return i, err
 }
 
 const getAccountByGitHubUserID = `-- name: GetAccountByGitHubUserID :one
-SELECT id, email, display_name, github_user_id, created_at
+SELECT id, email, display_name, github_user_id, created_at, is_anonymous
 FROM accounts
 WHERE github_user_id = ?
 `
@@ -78,12 +116,13 @@ func (q *Queries) GetAccountByGitHubUserID(ctx context.Context, githubUserID sql
 		&i.DisplayName,
 		&i.GithubUserID,
 		&i.CreatedAt,
+		&i.IsAnonymous,
 	)
 	return i, err
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
-SELECT id, email, display_name, github_user_id, created_at
+SELECT id, email, display_name, github_user_id, created_at, is_anonymous
 FROM accounts
 WHERE id = ?
 `
@@ -97,6 +136,7 @@ func (q *Queries) GetAccountByID(ctx context.Context, id string) (Account, error
 		&i.DisplayName,
 		&i.GithubUserID,
 		&i.CreatedAt,
+		&i.IsAnonymous,
 	)
 	return i, err
 }

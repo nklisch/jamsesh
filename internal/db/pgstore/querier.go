@@ -21,6 +21,16 @@ type Querier interface {
 	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error
 	ConsumeOAuthState(ctx context.Context, nonce string) (OauthState, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	// Creates an anonymous account for a playground session participant.
+	// The synthetic email satisfies the NOT NULL UNIQUE constraint without
+	// requiring schema relaxation; the @playground.local suffix and the
+	// random ID prefix guarantee uniqueness.
+	CreateAnonymousAccount(ctx context.Context, arg CreateAnonymousAccountParams) (Account, error)
+	// Inserts an anonymous-session-scoped bearer row. The session_id FK
+	// ensures the bearer is cascade-deleted when the session is destroyed
+	// (ON DELETE CASCADE). expires_at is set by the caller, typically to
+	// the session's hard-cap deadline.
+	CreateAnonymousBearer(ctx context.Context, arg CreateAnonymousBearerParams) (OauthToken, error)
 	CreateMagicLinkToken(ctx context.Context, arg CreateMagicLinkTokenParams) (MagicLinkToken, error)
 	CreateOAuthToken(ctx context.Context, arg CreateOAuthTokenParams) (OauthToken, error)
 	CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, error)
@@ -88,6 +98,11 @@ type Querier interface {
 	RemoveSessionMember(ctx context.Context, arg RemoveSessionMemberParams) error
 	ResolveComment(ctx context.Context, arg ResolveCommentParams) error
 	RevokeAllOAuthTokensForAccount(ctx context.Context, arg RevokeAllOAuthTokensForAccountParams) error
+	// Marks every bearer (any kind) associated with a session as revoked.
+	// Used by the session destruction routine in session-lifecycle feature
+	// as the first step of the cascade: revoke bearers, delete dependent
+	// rows, delete session row, cascade.
+	RevokeBearersForSession(ctx context.Context, arg RevokeBearersForSessionParams) error
 	RevokeOAuthToken(ctx context.Context, arg RevokeOAuthTokenParams) error
 	SetFinalizeLock(ctx context.Context, arg SetFinalizeLockParams) error
 	SetSessionBaseSHA(ctx context.Context, arg SetSessionBaseSHAParams) error

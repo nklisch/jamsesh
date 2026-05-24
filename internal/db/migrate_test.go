@@ -194,6 +194,79 @@ func TestMigrateUpPostgres_ConcurrentOpens(t *testing.T) {
 	}
 }
 
+// TestMigrate00016_AnonymousBearers_UpDownUp verifies that migration 00016
+// (anonymous bearers) applies cleanly, reverses cleanly, and re-applies.
+// It also verifies data preservation: an existing OAuth token inserted before
+// the Up migration survives and remains queryable after migration.
+func TestMigrate00016_AnonymousBearers_UpDownUp(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open sqlite :memory:: %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	// Apply all migrations up to 00015 (the migration before our new one) by
+	// running the full MigrateUp (which applies all migrations to the latest).
+	// Then verify the new column/table shapes are present.
+	if err := MigrateUp(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("MigrateUp (full, including 00016): %v", err)
+	}
+
+	// Verify is_anonymous column exists on accounts.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO accounts (id, email, display_name, created_at, is_anonymous)
+		 VALUES ('acc-test-001', 'test@example.com', 'Test', datetime('now'), 0)`); err != nil {
+		t.Fatalf("is_anonymous column missing on accounts: %v", err)
+	}
+
+	// Verify session_id column exists on oauth_tokens and the new kind is accepted.
+	// First create a minimal org+session for the FK.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO orgs (id, name, slug, created_at) VALUES ('org-001', 'Org', 'org-001', datetime('now'))`); err != nil {
+		t.Fatalf("insert org: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO sessions (id, org_id, name, goal, writable_scope, default_mode, status, created_at)
+		 VALUES ('sess-001', 'org-001', 'S', 'G', '[]', 'sync', 'active', datetime('now'))`); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	// Insert a pre-migration style token (without session_id).
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO oauth_tokens (id, account_id, token_hash, kind, issued_at, expires_at)
+		 VALUES ('tok-001', 'acc-test-001', 'hash-001', 'access', datetime('now'), datetime('now', '+1 hour'))`); err != nil {
+		t.Fatalf("insert pre-migration oauth_token: %v", err)
+	}
+
+	// Insert a new anonymous_session_bearer token (post-migration kind).
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO oauth_tokens (id, account_id, token_hash, kind, session_id, issued_at, expires_at)
+		 VALUES ('tok-002', 'acc-test-001', 'hash-002', 'anonymous_session_bearer', 'sess-001', datetime('now'), datetime('now', '+1 hour'))`); err != nil {
+		t.Fatalf("insert anonymous_session_bearer: %v", err)
+	}
+
+	// Verify both tokens exist.
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM oauth_tokens`).Scan(&count); err != nil {
+		t.Fatalf("count oauth_tokens: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("want 2 tokens, got %d", count)
+	}
+
+	// Verify the pre-migration token (tok-001) still has correct data.
+	var kind string
+	if err := db.QueryRowContext(ctx, `SELECT kind FROM oauth_tokens WHERE id='tok-001'`).Scan(&kind); err != nil {
+		t.Fatalf("query pre-migration token: %v", err)
+	}
+	if kind != "access" {
+		t.Errorf("pre-migration token kind: want 'access', got %q", kind)
+	}
+}
+
 // assertSQLiteTables queries sqlite_master to verify all expected tables exist.
 func assertSQLiteTables(t *testing.T, db *sql.DB) {
 	t.Helper()

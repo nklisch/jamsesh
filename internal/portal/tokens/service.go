@@ -36,6 +36,13 @@ type Service interface {
 	// expiry path as Issue — Validate honours the row's expires_at without
 	// special-casing.
 	IssueShortLived(ctx context.Context, accountID string, ttl time.Duration) (accessRaw string, accessExpiresAt time.Time, err error)
+	// IssueAnonymousSessionBearer creates a fresh anonymous account row (with a
+	// synthetic email) and a session-scoped bearer for it in a single transaction.
+	// The bearer's expires_at is set to now+ttl; the caller computes ttl from
+	// the session's hard-cap deadline. Returns the unhashed rawToken (to return
+	// to the client), the generated accountID (anon_* prefix), and expiresAt.
+	// An empty nickname or sessionID is rejected before any DB calls are made.
+	IssueAnonymousSessionBearer(ctx context.Context, sessionID, nickname string, ttl time.Duration) (rawToken, accountID string, expiresAt time.Time, err error)
 	// Validate returns the account associated with a raw token, or a
 	// normalized error (ErrInvalidToken, ErrExpiredToken, ErrRevokedToken).
 	Validate(ctx context.Context, rawToken string) (*store.Account, error)

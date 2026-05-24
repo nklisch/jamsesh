@@ -16,6 +16,7 @@ type Account struct {
 	DisplayName  string      `json:"display_name"`
 	GithubUserID pgtype.Text `json:"github_user_id"`
 	CreatedAt    time.Time   `json:"created_at"`
+	IsAnonymous  bool        `json:"is_anonymous"`
 }
 
 type ArchivedSession struct {
@@ -122,14 +123,15 @@ type OauthState struct {
 }
 
 type OauthToken struct {
-	ID         string     `json:"id"`
-	AccountID  string     `json:"account_id"`
-	TokenHash  string     `json:"token_hash"`
-	Kind       string     `json:"kind"`
-	IssuedAt   time.Time  `json:"issued_at"`
-	ExpiresAt  time.Time  `json:"expires_at"`
-	LastUsedAt *time.Time `json:"last_used_at"`
-	RevokedAt  *time.Time `json:"revoked_at"`
+	ID         string      `json:"id"`
+	AccountID  string      `json:"account_id"`
+	TokenHash  string      `json:"token_hash"`
+	Kind       string      `json:"kind"`
+	SessionID  pgtype.Text `json:"session_id"`
+	IssuedAt   time.Time   `json:"issued_at"`
+	ExpiresAt  time.Time   `json:"expires_at"`
+	LastUsedAt *time.Time  `json:"last_used_at"`
+	RevokedAt  *time.Time  `json:"revoked_at"`
 }
 
 type Org struct {

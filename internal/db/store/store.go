@@ -101,6 +101,7 @@ type Account struct {
 	DisplayName  string
 	GithubUserID *string // nullable
 	CreatedAt    time.Time
+	IsAnonymous  bool // true for anonymous playground session participants
 }
 
 // OrgMember is a membership record joining an account to an org.
@@ -174,7 +175,8 @@ type OAuthToken struct {
 	ID         string
 	AccountID  string
 	TokenHash  string
-	Kind       string     // "access" | "refresh"
+	Kind       string     // "access" | "refresh" | "anonymous_session_bearer"
+	SessionID  *string    // nullable; set for anonymous_session_bearer tokens
 	IssuedAt   time.Time
 	ExpiresAt  time.Time
 	LastUsedAt *time.Time
@@ -341,6 +343,27 @@ type RevokeAllOAuthTokensForAccountParams struct {
 	RevokedAt *time.Time
 }
 
+type CreateAnonymousAccountParams struct {
+	ID          string
+	Email       string
+	DisplayName string
+	CreatedAt   time.Time
+}
+
+type CreateAnonymousBearerParams struct {
+	ID        string
+	AccountID string
+	TokenHash string
+	SessionID string // always set for anonymous bearer tokens
+	IssuedAt  time.Time
+	ExpiresAt time.Time
+}
+
+type RevokeBearersForSessionParams struct {
+	RevokedAt time.Time
+	SessionID string
+}
+
 type CreateMagicLinkTokenParams struct {
 	ID        string
 	TokenHash string
@@ -439,6 +462,11 @@ type OrgStore interface {
 // AccountStore covers account CRUD.
 type AccountStore interface {
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	// CreateAnonymousAccount creates an anonymous account with a synthetic email
+	// for playground session participants. The caller supplies a pre-generated ID,
+	// display name (server-minted nickname), and created_at timestamp; the email
+	// is set to id+"@playground.local" by the caller.
+	CreateAnonymousAccount(ctx context.Context, arg CreateAnonymousAccountParams) (Account, error)
 	GetAccountByID(ctx context.Context, id string) (Account, error)
 	GetAccountByEmail(ctx context.Context, email string) (Account, error)
 	// GetAccountByGitHubUserID looks up an account by its GitHub user ID.
@@ -508,6 +536,14 @@ type ArchivedSessionStore interface {
 // OAuthTokenStore covers OAuth token lifecycle.
 type OAuthTokenStore interface {
 	CreateOAuthToken(ctx context.Context, arg CreateOAuthTokenParams) (OAuthToken, error)
+	// CreateAnonymousBearer inserts an anonymous-session-scoped bearer row with
+	// kind='anonymous_session_bearer' and the given session_id FK. The bearer is
+	// automatically cascade-deleted when the session is destroyed.
+	CreateAnonymousBearer(ctx context.Context, arg CreateAnonymousBearerParams) (OAuthToken, error)
+	// RevokeBearersForSession marks every bearer associated with the given session
+	// as revoked (sets revoked_at). Idempotent — bearers already revoked are not
+	// updated. Used by the session destruction routine.
+	RevokeBearersForSession(ctx context.Context, arg RevokeBearersForSessionParams) error
 	GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error)
 	TouchOAuthTokenLastUsed(ctx context.Context, arg TouchOAuthTokenLastUsedParams) error
 	RevokeOAuthToken(ctx context.Context, arg RevokeOAuthTokenParams) error

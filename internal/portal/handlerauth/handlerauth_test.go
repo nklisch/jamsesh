@@ -43,6 +43,9 @@ func (s *stubStore) UpdateOrgSessionInvitePolicy(_ context.Context, _ store.Upda
 func (s *stubStore) CreateAccount(_ context.Context, _ store.CreateAccountParams) (store.Account, error) {
 	panic("not implemented")
 }
+func (s *stubStore) CreateAnonymousAccount(_ context.Context, _ store.CreateAnonymousAccountParams) (store.Account, error) {
+	panic("not implemented")
+}
 func (s *stubStore) GetAccountByID(_ context.Context, _ string) (store.Account, error) {
 	panic("not implemented")
 }
@@ -176,6 +179,12 @@ func (s *stubStore) RevokeAllOAuthTokensForAccount(_ context.Context, _ store.Re
 	panic("not implemented")
 }
 func (s *stubStore) ListOAuthTokensForAccount(_ context.Context, _ string) ([]store.OAuthToken, error) {
+	panic("not implemented")
+}
+func (s *stubStore) CreateAnonymousBearer(_ context.Context, _ store.CreateAnonymousBearerParams) (store.OAuthToken, error) {
+	panic("not implemented")
+}
+func (s *stubStore) RevokeBearersForSession(_ context.Context, _ store.RevokeBearersForSessionParams) error {
 	panic("not implemented")
 }
 

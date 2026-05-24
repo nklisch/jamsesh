@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"jamsesh/internal/db"
+	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -137,3 +138,56 @@ func TestBasicAuthValidator_UsernameIgnored(t *testing.T) {
 }
 
 func mustNow() time.Time { return time.Now().UTC() }
+
+// TestBasicAuthValidator_AnonymousBearer_Accepted is a regression test that
+// confirms BasicAuthValidator (used for git smart-HTTP auth) accepts an
+// anonymous session bearer and returns the anonymous account unchanged.
+// This guards against future refactors that might accidentally branch on
+// identity kind in the BasicAuth path.
+func TestBasicAuthValidator_AnonymousBearer_Accepted(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+
+	// Need an org + session row for the anonymous bearer's session_id FK.
+	org, err := s.CreateOrg(ctx, store.CreateOrgParams{
+		ID:        "org-basic-anon",
+		Name:      "Basic Anon Org",
+		Slug:      "basic-anon-org",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+	sess, err := s.CreateSession(ctx, store.CreateSessionParams{
+		ID:            "sess-basic-anon",
+		OrgID:         org.ID,
+		Name:          "Basic Anon Session",
+		Goal:          "test anon bearer in BasicAuth",
+		WritableScope: `["src/"]`,
+		DefaultMode:   "sync",
+		Status:        "active",
+		CreatedAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	svc := tokens.New(s)
+
+	rawToken, accountID, _, err := svc.IssueAnonymousSessionBearer(ctx, sess.ID, "indigo-ibis", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueAnonymousSessionBearer: %v", err)
+	}
+
+	validate := tokens.BasicAuthValidator(svc)
+	got, err := validate(ctx, "git", rawToken)
+	if err != nil {
+		t.Fatalf("BasicAuthValidator anonymous bearer: %v", err)
+	}
+	if got.ID != accountID {
+		t.Errorf("wrong account: got %q, want %q", got.ID, accountID)
+	}
+	if !got.IsAnonymous {
+		t.Error("IsAnonymous should be true for anonymous bearer account")
+	}
+}

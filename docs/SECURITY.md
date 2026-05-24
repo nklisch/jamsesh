@@ -255,6 +255,37 @@ The portal is designed to be safe in a hostile network with default
 configuration (HTTPS-only, token-authenticated, no anonymous endpoints
 except auth initiation).
 
+## Anonymous session-scoped bearers
+
+When playground sessions are enabled (`JAMSESH_PLAYGROUND_ENABLED=true`),
+participants are issued **anonymous session-scoped bearers**: a new
+`accounts` row marked `is_anonymous: true` (with a synthetic
+`anon-<random>@playground.local` email) and an `oauth_tokens` row with
+`kind=anonymous_session_bearer` and a `session_id` FK pinning the bearer
+to one session.
+
+**Threat model:**
+- **Token leak blast radius**: a leaked anonymous bearer authenticates
+  only the session it was issued for. No cross-session privilege; no
+  org-scope access (the playground org's `org_members` table is never
+  populated with anonymous accounts).
+- **Bearer lifetime**: two independent expiry mechanisms — the `expires_at`
+  column (synced to the session's hard-cap deadline, e.g., 24h) and the
+  destruction-sweep revocation (sets `revoked_at` at session end). Either
+  failing means the bearer naturally expires within the session window.
+- **Reuse after destruction**: impossible — both the `oauth_tokens` row
+  AND the underlying `accounts` row are cascade-deleted with the session
+  (per the session-lifecycle feature's destruction routine).
+- **Hijacking mid-session**: a hijacked bearer can act as the original
+  participant within the session — same blast radius as a session
+  hijack of a durable bearer. No additional mitigation in v1; consider
+  bearer rotation in a future hardening pass if abuse data justifies.
+
+Anonymous accounts never participate in another session (per-session-row
+identity); they never appear in `org_members`; they cannot be promoted
+to durable accounts (the "claim-to-durable" path is explicitly deferred
+per SPEC.md's deferred-features list).
+
 ## Audit trail
 
 Everything is auditable:

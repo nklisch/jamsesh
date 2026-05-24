@@ -26,6 +26,10 @@ func (m *mockService) IssueShortLived(_ context.Context, _ string, _ time.Durati
 	return "", time.Time{}, errors.New("not implemented")
 }
 
+func (m *mockService) IssueAnonymousSessionBearer(_ context.Context, _, _ string, _ time.Duration) (string, string, time.Time, error) {
+	return "", "", time.Time{}, errors.New("not implemented")
+}
+
 func (m *mockService) Validate(ctx context.Context, raw string) (*store.Account, error) {
 	return m.validateFn(ctx, raw)
 }
@@ -280,6 +284,74 @@ func TestBearerMiddleware_BusinessSentinel_PassesThrough(t *testing.T) {
 	}
 	if env.Error != "internal" {
 		t.Errorf("want error=internal, got %q\nbody: %s", env.Error, w.Body.String())
+	}
+}
+
+// TestBearerMiddleware_AnonymousBearer_AuthenticatesRequest is a regression test
+// that confirms BearerMiddleware accepts an anonymous session bearer and injects
+// the anonymous account (IsAnonymous: true) into context. This guards against
+// future refactors that might accidentally branch on identity kind in the
+// Bearer middleware path.
+func TestBearerMiddleware_AnonymousBearer_AuthenticatesRequest(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+
+	// Create org + session for the anonymous bearer's session_id FK.
+	org, err := s.CreateOrg(ctx, store.CreateOrgParams{
+		ID:        "org-mw-anon",
+		Name:      "MW Anon Org",
+		Slug:      "mw-anon-org",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+	sess, err := s.CreateSession(ctx, store.CreateSessionParams{
+		ID:            "sess-mw-anon",
+		OrgID:         org.ID,
+		Name:          "MW Anon Session",
+		Goal:          "test anon bearer in middleware",
+		WritableScope: `["src/"]`,
+		DefaultMode:   "sync",
+		Status:        "active",
+		CreatedAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	svc := tokens.New(s)
+	rawToken, accountID, _, err := svc.IssueAnonymousSessionBearer(ctx, sess.ID, "jade-jackal", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueAnonymousSessionBearer: %v", err)
+	}
+
+	mw := tokens.BearerMiddleware(svc)
+
+	var gotAcct *store.Account
+	var inCtx bool
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAcct, inCtx = tokens.AccountFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	r.Header.Set("Authorization", "Bearer "+rawToken)
+
+	mw(handler).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", w.Code)
+	}
+	if !inCtx {
+		t.Error("account not found in context")
+	}
+	if gotAcct == nil || gotAcct.ID != accountID {
+		t.Errorf("wrong account in context: got %v, want ID %q", gotAcct, accountID)
+	}
+	if gotAcct != nil && !gotAcct.IsAnonymous {
+		t.Error("IsAnonymous should be true for anonymous bearer account in context")
 	}
 }
 

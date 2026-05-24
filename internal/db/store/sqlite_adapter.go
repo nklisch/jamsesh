@@ -119,6 +119,7 @@ func sqliteAccount(row sqlitestore.Account) Account {
 		DisplayName:  row.DisplayName,
 		GithubUserID: nullStringToPtr(row.GithubUserID),
 		CreatedAt:    row.CreatedAt,
+		IsAnonymous:  row.IsAnonymous != 0,
 	}
 }
 
@@ -197,6 +198,7 @@ func sqliteOAuthToken(row sqlitestore.OauthToken) OAuthToken {
 		AccountID:  row.AccountID,
 		TokenHash:  row.TokenHash,
 		Kind:       row.Kind,
+		SessionID:  nullStringToPtr(row.SessionID),
 		IssuedAt:   row.IssuedAt,
 		ExpiresAt:  row.ExpiresAt,
 		LastUsedAt: row.LastUsedAt,
@@ -291,6 +293,19 @@ func (a *sqliteAdapter) CreateAccount(ctx context.Context, p CreateAccountParams
 		DisplayName:  p.DisplayName,
 		GithubUserID: ptrToNullString(p.GithubUserID),
 		CreatedAt:    p.CreatedAt,
+	})
+	if err != nil {
+		return Account{}, mapSQLiteErr(err)
+	}
+	return sqliteAccount(row), nil
+}
+
+func (a *sqliteAdapter) CreateAnonymousAccount(ctx context.Context, p CreateAnonymousAccountParams) (Account, error) {
+	row, err := a.q.CreateAnonymousAccount(ctx, sqlitestore.CreateAnonymousAccountParams{
+		ID:          p.ID,
+		Email:       p.Email,
+		DisplayName: p.DisplayName,
+		CreatedAt:   p.CreatedAt,
 	})
 	if err != nil {
 		return Account{}, mapSQLiteErr(err)
@@ -595,6 +610,28 @@ func (a *sqliteAdapter) CreateOAuthToken(ctx context.Context, p CreateOAuthToken
 		return OAuthToken{}, mapSQLiteErr(err)
 	}
 	return sqliteOAuthToken(row), nil
+}
+
+func (a *sqliteAdapter) CreateAnonymousBearer(ctx context.Context, p CreateAnonymousBearerParams) (OAuthToken, error) {
+	row, err := a.q.CreateAnonymousBearer(ctx, sqlitestore.CreateAnonymousBearerParams{
+		ID:        p.ID,
+		AccountID: p.AccountID,
+		TokenHash: p.TokenHash,
+		SessionID: sql.NullString{String: p.SessionID, Valid: true},
+		IssuedAt:  p.IssuedAt,
+		ExpiresAt: p.ExpiresAt,
+	})
+	if err != nil {
+		return OAuthToken{}, mapSQLiteErr(err)
+	}
+	return sqliteOAuthToken(row), nil
+}
+
+func (a *sqliteAdapter) RevokeBearersForSession(ctx context.Context, p RevokeBearersForSessionParams) error {
+	return mapSQLiteErr(a.q.RevokeBearersForSession(ctx, sqlitestore.RevokeBearersForSessionParams{
+		RevokedAt: &p.RevokedAt,
+		SessionID: sql.NullString{String: p.SessionID, Valid: true},
+	}))
 }
 
 func (a *sqliteAdapter) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error) {
@@ -1121,6 +1158,13 @@ func (s *sqliteTxStore) CreateAccount(ctx context.Context, p CreateAccountParams
 	}
 	return sqliteAccount(row), nil
 }
+func (s *sqliteTxStore) CreateAnonymousAccount(ctx context.Context, p CreateAnonymousAccountParams) (Account, error) {
+	row, err := s.q.CreateAnonymousAccount(ctx, sqlitestore.CreateAnonymousAccountParams{ID: p.ID, Email: p.Email, DisplayName: p.DisplayName, CreatedAt: p.CreatedAt})
+	if err != nil {
+		return Account{}, mapSQLiteErr(err)
+	}
+	return sqliteAccount(row), nil
+}
 func (s *sqliteTxStore) GetAccountByID(ctx context.Context, id string) (Account, error) {
 	row, err := s.q.GetAccountByID(ctx, id)
 	if err != nil {
@@ -1294,6 +1338,26 @@ func (s *sqliteTxStore) CreateOAuthToken(ctx context.Context, p CreateOAuthToken
 		return OAuthToken{}, mapSQLiteErr(err)
 	}
 	return sqliteOAuthToken(row), nil
+}
+func (s *sqliteTxStore) CreateAnonymousBearer(ctx context.Context, p CreateAnonymousBearerParams) (OAuthToken, error) {
+	row, err := s.q.CreateAnonymousBearer(ctx, sqlitestore.CreateAnonymousBearerParams{
+		ID:        p.ID,
+		AccountID: p.AccountID,
+		TokenHash: p.TokenHash,
+		SessionID: sql.NullString{String: p.SessionID, Valid: true},
+		IssuedAt:  p.IssuedAt,
+		ExpiresAt: p.ExpiresAt,
+	})
+	if err != nil {
+		return OAuthToken{}, mapSQLiteErr(err)
+	}
+	return sqliteOAuthToken(row), nil
+}
+func (s *sqliteTxStore) RevokeBearersForSession(ctx context.Context, p RevokeBearersForSessionParams) error {
+	return mapSQLiteErr(s.q.RevokeBearersForSession(ctx, sqlitestore.RevokeBearersForSessionParams{
+		RevokedAt: &p.RevokedAt,
+		SessionID: sql.NullString{String: p.SessionID, Valid: true},
+	}))
 }
 func (s *sqliteTxStore) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error) {
 	row, err := s.q.GetOAuthTokenByHash(ctx, tokenHash)
