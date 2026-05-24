@@ -1,7 +1,7 @@
 ---
 id: gate-tests-applychangesperpath-extracted-branches
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, refactor]
 parent: null
 depends_on: []
@@ -36,3 +36,23 @@ routing.
 
 ## Test location (suggested)
 `internal/portal/automerger/merge_phases_test.go`
+
+## Implementation notes
+
+Added three tests directly to `internal/portal/automerger/merge_phases_test.go`,
+each targeting a branch in `mergeBothModifiedPath` (called from `applyChangesPerPath`):
+
+- `TestApplyChangesPerPath_BothAddedSameContent` — exercises the identical-hash
+  fast-path (`ourCh.toHash == theirCh.toHash`): both sides add `new.txt` with
+  identical bytes; expects a clean merge with the shared blob in `mergedEntries`.
+
+- `TestApplyChangesPerPath_BothDeleted` — exercises the delete/delete fast-path
+  (`ourCh.deleted && theirCh.deleted`): base has `deleted.txt`; both sides omit
+  it; expects the path absent from `mergedEntries` with no conflicts.
+
+- `TestApplyChangesPerPath_BothModified_NonOverlappingChunks` — exercises the
+  "different edits → `runThreeWayMerge`" path with non-overlapping edits (header
+  vs footer), which produces a clean three-way merge; the merged blob is verified
+  to contain both changes.
+
+All three pass. Full `./internal/portal/automerger/...` suite: PASS.
