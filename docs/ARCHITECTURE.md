@@ -121,10 +121,15 @@ returning JSON on stdout:
   presence-offline event.
 
 **Slash command subcommands** — invoked by CC skills (skills ARE slash
-commands in CC's plugin model). Each skill at `skills/<name>/SKILL.md`
-contains body text that instructs Claude to run `jamsesh <name> $ARGUMENTS`:
+commands in CC's plugin model). The plugin exposes two slash commands:
+`/jamsesh:jam` (intent-driven dispatch for create, join, status, fork,
+and mode operations) and `/jamsesh:finalize`. Each skill at
+`skills/<name>/SKILL.md` contains body text that instructs Claude to
+run the appropriate `jamsesh` subcommand:
 
-- `jamsesh join <session-id-or-url> [--as <branch>] [--from <commit>]`
+- `jamsesh jam new [--org <id>] [--goal <text>] [--scope <glob>] [--mode sync|isolated] [--invite <emails>]`
+- `jamsesh jam new --playground` — ephemeral anonymous variant (no org needed)
+- `jamsesh jam join <session-id-or-url> [--as <branch>] [--from <commit>]`
 - `jamsesh status` — prints tree summary, peers, scope, mode, unresolved
   comments addressed to this user
 - `jamsesh fork <commit> [--as <branch>] [--mode sync|isolated]`
@@ -181,10 +186,7 @@ jamsesh/
 │   └── jamsesh                    Go binary (multi-arch via marketplace)
 ├── skills/
 │   ├── jamsesh/SKILL.md           auto-loaded skill teaching the agent
-│   ├── join/SKILL.md              /jamsesh:join command
-│   ├── status/SKILL.md            /jamsesh:status command
-│   ├── fork/SKILL.md              /jamsesh:fork command
-│   ├── mode/SKILL.md              /jamsesh:mode command
+│   ├── jam/SKILL.md               /jamsesh:jam command
 │   └── finalize/SKILL.md          /jamsesh:finalize command
 ├── hooks/
 │   └── hooks.json                 SessionStart, UserPromptSubmit, PreToolUse,
@@ -306,9 +308,9 @@ A human owns the namespace `jam/<session>/<user>/*` and may have multiple
 refs under it. Each Claude Code instance binds to exactly one ref at join:
 
 ```
-/jamsesh:join <session>                              # binds to <user>/main
-/jamsesh:join <session> --as <branch>                # binds to <user>/<branch>
-/jamsesh:join <session> --as <branch> --from <ref>   # creates from specific parent
+/jamsesh:jam join <session>                              # binds to <user>/main
+/jamsesh:jam join <session> --as <branch>                # binds to <user>/<branch>
+/jamsesh:jam join <session> --as <branch> --from <ref>   # creates from specific parent
 ```
 
 Each CC instance has its own working tree and tracks its own ref binding via
@@ -398,10 +400,10 @@ Failure modes and recovery:
 
 - **Local terminal closed mid-turn.** Pushed work is durable. Unpushed
   uncommitted work is lost (same as any git workflow). Rejoin via
-  `/jamsesh:join`; the SessionStart hook fetches and rehydrates context.
+  `/jamsesh:jam join`; the SessionStart hook fetches and rehydrates context.
 - **Network drop mid-push.** Git pushes are atomic — either succeeded (and
   `post-receive` events fired) or didn't. The next push catches up.
-- **`jamsesh` binary crash.** Restart Claude Code; `/jamsesh:join` again.
+- **`jamsesh` binary crash.** Restart Claude Code; `/jamsesh:jam join` again.
   Token and state are persistent on disk.
 - **Portal restart.** Active sessions remain in the database. Reconnected
   WebSocket clients re-subscribe. No data loss.

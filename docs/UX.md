@@ -8,7 +8,7 @@ Two surfaces, one workflow.
 
 **Claude Code** is where the work happens. Humans drive their agents in CC
 exactly as they do for any other CC session. The jamsesh plugin adds slash
-commands (`/jamsesh:join`, `/jamsesh:status`, etc.), surfaces session context
+commands (`/jamsesh:jam`, `/jamsesh:finalize`), surfaces session context
 in agent turns via the digest, and pushes work to the session remote on
 commit boundaries. Most of a participant's time is here.
 
@@ -55,7 +55,7 @@ On success:
 3. Per-session state files are written to
    `${CLAUDE_PLUGIN_DATA}/sessions/<session-id>/` (ref, org_id, account_id,
    last_seen_seq). The `instance_id` binding happens at first
-   `/jamsesh:join` equivalent — not here, since the user may run
+   `/jamsesh:jam join` — not here, since the user may run
    `jamsesh new` from plain bash without a CC instance attached.
 4. A success summary is printed with the session URL, org, goal, scope,
    mode, and the `jamsesh join <session-id>` command collaborators can run.
@@ -65,9 +65,8 @@ prints the explicit retry command:
 ```
 git push <session-remote-url> HEAD:refs/heads/jam/<session-id>/base
 ```
-The `/jamsesh:new` skill body (shipped in the `plugin-skills` feature)
-instructs the agent to retry the push automatically once before surfacing
-the error to the human.
+The `/jamsesh:jam` skill instructs the agent to retry the push
+automatically once before surfacing the error to the human.
 
 ### Secondary path: interactive (human in a terminal)
 
@@ -99,7 +98,7 @@ is the org binding and the session lifetime indicator shown in the output.
 
 A collaborator received an invite or a join URL.
 
-1. From a checkout of the source repo, they run `/jamsesh:join <session-id-or-url>`.
+1. From a checkout of the source repo, they run `/jamsesh:jam join <session-id-or-url>`.
 2. If not authenticated to the portal, OAuth flow runs (browser opens; token
    stored locally on completion).
 3. The local binary verifies they're a session member (or completes the
@@ -173,7 +172,9 @@ A human sees a commit on a peer's ref that they want to build on.
 
 **From CC:**
 
-1. `/jamsesh:fork <commit-sha> [--as <branch>] [--mode sync|isolated]`
+1. `/jamsesh:jam` — tell the agent "fork from `<commit-sha>`" (optionally
+   naming the branch and mode). The agent invokes
+   `jamsesh fork <commit-sha> [--as <branch>] [--mode sync|isolated]`.
 2. The local binary calls the portal `fork` MCP tool.
 3. The local checkout is reset to the new parent automatically.
 
@@ -184,7 +185,8 @@ exploration (or that an isolated branch is ready to rejoin the trunk).
 
 **To go isolated:**
 
-1. `/jamsesh:mode isolated` in CC.
+1. `/jamsesh:jam` — tell the agent "switch to isolated mode". The agent
+   invokes `jamsesh mode isolated`.
 2. Or click the mode badge on your ref in the portal tree view, choose
    "isolated."
 3. Future commits on this ref are not auto-merged. Conflict events stop
@@ -192,7 +194,8 @@ exploration (or that an isolated branch is ready to rejoin the trunk).
 
 **To rejoin sync:**
 
-1. `/jamsesh:mode sync`.
+1. `/jamsesh:jam` — tell the agent "switch to sync mode". The agent
+   invokes `jamsesh mode sync`.
 2. The next push triggers auto-merger processing for any commits accumulated
    while isolated. Expect conflicts proportional to drift.
 3. Resolve conflicts as they fire (in the digest, addressed to you).
@@ -244,8 +247,9 @@ A team agrees the jam is complete and wants to ship the result.
 
 Humans can check session state from CC at any time:
 
-- `/jamsesh:status` — tree summary, peers, scope, mode, unresolved comments
-  addressed to this user, open conflicts addressed to this user.
+- `/jamsesh:jam` (status) — tell the agent "show session status". The agent
+  runs `jamsesh status` and surfaces tree summary, peers, scope, mode,
+  unresolved comments addressed to this user, and open conflicts.
 - The SessionStart context (auto-injected at session start) shows the full
   current state.
 - The UserPromptSubmit digest (auto-injected at every turn) shows what's

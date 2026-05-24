@@ -1,14 +1,14 @@
 ---
 id: story-skill-consolidation-rollforward-foundation-docs
 kind: story
-stage: implementing
+stage: review
 tags: [bug, documentation]
 parent: feature-epic-ephemeral-playground-skill-consolidation
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Roll foundation docs forward to reflect consolidated skill surface
@@ -89,3 +89,25 @@ surface" — that work was not done.
 Filed as a follow-up because the parent feature's atomic deletion
 already shipped; the doc roll-forward is mechanically simple and
 self-contained.
+
+## Implementation notes
+
+**Consolidated skill surface documented:**
+- `/jamsesh:jam` — intent-driven dispatch for new (durable + playground), join, status, fork, and mode operations
+- `/jamsesh:finalize` — multi-step finalize flow
+- `jamsesh/SKILL.md` — auto-loaded primer
+
+**`docs/ARCHITECTURE.md`** — three edits:
+1. Plugin package skill-directory tree: removed `join/`, `status/`, `fork/`, `mode/` entries; now shows `jamsesh/`, `jam/`, `finalize/` only.
+2. Slash command subcommands description updated to name the two skills and list the full underlying binary subcommand surface; intro paragraph rewritten to describe intent-driven dispatch.
+3. Multi-agent and Recovery sections: all `/jamsesh:join` references updated to `/jamsesh:jam join`.
+
+**`docs/UX.md`** — six edits:
+1. § Interaction model: `(/jamsesh:join`, `/jamsesh:status`, etc.)` → `(/jamsesh:jam`, `/jamsesh:finalize`)`.
+2. § Creating a session: `/jamsesh:new` skill reference → `/jamsesh:jam`.
+3. § Joining a session: `/jamsesh:join <session-id-or-url>` → `/jamsesh:jam join <session-id-or-url>`.
+4. § Flow: fork (CC path): replaced direct slash invocation with natural-language-dispatch description.
+5. § Flow: switching mode: replaced both `/jamsesh:mode isolated` and `/jamsesh:mode sync` with `/jamsesh:jam` natural-language-dispatch pattern.
+6. § Status awareness: replaced `/jamsesh:status` bullet with `/jamsesh:jam (status)` dispatch pattern.
+
+**SKILL.md files** — no changes needed; `jamsesh/SKILL.md`, `jam/SKILL.md`, and `finalize/SKILL.md` already accurately describe the consolidated surface (updated by earlier sibling story).
