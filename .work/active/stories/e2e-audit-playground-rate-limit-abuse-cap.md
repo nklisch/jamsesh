@@ -3,7 +3,7 @@ id: e2e-audit-playground-rate-limit-abuse-cap
 kind: story
 stage: drafting
 tags: [testing, e2e-test, audit, playground]
-parent: null
+parent: feature-e2e-playground-coverage-failure
 depends_on: []
 release_binding: null
 gate_origin: null

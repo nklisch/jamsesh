@@ -3,7 +3,7 @@ id: e2e-audit-cli-jam-playground-flag-end-to-end
 kind: story
 stage: drafting
 tags: [testing, e2e-test, audit, playground, cli]
-parent: null
+parent: feature-e2e-playground-coverage-golden
 depends_on: []
 release_binding: null
 gate_origin: null
