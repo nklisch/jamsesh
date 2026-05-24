@@ -686,5 +686,114 @@ func TestPatchOrg_Grandfather(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Dep-failure tests: authfail transient DB path
+// ---------------------------------------------------------------------------
+
+// failingGetOrgMemberStore wraps a real store and returns a transient error
+// from GetOrgMember, simulating a DB connection failure during org-membership
+// auth. This exercises the fail.Err branch in GetOrg and PatchOrg, which must
+// wrap the error with deperr.WrapDBIfTransient so httperr.WriteFromError emits
+// the canonical dep.db_unavailable envelope.
+type failingGetOrgMemberStore struct {
+	store.Store
+}
+
+func (f *failingGetOrgMemberStore) GetOrgMember(_ context.Context, _ store.GetOrgMemberParams) (store.OrgMember, error) {
+	return store.OrgMember{}, fmt.Errorf("conn refused")
+}
+
+// newOrgsDepFailTestEnv returns a test env wired with the failing store.
+// The real store is still used for seeding and token validation; only
+// GetOrgMember is overridden to simulate a transient DB error.
+func newOrgsDepFailTestEnv(t *testing.T) (*orgsMembersTestEnv, store.Store) {
+	t.Helper()
+	realStore := openStore(t)
+	failing := &failingGetOrgMemberStore{Store: realStore}
+
+	svc := tokens.New(realStore) // tokens validated against real store
+	sender := &captureSenderOrgs{}
+	h := accounts.New(failing, sender, "https://portal.example.com")
+	strictHandler := openapi.NewStrictHandlerWithOptions(&accountsOnlyStrict{h}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
+
+	apiWrapper := &openapi.ServerInterfaceWrapper{
+		Handler:          strictHandler,
+		ErrorHandlerFunc: httperr.WriteBadRequest,
+	}
+
+	r := chi.NewRouter()
+	r.Group(func(r chi.Router) {
+		// BearerMiddleware must use the real store so token validation passes.
+		r.Use(tokens.BearerMiddleware(svc))
+		r.Get("/api/orgs/{orgID}", apiWrapper.GetOrg)
+		r.Patch("/api/orgs/{orgID}", apiWrapper.PatchOrg)
+	})
+
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	env := &orgsMembersTestEnv{srv: srv, svc: svc, s: realStore, sender: sender}
+	return env, realStore
+}
+
+func assertDepDBUnavailable(t *testing.T, resp *http.Response) {
+	t.Helper()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("Content-Type: want application/json; charset=utf-8, got %q", ct)
+	}
+	if ra := resp.Header.Get("Retry-After"); ra != "2" {
+		t.Errorf("Retry-After: want 2, got %q", ra)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if code, _ := body["error"].(string); code != "dep.db_unavailable" {
+		t.Errorf("error code: want dep.db_unavailable, got %q", code)
+	}
+}
+
+// TestGetOrg_DBTransientOnAuthLookup_Returns503DepDBUnavailable verifies that
+// when GetOrgMember returns a transient DB error during RequireOrgMember,
+// GetOrg wraps it with deperr.WrapDBIfTransient and the response is the
+// canonical dep.db_unavailable envelope (503 + Retry-After: 2).
+func TestGetOrg_DBTransientOnAuthLookup_Returns503DepDBUnavailable(t *testing.T) {
+	env, realStore := newOrgsDepFailTestEnv(t)
+
+	// Seed account and org so the request gets past BearerMiddleware and into
+	// the handler where RequireOrgMember will hit the failing GetOrgMember.
+	acc := seedAccount(t, realStore, "getorg-depfail@example.com")
+	org := seedOrg(t, realStore, "GetOrgDepFailOrg", "getorg-depfail")
+
+	tok := env.bearerToken(t, acc.ID)
+	resp := getJSON(t, env.srv, "/api/orgs/"+org.ID, tok)
+
+	assertDepDBUnavailable(t, resp)
+}
+
+// TestPatchOrg_DBTransientOnAuthLookup_Returns503DepDBUnavailable verifies that
+// when GetOrgMember returns a transient DB error during RequireOrgMember,
+// PatchOrg wraps it with deperr.WrapDBIfTransient and the response is the
+// canonical dep.db_unavailable envelope (503 + Retry-After: 2).
+func TestPatchOrg_DBTransientOnAuthLookup_Returns503DepDBUnavailable(t *testing.T) {
+	env, realStore := newOrgsDepFailTestEnv(t)
+
+	acc := seedAccount(t, realStore, "patchorg-depfail@example.com")
+	org := seedOrg(t, realStore, "PatchOrgDepFailOrg", "patchorg-depfail")
+
+	tok := env.bearerToken(t, acc.ID)
+	resp := patchJSON(t, env.srv, "/api/orgs/"+org.ID, tok,
+		map[string]any{"session_invite_policy": "open"})
+
+	assertDepDBUnavailable(t, resp)
+}
+
 // Ensure the import is used.
 var _ = openapi_types.Email("")

@@ -1,7 +1,7 @@
 ---
 id: story-orgs-handler-missing-deperr-wrapdb-on-authfail-err
 kind: story
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: null
 depends_on: []
@@ -83,3 +83,18 @@ mechanical.
 This is the only handler-level deviation from the deperr pipeline
 found in the discovery scan. The fix is surgical (~2 lines in one
 file plus a test).
+
+## Implementation notes
+
+**Wrap sites fixed (2):**
+- `GetOrg` line 34: `fmt.Errorf("accounts: get org: %w", fail.Err)` → wrapped with `deperr.WrapDBIfTransient`.
+- `PatchOrg` line 73: `fmt.Errorf("accounts: patch org: %w", fail.Err)` → wrapped with `deperr.WrapDBIfTransient`.
+
+**Tests added (`internal/portal/accounts/orgs_test.go`):**
+- `TestGetOrg_DBTransientOnAuthLookup_Returns503DepDBUnavailable` — injects a `failingGetOrgMemberStore` that returns `fmt.Errorf("conn refused")` from `GetOrgMember`, drives `GET /api/orgs/{orgID}`, and asserts 503 + `Retry-After: 2` + `{"error":"dep.db_unavailable"}`.
+- `TestPatchOrg_DBTransientOnAuthLookup_Returns503DepDBUnavailable` — same injection, drives `PATCH /api/orgs/{orgID}`, same assertions.
+- The `failingGetOrgMemberStore` wraps the real store so token validation (via `GetAccount`) passes while only `GetOrgMember` fails, matching the exact transient-error path through `RequireOrgMember`.
+
+**Cross-package scope scan:** All other `if fail.Err != nil` sites in `internal/portal/` (comments/handlers.go ×3, sessions/handler.go ×3, playground/handler.go ×1) already wrap with `deperr.WrapDBIfTransient`. No additional fixes required.
+
+**Verification:** `go build ./...` and `go test ./...` both clean.

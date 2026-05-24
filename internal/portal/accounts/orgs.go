@@ -31,7 +31,7 @@ func (h *Handler) GetOrg(ctx context.Context, req openapi.GetOrgRequestObject) (
 	_, _, fail, ok := handlerauth.RequireOrgMember(ctx, h.store, req.OrgID)
 	if !ok {
 		if fail.Err != nil {
-			return nil, fmt.Errorf("accounts: get org: %w", fail.Err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: get org: %w", fail.Err))
 		}
 		return getOrgFail(fail), nil
 	}
@@ -70,7 +70,7 @@ func (h *Handler) PatchOrg(ctx context.Context, req openapi.PatchOrgRequestObjec
 	_, member, fail, ok := handlerauth.RequireOrgMember(ctx, h.store, req.OrgID)
 	if !ok {
 		if fail.Err != nil {
-			return nil, fmt.Errorf("accounts: patch org: %w", fail.Err)
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: patch org: %w", fail.Err))
 		}
 		return patchOrgFail(fail), nil
 	}
