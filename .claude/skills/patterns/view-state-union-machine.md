@@ -50,7 +50,7 @@ Template:
 ```
 
 ### Example 2: InviteAccept — five-state union
-**File**: `frontend/src/lib/screens/InviteAccept.svelte:24`
+**File**: `frontend/src/lib/screens/InviteAccept.svelte:25`
 
 ```ts
 //  loading  → ready (GET 200)
@@ -95,6 +95,21 @@ let createState = $state<CreateState>('idle');
 type ViewState = 'exchanging' | 'error';
 let viewState = $state<ViewState>('exchanging');
 ```
+
+### Example 6: CommentsTab / SessionList — LoadState-named variant
+**Files**: `frontend/src/lib/components/CommentsTab.svelte:26`,
+`frontend/src/lib/screens/SessionList.svelte:24`
+
+```ts
+type LoadState = 'loading' | 'ready' | 'error';
+let loadState = $state<LoadState>('loading');
+```
+
+Two distinct surfaces independently arrived at the same shape: a remote-fetch
+load lifecycle with the three terminal states `loading → ready` (data
+present) or `loading → error` (fetch failed). The `LoadState` name signals
+the intent — "what's the state of the load" — rather than overloading
+`ViewState` for a sub-flow.
 
 ## When to Use
 
