@@ -16,15 +16,25 @@ updated: 2026-05-24
 ## Repro
 
 ```
-go test ./internal/portal/playground/ -run TestJoinPlaygroundSession_WithNickname_UsesIt
+go test ./internal/portal/playground/ -run 'TestJoinPlaygroundSession_(Success|WithNickname_UsesIt)'
 ```
 
-Result (sqlite dialect):
+Two failing tests share the same underlying defect:
 
 ```
-handler_test.go:553: join: want 200, got 410
-handler_test.go:558: want nickname=custom-nick, got ""
+--- TestJoinPlaygroundSession_WithNickname_UsesIt
+    handler_test.go:553: join: want 200, got 410
+    handler_test.go:558: want nickname=custom-nick, got ""
+
+--- TestJoinPlaygroundSession_Success
+    handler_test.go:537: want non-empty nickname
+    handler_test.go:545: want members_count=2, got 0
 ```
+
+Both indicate the join path is returning early without doing the join work
+(nickname empty, member count not incremented). The 410 in the
+WithNickname variant points to a session-ended check firing on a
+just-created session.
 
 ## Observation
 
