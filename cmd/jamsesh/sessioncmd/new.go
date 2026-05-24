@@ -279,7 +279,9 @@ func pushBaseRef(ctx context.Context, pc *portalclient.Client, sessionID string)
 	//      users on shared systems via `ps aux`).
 	//   2. They can appear in git's reflog and `git remote -v` output.
 	//   3. Header injection is process-local and does not persist anywhere.
-	token, err := state.ReadToken()
+	// sessionID is the just-created session; ReadCurrentBearer checks the per-session
+	// token store first and falls back to the legacy account-wide file if absent.
+	token, err := state.ReadCurrentBearer(sessionID)
 	if err != nil {
 		return fmt.Errorf("read token for push: %w", err)
 	}
@@ -346,7 +348,8 @@ func buildPortalClient() (*portalclient.Client, error) {
 		return nil, fmt.Errorf("resolving portal URL: %w", err)
 	}
 	// Verify a token is available early so we get a useful error before touching the network.
-	if _, err := state.ReadToken(); err != nil {
+	// Pre-binding: no session ID yet, pass "" so ReadCurrentBearer uses the legacy path.
+	if _, err := state.ReadCurrentBearer(""); err != nil {
 		return nil, fmt.Errorf("not authenticated — run `jamsesh auth` first: %w", err)
 	}
 	pc := &portalclient.Client{BaseURL: portalURL}

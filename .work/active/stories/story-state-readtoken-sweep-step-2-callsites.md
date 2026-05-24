@@ -1,7 +1,7 @@
 ---
 id: story-state-readtoken-sweep-step-2-callsites
 kind: story
-stage: implementing
+stage: review
 tags: [plugin, refactor]
 parent: feature-state-readtoken-per-session-sweep
 depends_on: [story-state-readtoken-sweep-step-1-helper]
@@ -96,3 +96,42 @@ harmful.
 
 `depends_on: [story-state-readtoken-sweep-step-1-helper]` — needs the
 helper to exist before the sweep can use it.
+
+## Implementation notes
+
+Swept 6 callsites total (story table listed 5; grep also found
+`cmd/jamsesh/mcpheaders/mcpheaders.go:44` which was swept in the same pass).
+
+### Callsite decisions
+
+| File | Session-ID passed | Rationale |
+|---|---|---|
+| `cmd/jamsesh/portalclient/client.go:93` | `c.SessionID` (new struct field) | Added `SessionID string` field to `Client`; zero value `""` gives legacy fallback for all existing callers unchanged |
+| `cmd/jamsesh/sessioncmd/new.go:282` | `sessionID` (func param) | Just-created session ID is the parameter to `pushBaseRef` — threaded directly |
+| `cmd/jamsesh/sessioncmd/new.go:349` | `""` | Pre-binding auth check in `buildPortalClient`; no session yet |
+| `cmd/jamsesh/sessioncmd/fork.go:62` | `sessionID` | Returned by `ResolveSession()` earlier in the same function |
+| `cmd/jamsesh/sessioncmd/join.go:70` | `""` | Pre-binding auth check; session ID not yet resolved |
+| `cmd/jamsesh/mcpheaders/mcpheaders.go:44` | `""` | Fallback branch reached only when no bound session; pre-binding |
+
+### portalclient.Client wiring
+
+The `Client.SessionID` field (zero value `""`) means all existing
+`&portalclient.Client{BaseURL: ...}` literal sites in `hooks/`,
+`finalizecmd/`, and tests pick up legacy-fallback behavior automatically
+with no code changes needed at those callsites.
+
+### Tests added
+
+Two new tests in `cmd/jamsesh/portalclient/client_test.go`:
+- `TestClient_SessionID_UsesPerSessionToken` — verifies that a bound client
+  sends the per-session token and NOT the `MIGRATED_TO_PER_SESSION` stub.
+- `TestClient_NoSessionID_UsesLegacyToken` — verifies the pre-binding path
+  (empty SessionID) still uses the legacy account-wide token.
+
+### Verification
+
+```
+go build ./...                          # clean
+go test ./...                           # all pass
+git grep -n "state.ReadToken" -- 'cmd/' # returns nothing
+```

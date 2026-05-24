@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 )
@@ -178,6 +179,86 @@ func TestClient_Do_NoRefreshFunc_401(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 pass-through, got %d", resp.StatusCode)
+	}
+}
+
+// TestClient_SessionID_UsesPerSessionToken exercises the post-migration path:
+// when Client.SessionID is set and a per-session token exists, attachBearer
+// must send that token — NOT the legacy account-wide token (which may be the
+// MIGRATED_TO_PER_SESSION stub). This validates that a bound session never
+// sends the stub as a Bearer header.
+func TestClient_SessionID_UsesPerSessionToken(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+
+	const sessID = "sess-abc123"
+	const legacyToken = "MIGRATED_TO_PER_SESSION"
+	const perSessToken = "per-session-bearer-xyz"
+
+	// Write the legacy stub (what an account-wide token looks like post-migration).
+	if err := os.WriteFile(filepath.Join(dir, "token"), []byte(legacyToken), 0o600); err != nil {
+		t.Fatalf("writing legacy token: %v", err)
+	}
+	// Write the per-session token for sess-abc123.
+	sessDir := filepath.Join(dir, "sessions", sessID)
+	if err := os.MkdirAll(sessDir, 0o700); err != nil {
+		t.Fatalf("creating session dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessDir, "token"), []byte(perSessToken), 0o600); err != nil {
+		t.Fatalf("writing session token: %v", err)
+	}
+
+	gotAuth := ""
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), SessionID: sessID}
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/test", nil)
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	want := "Bearer " + perSessToken
+	if gotAuth != want {
+		t.Errorf("Authorization header = %q, want %q (stub must not be sent for a bound session)", gotAuth, want)
+	}
+}
+
+// TestClient_NoSessionID_UsesLegacyToken verifies that when Client.SessionID is
+// empty (pre-binding or account-level calls), attachBearer falls back to the
+// legacy account-wide token — the original behavior is preserved.
+func TestClient_NoSessionID_UsesLegacyToken(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+
+	const legacyToken = "legacy-account-bearer"
+	if err := os.WriteFile(filepath.Join(dir, "token"), []byte(legacyToken), 0o600); err != nil {
+		t.Fatalf("writing legacy token: %v", err)
+	}
+
+	gotAuth := ""
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()} // SessionID is zero value ""
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/test", nil)
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	want := "Bearer " + legacyToken
+	if gotAuth != want {
+		t.Errorf("Authorization header = %q, want %q", gotAuth, want)
 	}
 }
 

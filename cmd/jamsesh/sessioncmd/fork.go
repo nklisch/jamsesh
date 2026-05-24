@@ -59,7 +59,7 @@ func forkAction(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return fmt.Errorf("resolving portal URL: %w", err)
 	}
-	token, err := state.ReadToken()
+	token, err := state.ReadCurrentBearer(sessionID)
 	if err != nil {
 		return fmt.Errorf("reading token: %w; run `jamsesh auth` first", err)
 	}

@@ -66,8 +66,9 @@ func joinAction(ctx context.Context, cmd *cli.Command) error {
 	}
 	fromRef := cmd.String("from")
 
-	// 1. Auth check.
-	tok, err := state.ReadToken()
+	// 1. Auth check. Pre-binding: no session ID yet; pass "" so ReadCurrentBearer
+	// uses the legacy account-wide path.
+	tok, err := state.ReadCurrentBearer("")
 	if err != nil || tok == "" {
 		fmt.Fprintln(os.Stderr, "Not authenticated. Run `jamsesh auth` first.")
 		os.Exit(1)

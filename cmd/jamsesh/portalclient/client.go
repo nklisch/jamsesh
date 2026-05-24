@@ -21,6 +21,11 @@ type Client struct {
 	// BaseURL is the portal origin, e.g. "https://jamsesh.example.com".
 	// Trailing slash is allowed; path segments are appended with "/".
 	BaseURL string
+	// SessionID is the jamsesh session this client is scoped to. When set,
+	// attachBearer reads the per-session token first (via state.ReadCurrentBearer)
+	// and falls back to the legacy account-wide token only if none is found.
+	// Leave empty for pre-binding or account-level calls (legacy path only).
+	SessionID string
 	// HTTP is the underlying transport. If nil, http.DefaultClient is used.
 	HTTP *http.Client
 	// Refresh is called on a 401 response before the single retry. Typically
@@ -89,8 +94,13 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 // attachBearer reads the current access token from local state and sets the
 // Authorization header on req. This is called fresh on each request so that
 // a token written by Refresher.Refresh is used for the retry.
+//
+// When c.SessionID is non-empty, state.ReadCurrentBearer checks the per-session
+// token store first and falls back to the legacy account-wide file only if no
+// per-session token is present. When c.SessionID is empty the legacy path is used
+// directly (correct for pre-binding and account-level calls).
 func (c *Client) attachBearer(req *http.Request) error {
-	tok, err := state.ReadToken()
+	tok, err := state.ReadCurrentBearer(c.SessionID)
 	if err != nil {
 		return fmt.Errorf("portalclient: reading access token: %w", err)
 	}

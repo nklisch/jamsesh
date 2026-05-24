@@ -41,7 +41,8 @@ func Command() *cli.Command {
 
 			// Fallback: legacy account-wide token (used before per-session storage
 			// was introduced, and for mcp connections without a bound session).
-			tok, err := state.ReadToken()
+			// Pre-binding: pass "" so ReadCurrentBearer uses the legacy path.
+			tok, err := state.ReadCurrentBearer("")
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "no token found; run `jamsesh auth` first")
 				os.Exit(2)
