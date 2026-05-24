@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-reserved-org
 kind: feature
-stage: review
+stage: done
 tags: [portal]
 parent: epic-ephemeral-playground
 depends_on: []
@@ -612,3 +612,41 @@ No fan-out — single implementing agent walks the sequence.
 - `go test ./internal/db/... ./internal/portal/playground/... ./internal/portal/config/... ./cmd/portal/...`: all pass
 - `go test ./...` (full suite, 54 packages): all pass
 - `go vet ./...`: clean
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+
+**Important**:
+- Risk #4 from the design (the `session_invite_policy='open'` foot-gun)
+  was neither resolved by extending the guard nor explicitly accepted
+  in the implementation notes. Tracked as backlog item
+  `extend-org-protected-guard-to-policy-mutations`. Not blocking — the
+  PatchOrg handler currently requires `member.Role == "creator"` and
+  the playground org has no creator account, so the path is
+  unreachable in practice today.
+
+**Nits**:
+- `db/schema/postgres.sql` and `db/schema/sqlite.sql` keep the `orgs`
+  column list comma-aligned; the new `org_protected` line is fine but
+  matches both styles. No change needed.
+- The `applyPlaygroundEnv` boolean-parse comment in `config.go`
+  documents the divergence from `AuthRateLimitEnabled` — good. Could
+  later be hoisted into a shared `parseBoolEnv` helper if a third
+  bool env joins the file. Not worth doing for two.
+
+**Notes**:
+- Build, all package tests, `go vet` re-confirmed at review time.
+- Foundation docs (`docs/SPEC.md`, `docs/ARCHITECTURE.md`) were rolled
+  forward at scope time and continue to match the implementation
+  (`Reserved orgs` paragraph at ARCHITECTURE.md L521 still accurate).
+  `docs/SELF_HOST.md` § 15 added cleanly.
+- Deviations from design (`store.ErrNotFound` vs `ErrNoRows`, extending
+  existing `GetOrgBySlug` rather than adding a duplicate,
+  `ListOrgsForAccount` column update for sqlc type compatibility) are
+  all documented in implementation notes and sound.
+- Parent epic `epic-ephemeral-playground` has 6 sibling features still
+  at stage:review; epic auto-advance deferred until the remaining
+  siblings clear.
