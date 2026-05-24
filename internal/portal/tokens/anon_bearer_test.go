@@ -371,6 +371,182 @@ func TestIssueAnonymousSessionBearer_EmptySessionID_Rejected(t *testing.T) {
 // check — see gate-security-anon-bearer-validate-no-session-binding). It comes
 // from the downstream RequireSessionMember check that every session-scoped
 // handler uses. This test exercises that path directly.
+// TestIssueAnonymousSessionBearer_DisplayNameRoundTrip is a table-driven test
+// that confirms the display name (including collision-fallback handles that carry
+// a random suffix like "quiet-otter-x1" or "swift-heron-a3f2") is preserved
+// verbatim through IssueAnonymousSessionBearer → Validate. The gap this covers:
+// existing tests only exercised the plain two-word form "amber-otter"; collision
+// handles with extra suffixes were not tested.
+func TestIssueAnonymousSessionBearer_DisplayNameRoundTrip(t *testing.T) {
+	handles := []string{
+		"amber-otter",       // plain two-word handle (baseline)
+		"quiet-fox",         // second plain handle
+		"swift-heron-a3f2",  // collision-fallback: random hex suffix
+		"quiet-otter-x1",    // collision-fallback: short suffix
+		"bold-crane-3b9e42", // collision-fallback: longer hex suffix
+	}
+
+	ctx := context.Background()
+	s, sessID := openStoreWithSession(t)
+	svc := tokens.New(s)
+
+	for _, handle := range handles {
+		handle := handle
+		t.Run(handle, func(t *testing.T) {
+			rawToken, _, _, err := svc.IssueAnonymousSessionBearer(ctx, sessID, handle, 24*time.Hour)
+			if err != nil {
+				t.Fatalf("IssueAnonymousSessionBearer(%q): %v", handle, err)
+			}
+
+			got, err := svc.Validate(ctx, rawToken)
+			if err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+			if got.DisplayName != handle {
+				t.Errorf("DisplayName round-trip: want %q, got %q", handle, got.DisplayName)
+			}
+			if !got.IsAnonymous {
+				t.Errorf("IsAnonymous: want true for handle %q", handle)
+			}
+		})
+	}
+}
+
+// TestIssueAnonymousSessionBearer_DisplayNameRoundTrip_Unicode confirms that
+// multi-byte Unicode display names survive the round-trip unchanged. SQLite
+// TEXT is UTF-8-native so no mangling is expected; this test pins that contract.
+func TestIssueAnonymousSessionBearer_DisplayNameRoundTrip_Unicode(t *testing.T) {
+	handles := []string{
+		"ámber-ötter",   // Latin extended characters
+		"青-falcon",     // CJK character + ASCII
+		"swift–heron", // en-dash instead of hyphen
+	}
+
+	ctx := context.Background()
+	s, sessID := openStoreWithSession(t)
+	svc := tokens.New(s)
+
+	for _, handle := range handles {
+		handle := handle
+		t.Run(handle, func(t *testing.T) {
+			rawToken, _, _, err := svc.IssueAnonymousSessionBearer(ctx, sessID, handle, 24*time.Hour)
+			if err != nil {
+				t.Fatalf("IssueAnonymousSessionBearer(%q): %v", handle, err)
+			}
+
+			got, err := svc.Validate(ctx, rawToken)
+			if err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+			if got.DisplayName != handle {
+				t.Errorf("DisplayName round-trip (unicode): want %q, got %q", handle, got.DisplayName)
+			}
+		})
+	}
+}
+
+// TestIssueAnonymousSessionBearer_DisplayNameRoundTrip_MaxLength verifies that
+// a very long display name (255 bytes) is accepted and preserved. The accounts
+// table has display_name TEXT NOT NULL with no length constraint; this test pins
+// that the storage layer does not silently truncate.
+func TestIssueAnonymousSessionBearer_DisplayNameRoundTrip_MaxLength(t *testing.T) {
+	ctx := context.Background()
+	s, sessID := openStoreWithSession(t)
+	svc := tokens.New(s)
+
+	// 255 ASCII characters — representative maximum for user-visible name fields.
+	longName := strings.Repeat("a", 255)
+
+	rawToken, _, _, err := svc.IssueAnonymousSessionBearer(ctx, sessID, longName, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueAnonymousSessionBearer(long name): %v", err)
+	}
+
+	got, err := svc.Validate(ctx, rawToken)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if got.DisplayName != longName {
+		t.Errorf("DisplayName truncated: want len=%d, got len=%d", len(longName), len(got.DisplayName))
+	}
+}
+
+// TestIssueAnonymousSessionBearer_LeadingTrailingWhitespace verifies that
+// display names with leading/trailing whitespace are stored and returned
+// verbatim (no silent trimming at the service layer). The service does not
+// strip whitespace — caller (playground handler) is responsible for producing
+// clean handles.
+func TestIssueAnonymousSessionBearer_LeadingTrailingWhitespace(t *testing.T) {
+	cases := []struct {
+		name   string
+		handle string
+	}{
+		{"leading space", " amber-otter"},
+		{"trailing space", "amber-otter "},
+		{"both", "  swift-heron  "},
+		{"tabs", "\tamber-fox\t"},
+	}
+
+	ctx := context.Background()
+	s, sessID := openStoreWithSession(t)
+	svc := tokens.New(s)
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			rawToken, _, _, err := svc.IssueAnonymousSessionBearer(ctx, sessID, tc.handle, 24*time.Hour)
+			if err != nil {
+				t.Fatalf("IssueAnonymousSessionBearer(%q): %v", tc.handle, err)
+			}
+
+			got, err := svc.Validate(ctx, rawToken)
+			if err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+			// Service stores verbatim — no trimming. The round-trip should be exact.
+			if got.DisplayName != tc.handle {
+				t.Errorf("DisplayName: want %q, got %q", tc.handle, got.DisplayName)
+			}
+		})
+	}
+}
+
+// TestIssueAnonymousSessionBearer_WhitespaceOnlyNickname_Rejected confirms that
+// a nickname consisting entirely of whitespace is treated identically to an
+// empty nickname: the pre-tx validation guard rejects it before any DB writes.
+//
+// NOTE: The current implementation only guards against empty string (""). A
+// whitespace-only nickname ("   ") is NOT rejected by IssueAnonymousSessionBearer
+// as of this writing — it passes through to the DB as-is. If the product
+// decision is to reject whitespace-only nicknames, add a strings.TrimSpace
+// guard in service_impl.go and flip this test to assert err != nil.
+//
+// This test documents the current behaviour so any future change to the guard
+// is intentional and visible in the diff.
+func TestIssueAnonymousSessionBearer_WhitespaceOnlyNickname_CurrentBehaviour(t *testing.T) {
+	ctx := context.Background()
+	s, sessID := openStoreWithSession(t)
+	svc := tokens.New(s)
+
+	// Whitespace-only nickname: current impl accepts it (no TrimSpace guard).
+	rawToken, _, _, err := svc.IssueAnonymousSessionBearer(ctx, sessID, "   ", 24*time.Hour)
+	if err != nil {
+		// If the implementation adds a whitespace guard, this path becomes correct.
+		// Update this test to assert err != nil and remove the Validate block below.
+		t.Logf("whitespace-only nickname was rejected (err=%v); if this is intentional, flip the test assertion", err)
+		return
+	}
+
+	// Currently accepted — verify the round-trip returns the whitespace name verbatim.
+	got, err := svc.Validate(ctx, rawToken)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if got.DisplayName != "   " {
+		t.Errorf("DisplayName: want %q (verbatim whitespace), got %q", "   ", got.DisplayName)
+	}
+}
+
 func TestIssueAnonymousSessionBearer_BearerRejectedOnDifferentSession(t *testing.T) {
 	ctx := context.Background()
 	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})

@@ -1,7 +1,7 @@
 ---
 id: gate-tests-anon-bearer-display-name-roundtrip-edge-cases
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, tokens]
 parent: null
 depends_on: []
@@ -30,3 +30,29 @@ confirming round-trip preserves the suffix.
 
 ## Test location (suggested)
 `internal/portal/tokens/anon_bearer_test.go`
+
+## Implementation notes
+
+Added five test functions to `internal/portal/tokens/anon_bearer_test.go`:
+
+1. **`TestIssueAnonymousSessionBearer_DisplayNameRoundTrip`** — table-driven over
+   `["amber-otter", "quiet-fox", "swift-heron-a3f2", "quiet-otter-x1", "bold-crane-3b9e42"]`;
+   covers both plain two-word handles and collision-fallback handles with hex suffixes.
+
+2. **`TestIssueAnonymousSessionBearer_DisplayNameRoundTrip_Unicode`** — Latin-extended,
+   CJK, and en-dash characters; pins that SQLite TEXT is UTF-8-native and does not
+   mangle multi-byte names.
+
+3. **`TestIssueAnonymousSessionBearer_DisplayNameRoundTrip_MaxLength`** — 255-character
+   ASCII name; pins that the storage layer does not silently truncate (no length
+   constraint on the `display_name TEXT NOT NULL` column).
+
+4. **`TestIssueAnonymousSessionBearer_LeadingTrailingWhitespace`** — confirms the
+   service stores whitespace-padded handles verbatim (no silent `TrimSpace`).
+
+5. **`TestIssueAnonymousSessionBearer_WhitespaceOnlyNickname_CurrentBehaviour`** —
+   documents that whitespace-only nicknames (`"   "`) are currently accepted and stored
+   as-is; includes a comment directing future contributors to add a `TrimSpace` guard
+   in `service_impl.go` if the product ever decides to reject them.
+
+No production bugs were surfaced. All tests pass (`go test ./internal/portal/...` green).
