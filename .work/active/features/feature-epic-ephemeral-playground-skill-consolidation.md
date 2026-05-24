@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-skill-consolidation
 kind: feature
-stage: drafting
+stage: implementing
 tags: [plugin]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-plugin-skills]
@@ -193,3 +193,199 @@ The exact body for `plugins/jamsesh/skills/jam/SKILL.md` — the
 subcommand vocabulary the agent is taught, the intent-mapping
 examples, the ambiguity-handling rules — is content for this feature's
 full design pass (Phase 5).
+
+## Architectural choice
+
+**Single tight-cohesion implementation — no child stories.** The work
+is file operations: delete 3 SKILL.md files; extend 1 SKILL.md (jam)
+additively per the hand-off contract; lightly update 2 SKILL.md files
+(finalize, auto-loaded jamsesh). One implementing agent walks through.
+
+Why no stories: zero parallelism (all touched files are tiny and
+sequential by their nature — the agent reads the jam SKILL.md
+contents that wave-3 plugin-skills authored, then appends; reads
+the auto-loaded SKILL.md and amends). Story-spawning would add
+ceremony without delivery benefit.
+
+## Implementation units
+
+### Unit 1: Delete obsolete narrow-slash SKILL.md files
+**Operation**: `git rm`
+
+```bash
+git rm plugins/jamsesh/skills/status/SKILL.md
+git rm plugins/jamsesh/skills/fork/SKILL.md
+git rm plugins/jamsesh/skills/mode/SKILL.md
+```
+
+Verify in the same commit that the binary's subcommands (`jamsesh status`,
+`jamsesh fork`, `jamsesh mode`) still exist — they're called by the
+new `/jamsesh:jam` skill body. Only the SKILL.md files (slash command
+entry points) are deleted, not the underlying functionality.
+
+**Acceptance criteria**:
+- [ ] All 3 SKILL.md files removed
+- [ ] `jamsesh status`, `jamsesh fork`, `jamsesh mode` binary
+      subcommands continue to work (verified by `jamsesh --help`
+      output)
+- [ ] Running `/` in CC's slash-picker no longer shows
+      `/jamsesh:status`, `/jamsesh:fork`, `/jamsesh:mode`
+
+### Unit 2: Extend `/jamsesh:jam` SKILL.md additively
+**File**: `plugins/jamsesh/skills/jam/SKILL.md` (modify, NOT replace)
+
+**HARD CONTRACT** (from the hand-off note pinned in this feature's
+Epic context section): the first operation on this file is a Read.
+Then use Edit (not Write) to append the new sections. The
+wave-3 plugin-skills feature authored the initial body covering
+create/join intent vocabulary; this feature adds status/fork/mode
+intent vocabulary.
+
+Sections to append (after the existing create/join sections):
+
+```markdown
+## Status
+
+When the user wants to inspect a jam session ("what's the state",
+"show me the session", "who's online"), invoke
+`jamsesh status [--json]`. Output groups durable and playground
+sessions separately.
+
+If the user has only playground sessions (no account-wide OAuth),
+status still works — it enumerates per-session tokens. No
+"sign in first" friction.
+
+## Fork
+
+When the user wants to fork from a peer's ref or commit
+("fork from amber-otter's tip", "branch off f02ac41"), invoke
+`jamsesh fork <commit-sha> [--as <branch>] [--mode sync|isolated]`.
+
+Default mode is `sync` (auto-merger will weave the new ref into draft);
+isolated mode keeps the fork private until promoted.
+
+## Mode
+
+When the user wants to flip the current ref's mode ("switch to
+isolated", "rejoin sync"), invoke `jamsesh mode sync|isolated`. The
+flip takes effect on the next push.
+
+Mode-flip semantics:
+- `isolated → sync`: subsequent pushes are auto-merger candidates;
+  expect conflicts proportional to drift while isolated
+- `sync → isolated`: subsequent pushes don't auto-merge; existing
+  merged commits remain in draft
+```
+
+**Acceptance criteria**:
+- [ ] File body still contains the wave-3-authored create/join
+      sections (verified by reading the file post-edit)
+- [ ] The three new sections (Status, Fork, Mode) are appended
+- [ ] Body reads cleanly as one continuous skill body (not as
+      jarringly-bolted-on sections)
+- [ ] Operation used Edit, not Write (no rewrite of the file)
+
+### Unit 3: Light update to `/jamsesh:finalize` SKILL.md
+**File**: `plugins/jamsesh/skills/finalize/SKILL.md` (modify)
+
+The finalize skill stays standalone (multi-step gravity per the
+locked design decision). Light update to align mental model:
+
+- Add a short note at the top: "Finalize is the one operation that
+  stays as its own skill (separate from `/jamsesh:jam`). It's a
+  multi-step flow with local-vs-portal coordination, so it warrants
+  its own surface."
+- No other changes — the existing skill body is correct for the
+  finalize flow
+
+**Acceptance criteria**:
+- [ ] Short framing note added at the top
+- [ ] No other content changes
+- [ ] Operation used Edit, not Write
+
+### Unit 4: Update auto-loaded `skills/jamsesh/SKILL.md`
+**File**: `plugins/jamsesh/skills/jamsesh/SKILL.md` (modify)
+
+Add a section near the top (after the project's intro / fundamentals)
+that teaches the consolidated skill pattern:
+
+```markdown
+## Skill surface
+
+This plugin exposes two top-level skills:
+
+- `/jamsesh:jam` — intent-driven entry for creating, joining, and
+  operating on jam sessions. The agent reads the user's natural-language
+  request and invokes the right underlying subcommand. Covers: new
+  durable sessions, new playground sessions, joining via URL or ID,
+  status queries, forking, mode flips. See `/jamsesh:jam`'s own body
+  for the full vocabulary.
+- `/jamsesh:finalize` — multi-step finalize flow with local cherry-pick
+  coordination. Standalone because the multi-step shape doesn't
+  compress into intent-driven dispatch cleanly.
+
+The binary's subcommand surface (`jamsesh new`, `jamsesh join`,
+`jamsesh status`, `jamsesh fork`, `jamsesh mode`, `jamsesh finalize`)
+remains rich and explicit — the agent invokes them directly via the
+skill bodies above. Skills are thin intent translators, not parameter
+multipliers.
+```
+
+The wave-3 plugin-skills feature added a "Playground sessions" section
+to this file. This story's edit goes elsewhere in the file (a different
+section) — they don't conflict. Read the file before editing to confirm
+location.
+
+**Acceptance criteria**:
+- [ ] "Skill surface" section added; agent can read it and understand
+      the consolidation
+- [ ] Wave-3's "Playground sessions" section unchanged
+- [ ] Operation used Edit, not Write
+
+## Implementation order
+
+Sequential, all in one PR:
+1. Unit 1 (delete obsolete SKILL.md files)
+2. Unit 2 (extend /jamsesh:jam additively)
+3. Unit 3 (light finalize update)
+4. Unit 4 (auto-loaded SKILL.md update)
+
+## Testing
+
+This feature is content-only (markdown edits + file deletions). No
+unit tests in the Go sense. Verification:
+
+- `jamsesh --help` shows all expected binary subcommands intact
+- `ls plugins/jamsesh/skills/` shows the post-consolidation skill
+  directory layout (`jam`, `finalize`, `jamsesh` — and nothing else
+  from the plugin's slash commands)
+- Manual review of the modified SKILL.md files for coherence
+- Existing `cmd/jamsesh/*_test.go` tests for the underlying
+  subcommands continue to pass (sanity regression — the binary surface
+  is unchanged by this feature)
+
+## Risks
+
+- **Wave-3 plugin-skills' Story 1 must land first**: Story 1
+  (jam-consolidation) creates the `/jamsesh:jam` SKILL.md. This
+  feature appends to it. The feature's `depends_on` correctly declares
+  the dependency on plugin-skills as a whole; the hand-off contract
+  in the body further specifies "read before write, append never
+  replace." Implementer attention to this contract prevents wave-4
+  silently clobbering wave-3 output.
+
+- **Skill picker UX regression**: deleting the three SKILL.md files
+  removes them from the CC slash-picker. If a soft-launch user
+  learned `/jamsesh:status` during the v0.3.x window, they hit a
+  "skill not found" wall in v0.4.0. Mitigation: prominent release
+  notes per the parent epic body's revised risk section. The
+  pre-launch reality assumption (locked in --only-questions) accepts
+  this as the cost of clean consolidation.
+
+- **Skill body content drift across the two SKILL.md updates**: the
+  jam body and the auto-loaded jamsesh body both describe the
+  consolidation. If they describe it differently, the agent gets
+  conflicting signals. Mitigation: keep the jam body focused on
+  "how to invoke" (vocabulary + flags); keep the auto-loaded body
+  focused on "why this shape" (architectural framing). They
+  complement, don't repeat.
