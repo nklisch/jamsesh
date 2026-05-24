@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-handler-unit-tautology-stubstorage
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -126,3 +126,32 @@ written and will fire once the blocking bug closes.
 Advancing to review on partial completion. The review skill can decide
 whether the 3-of-4 pattern coverage is sufficient or whether to send
 back to implementing pending Unit 2.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+
+Closing condition met — the `dockerExecExists` discipline pattern is
+observable in all 4 of the golden feature's tests:
+
+| Test | dockerExec assertion |
+|---|---|
+| `TestPlayground_AbandonmentDestructionSweep` | `p.Exec(["ls", repoPath])` before AND after destruction |
+| `TestPlayground_SoloCreatePushTombstone` | `p.Exec` for bare repo + hooks/pre-receive + hooks/post-receive |
+| `TestCLI_JamPlayground` | `p.Exec(["ls", repoPath])` after binary runs |
+| `TestPlayground_TwoParticipantJoinMerge` | `p.Exec(["ls", repoPath])` after both pushes |
+
+This is a discipline story (no dedicated test file). The closing
+condition was "the documented pattern is observable in all 4 golden
+tests above" — observed. Future PRs adding to `internal/portal/playground/*_test.go`
+should follow the same shape (sibling e2e test asserting on real disk
+state) but enforcement is now by convention + reviewer awareness, not
+by automated guard.
+
+Advanced `stage: review → done`.

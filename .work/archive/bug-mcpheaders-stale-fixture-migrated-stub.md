@@ -1,7 +1,7 @@
 ---
 id: bug-mcpheaders-stale-fixture-migrated-stub
 kind: story
-stage: review
+stage: done
 tags: [portal, plugin, testing]
 parent: null
 depends_on: []
@@ -66,3 +66,26 @@ The interaction that makes the tests pass cleanly under migration:
 
 `go test ./cmd/jamsesh/mcpheaders/... -count=1` passes all 4 tests.
 `go test ./cmd/jamsesh/... -count=1` passes the full cmd suite with no regressions.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Notes**:
+
+Agent verified the bug was already resolved by prior commit `80792c2`
+(`story-state-readtoken-sweep-step-2-callsites`) which rewired
+`mcpheaders.go` to use `state.ReadCurrentBearer("")` — that helper
+reads per-session bearer before falling back to legacy. The two
+failing tests now pass naturally:
+- `TestMcpHeaders_tokenPresent`: no sessions/ dir → migration is no-op → legacy token preserved
+- `TestMcpHeaders_tokenAndSession`: instance_id write creates sessions/<id>/ → migration fans token there → mcpheaders reads per-session directly
+
+`go test ./cmd/jamsesh/mcpheaders/... -count=1` passes (1.244s).
+
+This is the honest discovery shape: bug was real when filed, fixed by
+unrelated cleanup work, story closes without code change. No silent
+regression risk since the contract is now locked in by the existing
+passing tests.
+
+Advanced `stage: review → done`.

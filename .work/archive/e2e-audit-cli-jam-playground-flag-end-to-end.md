@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-cli-jam-playground-flag-end-to-end
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground, cli]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -181,3 +181,31 @@ fire once the receive-pack bug is resolved.
 
 Re-enable with `git grep -n "blocked on bug-playground-git-receive-pack"`
 when the bug closes.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+
+Test passes end-to-end now that the trailer-exemption fix at `297616a`
+landed. The test exercises the real `jamsesh new --playground` binary
+against a real portal + real Postgres, asserts on real state-file
+contents in a tempdir-scoped `CLAUDE_PLUGIN_DATA`, and verifies the
+bare repo exists on real disk via `p.Exec` (Unit 5 discipline).
+
+Three production bugs that this story surfaced are all resolved:
+- `idea-playground-scope-normalization-bug` — fixed inline at `2bf22ea`
+- Playground push URL missing org_id — fixed inline at `2bf22ea`
+- `bug-playground-git-receive-pack-fails-with-200-hangup` — resolved
+  via the trailer-exemption story `story-fix-playground-base-ref-trailer-exemption`
+
+The stale token-prefix assertion (`jamsesh_anon_` prefix that doesn't
+actually exist in the codebase) was repaired in-session as part of the
+trailer-exemption fix's review.
+
+Advanced `stage: review → done`.

@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-rate-limit-abuse-cap
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-failure
 depends_on: []
@@ -133,3 +133,38 @@ func TestPlayground_RateLimit_FourthCreateBlocked(t *testing.T) {
     require.Equal(t, "playground.rate_limited", body.Error)
 }
 ```
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+
+Test passes both subtests on a single run (~9s). Two honest
+test-shape corrections from the audit sketch (documented in the
+agent's implementation notes):
+
+1. `JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR=180` not `=3` — the
+   per-hour value is converted to a per-minute rate with a burst that
+   equals the per-minute value, so `=3` yields burst=0 (first request
+   allowed). `=180` yields perMinute=3 + burst=3, which is what the
+   "3 succeed, 4th blocked" invariant requires. This is a real
+   per-minute-vs-per-hour subtlety in the limiter that's worth
+   documenting.
+2. Error code is `rate_limited` not `playground.rate_limited` — the
+   agent matched what `internal/portal/ratelimit/response.go` actually
+   emits. Honest sync with production.
+
+Per-IP isolation subtest uses `X-Forwarded-For` headers (works because
+the portal fixture uses `JAMSESH_TLS_MODE=behind_proxy` which enables
+chi's `RealIP` middleware). Cleaner than the toxiproxy approach the
+pre-mortem suggested.
+
+Real-stack assertions: real HTTP 201/429 status codes, real
+`Retry-After` header, real per-IP middleware behavior. No mocks.
+
+Advanced `stage: review → done`.

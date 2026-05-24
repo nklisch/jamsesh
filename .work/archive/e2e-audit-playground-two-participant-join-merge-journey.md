@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-two-participant-join-merge-journey
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -152,3 +152,46 @@ func TestPlayground_TwoParticipantJoinAndMerge(t *testing.T) {
     requireEvent(t, aWs, "merge.succeeded", 30*time.Second)
 }
 ```
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+
+Test passes 5/5 consecutive runs at 8-12s each — the flake-free property
+the pre-mortem identified as the key risk. Zero sleeps; all
+synchronization via WebSocket `WaitFor` channel drain and
+`waitForMergeSucceeded` polling-with-deadline. The pattern is the
+correct one for distributed-event timing tests.
+
+Key implementation decisions documented in the agent's summary:
+- Reused `gitResetToRef`, `waitForMergeSucceeded`, `requireCommitInLog`
+  from `auto_merge_test.go` (same `golden_test` package) — no
+  duplication.
+- Reused `soloCreateResponse` decode type from the solo test — single
+  source for the create response shape.
+- Both A and B subscribe to WebSocket BEFORE pushing — the right
+  ordering to avoid the race the pre-mortem flagged.
+
+**Important finding worth surfacing**: the agent confirmed that the
+parked bug `bug-playground-join-with-nickname-returns-410-on-fresh-session`
+does NOT reproduce against the real portal binary — it's a
+clock-injection artifact of the unit-suite `fixedClock` only. Against
+real wall time + real portal, the join handler works correctly. This
+backs up the audit's central thesis: the unit suite was lying about
+the join handler being broken; the e2e suite proves it works. The
+parked bug should be re-classified as "unit-test setup issue, not a
+product bug" and the two failing unit tests should be rewritten to
+not trip the clock-injection mismatch.
+
+Anti-tautology discipline (Unit 5) embedded: `p.Exec(ctx, ["ls",
+repoPath])` asserts the bare repo exists on real disk. Combined with
+the 4 other golden tests, Unit 5's closing condition is now
+observable across all 4 of the feature's golden tests.
+
+Advanced `stage: review → done`.

@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-reserved-org-slug-boot-conflict
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-failure
 depends_on: []
@@ -156,3 +156,18 @@ unschematised database.
 
 **Test runtime**: ~10s (dominated by Postgres container startup and migration
 portal boot).
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Notes**: Outcome A confirmed (portal exits 1 with
+ErrReservedSlugConflict, log contains reserved-slug error message,
+pre-seeded `org_protected=false` row remains unchanged). The agent
+reused the existing `startFailingPortal` helper from
+`config_and_deps_test.go` (no fixture extension needed). Migration-only
+portal boots first to apply schema, then direct DB pre-seed, then
+conflict portal — clean ordering. Real container exit-code + real
+container logs + real DB row inspection. No mocks.
+
+Advanced `stage: review → done`.

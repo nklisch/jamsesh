@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-nickname-fuzz
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-fuzz
 depends_on: []
@@ -170,3 +170,18 @@ Active fuzzing (`go test -fuzz=FuzzPlaygroundNickname -fuzztime=30s`) was NOT
 run in this session (expensive — requires dedicated fuzz time). The seed corpus
 pass is sufficient for the regression layer; active fuzzing is left to CI or
 manual invocation.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Notes**: Both test entry points pass. `FuzzPlaygroundNickname`
+(native Go fuzz) exercises 31 seeds in ~34s.
+`TestPlaygroundNicknameFuzz` (property-based companion) runs 130
+cases in ~7s sharing one stack + one session (avoids the rate
+limiter). One contract discovery documented in the story:
+whitespace-only `" "` collapses to server-mints (200) because the
+handler trims before the non-empty check — predicate updated to
+match. Real-stack assertions throughout; no mocks.
+
+Advanced `stage: review → done`.

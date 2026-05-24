@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-solo-create-push-tombstone-journey
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -131,3 +131,27 @@ Ships with `t.Skip` linked to TWO blocking bugs:
   real on-disk absence.
 
 Re-enable when both blocking bugs close.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+
+Test passes end-to-end now that both blocking bugs are resolved (the
+clock-not-wired fix at `cc55579` and the trailer-exemption fix at
+`297616a`). Assertions land on real outcomes — real bare-repo dir +
+hooks via `p.Exec`, real tombstone payload, real bearer-revocation. The
+in-session stale-assertion repair (strict 404 → ∈ {401, 404}) is
+documented in the trailer-exemption fix's review record; the relaxed
+assertion is honest about both possible outcomes.
+
+Anti-tautology discipline (Unit 5) embedded: dockerExec assertions on
+the bare-repo dir + hooks/pre-receive + hooks/post-receive immediately
+after create, and post-destruction confirmation that the dir is gone.
+
+Advanced `stage: review → done`.

@@ -1,7 +1,7 @@
 ---
 id: story-fix-playground-base-ref-trailer-exemption
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, playground, prereceive]
 parent: null
 depends_on: []
@@ -178,3 +178,42 @@ fixed inline or parked separately.
 - `e2e-audit-playground-two-participant-join-merge-journey` (Wave 2,
   still at `stage: implementing` — no longer blocked on this bug;
   ready for autopilot pickup)
+
+## Review (2026-05-24)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none after inline fix
+**Important**: none
+**Nits**: 
+- The `dropRefs` test helper duplicates a pattern that could conceivably
+  live in `commits_test.go` since it's a generic test util, but the
+  scope is narrow and the duplication is minimal — fine where it is.
+
+**Notes**:
+
+Lenses applied:
+
+- **Correctness** — ✓ root cause addressed (the chicken-and-egg between
+  trailer requirement and bootstrap push). Force-push safety preserved
+  by the unconditional force-push check at `refs.go:172`. The only way
+  to hit the exemption is the legitimate first-push case.
+- **Tests** — ✓ 3 regression tests: positive (exemption applies),
+  negative-1 (OldSHA narrowness), negative-2 (ref-name narrowness).
+  e2e tests verify end-to-end through real subprocess pipeline.
+- **Design alignment** — ✓ implementation matches the story's stated
+  approach exactly.
+- **Security** — ✓ no new attack surface. The exemption only fires for
+  the first push by a session-authenticated caller; they could write
+  the same files via legitimate paths anyway.
+- **Breaking changes** — ✓ none. Internal validation logic only.
+- **Foundation-doc alignment** — ⚠ found drift in `docs/PROTOCOL.md:257`
+  ("All session commits carry structured trailers. The pre-receive hook
+  enforces presence of the required ones."). Rolled forward inline as
+  part of this review per rolling-foundation: added a "Base-ref
+  bootstrap exemption" paragraph documenting the narrow exemption.
+- **Naming and comments** — ✓ `isBaseRefFirstPush` reads well; the
+  comment block in the per-ref loop explains the *why* (chicken-and-egg)
+  not the *what*.
+
+Advanced `stage: review → done`.

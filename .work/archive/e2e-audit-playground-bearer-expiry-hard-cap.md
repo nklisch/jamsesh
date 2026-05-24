@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-bearer-expiry-hard-cap
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-failure
 depends_on: []
@@ -139,3 +139,34 @@ func TestPlayground_Bearer_ScopeIsolation(t *testing.T) {
     })
 }
 ```
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+
+All 3 subtests pass against real-stack. The agent made one honest
+contract-discovery swap documented in the story body: the sketch's
+`anon_bearer_rejected_on_auth_route` subtest assumed `GET /api/me`
+would 401 for anon bearers, but `BearerMiddleware` validates all
+tokens uniformly and `GetMe` returns 200 for the synthetic anon
+account (the golden solo test already relies on this). The agent
+swapped to `GET /api/orgs/{id}/members` (behind `RequireOrgRole`)
+which honestly tests "anon bearers cannot reach OAuth-required
+routes" via a 403 response.
+
+The agent ALSO independently rediscovered the rate-limit subtlety
+that the rate-limit story landed on (burst=1 at CREATE_PER_IP_HOUR=3,
+need to set higher for multi-create tests). Set =180 to allow the
+two rapid creates needed for `cross_session_rejected`.
+
+Anti-tautology discipline: real bearer storage + real membership
+table + real bearer-revocation cascade + real auth middleware. No
+mocks.
+
+Advanced `stage: review → done`.

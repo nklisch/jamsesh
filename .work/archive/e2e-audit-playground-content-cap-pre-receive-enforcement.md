@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-content-cap-pre-receive-enforcement
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-failure
 depends_on: []
@@ -140,3 +140,45 @@ Parked as:
 ```
 cd tests/e2e && go test ./failure/ -run TestPlayground_ContentCap -count=1 -v
 ```
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+
+Both subtests pass (~7s). Real-stack verification confirms the cap
+fires at the pre-receive validator BEFORE the git-receive-pack
+subprocess runs — the oversized pack never touches disk. After a
+rejected 1.5 MiB push against a 1 MiB cap, `du -sb` inside the
+container reports 23,286 bytes — only the seed commit's metadata.
+This is the right shape for a content cap: protect disk by rejecting
+the request before allocating.
+
+`per_session_isolation` subtest proves the quota is per-session
+(both of two sessions can push 900 KiB independently), not global
+across the `org_playground` reserved org.
+
+**Real product bug surfaced and parked** (worth highlighting): the
+cap rejection message `playground session content limit exceeded` is
+NOT surfaced to the git client — git shows the now-familiar `fatal:
+the remote end hung up unexpectedly` instead. The cap IS enforced
+(non-zero exit), but the UX message is lost. Likely same root cause
+class as the trailer-rejection bug we fixed earlier: sideband framing
+in the second POST of stateless-RPC. Parked at
+`.work/backlog/bug-playground-content-cap-rejection-message-not-surfaced-to-git-client.md`.
+
+**Fixture extension**: `gitclient.Repo.CommitBytes(ctx, t, relPath,
+content, message)` was added to support binary/random blob commits
+that need to be cap-stressing. Clean addition to the existing API,
+no breaking changes — just a new method alongside Commit.
+
+Anti-tautology discipline: real `du -sb` measurement on real disk
+inside the real container; real packfile generation; real subprocess
+pipeline. No mocks.
+
+Advanced `stage: review → done`.

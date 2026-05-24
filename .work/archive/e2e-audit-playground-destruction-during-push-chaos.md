@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-destruction-during-push-chaos
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-chaos
 depends_on: []
@@ -169,3 +169,22 @@ deterministic sequential ordering.
 - Run 4: 13.28s — 6 sub-tests, all PASS
 
 No torn state observed in any run. Test is stable.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Notes**: Two subtests landed:
+- `push_before_destroy`: deterministic push-wins path; asserts
+  `commits_count >= 1` in the tombstone (no silent data loss).
+- `concurrent_race/iter_01..05`: 5 iterations of the actual race;
+  sweep consistently wins by revoking the bearer between git's
+  two-phase auth calls. Each iteration asserts no torn state in
+  either outcome.
+
+Verified 4/4 consecutive runs (10-15s each) — flake-free given the
+chaos genre. Real subprocess + real DB + real filesystem. The 5
+iterations exercise both push-wins and sweep-wins ordering across
+runs.
+
+Advanced `stage: review → done`.

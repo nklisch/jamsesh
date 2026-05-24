@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-playground-coverage
 kind: epic
-stage: review
+stage: done
 tags: [testing, e2e-test, playground, portal, plugin]
 parent: null
 depends_on: []
@@ -198,3 +198,43 @@ that proved the join-410 "bug" was a unit-suite artifact, not a
 product defect.
 
 Epic advanced `stage: implementing → review`.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Notes** (epic-level aggregate lenses):
+
+- **Design alignment** — realized decomposition (4 features, 11 stories)
+  matches the brief: golden + failure + chaos + fuzz, mapped 1:1 to
+  the existing `tests/e2e/{golden,failure,chaos,fuzz}/` directory
+  layout. No capability gaps relative to the audit's coverage matrix.
+
+- **Capability completeness** — every cell in the epic's coverage
+  matrix that promised coverage now has at least one passing test:
+  - Golden: solo-create + two-participant + CLI + abandonment ✓
+  - Failure: rate-limit + content-cap + bearer-expiry + reserved-slug ✓
+  - Chaos: destruction-during-push ✓
+  - Fuzz: nickname ✓
+
+- **Foundation-doc alignment** — one foundation-doc roll-forward
+  landed during the work (commit `9c5df29`, `docs/PROTOCOL.md`
+  documenting the base-ref bootstrap exemption). No other docs
+  drifted; the e2e-program is documented inside `tests/e2e/README.md`
+  which doesn't claim playground-specific patterns the work
+  contradicts.
+
+- **Breaking changes** — none. The work is purely additive: 11 new
+  test files, 1 fixture extension (`gitclient.Repo.CommitBytes`), and
+  1 narrow production fix (trailer exemption for base-ref first push)
+  that preserves all prior contracts.
+
+The audit's central thesis was validated end-to-end: the unit suite
+was hiding wiring bugs the e2e suite catches. 5 real production bugs
+surfaced; 2 already fixed inline during the work, 2 scoped + sitting
+ready in `.work/active/stories/` for the next autopilot cycle, 1
+re-classified as unit-test debt (and also scoped, ready). The
+audit-driven e2e program delivered more than its 11 test files — it
+delivered a verified contract for the v0.4.0 playground subsystem.
+
+Advanced `stage: review → done`.

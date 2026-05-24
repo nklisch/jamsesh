@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-abandonment-destruction-sweep-journey
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -178,3 +178,25 @@ now passes end-to-end:
 
 Story stays at `stage: review` — the test landed and passes; ready for
 the review skill to verify.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+
+Test passes end-to-end against real portal binary + real Postgres + real
+clock-advance. Assertions land on real outcomes (real tombstone payload,
+real filesystem state via `p.Exec`, real bearer-revocation 401). No
+mocks, no in-process simulation, no tautologies. Quality matches the
+established golden-test pattern (`session_join_and_push_test.go`).
+
+The clock-not-wired blocker that originally tripped this test was
+resolved as a single-stride fix at commit `cc55579`; the un-skip at
+`1e19b21` confirmed the integration works.
+
+Advanced `stage: review → done`.
