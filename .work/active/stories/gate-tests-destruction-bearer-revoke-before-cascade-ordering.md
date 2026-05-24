@@ -1,7 +1,7 @@
 ---
 id: gate-tests-destruction-bearer-revoke-before-cascade-ordering
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, playground]
 parent: null
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wordlist-empty-or-dashonly-corruption-resistance
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, playground]
 parent: null
 depends_on: []

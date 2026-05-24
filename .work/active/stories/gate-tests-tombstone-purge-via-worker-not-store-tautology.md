@@ -1,7 +1,7 @@
 ---
 id: gate-tests-tombstone-purge-via-worker-not-store-tautology
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, playground, refactor]
 parent: null
 depends_on: []

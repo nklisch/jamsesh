@@ -1,7 +1,7 @@
 ---
 id: gate-tests-hard-cap-idle-timeout-boundary-equality
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, playground]
 parent: null
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: gate-docs-readme-playground-mode-not-mentioned
 kind: story
-stage: drafting
+stage: implementing
 tags: [documentation]
 parent: null
 depends_on: []

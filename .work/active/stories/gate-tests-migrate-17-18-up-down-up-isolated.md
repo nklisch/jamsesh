@@ -1,7 +1,7 @@
 ---
 id: gate-tests-migrate-17-18-up-down-up-isolated
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, migrations]
 parent: null
 depends_on: []

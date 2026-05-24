@@ -1,7 +1,7 @@
 ---
 id: gate-tests-org-protected-guard-regression-trip
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, security, defense-in-depth]
 parent: null
 depends_on: []

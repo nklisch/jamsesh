@@ -1,7 +1,7 @@
 ---
 id: gate-tests-applychangesperpath-extracted-branches
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, refactor]
 parent: null
 depends_on: []

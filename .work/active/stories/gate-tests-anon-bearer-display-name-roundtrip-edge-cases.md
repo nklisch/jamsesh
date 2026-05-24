@@ -1,7 +1,7 @@
 ---
 id: gate-tests-anon-bearer-display-name-roundtrip-edge-cases
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, tokens]
 parent: null
 depends_on: []

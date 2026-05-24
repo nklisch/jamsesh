@@ -1,7 +1,7 @@
 ---
 id: gate-docs-skill-jamsesh-hard-deadlines-prose-brittle
 kind: story
-stage: drafting
+stage: implementing
 tags: [documentation]
 parent: null
 depends_on: []

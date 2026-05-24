@@ -1,7 +1,7 @@
 ---
 id: gate-tests-tombstone-purge-cadence-tick-bound-vs-wallclock
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, playground]
 parent: null
 depends_on: []

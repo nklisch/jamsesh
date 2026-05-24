@@ -1,7 +1,7 @@
 ---
 id: gate-tests-comments-slog-warning-emission-assertion
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, logging]
 parent: null
 depends_on: []

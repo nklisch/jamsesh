@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-pushbasebearer-ctx-placeholder
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup]
 parent: null
 depends_on: []

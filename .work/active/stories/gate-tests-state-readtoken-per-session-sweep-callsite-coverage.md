@@ -1,7 +1,7 @@
 ---
 id: gate-tests-state-readtoken-per-session-sweep-callsite-coverage
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, plugin, refactor]
 parent: null
 depends_on: []

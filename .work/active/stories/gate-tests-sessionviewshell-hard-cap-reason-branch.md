@@ -1,7 +1,7 @@
 ---
 id: gate-tests-sessionviewshell-hard-cap-reason-branch
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, ui, playground]
 parent: null
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: gate-tests-frontend-god-components-seam-contracts
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, ui, refactor]
 parent: null
 depends_on: []

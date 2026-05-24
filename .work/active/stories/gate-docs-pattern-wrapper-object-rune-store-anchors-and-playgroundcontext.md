@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-wrapper-object-rune-store-anchors-and-playgroundcontext
 kind: story
-stage: drafting
+stage: implementing
 tags: [documentation]
 parent: null
 depends_on: []

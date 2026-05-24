@@ -1,7 +1,7 @@
 ---
 id: gate-tests-frontend-set-playground-context-rune-store
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, ui, playground]
 parent: null
 depends_on: []

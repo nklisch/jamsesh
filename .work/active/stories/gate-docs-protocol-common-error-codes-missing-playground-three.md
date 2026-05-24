@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-common-error-codes-missing-playground-three
 kind: story
-stage: drafting
+stage: implementing
 tags: [documentation]
 parent: null
 depends_on: []

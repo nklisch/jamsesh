@@ -1,7 +1,7 @@
 ---
 id: gate-security-anon-bearer-localstorage-xss-exposure
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, ui, tokens, data-protection]
 parent: null
 depends_on: []
