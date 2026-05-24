@@ -13,12 +13,30 @@ import (
 	"jamsesh/cmd/jamsesh/hooks"
 	"jamsesh/cmd/jamsesh/mcpheaders"
 	"jamsesh/cmd/jamsesh/sessioncmd"
+	"jamsesh/cmd/jamsesh/state"
 	"jamsesh/internal/buildinfo"
 )
+
+// stderrLogger satisfies state.Logger using stderr output.
+type stderrLogger struct{}
+
+func (stderrLogger) Warn(msg string, args ...any) {
+	fmt.Fprint(os.Stderr, "warning: ", msg)
+	for i := 0; i+1 < len(args); i += 2 {
+		fmt.Fprintf(os.Stderr, " %v=%v", args[i], args[i+1])
+	}
+	fmt.Fprintln(os.Stderr)
+}
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
+
+	// Migrate legacy account-wide token to per-session storage on every startup.
+	// Non-fatal: a warning is logged on error; the binary continues normally.
+	if err := state.MigrateToPerSessionTokens(stderrLogger{}); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: token migration encountered errors: %v\n", err)
+	}
 
 	app := &cli.Command{
 		Name:    "jamsesh",

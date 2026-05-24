@@ -120,6 +120,50 @@ func WriteRefreshToken(t string) error {
 	return Write("refresh_token", []byte(t), 0o600)
 }
 
+// ReadSessionToken returns the bearer token for the given session.
+// Returns fs.ErrNotExist (via errors.Is) when no token exists for the session.
+func ReadSessionToken(sessionID string) ([]byte, error) {
+	return Read("sessions/" + sessionID + "/token")
+}
+
+// WriteSessionToken stores the bearer token for the given session at mode 0600.
+// The sessions/<sessionID>/ directory is created if it does not already exist.
+func WriteSessionToken(sessionID string, token []byte) error {
+	dir, err := PluginDataDir()
+	if err != nil {
+		return err
+	}
+	sessDir := filepath.Join(dir, "sessions", sessionID)
+	if err := os.MkdirAll(sessDir, 0o700); err != nil {
+		return fmt.Errorf("creating session dir %q: %w", sessDir, err)
+	}
+	return Write("sessions/"+sessionID+"/token", token, 0o600)
+}
+
+// ListSessions returns the IDs of all sessions that have a subdirectory under
+// ${CLAUDE_PLUGIN_DATA}/sessions/. The order is not guaranteed.
+func ListSessions() ([]string, error) {
+	dir, err := PluginDataDir()
+	if err != nil {
+		return nil, err
+	}
+	sessionsDir := filepath.Join(dir, "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil // no sessions directory yet — fresh install
+		}
+		return nil, fmt.Errorf("listing sessions dir: %w", err)
+	}
+	var ids []string
+	for _, e := range entries {
+		if e.IsDir() {
+			ids = append(ids, e.Name())
+		}
+	}
+	return ids, nil
+}
+
 // CurrentSessionID returns the jamsesh session ID bound to the current Claude
 // Code instance, and true. It locates the binding by matching the
 // CLAUDE_SESSION_ID environment variable against the instance_id files stored

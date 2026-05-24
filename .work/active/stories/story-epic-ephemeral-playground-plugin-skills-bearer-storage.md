@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-plugin-skills-bearer-storage
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: feature-epic-ephemeral-playground-plugin-skills
 depends_on: []
@@ -61,3 +61,12 @@ See parent feature body's "Story 2 acceptance criteria" section.
   implementation that no code path writes to the legacy `token` file
   after this story lands (other than the stub-replacement write at
   migration time).
+
+## Implementation notes
+
+- `state.go` extended with `ReadSessionToken(sessionID)`, `WriteSessionToken(sessionID, token)` (creates session dir via `os.MkdirAll`), and `ListSessions()` (enumerates subdirs; returns nil on missing sessions dir).
+- `state/migrate.go` introduces `Logger interface{ Warn(msg string, args ...any) }` and `MigrateToPerSessionTokens(logger Logger)`. The `migratedStub` constant (`"MIGRATED_TO_PER_SESSION"`) is unexported; only the helpers in the same package compare against it.
+- `state/migrate_test.go` covers 7 branches: fresh install, already-migrated stub, successful fan-out to 2 sessions, no-sessions (empty sessions dir), partial failure (chmod-based write block on one session dir), idempotent after success, and skip-already-migrated-session.
+- `main.go` uses an inline `stderrLogger` struct that satisfies `state.Logger`; migration errors are printed as warnings and do not stop the binary.
+- `portalclient/refresh.go`: `doRefresh` now writes the new access token via `state.WriteSessionToken(sessID, ...)` when `state.CurrentSessionID()` returns a bound session; falls back to the legacy `state.WriteToken(...)` for unbound invocations (e.g. standalone auth flows). Refresh tokens remain at the account-wide `refresh_token` path — unchanged.
+- All existing tests pass; 24 total tests in `cmd/jamsesh/state/...`, full suite green.

@@ -106,8 +106,24 @@ func (r *Refresher) doRefresh(ctx context.Context) error {
 	if err := state.WriteRefreshToken(pair.RefreshToken); err != nil {
 		return fmt.Errorf("portalclient: writing new refresh token: %w", err)
 	}
-	if err := state.WriteToken(pair.AccessToken); err != nil {
-		return fmt.Errorf("portalclient: writing new access token: %w", err)
+
+	// Write the new access token to the per-session path when a session is
+	// bound to this CC instance. This is required because the legacy
+	// ${CLAUDE_PLUGIN_DATA}/token file is replaced with a MIGRATED_TO_PER_SESSION
+	// stub after the unified per-session storage migration runs; writing back to
+	// that path would overwrite the stub and break the migration invariant.
+	//
+	// If no session is currently bound (e.g. the binary is invoked standalone
+	// outside of the CC plugin runtime), fall back to the legacy WriteToken so
+	// that auth flows that run before session binding still persist the token.
+	if sessID, ok := state.CurrentSessionID(); ok {
+		if err := state.WriteSessionToken(sessID, []byte(pair.AccessToken)); err != nil {
+			return fmt.Errorf("portalclient: writing new access token for session %q: %w", sessID, err)
+		}
+	} else {
+		if err := state.WriteToken(pair.AccessToken); err != nil {
+			return fmt.Errorf("portalclient: writing new access token: %w", err)
+		}
 	}
 
 	return nil
