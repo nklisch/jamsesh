@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-solo-create-push-tombstone-journey
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -98,3 +98,36 @@ func TestPlayground_SoloCreatePushTombstone(t *testing.T) {
     // assert: 200, commits_count >= 1, members_count == 1.
 }
 ```
+
+## Implementation notes
+
+Test landed at `tests/e2e/golden/playground_solo_create_push_tombstone_test.go`
+— real-stack test that creates a playground session, pushes a base ref
+via gitclient (using the orgID-aware URL pattern), advances the clock
+past hard-cap, polls for tombstone, and asserts both the tombstone
+payload (`end_reason: hard_cap`, `commits_count >= 1`) and the on-disk
+absence of the bare repo via `p.Exec`.
+
+Ships with `t.Skip` linked to TWO blocking bugs:
+
+1. **`idea-playground-worker-clock-not-advanceable`** — same root cause
+   as the abandonment story's clock-not-wired bug. The destruction
+   Worker uses `playground.RealClock()` instead of the AdvanceableClock,
+   so `p.AdvanceClock` past hard-cap doesn't trigger a sweep.
+
+2. **`bug-playground-git-receive-pack-fails-with-200-hangup`** —
+   surfaced by the CLI story but also affects this test's push step
+   (whether via gitclient or via the binary). HTTP 200 from the
+   receive-pack route but "fatal: remote end hung up" client-side.
+
+**Anti-tautology discipline (Unit 5 application):**
+
+- Immediate-after-create: `p.Exec(ctx, []string{"ls", repoPath})` —
+  real bare-repo existence check.
+- `p.Exec(ctx, []string{"ls", filepath.Join(repoPath, "hooks", "pre-receive")})`
+  and same for `post-receive` — real hook installation check (the
+  audit's "asserts on real disk, not stub map flip" requirement).
+- Post-destruction: same Exec ls returning non-zero or empty —
+  real on-disk absence.
+
+Re-enable when both blocking bugs close.
