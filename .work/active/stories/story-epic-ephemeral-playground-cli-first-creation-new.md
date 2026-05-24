@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-cli-first-creation-new
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: feature-epic-ephemeral-playground-cli-first-creation
 depends_on: []
@@ -77,6 +77,67 @@ the feature body for the per-unit breakdown.)
 - [ ] `docs/UX.md` updated; new flow description reads cleanly alongside
       the existing portal-UI flow (or replaces it cleanly per the
       CLI-first unification)
+
+## Implementation notes
+
+### Units completed
+
+All 6 units (1-7 from the parent feature, plus Unit 8 stubs) delivered:
+
+1. **`cmd/jamsesh/sessioncmd/new.go`** — `NewCommand()`, `newAction`,
+   `resolveCreateParams`, `pickOrgInteractive`, `createSessionAPI`,
+   `pushBaseRef`, `writeNewSessionState`, `buildPortalClient`,
+   `parseInviteEmails`, `sendInvitesIfRequested`, `normalizeScope`,
+   `printSuccessSummary`, `wrapPushError`.
+2. **`cmd/jamsesh/sessioncmd/git.go` extension** — `runGitWithEnv` added
+   as a package-level var using the same function-pointer pattern as
+   `runGit`/`runGitOutput`.
+3. **`cmd/jamsesh/main.go`** — `sessioncmd.NewCommand()` registered.
+4. **`cmd/jamsesh/sessioncmd/new_test.go`** — 11 test functions (all 9
+   from the feature spec plus `TestNormalizeScope` and `TestParseInviteEmails`
+   as unit helpers).
+5. **`cmd/jamsesh/sessioncmd/testhelpers_test.go`** — `buildCLIApp()` now
+   includes `NewCommand()`.
+6. **`docs/UX.md`** — "Flow: creating a session" reworked to describe
+   the CLI-first `jamsesh new` flow with agent-primary path, interactive
+   path, and forward reference to `--playground`.
+
+### Deviations from the design skeleton
+
+- **`writeNewSessionState`** named differently from the design's
+  `writeSessionState` to avoid shadowing the existing `writeSessionState`
+  in `join.go` (same package). The existing join helper writes
+  `instance_id`; the new one intentionally does not.
+- **`runGitWithEnv`** added to `new.go` (not `git.go`) since it's only
+  needed there. Same package-level var pattern as `runGit`/`runGitOutput`.
+- **`sendInvitesIfRequested`** uses `map[string]string{"email": email}`
+  instead of `openapi.InviteRequest{Email: email}` because
+  `openapi_types.Email` is a distinct type that requires a cast and the
+  plain map serializes identically. Avoids importing `openapi_types`.
+- **Invite endpoint confirmed**: `POST /api/orgs/{orgID}/sessions/{sessionID}/invites`
+  (not the flat `/api/sessions/{id}/invites` form from the design sketch).
+  The orgID is available on `session.OrgId` returned from create.
+- **`golang.org/x/term` not needed** — `mattn/go-isatty` (already an
+  indirect dep) provides `IsTerminal(fd uintptr)` with the same semantics.
+  No `go get` required.
+- **`isTTY` package-level var** overrideable in tests; `readStdinLine`
+  also extracted as a package-level var so multi-org picker stdin can be
+  stubbed without a real pipe.
+
+### Portal handler gap check (goal empty string)
+
+The portal's `CreateSession` handler in
+`internal/portal/sessions/handler.go` was inspected. It does NOT reject
+empty `goal` strings — the validation only enforces max 4096 chars.
+No handler change needed.
+
+### Verification status
+
+- `go build ./cmd/jamsesh/...` — PASS
+- `go test ./cmd/jamsesh/... ./internal/portal/sessions/...` — PASS (all)
+- `go vet ./cmd/jamsesh/...` — PASS
+- Pre-existing vet failures in `internal/portal/handlerauth_test` and
+  `internal/portal/playground` are not related to this story.
 
 ## Notes for the implementing agent
 

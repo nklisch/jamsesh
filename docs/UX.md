@@ -28,23 +28,72 @@ designed. This doc captures intent and flow; mockups capture appearance.
 
 ## Flow: creating a session
 
-A user wants to start a new jam against their team's repo.
+Session creation is CLI-first: the `jamsesh new` subcommand creates the
+session, pushes the local HEAD as the base ref, and writes the per-session
+state — all in one step from the user's checkout.
 
-1. In the portal UI, click "New session."
-2. Fill in:
-   - Session name (e.g., "Auth design refresh")
-   - Goal (one paragraph: what this session is producing and why)
-   - Writable scope (required path globs, e.g., `docs/auth/**`, `specs/auth/**`)
-   - Default mode (sync or isolated)
-   - Optional: invitees (emails or org members)
-3. Click "Create." The portal creates the session, pushes the designated
-   source-repo `HEAD` to `jam/<session>/base` on the session remote, and
-   returns a join URL the creator can share with collaborators.
-4. From a checkout of the source repo, the creator runs
-   `/jamsesh:join <session-id-or-url>` to bind their local CC instance to
-   `jam/<session>/<user>/main` — the same join flow every collaborator uses.
-5. The creator's CC instance is now bound in sync mode and they can start
-   prompting immediately.
+### Primary path: agent-driven (inside Claude Code)
+
+A human asks their Claude Code agent to spin up a session. The agent maps
+the request to explicit flags and calls the binary — it never sees stdin
+prompts.
+
+```
+jamsesh new \
+  --org <org-id>           # required in non-TTY; use 'jamsesh status --json' to list
+  --goal "auth refresh"    # free-text; defaults to empty (editable later in portal)
+  --scope "docs/auth/**"   # writable glob; defaults to '**' (permissive)
+  --mode sync              # sync (default) or isolated
+  --invite alice@x,bob@x   # optional; invites sent post-create
+```
+
+On success:
+1. A session row is created on the portal with the given params.
+2. Local `HEAD` is pushed to `refs/heads/jam/<session-id>/base` on the
+   portal-side bare repo (the base SHA is stamped by the portal's
+   post-receive hook).
+3. Per-session state files are written to
+   `${CLAUDE_PLUGIN_DATA}/sessions/<session-id>/` (ref, org_id, account_id,
+   last_seen_seq). The `instance_id` binding happens at first
+   `/jamsesh:join` equivalent — not here, since the user may run
+   `jamsesh new` from plain bash without a CC instance attached.
+4. A success summary is printed with the session URL, org, goal, scope,
+   mode, and the `jamsesh join <session-id>` command collaborators can run.
+
+If the push fails the session stays **live** with `base_sha: null`. The CLI
+prints the explicit retry command:
+```
+git push <session-remote-url> HEAD:refs/heads/jam/<session-id>/base
+```
+The `/jamsesh:new` skill body (shipped in the `plugin-skills` feature)
+instructs the agent to retry the push automatically once before surfacing
+the error to the human.
+
+### Secondary path: interactive (human in a terminal)
+
+When stdin is a TTY and `--org` is omitted, `jamsesh new` presents a
+numbered-list org picker with the most-recently-used org pre-selected
+(marked with `*`). The human presses Enter to accept the default or types
+a number. All other parameters default sensibly; the human can override
+any of them via flags.
+
+```
+$ jamsesh new
+Which org for this session?
+  [1]  Acme Engineering (org-abc)
+  [2]* Personal Projects (org-xyz)
+Pick a number [1-2, default 2]:
+Session created: jam-1748000000 (sess-...)
+  URL:    https://jamsesh.example.com/orgs/org-xyz/sessions/sess-...
+  ...
+```
+
+### Forward reference
+
+`jamsesh new --playground` (non-durable, anonymous-bearer sessions) is
+shipped in the `session-lifecycle` sibling feature (wave 2 of this epic).
+The flag and all durable-session mechanics are identical; the difference
+is the org binding and the session lifetime indicator shown in the output.
 
 ## Flow: joining a session
 

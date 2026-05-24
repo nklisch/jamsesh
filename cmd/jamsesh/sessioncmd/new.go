@@ -1,0 +1,440 @@
+package sessioncmd
+
+import (
+	"bufio"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/bmatcuk/doublestar/v4"
+	"github.com/mattn/go-isatty"
+	"github.com/urfave/cli/v3"
+
+	"jamsesh/cmd/jamsesh/portalclient"
+	"jamsesh/cmd/jamsesh/state"
+	"jamsesh/internal/api/openapi"
+)
+
+// isTTY is a package-level variable so tests can override it without a real terminal.
+var isTTY = func(f *os.File) bool {
+	return isatty.IsTerminal(f.Fd())
+}
+
+// runGitWithEnv runs git with additional args (including -c flags) and an optional
+// environment overlay. It inherits stdout/stderr so git's progress output is visible.
+// Override in tests.
+var runGitWithEnv = func(env []string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	return cmd.Run()
+}
+
+// NewCommand returns the urfave/cli command descriptor for "jamsesh new".
+func NewCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "new",
+		Usage: "Create a session from the current repo checkout",
+		Description: "Creates a session on the portal, pushes local HEAD as base ref, " +
+			"and writes per-session state for subsequent jamsesh invocations. " +
+			"Run from inside a git checkout. " +
+			"In a Claude Code agent session the agent should pass --org and other " +
+			"flags explicitly; interactive prompts are for direct human use only.",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "org", Usage: "Org ID (required when stdin is not a TTY)"},
+			&cli.StringFlag{Name: "name", Usage: "Session name (default: jam-<timestamp>)"},
+			&cli.StringFlag{Name: "goal", Usage: "Session goal"},
+			&cli.StringFlag{Name: "scope", Value: "**", Usage: "Writable scope as a single glob or JSON array (default: '**')"},
+			&cli.StringFlag{Name: "mode", Value: "sync", Usage: "Default mode (sync|isolated)"},
+			&cli.StringFlag{Name: "invite", Usage: "Comma-separated emails to invite after creation"},
+			&cli.BoolFlag{Name: "non-interactive", Usage: "Skip all prompts; require all params via flags"},
+		},
+		Action: newAction,
+	}
+}
+
+// CreateParams holds the resolved parameters for creating a session.
+type CreateParams struct {
+	OrgID       string
+	Name        string // never empty by the time resolveCreateParams returns
+	Goal        string // may be empty
+	Scope       string // never empty; JSON array of globs
+	DefaultMode string // "sync" or "isolated"
+}
+
+// newAction is the urfave/cli action for "jamsesh new".
+func newAction(ctx context.Context, cmd *cli.Command) error {
+	// 1. Construct portal client (reads portal URL + token via state helpers)
+	pc, err := buildPortalClient()
+	if err != nil {
+		return err
+	}
+
+	// 2. Resolve all params (flags + prompts + defaults)
+	params, err := resolveCreateParams(ctx, cmd, pc)
+	if err != nil {
+		return err
+	}
+
+	// 3. Call portal API to create session row + member row
+	session, err := createSessionAPI(ctx, pc, params)
+	if err != nil {
+		return err
+	}
+
+	// 4. Push local HEAD as base ref (may fail; if so, leave session live)
+	pushErr := pushBaseRef(ctx, pc, session.Id)
+	if pushErr != nil {
+		// Per locked decision: session stays live with base_sha NULL.
+		// CLI prints retry command, returns wrapped error.
+		return wrapPushError(pushErr, session, pc.BaseURL)
+	}
+
+	// 5. Write per-session state files for subsequent jamsesh invocations
+	if err := writeNewSessionState(session, params); err != nil {
+		return err
+	}
+
+	// 6. If --invite flag set, send invites (best-effort; reports failures
+	//    but doesn't fail the whole create)
+	if invites := strings.TrimSpace(cmd.String("invite")); invites != "" {
+		emails := parseInviteEmails(invites)
+		if err := sendInvitesIfRequested(ctx, pc, session.OrgId, session.Id, emails); err != nil {
+			// Print warning but don't fail; session is live and pushed.
+			fmt.Fprintf(os.Stderr, "warning: invites partially failed: %v\n", err)
+		}
+	}
+
+	// 7. Print success summary
+	printSuccessSummary(session, params, pc.BaseURL)
+
+	// 8. Update most-recently-used org for next time's prompt pre-selection (best-effort)
+	_ = state.Write("last_org_id", []byte(params.OrgID), 0o600)
+
+	return nil
+}
+
+// resolveCreateParams resolves all session creation parameters from flags,
+// interactive prompts, and defaults.
+func resolveCreateParams(ctx context.Context, cmd *cli.Command, pc *portalclient.Client) (CreateParams, error) {
+	nonInteractive := cmd.Bool("non-interactive") || !isTTY(os.Stdin)
+
+	params := CreateParams{
+		OrgID:       cmd.String("org"),
+		Name:        cmd.String("name"),
+		Goal:        cmd.String("goal"),
+		Scope:       cmd.String("scope"),
+		DefaultMode: cmd.String("mode"),
+	}
+
+	// Org: required when non-interactive; picker when interactive multi-org
+	if params.OrgID == "" {
+		if nonInteractive {
+			return CreateParams{}, errors.New(
+				"non-interactive mode: pass `--org <id>` to specify the org " +
+					"(use `jamsesh status --json` to list your orgs)")
+		}
+		picked, err := pickOrgInteractive(ctx, pc)
+		if err != nil {
+			return CreateParams{}, err
+		}
+		params.OrgID = picked
+	}
+
+	// Name: auto-generate if blank (jam-<unix-timestamp>)
+	if params.Name == "" {
+		params.Name = fmt.Sprintf("jam-%d", time.Now().Unix())
+	}
+
+	// Scope: normalize to JSON array (accept single glob or JSON array)
+	normalized, err := normalizeScope(params.Scope)
+	if err != nil {
+		return CreateParams{}, fmt.Errorf("invalid --scope: %w", err)
+	}
+	params.Scope = normalized
+
+	// Mode: validate
+	if params.DefaultMode != "sync" && params.DefaultMode != "isolated" {
+		return CreateParams{}, fmt.Errorf("invalid --mode %q: must be sync or isolated", params.DefaultMode)
+	}
+
+	return params, nil
+}
+
+// pickOrgInteractive fetches the user's org memberships and presents a
+// numbered-list picker on stdin. Returns the chosen org ID.
+func pickOrgInteractive(ctx context.Context, pc *portalclient.Client) (string, error) {
+	me, err := portalclient.GetJSON[openapi.MeResponse](ctx, pc, "/api/me")
+	if err != nil {
+		return "", fmt.Errorf("fetch /api/me: %w", err)
+	}
+
+	if len(me.Orgs) == 0 {
+		return "", errors.New("no org memberships yet; create one in the portal UI first")
+	}
+	if len(me.Orgs) == 1 {
+		return me.Orgs[0].Id, nil // no picker needed
+	}
+
+	// Pre-select most-recently-used (best-effort read)
+	preselected, _ := state.Read("last_org_id")
+
+	// Numbered-list picker on stdin (simple; matches the existing auth flow's
+	// stdin-bufio.Scanner idiom; no arrow-key TUI dependency)
+	fmt.Println("Which org for this session?")
+	defaultIdx := 0
+	for i, org := range me.Orgs {
+		marker := " "
+		if string(preselected) == org.Id {
+			marker = "*"
+			defaultIdx = i
+		}
+		fmt.Printf("  [%d]%s %s (%s)\n", i+1, marker, org.Name, org.Id)
+	}
+	fmt.Printf("Pick a number [1-%d, default %d]: ", len(me.Orgs), defaultIdx+1)
+
+	line, err := readStdinLine()
+	if err != nil {
+		return "", fmt.Errorf("read picker input: %w", err)
+	}
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return me.Orgs[defaultIdx].Id, nil
+	}
+	pick, err := strconv.Atoi(line)
+	if err != nil || pick < 1 || pick > len(me.Orgs) {
+		return "", fmt.Errorf("invalid pick %q: must be a number between 1 and %d", line, len(me.Orgs))
+	}
+	return me.Orgs[pick-1].Id, nil
+}
+
+// readStdinLine is a package-level variable so tests can override stdin reading.
+var readStdinLine = func() (string, error) {
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		return scanner.Text(), nil
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	return "", nil // EOF → empty line → default pick
+}
+
+// createSessionAPI calls the portal API to create a session row and returns
+// the created Session.
+func createSessionAPI(ctx context.Context, pc *portalclient.Client, p CreateParams) (openapi.Session, error) {
+	req := openapi.CreateSessionRequest{
+		Name:        p.Name,
+		Goal:        p.Goal, // may be empty string; portal accepts "" (validates max 4096 chars)
+		Scope:       p.Scope,
+		DefaultMode: openapi.CreateSessionRequestDefaultMode(p.DefaultMode),
+	}
+	path := fmt.Sprintf("/api/orgs/%s/sessions", url.PathEscape(p.OrgID))
+	return portalclient.PostJSON[openapi.Session](ctx, pc, path, req)
+}
+
+// pushBaseRef pushes the local HEAD to refs/heads/jam/<sessionID>/base on the
+// portal-side bare repo. Credentials are injected via -c http.extraHeader
+// (NOT URL-embedded) to prevent token leakage into git's reflog or `git remote -v`.
+// No `git remote add` is performed — the push is transient, leaving .git/config clean.
+func pushBaseRef(ctx context.Context, pc *portalclient.Client, sessionID string) error {
+	// Verify we're in a git checkout with a HEAD
+	if err := runGit("rev-parse", "--git-dir"); err != nil {
+		return fmt.Errorf("not a git checkout: %w", err)
+	}
+	headSHA, err := runGitOutput("rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("repo has no commits yet (nothing to push as base): %w", err)
+	}
+	headSHA = strings.TrimSpace(headSHA)
+	_ = headSHA // used for validation; actual push uses HEAD refspec
+
+	// Read the current token for Basic auth injection.
+	// We use -c http.extraHeader rather than embedding the token in the URL because:
+	//   1. URL-embedded credentials appear in git's process listing (visible to other
+	//      users on shared systems via `ps aux`).
+	//   2. They can appear in git's reflog and `git remote -v` output.
+	//   3. Header injection is process-local and does not persist anywhere.
+	token, err := state.ReadToken()
+	if err != nil {
+		return fmt.Errorf("read token for push: %w", err)
+	}
+
+	remoteURL := strings.TrimRight(pc.BaseURL, "/") + "/git/" + sessionID + ".git"
+	// HTTP Basic: username is arbitrary ("jamsesh"), password is the OAuth bearer token.
+	basicHeader := "Authorization: Basic " + base64.StdEncoding.EncodeToString(
+		[]byte("jamsesh:"+token))
+
+	// Refspec: push HEAD to refs/heads/jam/<sessionID>/base on the remote.
+	// The pre-receive hook on the portal validates this ref and stamps base_sha.
+	refspec := "HEAD:refs/heads/jam/" + sessionID + "/base"
+	return runGitWithEnv(
+		[]string{}, // no extra env vars beyond the system environment
+		"-c", "http.extraHeader="+basicHeader,
+		"push", remoteURL, refspec,
+	)
+}
+
+// writeNewSessionState writes the per-session state files under
+// ${CLAUDE_PLUGIN_DATA}/sessions/<sessionID>/. The instance_id binding is NOT
+// written here because jamsesh new may be run from plain bash without a CC
+// instance attached — binding happens at first attach (via /jamsesh:join or
+// equivalent).
+func writeNewSessionState(session openapi.Session, params CreateParams) error {
+	dir, err := state.PluginDataDir()
+	if err != nil {
+		return err
+	}
+
+	sessDir := filepath.Join(dir, "sessions", session.Id)
+	if err := os.MkdirAll(sessDir, 0o700); err != nil {
+		return fmt.Errorf("creating session state dir: %w", err)
+	}
+
+	// Find the creator's account ID — the creator is the only member at this point.
+	creatorAccountID := ""
+	if len(session.Members) > 0 {
+		creatorAccountID = session.Members[0].AccountId
+	}
+
+	ref := fmt.Sprintf("jam/%s/%s/main", session.Id, creatorAccountID)
+
+	writes := []struct{ name, value string }{
+		{"sessions/" + session.Id + "/ref", ref},
+		{"sessions/" + session.Id + "/org_id", params.OrgID},
+		{"sessions/" + session.Id + "/account_id", creatorAccountID},
+		{"sessions/" + session.Id + "/last_seen_seq", "0"},
+	}
+	for _, w := range writes {
+		if err := state.Write(w.name, []byte(w.value), 0o600); err != nil {
+			return fmt.Errorf("write %s: %w", w.name, err)
+		}
+	}
+	// instance_id is intentionally NOT written here; see function doc.
+	return nil
+}
+
+// buildPortalClient constructs a portal client from local state, wiring token
+// refresh. Extracted for testability.
+func buildPortalClient() (*portalclient.Client, error) {
+	portalURL, err := state.ReadPortalURL()
+	if err != nil {
+		return nil, fmt.Errorf("resolving portal URL: %w", err)
+	}
+	// Verify a token is available early so we get a useful error before touching the network.
+	if _, err := state.ReadToken(); err != nil {
+		return nil, fmt.Errorf("not authenticated — run `jamsesh auth` first: %w", err)
+	}
+	pc := &portalclient.Client{BaseURL: portalURL}
+	portalclient.WireRefresh(pc)
+	return pc, nil
+}
+
+// parseInviteEmails splits a comma-separated email string, trimming whitespace
+// and discarding empty entries.
+func parseInviteEmails(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// sendInvitesIfRequested sends portal invites to the given email addresses.
+// It is best-effort: all emails are attempted regardless of individual failures.
+// The caller is responsible for deciding whether partial failures are fatal.
+func sendInvitesIfRequested(ctx context.Context, pc *portalclient.Client, orgID, sessionID string, emails []string) error {
+	var firstErr error
+	var failedCount int
+	for _, email := range emails {
+		path := fmt.Sprintf("/api/orgs/%s/sessions/%s/invites",
+			url.PathEscape(orgID), url.PathEscape(sessionID))
+		// InviteRequest.Email is openapi_types.Email which is just a string alias.
+		body := map[string]string{"email": email}
+		_, err := portalclient.PostJSON[map[string]any](ctx, pc, path, body)
+		if err != nil {
+			failedCount++
+			if firstErr == nil {
+				firstErr = err
+			}
+			fmt.Fprintf(os.Stderr, "  invite %s: FAILED — %v\n", email, err)
+			continue
+		}
+		fmt.Fprintf(os.Stdout, "  invite %s: sent\n", email)
+	}
+	if firstErr != nil {
+		return fmt.Errorf("%d of %d invites failed (first error: %w)", failedCount, len(emails), firstErr)
+	}
+	return nil
+}
+
+// wrapPushError wraps a push failure with context including the explicit retry
+// command. The session is left live (not abandoned) per the locked design decision.
+func wrapPushError(pushErr error, session openapi.Session, baseURL string) error {
+	remoteURL := strings.TrimRight(baseURL, "/") + "/git/" + session.Id + ".git"
+	retryCmd := fmt.Sprintf("git push %s HEAD:refs/heads/jam/%s/base", remoteURL, session.Id)
+	return fmt.Errorf(
+		"push failed (session %s is live with base_sha: null): %w\n"+
+			"Retry with:\n  %s",
+		session.Id, pushErr, retryCmd)
+}
+
+// printSuccessSummary prints a human-readable summary of the created session.
+func printSuccessSummary(session openapi.Session, params CreateParams, baseURL string) {
+	sessionURL := strings.TrimRight(baseURL, "/") + "/orgs/" + session.OrgId + "/sessions/" + session.Id
+	fmt.Printf("Session created: %s (%s)\n", session.Name, session.Id)
+	fmt.Printf("  URL:    %s\n", sessionURL)
+	fmt.Printf("  Org:    %s\n", params.OrgID)
+	if session.Goal != "" {
+		fmt.Printf("  Goal:   %s\n", session.Goal)
+	}
+	fmt.Printf("  Scope:  %s\n", session.Scope)
+	fmt.Printf("  Mode:   %s\n", session.DefaultMode)
+	fmt.Printf("Base ref pushed. To join this session:\n  jamsesh join %s\n", session.Id)
+}
+
+// normalizeScope accepts either a single glob string (e.g. "docs/**") or a
+// JSON array string (e.g. '["docs/**","src/*.go"]') and always returns a JSON
+// array string. Single globs are validated via doublestar.
+func normalizeScope(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	// Already a JSON array?
+	if strings.HasPrefix(s, "[") {
+		// Validate it parses as a JSON array of strings.
+		var globs []string
+		if err := json.Unmarshal([]byte(s), &globs); err != nil {
+			return "", fmt.Errorf("scope %q is not a valid JSON array of strings: %w", s, err)
+		}
+		// Re-marshal to normalize whitespace.
+		out, err := json.Marshal(globs)
+		if err != nil {
+			return "", err
+		}
+		return string(out), nil
+	}
+	// Single glob — validate and wrap.
+	if _, err := doublestar.Match(s, ""); err != nil {
+		return "", fmt.Errorf("invalid glob pattern %q: %w", s, err)
+	}
+	out, err := json.Marshal([]string{s})
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}

@@ -13,6 +13,7 @@ func buildCLIApp() *cli.Command {
 		Name: "jamsesh",
 		Commands: []*cli.Command{
 			JoinCommand(),
+			NewCommand(),
 			StatusCommand(),
 			ForkCommand(),
 			ModeCommand(),
