@@ -1,10 +1,10 @@
 ---
 id: story-epic-ephemeral-playground-plugin-skills-bearer-storage
 kind: story
-stage: review
+stage: implementing
 tags: [plugin]
 parent: feature-epic-ephemeral-playground-plugin-skills
-depends_on: []
+depends_on: [story-foundation-doc-drift-bearer-storage-architecture]
 release_binding: null
 gate_origin: null
 created: 2026-05-23
@@ -70,3 +70,68 @@ See parent feature body's "Story 2 acceptance criteria" section.
 - `main.go` uses an inline `stderrLogger` struct that satisfies `state.Logger`; migration errors are printed as warnings and do not stop the binary.
 - `portalclient/refresh.go`: `doRefresh` now writes the new access token via `state.WriteSessionToken(sessID, ...)` when `state.CurrentSessionID()` returns a bound session; falls back to the legacy `state.WriteToken(...)` for unbound invocations (e.g. standalone auth flows). Refresh tokens remain at the account-wide `refresh_token` path — unchanged.
 - All existing tests pass; 24 total tests in `cmd/jamsesh/state/...`, full suite green.
+
+## Review (2026-05-23)
+
+**Verdict**: Request changes (one blocker — foundation-doc drift)
+
+**Summary**: The migration helper itself is well-built — idempotent,
+partial-failure-resilient, atomic writes, comprehensive test coverage
+(7 branches in `migrate_test.go`, 5 in `state_test.go`). The deliberate
+deviation from the original design — adding a zero-sessions guard so
+the legacy token is preserved when no session is bound — is the right
+call and is documented in the test comment. All explicit acceptance
+criteria in the story body are met. Two concerns surfaced from the
+broader unified-storage contract: one blocker (foundation-doc drift)
+and one important cross-cutting cleanup that the story scope did not
+include.
+
+**Blockers**:
+- **Foundation-doc drift in `docs/ARCHITECTURE.md`**: lines 124-133
+  describe `jamsesh auth` and `jamsesh mcp-headers` writing/reading
+  `${CLAUDE_PLUGIN_DATA}/token` as the canonical token path. After
+  this story lands, that file may be a `MIGRATED_TO_PER_SESSION` stub
+  and the canonical path is `sessions/<id>/token`. The local-state
+  layout diagram (lines 135-147) is also missing the per-session
+  files. Per the rolling-foundation principle (a hard project rule),
+  this must be rolled forward.
+  - Item: `story-foundation-doc-drift-bearer-storage-architecture`
+    (created at `.work/active/stories/`, stage:implementing)
+  - Declared as a `depends_on` of this story so it is unblocked first.
+
+**Important**:
+- **Remaining `state.ReadToken()` callers will get the stub
+  post-migration**: `portalclient/client.go:attachBearer`,
+  `sessioncmd/{new,fork,join}.go` still call `state.ReadToken()`.
+  After migration runs, they receive the literal string
+  `MIGRATED_TO_PER_SESSION` and send it as a bearer. The zero-sessions
+  guard in `migrate.go` narrows the blast radius (no migration runs
+  until at least one session is bound), so for pre-launch this is a
+  latent bug, not a live one. Should still be cleaned up before the
+  first external release.
+  - Item: `idea-state-readtoken-callers-post-migration-cleanup`
+    (created in backlog)
+
+**Nits**:
+- `state/migrate.go` line 14 doc-comment claims `*slog.Logger` and
+  `log.Logger` satisfy `Logger`. `*slog.Logger.Warn(msg string, args
+  ...any)` is correct, but the stdlib `log.Logger` has no `Warn`
+  method. The comment is slightly misleading. Trivial copy-edit.
+- `state/state.go:131-141` `WriteSessionToken` creates the directory
+  via `os.MkdirAll` then delegates to the package-level `Write`, which
+  reaches `os.CreateTemp(dir, ...)` rooted at the plugin data dir
+  rather than the session subdir. The temp file is therefore created
+  one level above the target before the rename moves it into the
+  session subdir. Cross-directory `os.Rename` on the same filesystem
+  is fine and atomic on POSIX, but it means the temp-cleanup path
+  leaks a `.jamsesh-write-*` file into the plugin data dir on rename
+  failure rather than into the session subdir. Not behavior-breaking,
+  just a small surprise if anyone audits the dir during a failed
+  rename. No action required.
+
+**Notes**: The deliberate zero-sessions deviation (lines 54-61 of
+migrate.go and the `TestMigrate_noSessions` test docstring) is a
+better design than the originally-spec'd "always write stub" behavior.
+Worth flagging in the parent feature's review notes so future
+unified-storage work follows the same "preserve legacy when no session
+context exists" intuition.
