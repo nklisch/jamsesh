@@ -1,7 +1,7 @@
 ---
 id: story-anon-bearer-test-integrity-transactional-rollback
 kind: story
-stage: implementing
+stage: review
 tags: [testing, tokens]
 parent: feature-anon-bearer-test-integrity
 depends_on: []
@@ -115,3 +115,60 @@ Surfaced during review of
 `feature-epic-ephemeral-playground-anon-bearer`. Filed under the
 test-integrity discipline in CLAUDE.md ("A failing test that documents why
 it fails ... is more honest than a green test that lies").
+
+## Implementation notes (2026-05-23)
+
+Three changes landed in `internal/portal/tokens/anon_bearer_test.go`:
+
+1. **Renamed** `TestIssueAnonymousSessionBearer_TransactionalRollback`
+   (line 209-230) → `TestIssueAnonymousSessionBearer_EmptySessionID_NoDBCalls`.
+   Body unchanged — preserves the no-DB-calls assertion. Updated the doc
+   comment to explain the rename and point at the new real-rollback test
+   below it. Distinct from the existing `_Rejected` test (which only asserts
+   the error surface).
+
+2. **Added the embedded-store override pattern** (`txStoreOverride` +
+   `storeOverride`) per the parent feature's locked-in design. Go struct
+   embedding satisfies every other `store.Store`/`store.TxStore` method
+   automatically — the two override types only redirect `WithTx` and
+   `CreateAnonymousBearer`. Pattern stays test-local, not promoted to a
+   shared helper.
+
+3. **Added the real rollback test**:
+   `TestIssueAnonymousSessionBearer_TransactionalRollback`. Wraps the real
+   store with `storeOverride`, injects `errors.New("synthetic bearer-insert
+   failure")`, calls `IssueAnonymousSessionBearer`, then asserts:
+   - `err` is non-nil
+   - `errors.Is(err, injectErr)` succeeds (proves the `%w` wrap chain
+     survives — would fail if `service_impl.go:240` ever switched to `%v`)
+   - Zero rows in `accounts` table with `display_name='fern-moth'`
+
+### Read-side query for the post-rollback assertion
+
+The `store.Store` interface has no "list/count accounts by display_name"
+method. Rather than add a domain query just for the test, added a small
+helper `openStoreAndSQLWithSession(t)` that returns BOTH the `store.Store`
+AND the underlying `*sql.DB` from `db.Open`. The test then runs a raw
+`SELECT COUNT(*) FROM accounts WHERE display_name=?` via that `*sql.DB`.
+Acceptable because:
+
+- The raw query is test-only; production code never sees the `*sql.DB`.
+- `db.Open` already returns both values — we're just stopping discarding
+  the second one in this one test.
+- A future test that needs the same shape can call the same helper.
+
+### Verification
+
+- `go test -run TestIssueAnonymousSessionBearer ./internal/portal/tokens/...` →
+  PASS (all 9 tests in the suite: 7 originals + the renamed + the new).
+- `errors.Is(err, injectErr)` is the load-bearing assertion that exercises
+  the rollback — it would fail if `service_impl.go:240`'s `%w` wrap broke,
+  satisfying the story's "manual smoke" intent automatically.
+
+### Notes on the existing name collision
+
+The renamed `_EmptySessionID_NoDBCalls` and the pre-existing
+`_EmptySessionID_Rejected` are intentionally distinct: `_Rejected` asserts
+the error surface only; `_NoDBCalls` additionally asserts that the empty
+sessionID short-circuits BEFORE any DB write occurs. Two invariants, two
+tests, both kept.

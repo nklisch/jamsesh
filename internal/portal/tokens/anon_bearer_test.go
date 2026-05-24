@@ -2,6 +2,7 @@ package tokens_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -206,11 +207,20 @@ func TestIssueAnonymousSessionBearer_RevokedBearerRejected(t *testing.T) {
 	}
 }
 
-func TestIssueAnonymousSessionBearer_TransactionalRollback(t *testing.T) {
-	// This test verifies that if bearer creation fails, the account row is also
-	// rolled back (no orphaned accounts).
-	// We verify this indirectly: issue with an invalid (empty) sessionID to
-	// trigger the pre-tx validation, confirming no DB calls are made.
+func TestIssueAnonymousSessionBearer_EmptySessionID_NoDBCalls(t *testing.T) {
+	// Verifies that an empty sessionID is rejected by the pre-tx validation
+	// guard, so no DB calls are made and no account row is created.
+	//
+	// Originally named _TransactionalRollback, but the body never exercised
+	// a real rollback — empty sessionID short-circuits before WithTx is even
+	// called, so there is no transaction to roll back. The no-DB-calls
+	// assertion is the real value, so the body stayed and the test was
+	// renamed. See TestIssueAnonymousSessionBearer_TransactionalRollback
+	// below for the real rollback-path test.
+	//
+	// Distinct from TestIssueAnonymousSessionBearer_EmptySessionID_Rejected,
+	// which asserts only the error surface (this one additionally asserts
+	// that no DB writes occurred).
 	ctx := context.Background()
 	s := openStore(t)
 	svc := tokens.New(s)
@@ -226,6 +236,107 @@ func TestIssueAnonymousSessionBearer_TransactionalRollback(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Errorf("expected 0 token rows after failed issue, got %d", len(rows))
+	}
+}
+
+// txStoreOverride embeds the real TxStore and overrides only
+// CreateAnonymousBearer to return the injected error. Go's struct embedding
+// satisfies all other ~20 sub-interface methods through the embedded *real*
+// TxStore (the one passed by WithTx).
+type txStoreOverride struct {
+	store.TxStore
+	bearerErr error
+}
+
+func (o *txStoreOverride) CreateAnonymousBearer(ctx context.Context, arg store.CreateAnonymousBearerParams) (store.OAuthToken, error) {
+	return store.OAuthToken{}, o.bearerErr
+}
+
+// storeOverride embeds the real Store and overrides only WithTx to wrap the
+// TxStore passed to fn. Same embedding trick — every other Store method
+// delegates to the embedded real Store.
+type storeOverride struct {
+	store.Store
+	bearerErr error
+}
+
+func (o *storeOverride) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	return o.Store.WithTx(ctx, func(tx store.TxStore) error {
+		return fn(&txStoreOverride{TxStore: tx, bearerErr: o.bearerErr})
+	})
+}
+
+// openStoreAndSQLWithSession opens a fresh in-memory SQLite store, keeps the
+// underlying *sql.DB for raw queries the store interface does not expose
+// (specifically: COUNT(*) FROM accounts WHERE display_name=?), and seeds a
+// minimal org + session row for the anonymous bearer's session_id FK.
+func openStoreAndSQLWithSession(t *testing.T) (store.Store, *sql.DB, string) {
+	t.Helper()
+	ctx := context.Background()
+	s, sqlDB, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	if err != nil {
+		t.Fatalf("open sqlite :memory:: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	org, err := s.CreateOrg(ctx, store.CreateOrgParams{
+		ID:        "org-rollback-test",
+		Name:      "Rollback Test Org",
+		Slug:      "rollback-test-org",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+	sess, err := s.CreateSession(ctx, store.CreateSessionParams{
+		ID:            "sess-rollback-001",
+		OrgID:         org.ID,
+		Name:          "Rollback Session",
+		Goal:          "test rollback",
+		WritableScope: `["src/"]`,
+		DefaultMode:   "sync",
+		Status:        "active",
+		CreatedAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	return s, sqlDB, sess.ID
+}
+
+func TestIssueAnonymousSessionBearer_TransactionalRollback(t *testing.T) {
+	// Verifies that if bearer creation fails inside WithTx, the account row
+	// created earlier in the same transaction is rolled back. Uses the
+	// storeOverride embedded-store pattern to inject a CreateAnonymousBearer
+	// error while letting CreateAnonymousAccount proceed normally.
+	ctx := context.Background()
+	realStore, sqlDB, sessID := openStoreAndSQLWithSession(t)
+
+	injectErr := errors.New("synthetic bearer-insert failure")
+	overlay := &storeOverride{Store: realStore, bearerErr: injectErr}
+	svc := tokens.New(overlay)
+
+	const nickname = "fern-moth"
+	_, _, _, err := svc.IssueAnonymousSessionBearer(ctx, sessID, nickname, 24*time.Hour)
+	if err == nil {
+		t.Fatal("expected bearer-insert error, got nil")
+	}
+	if !errors.Is(err, injectErr) {
+		t.Errorf("expected wrapped %v (via errors.Is), got %v", injectErr, err)
+	}
+
+	// Confirm no anonymous account row was committed despite
+	// CreateAnonymousAccount succeeding within the transaction. The store
+	// interface has no account-by-display-name query, so we drop to a raw
+	// SQL COUNT(*) via the underlying *sql.DB the store handle wraps.
+	var rowCount int
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM accounts WHERE display_name=?`, nickname,
+	).Scan(&rowCount); err != nil {
+		t.Fatalf("count accounts by display_name: %v", err)
+	}
+	if rowCount != 0 {
+		t.Errorf("rollback failed: %d anon accounts with display_name=%q survived a failed bearer-insert", rowCount, nickname)
 	}
 }
 
