@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-portal-ui-drawer-rework
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: []
@@ -104,3 +104,22 @@ validation still runs.
 - `npm run check`: 0 errors, 2 pre-existing warnings (unrelated files)
 - `npm run test`: 532 passed, 0 failed, 44 test files
 - `npm run build`: valid bundle produced (186 modules, no errors)
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Backdrop `<div>` has both an `onclick` and inline `onkeydown` Escape handler while `<svelte:window onkeydown={handleKeyDown}>` already catches Escape — the inline handler is redundant. Leave or trim, not worth a follow-up item.
+- `cmd-text` uses `word-break: break-all` plus `white-space: pre-wrap`, which can wrap mid-flag in very narrow viewports (e.g. `--inv\nite`). Acceptable for a 480px drawer but worth noting if width regresses.
+
+**Notes**:
+- All 4 acceptance criteria met: command output renders both forms with substituted values; copy buttons work via `navigator.clipboard.writeText` with a 2-second "Copied!" revert; no `client.POST(...)` call on submit (the API client import is gone); form validation (`orgId` presence, scope-glob parsing) still runs before transitioning to the output view.
+- Skill name `/jamsesh:jam` is consistent with the sibling `plugin-skills/jam-consolidation` story; the deviation from the parent feature's design-decisions note (`/jamsesh:new`) is the right call and is documented in implementation notes.
+- `shellEscape` uses the canonical POSIX single-quote escape (`'\''` for embedded quotes); the safe-char regex `/^[A-Za-z0-9@._,/*-]+$/` correctly leaves emails/globs unquoted. Tested with embedded spaces.
+- `view-state-union-machine` pattern applied cleanly with the typedef comment block describing the state graph.
+- Removing `SessionAttachWalkthrough` from `SessionList` is safe — still used by `InviteAccept.svelte` and `AttachHelpLink.svelte` (verified via grep). The removed walkthrough tests covered a code path that no longer exists by design.
+- `npm run check` clean (0 errors, 2 pre-existing unrelated warnings). `npm run test` for NewSessionDrawer (27 tests) + SessionList (15 tests) all pass.
+- Foundation-doc check: `docs/UX.md` § Flow: creating a session already describes CLI-first creation as the primary path; the drawer-rework aligns with the doc rather than invalidating it. The `/jamsesh:new` reference at UX.md:68 is owned by the plugin-skills consolidation story, not this one.
