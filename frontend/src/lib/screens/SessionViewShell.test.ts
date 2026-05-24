@@ -385,6 +385,41 @@ describe('SessionViewShell', () => {
       });
     });
 
+    it('updates hard-cap timer when playground.destruction_warning fires with reason=hard_cap', async () => {
+      render(SessionViewShell, { props: { orgId: 'org_playground', sessionId: pgSessionId } });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Playground session')).toBeInTheDocument();
+      });
+
+      // Confirm the countdown badge is present (hard_cap_at / idle_timeout_at were seeded).
+      await waitFor(() => {
+        expect(screen.getByTestId('countdown-badge')).toBeInTheDocument();
+      });
+
+      const warningHandler = wsHandlers.get(`${pgSessionId}:playground.destruction_warning`);
+      expect(warningHandler).toBeDefined();
+
+      // Fire a destruction_warning with reason=hard_cap and a deadline 3 minutes out.
+      // This is the imminent-hard-cap case: the server fires a warning because the
+      // session will be destroyed by the hard-cap timer, not the idle timer.
+      const threeMinutesFromNow = new Date(Date.now() + 3 * 60 * 1000);
+      warningHandler!({
+        type: 'playground.destruction_warning',
+        reason: 'hard_cap',
+        ends_at: threeMinutesFromNow.toISOString(),
+        remaining_seconds: 180,
+        session_id: pgSessionId,
+      });
+
+      // The countdown badge becomes urgent because hardCapRemainingMs < WARN_THRESHOLD_MS.
+      // The idle timer is unchanged (still 24h from fixture); only the hard-cap branch fires.
+      await waitFor(() => {
+        const badge = screen.getByTestId('countdown-badge');
+        expect(badge).toHaveClass('urgent');
+      });
+    });
+
     it('renders the playground session name in the breadcrumb', async () => {
       render(SessionViewShell, { props: { orgId: 'org_playground', sessionId: pgSessionId } });
 
