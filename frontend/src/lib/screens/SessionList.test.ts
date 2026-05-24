@@ -52,29 +52,6 @@ function makeSession(overrides: Partial<Session> = {}): Session {
   };
 }
 
-/** Helper: open the new-session drawer, fill the name field, and submit. */
-async function createSessionViaDrawer(
-  newSession: Session,
-): Promise<void> {
-  mockPOST.mockResolvedValueOnce({ data: newSession, error: null });
-
-  // Open drawer
-  const newBtn = screen.getByRole('button', { name: /new session/i });
-  await fireEvent.click(newBtn);
-
-  // Fill required name field
-  const nameInput = screen.getByLabelText(/^name$/i);
-  await fireEvent.input(nameInput, { target: { value: newSession.name } });
-
-  // Submit form
-  const createBtn = screen.getByRole('button', { name: /create session/i });
-  await fireEvent.click(createBtn);
-
-  // Wait for async POST to resolve and state to update
-  await waitFor(() => {
-    expect(mockPOST).toHaveBeenCalled();
-  });
-}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -196,8 +173,8 @@ describe('SessionList', () => {
     const newBtn = screen.getByRole('button', { name: /new session/i });
     await fireEvent.click(newBtn);
 
-    // Drawer should be open — has a "Create session" submit button
-    expect(screen.getByRole('button', { name: /create session/i })).toBeInTheDocument();
+    // Drawer should be open — the reworked drawer has a "Generate commands" submit button
+    expect(screen.getByRole('button', { name: /generate commands/i })).toBeInTheDocument();
   });
 
   it('closes the drawer when Cancel is clicked', async () => {
@@ -208,10 +185,10 @@ describe('SessionList', () => {
     await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
 
     await fireEvent.click(screen.getByRole('button', { name: /new session/i }));
-    expect(screen.getByRole('button', { name: /create session/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /generate commands/i })).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
-    expect(screen.queryByRole('button', { name: /create session/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /generate commands/i })).not.toBeInTheDocument();
   });
 
   it('subscribes to WS events when sessions are loaded', async () => {
@@ -244,49 +221,6 @@ describe('SessionList', () => {
     await waitFor(() => {
       expect(screen.getByText('src/auth/**')).toBeInTheDocument();
     });
-  });
-
-  // ── SessionAttachWalkthrough integration ──────────────────────────────────
-
-  it('successful session creation opens the walkthrough with the new session id', async () => {
-    const newSession = makeSession({ id: 'sess-new', name: 'Brand New Session' });
-    mockGET.mockResolvedValue({ data: { items: [], next_cursor: null }, error: null });
-
-    render(SessionList, { props: { orgId: 'org-1' } });
-    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
-
-    await createSessionViaDrawer(newSession);
-
-    // Walkthrough dialog should be in the DOM after successful creation.
-    await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /attach claude code/i })).toBeInTheDocument();
-    });
-
-    // The new session's id appears in the join command shown inside the walkthrough.
-    await waitFor(() => {
-      expect(screen.getByText(`/jamsesh:join ${newSession.id}`)).toBeInTheDocument();
-    });
-  });
-
-  it('"Open session view →" inside walkthrough navigates to the session', async () => {
-    const newSession = makeSession({ id: 'sess-nav', name: 'Nav Session' });
-    mockGET.mockResolvedValue({ data: { items: [], next_cursor: null }, error: null });
-
-    render(SessionList, { props: { orgId: 'org-1' } });
-    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
-
-    await createSessionViaDrawer(newSession);
-
-    // Wait for walkthrough to appear.
-    await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /attach claude code/i })).toBeInTheDocument();
-    });
-
-    // Click "Open session view →"
-    const openBtn = screen.getByRole('button', { name: /open session view/i });
-    await fireEvent.click(openBtn);
-
-    expect(mockNavigate).toHaveBeenCalledWith(`/orgs/org-1/sessions/${newSession.id}`);
   });
 
   // ── Chrome AttachHelpLink ─────────────────────────────────────────────────
