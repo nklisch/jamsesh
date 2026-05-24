@@ -1,7 +1,7 @@
 ---
 id: story-refactor-view-state-union-comments-and-session-list
 kind: story
-stage: review
+stage: done
 tags: [ui, refactor]
 parent: null
 depends_on: []
@@ -129,3 +129,15 @@ payload that can live in a sibling rune.
 - `npm run test`: 624/624 passed (50 test files), no test modifications needed — tests
   assert rendered text / DOM state, not internal rune names.
 - `npm run build`: clean production build, 829ms.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Impossible-case difference: if openapi-fetch ever returned both `data` and `error` as undefined (the `openapi-fetch-result-branch` pattern guarantees one is set), the new code stays at `loadState = 'loading'` whereas the old code would have flipped `isLoading = false`. Not worth a defensive branch.
+- `loadError` type narrowed from `string | null` to `string` (empty string == "no error"). No consumer reads this rune outside the template.
+
+**Notes**: String-literal-union form picked (`'loading' | 'ready' | 'error'`) with sibling `loadError` rune for the message payload, per the canonical pattern. State-graph comment block matches the pattern's convention. Both components' transitions are explicit; no implicit flips. Existing tests assert against rendered text and pass unmodified (624/624). `svelte-check` clean (0 errors, 2 pre-existing warnings unrelated). `npm run build` clean.
