@@ -12,6 +12,7 @@ import (
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/finalize"
 	"jamsesh/internal/portal/mcpendpoint"
+	"jamsesh/internal/portal/playground"
 	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/testclock"
@@ -85,6 +86,14 @@ func (p *testClockProvider) mcpClock() mcpendpoint.Clock { return p.clock }
 // session create/abandon stamps, invite create/expires/accept/join
 // stamps, and the ListSessions cursor "before" window.
 func (p *testClockProvider) sessionsClock() sessions.Clock { return p.clock }
+
+// playgroundClock returns the clock to inject into the playground.Handler
+// and playground.Worker. Implements playground.Clock. Same shared
+// AdvanceableClock — affects hard-cap / idle-timeout checks on
+// /api/playground/sessions reads and the destruction worker's
+// per-sweep "what's expired" query. Without this wiring, advancing
+// the clock has zero effect on playground session expiry decisions.
+func (p *testClockProvider) playgroundClock() playground.Clock { return p.clock }
 
 // mountTestEndpoints registers POST /clock-advance on r. The portal
 // router invokes this inside r.Route("/test", ...), so the public

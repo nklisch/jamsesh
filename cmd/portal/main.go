@@ -606,12 +606,19 @@ func main() {
 	// Build the playground handler. The handler is always constructed (even
 	// when PlaygroundEnabled=false) because the routes are registered
 	// unconditionally — the handler returns 503 for all calls when disabled.
+	// In e2etest builds, playgroundClock() returns the shared AdvanceableClock
+	// so POST /test/clock-advance moves session expiry checks forward; in
+	// production it returns nil and we fall back to playground.RealClock().
+	playgroundClock := playground.Clock(playground.RealClock())
+	if c := testClk.playgroundClock(); c != nil {
+		playgroundClock = c
+	}
 	playgroundHandler := &playground.Handler{
 		Store:   dbStore,
 		Tokens:  tokenSvc,
 		Storage: storageSvc,
 		Cfg:     pgCfg,
-		Clock:   playground.RealClock(),
+		Clock:   playgroundClock,
 		Logger:  slog.Default(),
 	}
 
@@ -659,11 +666,14 @@ func main() {
 	// cancelled (SIGTERM), the ticker loop exits on the next fire (within one
 	// Interval window). This mirrors the lifecycle goroutine above.
 	if cfg.PlaygroundEnabled {
+		// Same playgroundClock as the handler — advancing once moves both
+		// forward so the worker's per-sweep "what's expired" query agrees
+		// with the handler's hard-cap / idle-timeout reads.
 		destructionWorker := &playground.Worker{
 			Store:    dbStore,
 			Storage:  storageSvc,
 			Cfg:      pgCfg,
-			Clock:    playground.RealClock(),
+			Clock:    playgroundClock,
 			Interval: time.Duration(cfg.PlaygroundDestructionSweepIntervalS) * time.Second,
 			Logger:   slog.Default(),
 		}
