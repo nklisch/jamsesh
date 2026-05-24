@@ -1,7 +1,7 @@
 ---
 id: story-refactor-router-deps-struct-split
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -113,3 +113,13 @@ Callers updated:
 - `cmd/portal/test_clock_advance_prod_test.go`
 
 `go build ./...` clean. `go test ./...` — all 57 packages pass.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Pure structural rename — sub-structs `Security`, `Mounts`, `Probes`, `Metrics` with `APIBodyLimitBytes` at top level. All 13 field accesses inside `New(d Deps)` correctly routed to new paths. Doc comments moved with their fields. Every caller updated (cmd/portal/main.go, the two test_clock files, all 5 router_test files, plus the additional `internal/portal/server/server_test.go` caller the agent discovered). HSTS conditional, metricsTokenMiddleware constant-time check, and the apiBodyLimit-defaulting logic all unchanged. `go test ./internal/portal/router/... ./cmd/portal/...` clean, full `go test ./...` clean per the implementer's run.
