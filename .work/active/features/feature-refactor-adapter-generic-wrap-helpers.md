@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-adapter-generic-wrap-helpers
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -147,3 +147,51 @@ Pure refactor. Tagged `[refactor]` so the design pass routes through
 heavier code-gen alternative concluded Option A (this feature) is
 the right slice: meaningful LoC reduction without taking on a
 generator-maintenance burden.
+
+## Refactor Overview & Design (2026-05-24, autopilot)
+
+Shape survey of `sqlite_adapter.go` (106 methods):
+- ~40 scalar-return methods `(D, error)` — the 5-line `if err != nil ...` shape
+- ~10 list-return methods `([]D, error)` — the 7-line explicit conversion-loop shape
+- ~50 action methods `error` — already 1-3 lines; **wrap helpers add no value here**
+- ~6 methods with custom branching — leave alone
+
+Estimated LoC savings: ~240 across both files (down from the original
+600-900 target — action methods are already concise enough that
+`wrapAction` doesn't pay).
+
+## Refactor Steps
+
+### Step 1: Define wrap1 + wrapList helpers
+**Priority**: High  **Risk**: Very Low
+**Files**: `internal/db/store/wrap.go` (new), `internal/db/store/wrap_test.go` (new)
+**Story**: `story-adapter-wrap-helpers-step-1-define`
+
+Pure addition — 2 generic helpers + 5-test coverage. No existing callers touched.
+
+### Step 2: Sweep both adapter files
+**Priority**: High  **Risk**: Medium
+**Files**: `internal/db/store/sqlite_adapter.go`, `internal/db/store/postgres_adapter.go`
+**Story**: `story-adapter-wrap-helpers-step-2-sweep`
+**Depends on**: Step 1
+
+Apply `wrap1` to scalar-return methods, `wrapList` to list-return methods.
+Action methods unchanged. Public adapter API unchanged. ~240 LoC saved.
+
+## Implementation Order
+
+Serial chain: Step 1 → Step 2. Step 1 lands the helpers (and tests them);
+Step 2 applies them across the adapters.
+
+## Design Decisions (autopilot)
+
+- **No `wrapAction`** — action methods are already concise; a helper would
+  add no value and dilute the pattern.
+- **Param-struct translation stays inline** — the helpers wrap the result
+  side; the param-build remains visible at the call site. This preserves
+  dialect-quirk readability (the `dual-dialect-mirror-queries` pattern is
+  about params + queries, which stay parallel; the helpers shorten only
+  the result-handling).
+- **Skip row-converter genericization** — confirmed out-of-scope by the
+  earlier research pass. Each converter handles dialect-specific field
+  types; genericizing would lose readability.
