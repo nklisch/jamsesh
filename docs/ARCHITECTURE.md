@@ -78,8 +78,8 @@ sync-mode commits into the session's `draft` ref. Emit `merge.succeeded` or
 
 **Playground destruction worker** — single background goroutine (started
 when `JAMSESH_PLAYGROUND_ENABLED=true`) that sweeps active playground
-sessions on a configurable interval (`JAMSESH_PLAYGROUND_SWEEP_INTERVAL_S`,
-default 60s). For each session past its idle or hard-cap deadline, runs the
+sessions on a configurable interval
+(`JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S`, default 60s). For each session past its idle or hard-cap deadline, runs the
 destruction cascade — record tombstone, revoke bearers, delete session rows
 (FK cascades members + events + presence + bearers), delete anonymous
 accounts, remove the bare repo from disk. Idempotent across steps;

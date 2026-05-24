@@ -1,7 +1,7 @@
 ---
 id: story-playground-foundation-docs-rollup-architecture-destruction-worker
 kind: story
-stage: review
+stage: done
 tags: [documentation, playground]
 parent: feature-playground-foundation-docs-rollup
 depends_on: []
@@ -124,8 +124,8 @@ Both edits applied to `docs/ARCHITECTURE.md`:
 2. **Components → Portal section** — added the **Playground destruction worker**
    paragraph between **Auto-merger workers** and **WebSocket gateway** (line 79).
    Covers the five required points: goroutine topology, interval config knob
-   (`JAMSESH_PLAYGROUND_SWEEP_INTERVAL_S`, default 60s), destruction cascade
-   summary, idempotency stance, periodic tombstone-TTL purge cadence.
+   (`JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S`, default 60s), destruction
+   cascade summary, idempotency stance, periodic tombstone-TTL purge cadence.
 
 Verification:
 - `grep -n "destruction worker\|Playground destroyer" docs/ARCHITECTURE.md` →
@@ -136,3 +136,34 @@ Verification:
   unrelated to this story, not introduced here).
 - Present-tense framing throughout — the worker IS, the cascade IS, the
   purge runs every 60th tick.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments (blocker fixed inline)
+
+**Blockers**:
+- Foundation-doc drift on env var name — implementation notes and the
+  Components paragraph asserted `JAMSESH_PLAYGROUND_SWEEP_INTERVAL_S`, but
+  `internal/portal/config/config.go:796` and `config_test.go:452` show the
+  real env var is `JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S`. Fixed
+  inline in this commit (doc edit + implementation-notes edit). The doc
+  now matches the system as it is.
+
+**Important**: none
+
+**Nits**:
+- "Playground destroyer" in the ASCII diagram is a slightly more casual
+  label than the "Playground destruction worker" used in Components. Not
+  changing — short label is necessary for box-width and the longer
+  paragraph below provides the formal name.
+
+**Notes**:
+- Acceptance criteria all met after env-var correction.
+- ASCII alignment verified: all five portal-block lines at 59-char width
+  with aligned trailing pipes.
+- No "previously"/"newly added" framing introduced.
+- Other doc claims verified against source: `JAMSESH_PLAYGROUND_ENABLED`
+  matches, 60s default matches `Worker.Interval`, every-60-ticks tombstone
+  purge matches `worker.go:67 const purgeEvery = 60`, idempotent +
+  next-tick resumption matches `sweep()` continue-on-error semantics, and
+  the cascade order matches `destruction.go`.
