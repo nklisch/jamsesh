@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"jamsesh/cmd/jamsesh/hooks"
 	"jamsesh/cmd/jamsesh/retryqueue"
@@ -263,5 +264,146 @@ func TestUserPromptSubmit_advancesLastSeq(t *testing.T) {
 	}
 	if strings.TrimSpace(string(data)) != "150" {
 		t.Errorf("last_seen_seq after call = %q, want 150", strings.TrimSpace(string(data)))
+	}
+}
+
+// TestUserPromptSubmit_destructionWarningUrgent verifies that when the digest
+// includes a playground.destruction_warning in urgent_events, the hook renders
+// it prominently in the additionalContext before the regular digest text.
+func TestUserPromptSubmit_destructionWarningUrgent(t *testing.T) {
+	const (
+		orgID     = "org-ups-005"
+		sessionID = "sess-ups-005"
+		accountID = "acct-ups-005"
+	)
+	ref := "jam/" + sessionID + "/" + accountID + "/main"
+
+	setHookRunGit(t, func(_ ...string) (string, string, int) { return "", "", 0 })
+
+	// Fix the ends_at time so the test assertion is deterministic.
+	endsAt := time.Date(2026, 5, 24, 14, 30, 0, 0, time.UTC)
+	endsAtStr := endsAt.Format(time.RFC3339)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/orgs/"+orgID+"/sessions/"+sessionID+"/digest", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Respond with a digest that contains an urgent playground destruction warning.
+		fmt.Fprintf(w, `{
+			"next_cursor": 99,
+			"text": "## Digest\nNo peer activity.\n",
+			"urgent_events": [
+				{
+					"reason": "idle_timeout",
+					"ends_at": %q,
+					"remaining_seconds": 287,
+					"session_id": %q
+				}
+			]
+		}`, endsAtStr, sessionID)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupHookEnv(t, srv.URL, sessionID, orgID, ref, accountID)
+
+	in := strings.NewReader(`{"session_id":"cc","transcript_path":"","cwd":""}`)
+	var out bytes.Buffer
+	ctx := hooks.WithIO(context.Background(), in, &out)
+	if err := hooks.UserPromptSubmit(ctx, nil); err != nil {
+		t.Fatalf("UserPromptSubmit error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.NewDecoder(&out).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	ac := additionalContext(t, result)
+
+	// Warning section must appear before the regular digest text.
+	urgentIdx := strings.Index(ac, "⚠️")
+	digestIdx := strings.Index(ac, "## Digest")
+	if urgentIdx < 0 {
+		t.Errorf("additionalContext missing ⚠️ warning; got:\n%s", ac)
+	}
+	if digestIdx < 0 {
+		t.Errorf("additionalContext missing digest text; got:\n%s", ac)
+	}
+	if urgentIdx >= 0 && digestIdx >= 0 && urgentIdx > digestIdx {
+		t.Errorf("warning (index %d) should appear before digest text (index %d); got:\n%s",
+			urgentIdx, digestIdx, ac)
+	}
+
+	// Check the human-readable duration (287s = 4 min 47 sec).
+	if !strings.Contains(ac, "4 min 47 sec") {
+		t.Errorf("additionalContext missing human duration '4 min 47 sec'; got:\n%s", ac)
+	}
+
+	// Check the reason and ends_at.
+	if !strings.Contains(ac, "idle_timeout") {
+		t.Errorf("additionalContext missing reason 'idle_timeout'; got:\n%s", ac)
+	}
+	if !strings.Contains(ac, endsAtStr) {
+		t.Errorf("additionalContext missing ends_at %q; got:\n%s", endsAtStr, ac)
+	}
+
+	// Check the finalize instruction.
+	if !strings.Contains(ac, "jamsesh finalize --local") {
+		t.Errorf("additionalContext missing finalize instruction; got:\n%s", ac)
+	}
+}
+
+// TestUserPromptSubmit_nonPlaygroundDigestUnchanged is a regression test: a
+// digest with no urgent_events must produce exactly the same additionalContext
+// as before this change (no spurious urgent section injected).
+func TestUserPromptSubmit_nonPlaygroundDigestUnchanged(t *testing.T) {
+	const (
+		orgID     = "org-ups-006"
+		sessionID = "sess-ups-006"
+		accountID = "acct-ups-006"
+	)
+	ref := "jam/" + sessionID + "/" + accountID + "/main"
+
+	setHookRunGit(t, func(_ ...string) (string, string, int) { return "", "", 0 })
+
+	const digestText = "## Digest\nPeer pushed 1 commit.\n"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/orgs/"+orgID+"/sessions/"+sessionID+"/digest", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Regular durable-session digest: no urgent_events field at all.
+		fmt.Fprintf(w, `{"next_cursor":10,"text":%q}`, digestText)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupHookEnv(t, srv.URL, sessionID, orgID, ref, accountID)
+
+	in := strings.NewReader(`{"session_id":"cc","transcript_path":"","cwd":""}`)
+	var out bytes.Buffer
+	ctx := hooks.WithIO(context.Background(), in, &out)
+	if err := hooks.UserPromptSubmit(ctx, nil); err != nil {
+		t.Fatalf("UserPromptSubmit error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.NewDecoder(&out).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	ac := additionalContext(t, result)
+
+	// No warning section should appear.
+	if strings.Contains(ac, "⚠️") {
+		t.Errorf("non-playground digest must not contain ⚠️ warning; got:\n%s", ac)
+	}
+	if strings.Contains(ac, "Playground session ending") {
+		t.Errorf("non-playground digest must not contain destruction warning; got:\n%s", ac)
+	}
+	// Regular text must be present.
+	if !strings.Contains(ac, "Peer pushed 1 commit") {
+		t.Errorf("additionalContext missing expected digest text; got:\n%s", ac)
 	}
 }

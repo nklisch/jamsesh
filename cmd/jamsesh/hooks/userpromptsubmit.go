@@ -52,6 +52,24 @@ var HookRunGit = func(args ...string) (stdout string, stderr string, exitCode in
 	return strings.TrimSpace(outBuf.String()), strings.TrimSpace(errBuf.String()), code
 }
 
+// humanDuration converts a duration in seconds to a short human-readable
+// string like "4 min 47 sec". Used when rendering the playground destruction
+// warning so the urgency is immediately legible.
+func humanDuration(seconds int) string {
+	if seconds <= 0 {
+		return "0 sec"
+	}
+	m := seconds / 60
+	s := seconds % 60
+	if m == 0 {
+		return fmt.Sprintf("%d sec", s)
+	}
+	if s == 0 {
+		return fmt.Sprintf("%d min", m)
+	}
+	return fmt.Sprintf("%d min %d sec", m, s)
+}
+
 // readLastSeq reads the last_seen_seq for a session from local state.
 func readLastSeq(sessionID string) (int64, error) {
 	data, err := state.Read(filepath.Join("sessions", sessionID, "last_seen_seq"))
@@ -221,8 +239,23 @@ func handleUserPromptSubmit(ctx context.Context, _ userPromptSubmitInput) (userP
 		// Non-fatal: include error in context but don't fail the hook.
 		fmt.Fprintf(&sb, "## Warning: could not fetch digest\n%v\n\n", err)
 	} else {
+		// Step 4: Surface urgent events (e.g. playground destruction warning)
+		// before the regular digest text so they grab the agent's attention.
+		if len(digest.UrgentEvents) > 0 {
+			sb.WriteString("## ⚠️  Urgent\n\n")
+			for _, ev := range digest.UrgentEvents {
+				sb.WriteString(fmt.Sprintf(
+					"⚠️  Playground session ending in %s due to %s.\n"+
+						"   Ends at %s. Run `jamsesh finalize --local` now to keep your work.\n\n",
+					humanDuration(ev.RemainingSeconds),
+					string(ev.Reason),
+					ev.EndsAt.Format(time.RFC3339),
+				))
+			}
+		}
+
 		sb.WriteString(digest.Text)
-		// Step 4: Advance lastSeq.
+		// Step 5: Advance lastSeq.
 		if writeErr := writeLastSeq(ss.SessionID, digest.NextCursor); writeErr != nil {
 			fmt.Fprintf(os.Stderr, "jamsesh: updating lastSeq: %v\n", writeErr)
 		}

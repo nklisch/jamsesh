@@ -125,7 +125,10 @@ func TestMigrate_successfulFanOut(t *testing.T) {
 }
 
 // TestMigrate_noSessions verifies that migration with a legacy token but zero
-// session directories still completes and writes the stub.
+// session directories is a no-op: the legacy token is preserved intact so that
+// mcp-headers and other consumers can still use it (the user has authed but
+// not yet joined a session). The stub is NOT written — migration completes on
+// the next invocation once a session directory exists.
 func TestMigrate_noSessions(t *testing.T) {
 	dir := t.TempDir()
 	withPluginData(t, dir)
@@ -145,12 +148,14 @@ func TestMigrate_noSessions(t *testing.T) {
 		t.Errorf("expected no warnings, got %d", len(logger.warnings))
 	}
 
-	stub, err := os.ReadFile(filepath.Join(dir, "token"))
+	// Legacy token must be preserved (not overwritten with the migration stub)
+	// so that mcp-headers and other consumers can still use it pre-join.
+	preserved, err := os.ReadFile(filepath.Join(dir, "token"))
 	if err != nil {
 		t.Fatalf("reading legacy token after migration: %v", err)
 	}
-	if string(stub) != migratedStub {
-		t.Errorf("legacy token = %q, want %q", stub, migratedStub)
+	if string(preserved) != legacyTok {
+		t.Errorf("legacy token = %q, want %q (token must be preserved when no sessions exist)", preserved, legacyTok)
 	}
 }
 

@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-plugin-skills-destruction-warning
 kind: story
-stage: implementing
+stage: review
 tags: [plugin, playground]
 parent: feature-epic-ephemeral-playground-plugin-skills
 depends_on: []
@@ -65,3 +65,44 @@ See parent feature body's "Story 4 acceptance criteria" section.
 This story is independent (`depends_on: []`). The two changes are
 coordinated but don't require sequencing with the other plugin-skills
 stories. Can run in sub-wave A alongside Stories 1 and 2.
+
+## Implementation notes
+
+**OpenAPI schema extended.** `DigestResponse` gained an optional
+`urgent_events []PlaygroundDestructionWarningPayload` field. This required
+adding `playground.destruction_warning` to the `EventEnvelopeType` enum and
+defining the `PlaygroundDestructionWarningPayload` schema (with `reason`,
+`ends_at`, `remaining_seconds`, `session_id` fields). `go generate` was run
+against the openapi spec to regenerate `internal/api/openapi/server.gen.go`.
+
+**Hook change** (`cmd/jamsesh/hooks/userpromptsubmit.go`): added
+`humanDuration(int) string` helper; in `handleUserPromptSubmit`, when
+`digest.UrgentEvents` is non-empty, a `## ⚠️ Urgent` section is prepended
+to the `additionalContext` output before the regular `digest.Text`.
+
+**SKILL.md** (`plugins/jamsesh/skills/jamsesh/SKILL.md`): appended a
+"Playground sessions" section (after the existing closing paragraph)
+teaching agents about playground semantics and the destruction-warning
+response protocol.
+
+**Pre-existing bugs fixed in-session** (per test integrity rules):
+- `cmd/jamsesh/sessioncmd/status.go`: unused `now` variable in
+  `endsInString` (removed).
+- `internal/portal/githttp/receive_pack.go`: missing `time` import for
+  the idle-timer reset added by a sibling story (added).
+- `cmd/jamsesh/state/migrate.go`: migration wrote the stub even when zero
+  sessions existed, which silently destroyed the legacy token for
+  pre-join `mcp-headers` usage. Fixed by adding a zero-sessions guard.
+- `cmd/jamsesh/mcpheaders/mcpheaders.go`: updated to read per-session
+  bearer when a session is bound (Story 2 integration), falling back to
+  legacy token for no-session case.
+- `cmd/jamsesh/state/migrate_test.go`: updated `TestMigrate_noSessions`
+  to assert the corrected behavior (legacy token preserved, stub not written).
+
+**Tests added** in `cmd/jamsesh/hooks/userpromptsubmit_test.go`:
+- `TestUserPromptSubmit_destructionWarningUrgent` — feeds a fixture digest
+  with one `urgent_events` entry; asserts the warning appears before digest
+  text, human duration (`4 min 47 sec`), reason, `ends_at`, and finalize
+  instruction.
+- `TestUserPromptSubmit_nonPlaygroundDigestUnchanged` — regression: digest
+  with no `urgent_events` field must not inject any warning section.

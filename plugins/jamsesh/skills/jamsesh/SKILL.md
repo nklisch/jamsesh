@@ -248,3 +248,30 @@ participating in a jam. If you find yourself wanting to know **why**
 something exists or **how** the portal implements it internally, you
 don't need to — surface anything contradictory or surprising to the
 driving human.
+
+---
+
+## Playground sessions
+
+A playground session is an ephemeral anonymous variant of a regular jam
+session. It has these distinguishing properties:
+
+- **No persistent identity**: every participant has a server-minted
+  pronounceable handle (e.g., `amber-otter`); no email, no account
+  outside the session.
+- **Hard deadlines**: a session is destroyed after either 24 hours since
+  creation (`hard_cap`) or 30 minutes of inactivity (`idle_timeout`),
+  whichever fires first.
+- **No claim path**: when the session ends, all its data is destroyed —
+  refs, comments, conflict events, the bare repo. The ONLY way to keep
+  work is to finalize-out locally BEFORE the destruction trigger fires.
+
+When the digest carries a `playground.destruction_warning` event (which
+fires ~5 minutes before destruction), surface it prominently to the
+human in your reply. Include the `ends_at` time and the imperative to
+run `jamsesh finalize --local` if they want to keep the work. You have
+~5 minutes to push the user to finalize; this is time-sensitive.
+
+Addressing convention: anonymous handles work the same as durable
+handles in `@<nickname>` mentions, addressed comments, and conflict-
+event recipient fields. No special syntax.

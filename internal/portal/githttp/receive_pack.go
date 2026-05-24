@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	git "github.com/go-git/go-git/v5"
@@ -152,6 +153,7 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		Account:   account,
 		Updates:   updates,
 		PackBytes: bodySize,
+		RepoPath:  repoPath,
 	}
 	result, err := h.Validator.Validate(r.Context(), validationIn)
 	if err != nil {
@@ -321,6 +323,27 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 				h.Metrics.GitPushesTotal.WithLabelValues("storage_error").Inc()
 			}
 			return
+		}
+	}
+
+	// Post-receive: reset the idle timer for playground sessions. This is
+	// best-effort — a failure here is logged as a warning but does NOT fail
+	// the push. Durable sessions are unaffected (org_id guard).
+	//
+	// This runs AFTER a successful push (subprocess exit 0 + storage sync),
+	// so the activity timestamp reflects genuinely committed work. Presence
+	// pings, page loads, and other non-substantive events do NOT call this.
+	if orgID == playgroundOrgID && h.PlaygroundIdleTimeout > 0 {
+		now := time.Now().UTC()
+		resetErr := h.Store.ResetSessionIdleTimer(r.Context(), store.ResetSessionIdleTimerParams{
+			OrgID:                     orgID,
+			SessionID:                 sessionID,
+			LastSubstantiveActivityAt: now,
+			IdleTimeoutAt:             now.Add(h.PlaygroundIdleTimeout),
+		})
+		if resetErr != nil {
+			slog.WarnContext(r.Context(), "receive-pack: reset idle timer failed (best-effort)",
+				"org", orgID, "session", sessionID, "err", resetErr)
 		}
 	}
 

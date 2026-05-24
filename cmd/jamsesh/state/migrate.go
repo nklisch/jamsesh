@@ -51,6 +51,15 @@ func MigrateToPerSessionTokens(logger Logger) error {
 		return err
 	}
 
+	// If there are no sessions yet, the legacy token is still the only token
+	// available (e.g. user has authed but not joined a session). Leave the
+	// legacy file intact so that mcp-headers and other consumers can still use
+	// it. Migration will complete on the next invocation after a session is
+	// created.
+	if len(sessions) == 0 {
+		return nil
+	}
+
 	failCount := 0
 	for _, sessID := range sessions {
 		// Skip sessions that already have a per-session token (idempotent).

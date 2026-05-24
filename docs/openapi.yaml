@@ -169,6 +169,7 @@ components:
             - presence.updated
             - session.finalizing
             - session.ended
+            - playground.destruction_warning
         timestamp:
           type: string
           format: date-time
@@ -190,6 +191,7 @@ components:
             - $ref: '#/components/schemas/PresenceUpdatedPayload'
             - $ref: '#/components/schemas/SessionFinalizingPayload'
             - $ref: '#/components/schemas/SessionEndedPayload'
+            - $ref: '#/components/schemas/PlaygroundDestructionWarningPayload'
       discriminator:
         propertyName: type
         mapping:
@@ -205,6 +207,7 @@ components:
           presence.updated: '#/components/schemas/PresenceUpdatedPayload'
           session.finalizing: '#/components/schemas/SessionFinalizingPayload'
           session.ended: '#/components/schemas/SessionEndedPayload'
+          playground.destruction_warning: '#/components/schemas/PlaygroundDestructionWarningPayload'
 
     # --- Payload schemas (PROTOCOL.md field names are canonical) ---
 
@@ -530,6 +533,29 @@ components:
             When reason=shipped and the user supplied the target branch on
             mark-shipped, the branch name the squash commit was pushed to.
             Null otherwise.
+
+    PlaygroundDestructionWarningPayload:
+      type: object
+      description: >
+        A playground session is ~5 minutes from destruction due to idle timeout
+        or hard cap. Emitted once per warning kind per session lifetime.
+        PROTOCOL.md canonical fields: reason, ends_at, remaining_seconds, session_id.
+      required: [reason, ends_at, remaining_seconds, session_id]
+      properties:
+        reason:
+          type: string
+          enum: [idle_timeout, hard_cap]
+          description: What triggered the destruction countdown
+        ends_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the session will be destroyed
+        remaining_seconds:
+          type: integer
+          description: Approximate seconds remaining until destruction at time of emission
+        session_id:
+          type: string
+          description: ID of the playground session that is about to be destroyed
 
     # ---------------------------------------------------------------------------
     # Accounts & orgs schemas
@@ -883,7 +909,9 @@ components:
       description: |
         Turn-start digest for the local binary's additionalContext injection.
         Contains a formatted text block summarising activity since the cursor,
-        and a next_cursor for the next call.
+        a next_cursor for the next call, and an optional list of urgent events
+        (e.g. playground destruction warnings) that the binary should surface
+        prominently regardless of the text content.
       properties:
         text:
           type: string
@@ -896,6 +924,14 @@ components:
           format: int64
           description: |
             Max event seq seen in this digest. Pass as `since` on the next call.
+        urgent_events:
+          type: array
+          description: |
+            Optional list of time-sensitive events the binary must surface prominently.
+            Currently only playground.destruction_warning events appear here.
+            Absent (or empty) on non-playground sessions or when no urgent events exist.
+          items:
+            $ref: '#/components/schemas/PlaygroundDestructionWarningPayload'
 
     # ---------------------------------------------------------------------------
     # Session invites schemas
