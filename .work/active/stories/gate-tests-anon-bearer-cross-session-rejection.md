@@ -1,7 +1,7 @@
 ---
 id: gate-tests-anon-bearer-cross-session-rejection
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, security, tokens]
 parent: null
 depends_on: []
@@ -57,3 +57,11 @@ Outcome: test PASSES. The security contract holds — `RequireSessionMember`
 rejects the session-A account with `auth.insufficient_permission` (403) when
 checked against session B. No cross-session leak detected; v0.4.0 is unblocked
 on this story.
+
+## Review notes
+
+Approve. Test exercises the real `RequireSessionMember` production path with a
+real SQLite store. Asserts: (a) 403 on cross-session, (b) correct
+`auth.insufficient_permission` error code, (c) positive control on session A.
+No tautology, no test-gaming. Test passes (`go test ./internal/portal/tokens/...
+-run TestIssueAnonymousSessionBearer_BearerRejectedOnDifferentSession`).
