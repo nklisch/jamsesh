@@ -878,3 +878,231 @@ func (b *errBackend) Probe(_ context.Context) error {
 
 // Ensure errBackend is used as objectstore.Backend (compile-time check).
 var _ objectstore.Backend = (*errBackend)(nil)
+
+// ---------------------------------------------------------------------------
+// base_sha stamping tests
+// ---------------------------------------------------------------------------
+
+// passthroughStore wraps a real store.Store and allows selectively overriding
+// SetSessionBaseSHA for failure-injection tests.
+type passthroughStore struct {
+	store.Store
+	setBaseSHAFn func(ctx context.Context, p store.SetSessionBaseSHAParams) error
+}
+
+func (s *passthroughStore) SetSessionBaseSHA(ctx context.Context, p store.SetSessionBaseSHAParams) error {
+	if s.setBaseSHAFn != nil {
+		return s.setBaseSHAFn(ctx, p)
+	}
+	return s.Store.SetSessionBaseSHA(ctx, p)
+}
+
+// TestPostReceive_BaseRefStampsBaseSHA verifies that pushing the base ref
+// (refs/heads/jam/<sessionID>/base) for the first time causes the post-receive
+// handler to call SetSessionBaseSHA, populating sessions.base_sha with the
+// pushed commit SHA.
+func TestPostReceive_BaseRefStampsBaseSHA(t *testing.T) {
+	env := newPushEnv(t)
+	acc, token := env.mustIssueToken(t, "base-sha-alice@example.com")
+	orgID, sessionID := env.mustCreateSession(t, acc, `["**"]`)
+
+	bareDir := filepath.Join(env.storageRoot, "orgs", orgID, "sessions", sessionID+".git")
+	workDir := initBareRepo(t, bareDir)
+
+	// Commit with valid trailers so pre-receive accepts the push.
+	makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "src/init.go", "package main")
+
+	// Capture the local HEAD SHA so we can verify it's stamped.
+	headSHA := runGit(t, workDir, "rev-parse", "HEAD")
+
+	// Push to the base ref — this is what the CLI's pushBaseRef does.
+	baseRef := fmt.Sprintf("refs/heads/jam/%s/base", sessionID)
+	pushURLStr := env.pushURL(token, orgID, sessionID)
+	pushCmd := exec.Command("git", "push", pushURLStr, fmt.Sprintf("HEAD:%s", baseRef))
+	pushCmd.Dir = workDir
+	pushCmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := pushCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git push base ref failed: %v\n%s", err, out)
+	}
+
+	// Verify base_sha is now populated on the session row.
+	ctx := context.Background()
+	sess, err := env.store.GetSession(ctx, orgID, sessionID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if sess.BaseSHA == nil {
+		t.Fatal("sessions.base_sha is nil after base ref push; expected it to be stamped")
+	}
+	if *sess.BaseSHA != headSHA {
+		t.Errorf("sessions.base_sha = %q; want %q", *sess.BaseSHA, headSHA)
+	}
+}
+
+// TestPostReceive_NonBaseRefDoesNotReStamp verifies that pushing a non-base
+// ref (e.g. a user working ref) does not overwrite a previously-stamped
+// base_sha.
+func TestPostReceive_NonBaseRefDoesNotReStamp(t *testing.T) {
+	env := newPushEnv(t)
+	acc, token := env.mustIssueToken(t, "base-sha-bob@example.com")
+	orgID, sessionID := env.mustCreateSession(t, acc, `["**"]`)
+
+	bareDir := filepath.Join(env.storageRoot, "orgs", orgID, "sessions", sessionID+".git")
+	workDir := initBareRepo(t, bareDir)
+
+	// First, push the base ref so the repo is seeded and base_sha is stamped.
+	makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "src/init.go", "package main")
+	baseSHA := runGit(t, workDir, "rev-parse", "HEAD")
+	baseRef := fmt.Sprintf("refs/heads/jam/%s/base", sessionID)
+	pushURLStr := env.pushURL(token, orgID, sessionID)
+	pushCmd := exec.Command("git", "push", pushURLStr, fmt.Sprintf("HEAD:%s", baseRef))
+	pushCmd.Dir = workDir
+	pushCmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := pushCmd.CombinedOutput(); err != nil {
+		t.Fatalf("base ref push failed: %v\n%s", err, out)
+	}
+
+	// Confirm base_sha was stamped.
+	ctx := context.Background()
+	sess, err := env.store.GetSession(ctx, orgID, sessionID)
+	if err != nil {
+		t.Fatalf("GetSession after base push: %v", err)
+	}
+	if sess.BaseSHA == nil || *sess.BaseSHA != baseSHA {
+		t.Fatalf("pre-condition: base_sha not stamped correctly (got %v)", sess.BaseSHA)
+	}
+
+	// Now push a user working ref (not the base ref).
+	makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "src/work.go", "package main // v2")
+	userRef := fmt.Sprintf("refs/heads/jam/%s/%s/main", sessionID, acc.ID)
+	pushCmd2 := exec.Command("git", "push", pushURLStr, fmt.Sprintf("HEAD:%s", userRef))
+	pushCmd2.Dir = workDir
+	pushCmd2.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := pushCmd2.CombinedOutput(); err != nil {
+		t.Fatalf("user ref push failed: %v\n%s", err, out)
+	}
+
+	// Verify base_sha is unchanged — still the original base commit SHA.
+	sess2, err := env.store.GetSession(ctx, orgID, sessionID)
+	if err != nil {
+		t.Fatalf("GetSession after user push: %v", err)
+	}
+	if sess2.BaseSHA == nil {
+		t.Fatal("base_sha became nil after user ref push")
+	}
+	if *sess2.BaseSHA != baseSHA {
+		t.Errorf("base_sha changed after user ref push: got %q, want %q", *sess2.BaseSHA, baseSHA)
+	}
+}
+
+// TestPostReceive_SetBaseSHAFailureIsNonFatal verifies the non-fatal
+// degradation path: when SetSessionBaseSHA returns an error (e.g. transient DB
+// failure), the push still completes successfully from the git client's
+// perspective (exit 0, 200 OK). The push is not rolled back.
+func TestPostReceive_SetBaseSHAFailureIsNonFatal(t *testing.T) {
+	// Build the environment manually so we can inject a wrapping store that
+	// fails SetSessionBaseSHA.
+	ctx := context.Background()
+	storageRoot := t.TempDir()
+
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Wrap the real store so only SetSessionBaseSHA fails.
+	var setBaseSHACalled bool
+	wrappedStore := &passthroughStore{
+		Store: s,
+		setBaseSHAFn: func(_ context.Context, _ store.SetSessionBaseSHAParams) error {
+			setBaseSHACalled = true
+			return errors.New("transient DB error injected by test")
+		},
+	}
+
+	tokenSvc := tokens.New(s) // token operations use the real store directly
+	storageSvc := storage.New(storageRoot, s)
+	eventLog := events.New(s)
+
+	h := &githttp.Handler{
+		Store:     wrappedStore,
+		Tokens:    tokenSvc,
+		Storage:   storageSvc,
+		Validator: &prereceive.Validator{MaxPackBytes: 50 * 1024 * 1024},
+		Emitter:   &postreceive.Emitter{Log: eventLog},
+	}
+
+	r := chi.NewRouter()
+	h.Mount(r)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	// Create account, org, session using the real (unwrapped) store for fixtures.
+	acc, err := s.CreateAccount(ctx, store.CreateAccountParams{
+		ID:          nextID("bsf-acc"),
+		Email:       "base-sha-fail@example.com",
+		DisplayName: "base-sha-fail",
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	pair, err := tokenSvc.Issue(ctx, acc.ID)
+	if err != nil {
+		t.Fatalf("Issue token: %v", err)
+	}
+	token := pair.AccessToken
+
+	orgID := nextID("bsf-org")
+	if _, err := s.CreateOrg(ctx, store.CreateOrgParams{
+		ID: orgID, Name: "BSF Org", Slug: orgID, CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+	sessionID := nextID("bsf-sess")
+	if _, err := s.CreateSession(ctx, store.CreateSessionParams{
+		ID: sessionID, OrgID: orgID, Name: "BSF Session", Goal: "bsf",
+		WritableScope: `["**"]`, DefaultMode: "sync", Status: "active",
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := s.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID: orgID, SessionID: sessionID, AccountID: acc.ID,
+		Role: "member", JoinedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("AddSessionMember: %v", err)
+	}
+
+	bareDir := filepath.Join(storageRoot, "orgs", orgID, "sessions", sessionID+".git")
+	workDir := initBareRepo(t, bareDir)
+	makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "src/init.go", "package main")
+
+	// Push the base ref — SetSessionBaseSHA will fail inside the handler.
+	host := strings.TrimPrefix(srv.URL, "http://")
+	pushURLStr := fmt.Sprintf("http://x-access-token:%s@%s/%s/%s.git",
+		token, host, orgID, sessionID)
+	baseRef := fmt.Sprintf("refs/heads/jam/%s/base", sessionID)
+	pushCmd := exec.Command("git", "push", pushURLStr, fmt.Sprintf("HEAD:%s", baseRef))
+	pushCmd.Dir = workDir
+	pushCmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := pushCmd.CombinedOutput()
+
+	// The push must still succeed despite the SetSessionBaseSHA failure.
+	if err != nil {
+		t.Fatalf("git push should succeed even when SetSessionBaseSHA fails; got error: %v\n%s", err, out)
+	}
+
+	// Verify SetSessionBaseSHA was actually called (so we know the code path ran).
+	if !setBaseSHACalled {
+		t.Error("SetSessionBaseSHA was not called; expected it to be attempted on base ref push")
+	}
+
+	// Verify the ref landed in the bare repo (push really did succeed).
+	revParseOut := runGit(t, bareDir, "rev-parse", fmt.Sprintf("refs/heads/jam/%s/base", sessionID))
+	if revParseOut == "" {
+		t.Error("base ref not found in bare repo after push")
+	}
+}

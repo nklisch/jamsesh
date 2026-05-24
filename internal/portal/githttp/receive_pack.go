@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	git "github.com/go-git/go-git/v5"
@@ -16,7 +17,9 @@ import (
 	gogitstorage "github.com/go-git/go-git/v5/storage"
 	"github.com/go-git/go-git/v5/storage/memory"
 
+	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/deperr"
+	"jamsesh/internal/portal/gitref"
 	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/prereceive"
 )
@@ -279,6 +282,24 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Post-receive: stamp sessions.base_sha when the base ref lands for the
+	// first time. findBaseRefUpdate returns non-nil only for a push that creates
+	// refs/heads/jam/<sessionID>/base (exactly the two-segment form; user refs
+	// like refs/heads/jam/<id>/<user>/base are not matched).
+	if baseUpdate := findBaseRefUpdate(sessionID, updates); baseUpdate != nil {
+		sha := baseUpdate.NewSHA
+		if err := h.Store.SetSessionBaseSHA(r.Context(), store.SetSessionBaseSHAParams{
+			OrgID:   orgID,
+			ID:      sessionID,
+			BaseSHA: &sha,
+		}); err != nil {
+			// Non-fatal: log but don't fail the push.
+			// Worst case is the audit field stays NULL; doesn't affect runtime.
+			slog.WarnContext(r.Context(), "receive-pack: set base_sha failed",
+				"session_id", sessionID, "err", err)
+		}
+	}
+
 	// Post-receive: emit commit.arrived events for accepted ref updates.
 	// In clustered mode the Emitter also calls SyncPushPath, which mirrors the
 	// push to object storage. We MUST call this BEFORE committing 200 OK —
@@ -313,6 +334,36 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	if h.Metrics != nil {
 		h.Metrics.GitPushesTotal.WithLabelValues("ok").Inc()
 	}
+}
+
+// findBaseRefUpdate scans updates for the one that creates the session's base
+// ref: refs/heads/jam/<sessionID>/base. It matches only the exact two-segment
+// form after "refs/heads/jam/" (i.e. "<sessionID>/base"), so user refs like
+// refs/heads/jam/<id>/<accountID>/base are never mistakenly matched.
+//
+// Returns nil when no base-ref update is found. Pre-receive guarantees at most
+// one base-ref push per receive (once refs exist, pushing to base is rejected),
+// so at most one match is expected.
+func findBaseRefUpdate(sessionID string, updates []gitref.RefUpdate) *gitref.RefUpdate {
+	prefix := "refs/heads/jam/"
+	want := prefix + sessionID + "/base"
+	for i := range updates {
+		u := &updates[i]
+		if u.Ref != want {
+			continue
+		}
+		// Extra guard: ensure this is exactly the two-segment form by verifying
+		// there is no further slash after the expected suffix. Because we match
+		// the full string above this is already guaranteed, but make the intent
+		// explicit with a strings.Count check.
+		rest := strings.TrimPrefix(u.Ref, prefix)
+		if strings.Count(rest, "/") != 1 {
+			// Shouldn't happen given the exact-string match above, but be safe.
+			continue
+		}
+		return u
+	}
+	return nil
 }
 
 // buildValidationRepo creates a *git.Repository suitable for pre-receive

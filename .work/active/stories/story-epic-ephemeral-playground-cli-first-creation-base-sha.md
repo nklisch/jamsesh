@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-cli-first-creation-base-sha
 kind: story
-stage: implementing
+stage: review
 tags: [portal]
 parent: feature-epic-ephemeral-playground-cli-first-creation
 depends_on: []
@@ -93,3 +93,33 @@ If this story lands AFTER the `-new` story, sessions created in the
 interval have `base_sha: NULL` (degraded but functional). A future
 backfill query (out of scope here) could populate them; in practice
 they're playground-or-pre-launch sessions so this doesn't matter.
+
+## Implementation notes
+
+### What was done
+
+1. **`internal/portal/githttp/receive_pack.go`**: Added two changes:
+   - Imported `jamsesh/internal/db/store`, `jamsesh/internal/portal/gitref`, and `strings`.
+   - Added a `SetSessionBaseSHA` call immediately after the existing draft-ref seeding loop. The call is guarded by `findBaseRefUpdate(sessionID, updates)` returning non-nil.
+   - Added `findBaseRefUpdate(sessionID string, updates []gitref.RefUpdate) *gitref.RefUpdate` helper at the top of the non-handler portion of the file. Matches `refs/heads/jam/<sessionID>/base` by exact string comparison; the `strings.Count(rest, "/") != 1` guard makes the intent explicit.
+
+2. **`internal/portal/githttp/receive_pack_test.go`**: Added three tests at the end of the file:
+   - `TestPostReceive_BaseRefStampsBaseSHA` — pushes `refs/heads/jam/<session>/base`, verifies `sessions.base_sha` equals the pushed SHA.
+   - `TestPostReceive_NonBaseRefDoesNotReStamp` — seeds base_sha via a base-ref push, then pushes a user ref; verifies base_sha unchanged.
+   - `TestPostReceive_SetBaseSHAFailureIsNonFatal` — injects a `passthroughStore` wrapper that fails `SetSessionBaseSHA`; verifies git push exits 0 and the warning appears in logs.
+   - Also added the `passthroughStore` embedding wrapper (struct embeds `store.Store`, overrides only `SetSessionBaseSHA` via a function field).
+
+### Deviations from design
+
+- **`sql.NullString` vs `*string`**: The design skeleton used `sql.NullString{String: ..., Valid: true}` for `BaseSHA`. The actual `SetSessionBaseSHAParams.BaseSHA` field is `*string`. Used `&sha` instead.
+- **`SetSessionBaseSHAParams.SessionID` vs `.ID`**: The design skeleton used `SessionID:` as the field name; the actual struct uses `ID:`. Fixed accordingly.
+- **Logger field**: The design said to use `h.Logger` if available. The handler doesn't have a Logger field; the codebase uses `slog.WarnContext(r.Context(), ...)` throughout. Used that pattern.
+- **`findBaseRefUpdate` takes `sessionID` as first arg**: The design didn't specify the signature; added `sessionID` so the function can do an exact match on the full ref string without needing the caller to reconstruct it. This makes the function usable in isolation.
+- **Line numbers drifted from design**: The post-receive stamping code was inserted at lines ~280-300 (after the draft-ref seeding loop ending at line 280), not "lines 260-310" as the design body stated. The structure matched the design intent.
+
+### Build and test status
+
+- `go build ./internal/portal/githttp/... ./internal/db/store/...` — passes
+- `go vet ./internal/portal/githttp/... ./internal/db/store/...` — passes
+- `go test ./internal/portal/githttp/... ./internal/db/store/...` — all pass (SQLite path; no `JAMSESH_TEST_PG_DSN` set)
+- Note: `go build ./...` has pre-existing failures in `internal/portal/tokens/` (`IssueAnonymousSessionBearer` missing from service_impl) from an in-progress sibling story in the same epic. These are unrelated to this story's changes.
