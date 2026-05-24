@@ -1,7 +1,7 @@
 ---
 id: story-playground-server-hardening-handler-test-coverage
 kind: story
-stage: review
+stage: done
 tags: [portal, playground, testing]
 parent: feature-playground-server-hardening
 depends_on: []
@@ -178,3 +178,47 @@ test made the inner-branch stepClock test unnecessary in this pass.
 - Grep verification: only the wrapper-shape `func stores(t *testing.T)`
   exists in two files (helpers_test, provision_test). No duplicate
   `dialectHarness` struct or `truncateAll` body in the repo.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+
+**Important**:
+- `TestCreatePlaygroundSession_RepoCreateFails_ReturnsError`
+  (`internal/portal/playground/handler_test.go:945-975`) only asserts the
+  session row persists after `CreateRepo` fails. The design (Unit 3, feature
+  body ~line 358-361) explicitly called for asserting **both** the session
+  row AND the creator member row remain so the destruction sweep can clean
+  both. Filed as
+  `idea-playground-handler-test-creator-member-assertion`.
+- `TestJoinPlaygroundSession_StatusNotActive_Returns410` was substituted for
+  the design's `stepClock`-based inner-branch test. The substitution covers
+  the `Status != "active"` branch (handler.go:227-232) but NOT the original
+  target — the `ttl <= 0` inner branch (handler.go:260-265). The `stepClock`
+  type is in place ready for use. Filed as
+  `idea-playground-join-handler-ttl-inner-branch-coverage`.
+
+**Nits**:
+- The `storetest` package doc helpfully warns against `t.Parallel()` use
+  with the Postgres harness — excellent forward thinking. Could be a
+  runtime guard, optional.
+
+**Notes**:
+
+The sessions-handler per-dialect retrofit deviation was already documented
+in the story body and is a legitimate scope-control call (65+ tests across
+7 files). Filed `idea-sessions-handler-tests-per-dialect-retrofit` to keep
+that work tracked.
+
+Verified `go test ./internal/portal/playground/... ./internal/db/store/...
+./internal/portal/sessions/...` all green; `go build ./...` and `go vet
+./...` clean. The shared `storetest` package is correctly consumed from
+four call sites with no duplicate `dialectHarness` or `truncateAll`
+remaining.
+
+Filed follow-ups (all `stage: backlog`):
+- `idea-playground-handler-test-creator-member-assertion`
+- `idea-playground-join-handler-ttl-inner-branch-coverage`
+- `idea-sessions-handler-tests-per-dialect-retrofit`
