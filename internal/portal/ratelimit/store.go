@@ -54,6 +54,7 @@ type Store struct {
 	gcInterval  time.Duration
 	lastGC      time.Time
 	ttl         time.Duration // idle TTL before an entry is GC'd
+	clock       Clock
 }
 
 // Config describes the limits for a Store.
@@ -68,13 +69,21 @@ type Config struct {
 	PerHour int
 }
 
-// NewStore creates a Store with the given per-key limits.
+// NewStore creates a Store with the given per-key limits using the real system clock.
 func NewStore(cfg Config) *Store {
+	return NewStoreWithClock(cfg, realClock{})
+}
+
+// NewStoreWithClock creates a Store with the given per-key limits and an injectable
+// clock. Used by unit tests to exercise GC and token-bucket refill without
+// real wall-clock waits.
+func NewStoreWithClock(cfg Config, clock Clock) *Store {
 	s := &Store{
 		entries:    make(map[string]*entry),
 		gcInterval: 5 * time.Minute,
 		ttl:        1 * time.Hour,
-		lastGC:     time.Now(),
+		lastGC:     clock.Now(),
+		clock:      clock,
 	}
 
 	// Convert per-minute → rate.Limit (tokens/second).
@@ -97,7 +106,7 @@ func NewStore(cfg Config) *Store {
 func (s *Store) Allow(key string) (allowed bool, retryAfter time.Duration) {
 	e := s.getOrCreate(key)
 
-	now := time.Now()
+	now := s.clock.Now()
 
 	// Check minute limiter.
 	r := e.minuteLimiter.ReserveN(now, 1)
@@ -134,7 +143,7 @@ func (s *Store) getOrCreate(key string) *entry {
 	defer s.mu.Unlock()
 
 	// Lazy GC.
-	now := time.Now()
+	now := s.clock.Now()
 	if now.Sub(s.lastGC) >= s.gcInterval {
 		s.gc(now)
 		s.lastGC = now

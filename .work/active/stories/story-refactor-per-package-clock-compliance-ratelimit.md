@@ -1,7 +1,7 @@
 ---
 id: story-refactor-per-package-clock-compliance-ratelimit
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor, testing]
 parent: feature-refactor-per-package-clock-compliance
 depends_on: []
@@ -119,6 +119,17 @@ func (s *Store) maybeGC() {
       exercises GC or bucket refill via a fake clock — no wall-clock sleeps.
 - [ ] `go build ./...` clean.
 - [ ] `go test ./internal/portal/ratelimit/...` clean.
+
+## Implementation notes
+
+- Created `internal/portal/ratelimit/clock.go` with `Clock` interface, `realClock{}`, and canonical doc comment matching sessions/events packages.
+- Added `clock Clock` field to `Store`.
+- Refactored `NewStore(cfg)` to delegate to new `NewStoreWithClock(cfg, clock)`.
+- Replaced all three `time.Now()` calls: `lastGC` initialisation in `NewStoreWithClock`, `now` in `Allow`, and `now` in `getOrCreate`.
+- `realClock.Now()` returns `time.Now().UTC()` — consistent with every other portal package; no UTC-vs-local hazard since the original code passed `time.Now()` (local) to `rate.Limiter.ReserveN` which only cares about monotonic order and deltas, not timezone.
+- Added `TestStore_GC_RemovesStaleEntries`: advances fake clock 2 h past TTL+GC interval, confirms stale entries swept, zero wall-clock sleep.
+- Added `TestStore_BucketRefill_FakeClock`: exhausts burst, advances fake clock 1 min, confirms next request is allowed, zero wall-clock sleep.
+- All 10 tests pass; `go build ./...` and `go test ./...` clean.
 
 ## Risk
 
