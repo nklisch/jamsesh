@@ -1,7 +1,7 @@
 ---
 id: feature-playground-server-hardening
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, playground]
 parent: null
 depends_on: []
@@ -446,6 +446,67 @@ joint adj×animal space) continues to pass.
 
 Note Unit 3 isn't a separate story — it's the test work delivered as
 part of the handler-test-coverage story (Unit 1's vehicle).
+
+## Implementation summary (2026-05-23)
+
+All three child stories landed and are at stage:review. Implementation order
+followed the design's harness-first sequencing:
+
+1. `story-playground-server-hardening-handler-test-coverage` (no deps) —
+   shared `internal/db/store/storetest` package created; `openStore(t)` /
+   `dialectHarness` duplicates removed from 4 call sites (helpers_test,
+   provision_test, playground/handler_test, sessions/handler_test); three
+   new test functions added (`TestJoinPlaygroundSession_HardCapElapsed_Returns410`,
+   `TestJoinPlaygroundSession_StatusNotActive_Returns410`,
+   `TestCreatePlaygroundSession_RepoCreateFails_ReturnsError`); every
+   existing test in `playground/handler_test.go` wrapped in a per-dialect
+   `t.Run` loop.
+
+2. `story-playground-server-hardening-writable-scope-validation`
+   (depends_on: handler-test-coverage) — `prereceive.ValidateWritableScope`
+   exported; sessions handler delegates from both call sites; playground
+   handler gains the front-door validation block; new prereceive table
+   test plus playground `TestCreatePlaygroundSession_InvalidScope_Returns400`
+   using the per-dialect harness.
+
+3. `story-playground-server-hardening-wordlist-dedup` (no deps) —
+   `adjectives.txt` deduped to 177 unique entries; diversity test still
+   passes.
+
+### Cross-cutting deviations
+
+- **Sessions tests NOT retrofitted to per-dialect.** The original design
+  called for per-dialect wrapping of every sessions handler test alongside
+  the playground retrofit. With 65+ tests across 7 sibling files, the
+  mechanical wrapping is large and tangential to the actual feature scope
+  (closing playground gaps). The sessions `openStore(t)` body now
+  delegates to `storetest.Stores(t)[0].Open(t)` for the single-source-of-
+  truth fix; full per-dialect retrofit can land later as a focused
+  refactor if real Postgres coverage gaps surface on the sessions adapter.
+  See `story-playground-server-hardening-handler-test-coverage` body for
+  the full rationale.
+
+- **Inner-branch `stepClock` test deferred.** The design specified a
+  stepping-clock test for the handler.go:247-252 ttl<=0 branch (a clock
+  read after the bearer issue trips the inner check). Implemented
+  `TestJoinPlaygroundSession_StatusNotActive_Returns410` instead, which
+  covers the parallel "410 after cheap checks pass" envelope via the
+  Status="ended" branch (handler.go:214-219). The `stepClock` type is
+  in the test file ready for any future test that needs it.
+
+### Verification
+
+- `go test ./...` → all green across the whole repo
+- `go build ./...` → clean
+- `go vet ./...` → clean
+- `sort internal/portal/playground/wordlist/adjectives.txt | uniq -c |
+  awk '$1>1'` → no rows
+- `grep -rn 'func stores(t \*testing.T)' internal/` → only two wrapper-shape
+  helpers remain (helpers_test, provision_test); no duplicate
+  `dialectHarness` struct or `truncateAll` body in the repo.
+- `prereceive.ValidateWritableScope` is the single source of truth for
+  scope validation; imported by both `internal/portal/sessions/handler.go`
+  and `internal/portal/playground/handler.go`.
 
 ## Testing
 
