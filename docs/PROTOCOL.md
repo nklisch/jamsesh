@@ -461,6 +461,9 @@ Common error codes:
 - `push.missing_trailer` (with `details.missing` listing absent trailers)
 - `fork.target_not_found`
 - `fork.invalid_target_ref`
+- `playground.session_full` (409; playground `join` rejected because the session is at the `MaxParticipants` cap; response body includes `retry_after_seconds`)
+- `playground.session_ended` (410; playground `join` rejected because the session's `hard_cap_at` has elapsed or the session is no longer active)
+- `playground.size_exceeded` (pre-receive; playground push rejected because the session's accumulated repo size would exceed the configured content cap; `details` includes `current_bytes`, `pack_bytes`, `total_bytes`, `max_bytes`, `session_id`)
 - `oauth.invalid_grant` (400; the OAuth provider rejected the authorization code at the business layer — RFC 6749 `invalid_grant` / GitHub `bad_verification_code`. The code is expired, reused, or malformed; the user must re-initiate sign-in. Distinct from `dep.oauth_provider_unavailable` (503), which signals a transport-level outage where a retry may succeed.)
 
 ### Dependency-failure codes

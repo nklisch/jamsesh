@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-common-error-codes-missing-playground-three
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,13 @@ Three playground-specific error codes ship and are returned by the new endpoints
 
 ## Required edit
 Add three bullets to the error-code list in `docs/PROTOCOL.md`: `playground.session_full` (409; playground join at MaxParticipants cap; body includes `retry_after_seconds`), `playground.session_ended` (410; playground session past `hard_cap_at`), `playground.size_exceeded` (pre-receive; playground content-size cap reached).
+
+## Implementation notes
+
+Three bullets added to the "Common error codes" list in `docs/PROTOCOL.md`, inserted between `fork.invalid_target_ref` and `oauth.invalid_grant` to keep the playground-specific codes grouped:
+
+1. `playground.session_full` (409) — verified via `JoinPlaygroundSession409JSONResponse` in `internal/portal/playground/handler.go:249`; `retry_after_seconds` confirmed in `docs/openapi.yaml:3295`.
+2. `playground.session_ended` (410) — verified via `JoinPlaygroundSession410JSONResponse` in `internal/portal/playground/handler.go:226,234,274`.
+3. `playground.size_exceeded` (pre-receive) — verified via `CodePlaygroundSizeExceeded` constant and `Rejection` struct in `internal/portal/prereceive/playground_caps.go:12,55`; `details` fields listed from `map[string]any` at line 57.
+
+No discrepancies between story-named codes and actual code constants. Format follows the existing inline-parenthetical style used by `session.invalid_writable_scope` and `oauth.invalid_grant`.
