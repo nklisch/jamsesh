@@ -1,14 +1,14 @@
 ---
 id: feature-epic-ephemeral-playground-plugin-skills
 kind: feature
-stage: review
+stage: done
 tags: [plugin, playground]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-cli-first-creation, feature-epic-ephemeral-playground-session-lifecycle]
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 ## Implementation summary (autopilot)
@@ -576,3 +576,13 @@ event recipient fields. No special syntax.
   (probably `cmd/jamsesh/portalclient/refresh.go`); update to write
   the new access token via `state.WriteSessionToken(currentSessionID(), ...)`
   instead of `state.WriteToken(...)`.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve — feature delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All 4 child stories at `stage: done`. Aggregate review: jam-consolidation, status-enumeration, destruction-warning all shipped earlier; bearer-storage landed in land-mode (foundation docs were rolled forward to describe the already-implemented per-session token storage). Plugin surface is now consolidated and per-session tokens are the canonical mechanism. Verification: `go build ./...` and `go test ./...` clean.

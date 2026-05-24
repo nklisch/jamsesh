@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-plugin-skills-bearer-storage
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: feature-epic-ephemeral-playground-plugin-skills
 depends_on: [story-foundation-doc-drift-bearer-storage-architecture]
@@ -151,3 +151,13 @@ All deliverables verified in place prior to this stage transition:
 - `cmd/jamsesh/portalclient/refresh.go` — `doRefresh` writes per-session
   path when session bound; falls back to legacy for unbound invocations.
 - `go build ./...` clean; full test suite green (all packages cached ok).
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Land-mode confirmation. Implementation was already in place from sibling stories; the agent verified existing code matches the story's acceptance criteria. Tests green.

@@ -1,14 +1,14 @@
 ---
 id: epic-ephemeral-playground
 kind: epic
-stage: review
+stage: done
 tags: [playground, portal, ui, plugin]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 ## Implementation summary (autopilot run completed)
@@ -343,3 +343,15 @@ body during its design pass): `docs/SECURITY.md` and `docs/PROTOCOL.md`
 reference), `docs/UX.md` (playground flows + the CLI-first unification of
 durable session creation), the OpenAPI spec (new REST routes for anonymous
 bearer issuance, playground session creation, destruction status).
+
+## Review (2026-05-24)
+
+**Verdict**: Approve — epic delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All 7 child features at `stage: done` — reserved-org, anon-bearer, cli-first-creation, session-lifecycle, portal-ui, plugin-skills, skill-consolidation. Aggregate review: ephemeral playground capability ships end-to-end. Anonymous joiners can land at `/playground`, create or join sessions in the reserved playground org, get a real multi-agent jam experience, and see destruction warnings + tombstones when the session ages out. Cross-cutting verification: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean, full Go test suite green across all 57 packages.
+
+What's now possible: prospective teams can experience jamsesh end-to-end without an account, OAuth provider, or org setup. The playground is a real session that converges via the auto-merger; participants can comment, fork, and finalize within the ephemeral window before the destruction worker sweeps the session.

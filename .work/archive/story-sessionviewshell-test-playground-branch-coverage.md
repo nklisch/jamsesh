@@ -1,7 +1,7 @@
 ---
 id: story-sessionviewshell-test-playground-branch-coverage
 kind: story
-stage: review
+stage: done
 tags: [test, ui, playground]
 parent: null
 depends_on: [story-playground-ws-protocol-mismatch-session-view-extensions]
@@ -73,3 +73,13 @@ covers every criterion:
   gains the `urgent` CSS class.
 
 Verification: `npm run check` — 0 errors, `npm run test` — 635/635 passed.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Land-mode confirmation. Implementation was already in place from sibling stories; the agent verified existing code matches the story's acceptance criteria. Tests green.
