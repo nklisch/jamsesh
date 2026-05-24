@@ -1,7 +1,7 @@
 ---
 id: feature-playground-server-hardening
 kind: feature
-stage: review
+stage: done
 tags: [portal, playground]
 parent: null
 depends_on: []
@@ -574,3 +574,68 @@ because they're fixture seeders specific to the store test suite).
   asserts the session + member rows persist for the destruction sweep;
   bearer cleanup is the existing destruction-sweep contract's
   responsibility.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none (one foundation-doc drift found and rolled forward inline
+during review — see Notes)
+
+**Important**: none. Three per-story follow-ups were already filed during the
+child reviews and remain in backlog:
+- `idea-playground-handler-test-creator-member-assertion`
+- `idea-playground-join-handler-ttl-inner-branch-coverage`
+- `idea-sessions-handler-tests-per-dialect-retrofit`
+
+**Nits**: none above what the child reviews already captured.
+
+**Notes**:
+
+Feature-level lenses applied (per-line correctness/tests/naming already
+exercised at the story tier):
+
+- **Capability completeness** — all three acceptance bullets delivered:
+  shared `prereceive.ValidateWritableScope` imported by both
+  `internal/portal/sessions/handler.go` (2 call sites) and
+  `internal/portal/playground/handler.go` (1 call site, with default-scope
+  also compile-checked); shared `internal/db/store/storetest.Stores(t)`
+  consumed from four call sites with zero duplicates remaining;
+  `adjectives.txt` is 177 unique entries with the diversity test
+  comfortably passing. `go build ./...`, `go vet ./...`, and
+  `go test ./internal/portal/playground/... ./internal/portal/sessions/...
+  ./internal/portal/prereceive/...` all green at review time.
+
+- **Cross-cutting alignment** — single shared validator gives identical
+  inputs identical answers across all three create/patch paths; single
+  shared test harness eliminates the prior 3-way drift (one copy with
+  Postgres truncate, one without, plus two divergent `openStore`
+  helpers). No public-API breakage: sessions handler envelope shape and
+  error code (`session.invalid_writable_scope`) are byte-identical to
+  pre-extract behavior.
+
+- **Foundation-doc alignment (rolling-forward)** — found and fixed inline:
+  - `docs/SPEC.md:148-154` "Validation contract — API time" only named
+    `POST /api/orgs/{orgID}/sessions` and the durable PATCH endpoint as
+    front-door validators. After this feature, `POST /api/playground/sessions`
+    is also a front-door validator. Rolled the SPEC forward to list all
+    three endpoints and to note they share a single
+    `prereceive.ValidateWritableScope` so identical inputs give identical
+    answers across surfaces.
+  - `docs/PROTOCOL.md:429` `session.invalid_writable_scope` annotation
+    rolled forward to note the playground create path also emits it.
+
+- **Scope deviations from design** — both already documented in the
+  story-level implementation notes and accepted at story review:
+  (a) sessions handler tests not retrofitted per-dialect (65+ tests across
+  7 files; harness consolidation alone is the high-value part, full
+  per-dialect wrapping tracked as
+  `idea-sessions-handler-tests-per-dialect-retrofit`);
+  (b) `stepClock`-based ttl-inner-branch test substituted with
+  `TestJoinPlaygroundSession_StatusNotActive_Returns410` covering the
+  parallel "410 after cheap checks pass" envelope, tracked as
+  `idea-playground-join-handler-ttl-inner-branch-coverage`. Both
+  substitutions preserve the spirit of the design.
+
+Children complete: all 3 at stage:done. Advancing feature stage
+review → done.

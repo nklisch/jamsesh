@@ -145,13 +145,15 @@ matched relative to the repository root (e.g. `src/main.go`, not
 **Validation contract** — patterns are validated at two layers (defence in
 depth):
 
-1. **API time.** `POST /api/orgs/{orgID}/sessions` and
-   `PATCH /api/orgs/{orgID}/sessions/{sessionID}` compile the supplied
-   `writable_scope` and reject malformed patterns (unclosed `{`, invalid
-   character classes, etc.) with `400 session.invalid_writable_scope`
-   before the row is written or updated. This is the front door — most
-   malformed scopes are caught here, immediately visible to the session
-   creator.
+1. **API time.** `POST /api/orgs/{orgID}/sessions`,
+   `PATCH /api/orgs/{orgID}/sessions/{sessionID}`, and
+   `POST /api/playground/sessions` compile the supplied `writable_scope` and
+   reject malformed patterns (unclosed `{`, invalid character classes, etc.)
+   with `400 session.invalid_writable_scope` before the row is written or
+   updated. This is the front door — most malformed scopes are caught here,
+   immediately visible to the session creator. All three endpoints share a
+   single validator (`prereceive.ValidateWritableScope`) so identical inputs
+   give identical answers across surfaces.
 2. **Push time.** The `pre-receive` hook re-compiles the session's stored
    scope on every push and rejects the push if compilation fails. This
    covers the back door — a malformed pattern that somehow lands in the
