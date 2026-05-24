@@ -1,14 +1,14 @@
 ---
 id: story-sessionviewshell-test-playground-branch-coverage
 kind: story
-stage: implementing
+stage: review
 tags: [test, ui, playground]
 parent: null
 depends_on: [story-playground-ws-protocol-mismatch-session-view-extensions]
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # SessionViewShell.test.ts misses the playground branch entirely
@@ -45,3 +45,31 @@ SessionViewShell.test.ts with:
   with `/playground/s/:id/ended`.
 - Regression guard for the durable path: ensure none of the
   playground UI renders when `org_id !== 'org_playground'`.
+
+## Implementation discovery — fixed via sibling story
+
+All acceptance criteria were already satisfied by sibling story
+`story-playground-ws-protocol-mismatch-session-view-extensions`
+(commit `d50e575`). The playground describe block in
+`frontend/src/lib/screens/SessionViewShell.test.ts` (lines 278–396)
+covers every criterion:
+
+- **Correct endpoint called** (not orgs endpoint): test at line 297
+  asserts `GET /api/playground/sessions/{id}` is called and the
+  org-scoped endpoint is NOT called.
+- **PlaygroundChip present**: test at line 313 asserts
+  `aria-label="Playground session"` renders; regression guard at line
+  400 confirms it is absent for durable sessions.
+- **subscribe() with correct event type names**: test at line 321
+  asserts `playground.destruction_warning` and `session.ended` are
+  subscribed, and NOT the legacy broken names `playground.activity_reset`
+  or `session.destroyed`.
+- **session.ended fires navigation**: test at line 340 dispatches the
+  `session.ended` envelope and asserts `navigate` is called with
+  `/playground/s/:id/ended`.
+- **playground.destruction_warning updates idle timer / CountdownBadge
+  urgent**: test at line 355 fires the warning event with
+  `reason=idle_timeout` and 3 minutes remaining, then asserts the badge
+  gains the `urgent` CSS class.
+
+Verification: `npm run check` — 0 errors, `npm run test` — 635/635 passed.
