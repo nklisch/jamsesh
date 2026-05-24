@@ -26,26 +26,6 @@ import (
 )
 
 func TestCLI_JamPlayground(t *testing.T) {
-	// Blocked on bug-playground-git-receive-pack-fails-with-200-hangup
-	// (ROOT CAUSE IDENTIFIED in that bug's body): the base-ref push is
-	// rejected by prereceive.WalkAndValidate because the seed commit
-	// lacks the required Jam-Session/Jam-Turn/Jam-Author trailers
-	// (internal/portal/prereceive/commits.go:15). A vanilla "initial commit"
-	// from `git commit -m '...'` has no trailers, so jamsesh new --playground
-	// from a fresh repo gets locked out — chicken-and-egg between the
-	// trailer requirement and the bootstrap push.
-	//
-	// Two other CLI bugs were surfaced by this test and ARE already fixed
-	// inline (commit 2bf22ea):
-	//   1. idea-playground-scope-normalization-bug — scope=="**" wasn't
-	//      normalized to ["**"] before sending to the portal.
-	//   2. The playground git push URL was missing the org_id segment;
-	//      portal route is /git/{orgID}/{sessionID}.git/...
-	//
-	// Re-enable once the trailer requirement is resolved for base-ref pushes
-	// (recommended approach: exempt base-ref pushes when OldSHA is empty).
-	t.Skip("blocked on bug-playground-git-receive-pack-fails-with-200-hangup (root cause: trailer requirement on seed commit)")
-
 	ctx := context.Background()
 
 	// --- Stack: postgres + portal with playground enabled ---
@@ -128,8 +108,20 @@ func TestCLI_JamPlayground(t *testing.T) {
 	//   sessions/<id>/last_seen_seq
 	tokenBytes := readStateFile(t, pluginDataDir, filepath.Join("sessions", sessionID, "token"))
 	token := strings.TrimSpace(string(tokenBytes))
-	if !strings.HasPrefix(token, "jamsesh_anon_") {
-		t.Errorf("sessions/%s/token: expected prefix 'jamsesh_anon_', got %q", sessionID, token)
+	// The anonymous-bearer format is a 64-char lowercase-hex string emitted by
+	// internal/portal/tokens.generateToken (see token.go:15). There is no
+	// "jamsesh_anon_" prefix; the synthetic prefix lives only on the account's
+	// internal email (anon_<id>@playground.local). Assert the shape that the
+	// portal actually produces.
+	if len(token) != 64 {
+		t.Errorf("sessions/%s/token: expected 64 hex chars, got %d (%q)", sessionID, len(token), token)
+	}
+	for i, r := range token {
+		isHex := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')
+		if !isHex {
+			t.Errorf("sessions/%s/token: char %d is %q, expected lowercase hex", sessionID, i, r)
+			break
+		}
 	}
 
 	orgID := strings.TrimSpace(string(readStateFile(t, pluginDataDir, filepath.Join("sessions", sessionID, "org_id"))))

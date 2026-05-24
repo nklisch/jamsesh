@@ -54,19 +54,6 @@ type soloTombstone struct {
 
 
 func TestPlayground_SoloCreatePushTombstone(t *testing.T) {
-	// Blocked on bug-playground-git-receive-pack-fails-with-200-hangup
-	// (ROOT CAUSE IDENTIFIED in that bug's body): the base-ref push is
-	// rejected by prereceive.WalkAndValidate because the seed commit lacks
-	// the required Jam-Session/Jam-Turn/Jam-Author trailers
-	// (internal/portal/prereceive/commits.go:15). The test will only pass
-	// once base-ref pushes are exempted from trailer validation (or
-	// equivalent fix).
-	//
-	// The original second blocker (idea-playground-worker-clock-not-advanceable)
-	// was resolved as a single-stride fix at commit cc55579; once the
-	// push bug is also fixed, this test's clock-advance step will Just Work.
-	t.Skip("blocked on bug-playground-git-receive-pack-fails-with-200-hangup (root cause: trailer requirement on seed commit)")
-
 	ctx := context.Background()
 
 	// ── Infrastructure ───────────────────────────────────────────────────────
@@ -165,9 +152,17 @@ func TestPlayground_SoloCreatePushTombstone(t *testing.T) {
 	t.Logf("playground: tombstone verified: members=%d commits=%d end_reason=%s",
 		tomb.MembersCount, tomb.CommitsCount, tomb.EndReason)
 
-	// ── Step 7: Assert the session row is gone (GET returns 404) ─────────────
-	// After destruction the sessions row is deleted; the GET endpoint returns 404.
-	t.Log("playground: asserting session is gone (expect 404)")
+	// ── Step 7: Assert the session is gone (GET returns 401 or 404) ──────────
+	// After destruction:
+	//   - The bearer is revoked by the destruction cascade, so the auth
+	//     middleware rejects it with 401 BEFORE the handler reaches the
+	//     session-lookup branch that would return 404.
+	//   - If somehow the bearer were still valid, the session row is gone
+	//     and the handler returns 404.
+	// Either outcome proves the session is no longer accessible — what matters
+	// for the journey-level invariant is "not 200 with stale state". The
+	// abandonment-destruction test makes the same lenient assertion shape.
+	t.Log("playground: asserting session is gone (expect 401 or 404)")
 	req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/api/playground/sessions/%s", p.URL, sessionID), nil)
 	require.NoError(t, reqErr, "build GET /api/playground/sessions/%s request", sessionID)
@@ -176,9 +171,9 @@ func TestPlayground_SoloCreatePushTombstone(t *testing.T) {
 	require.NoError(t, doErr, "GET /api/playground/sessions/%s", sessionID)
 	defer resp.Body.Close()
 	io.ReadAll(resp.Body) //nolint:errcheck
-	require.Equal(t, http.StatusNotFound, resp.StatusCode,
-		"destroyed session must return 404; got %d", resp.StatusCode)
-	t.Log("playground: session confirmed gone (404)")
+	require.Containsf(t, []int{http.StatusUnauthorized, http.StatusNotFound}, resp.StatusCode,
+		"destroyed session must return 401 (bearer revoked) or 404 (session gone); got %d", resp.StatusCode)
+	t.Logf("playground: session confirmed gone (status %d)", resp.StatusCode)
 
 	// ── Step 8: Assert the bare repo is gone from disk ────────────────────────
 	// After Destruction.Destroy runs, RemoveRepo deletes the bare-repo directory.

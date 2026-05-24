@@ -63,6 +63,21 @@ func (v *Validator) Validate(ctx context.Context, in ValidateInput) (ValidateRes
 	// 3. Per-ref checks.
 	for _, u := range in.Updates {
 		rejections = append(rejections, ValidateRef(ctx, in.Repo, in.Session.ID, in.Account.ID, u)...)
+		// Base-ref first push exemption: the seed commits a user pushes to
+		// refs/heads/jam/<sessionID>/base predate the session and by
+		// definition cannot carry session-aware trailers (Jam-Session,
+		// Jam-Turn, Jam-Author). Trailer/scope enforcement applies to
+		// subsequent collaborative pushes only — applying it to the
+		// bootstrap push is a category error (chicken-and-egg).
+		//
+		// Narrow exemption: only the base ref (refs/heads/jam/<id>/base),
+		// only the first push (OldSHA empty). Subsequent base-ref
+		// updates (rare; usually force-push for reseeding, which is also
+		// blocked by ValidateRef's force-push check) still go through
+		// full per-commit validation.
+		if isBaseRefFirstPush(in.Session.ID, u) {
+			continue
+		}
 		rejections = append(rejections, WalkAndValidate(ctx, in.Repo, u, scope)...)
 	}
 
@@ -77,6 +92,21 @@ func (v *Validator) Validate(ctx context.Context, in ValidateInput) (ValidateRes
 		OK:         len(rejections) == 0,
 		Rejections: rejections,
 	}, nil
+}
+
+// isBaseRefFirstPush reports whether u is the inaugural push to the
+// session's base ref (refs/heads/jam/<sessionID>/base with empty OldSHA).
+// The seed commits a user pushes here are their pre-session working-tree
+// commits — they predate the session and so cannot carry session-aware
+// trailers (Jam-Session, Jam-Turn, Jam-Author) naming this session.
+// Trailer enforcement is for collaborative session work, not bootstrap.
+//
+// Returns true exactly when both conditions hold:
+//   - The ref name is the two-segment base ref: refs/heads/jam/<sessionID>/base
+//   - The update has no parent SHA (OldSHA is empty — i.e. this is the
+//     create-ref operation, not a subsequent update)
+func isBaseRefFirstPush(sessionID string, u RefUpdate) bool {
+	return u.OldSHA == "" && u.Ref == "refs/heads/jam/"+sessionID+"/base"
 }
 
 // parseWritableScope unmarshals the JSON-encoded glob array stored in
