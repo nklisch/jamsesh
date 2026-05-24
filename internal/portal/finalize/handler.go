@@ -21,13 +21,23 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now().UTC() }
 
+// finalizeStore is the minimal store interface consumed by Handler and the
+// package-private helper functions (checkSessionMembership, lookupAccountID).
+type finalizeStore interface {
+	store.FinalizeLockStore
+	store.SessionStore
+	store.SessionMemberStore
+	store.OrgMemberStore
+	store.AccountStore
+}
+
 // Handler implements the openapi.StrictServerInterface methods that the
 // finalize feature owns. Each endpoint lives in its own file in this
 // package; this file defines the struct + constructor.
 //
 // Plan / fetch-token / mark-shipped land in stories 2 and 3.
 type Handler struct {
-	store     store.Store
+	store     finalizeStore
 	storage   storage.Service
 	events    *events.Log
 	tokens    tokens.Service
@@ -38,13 +48,13 @@ type Handler struct {
 // New constructs a Handler with the real system clock. portalURL is the
 // public origin used to compose the git smart-HTTP fallback URL in plan
 // responses (story 2/3).
-func New(s store.Store, stor storage.Service, log *events.Log, tok tokens.Service, portalURL string) *Handler {
+func New(s finalizeStore, stor storage.Service, log *events.Log, tok tokens.Service, portalURL string) *Handler {
 	return NewWithClock(s, stor, log, tok, portalURL, realClock{})
 }
 
 // NewWithClock constructs a Handler with the supplied clock. Used by unit
 // tests (fakeClock) and the e2etest-tagged binary (testclock.AdvanceableClock).
-func NewWithClock(s store.Store, stor storage.Service, log *events.Log, tok tokens.Service, portalURL string, clock Clock) *Handler {
+func NewWithClock(s finalizeStore, stor storage.Service, log *events.Log, tok tokens.Service, portalURL string, clock Clock) *Handler {
 	return &Handler{
 		store:     s,
 		storage:   stor,

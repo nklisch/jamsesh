@@ -251,7 +251,7 @@ func (h *Handler) GetFinalizePlan(ctx context.Context, req openapi.GetFinalizePl
 // empty string when no match is found. Errors that are not "not-found"
 // propagate via a log line and the function returns empty (best-effort;
 // the trailer still works on GitHub etc.).
-func lookupAccountID(ctx context.Context, s store.Store, email string) string {
+func lookupAccountID(ctx context.Context, s finalizeStore, email string) string {
 	if email == "" {
 		return ""
 	}

@@ -23,7 +23,7 @@ const (
 // checkSessionMembership verifies the caller is a member of both the org
 // and the session. Returns a verdict and any unexpected error. Session-not-
 // found returns memberSessionNotFound (handlers translate to 404).
-func checkSessionMembership(ctx context.Context, s store.Store, orgID, sessionID, accountID string) (membershipVerdict, error) {
+func checkSessionMembership(ctx context.Context, s finalizeStore, orgID, sessionID, accountID string) (membershipVerdict, error) {
 	if _, err := s.GetOrgMember(ctx, store.GetOrgMemberParams{
 		OrgID:     orgID,
 		AccountID: accountID,
