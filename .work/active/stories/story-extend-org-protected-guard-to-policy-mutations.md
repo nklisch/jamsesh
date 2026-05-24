@@ -1,14 +1,14 @@
 ---
 id: story-extend-org-protected-guard-to-policy-mutations
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground, defense-in-depth]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Extend org_protected guard to session_invite_policy mutations
@@ -54,10 +54,38 @@ session_invite_policy field".
 
 ## Acceptance
 
-- [ ] `PatchOrg` returns `409 org.protected` when called against any
+- [x] `PatchOrg` returns `409 org.protected` when called against any
       org with `OrgProtected=true`, regardless of which fields the
       caller is trying to change.
-- [ ] Regression test in `internal/portal/accounts/orgs_test.go`
+- [x] Regression test in `internal/portal/accounts/orgs_test.go`
       exercises the rejection path against the playground org.
-- [ ] Comment in `store.go`'s `OrgProtected` doc-string is widened to
+- [x] Comment in `store.go`'s `OrgProtected` doc-string is widened to
       include "policy mutations".
+
+## Implementation notes
+
+**Approach:** Added the `OrgProtected` guard to `PatchOrg` after the
+creator-role check. The handler now calls `GetOrgByID` once before any
+mutation; if `org.OrgProtected` is true it returns immediately with
+`409 org.protected`. The same `org` value is reused for the 200 response
+after the optional policy update, eliminating the previous duplicate
+`GetOrgByID` call at the tail of the handler.
+
+**OpenAPI change:** Added a `409` response to the `PatchOrg` operation in
+`docs/openapi.yaml` and regenerated `internal/api/openapi/server.gen.go`.
+The generated `PatchOrg409JSONResponse` type (alias of `ErrorEnvelope`)
+is used directly in the guard clause.
+
+**Error code:** `409 org.protected` — mirrors the existing 409 pattern
+used by `AcceptOrgInvite` and `AbandonSession`.
+
+**Test (`TestPatchOrg_ProtectedOrg_Returns409`):** Seeds a protected org
+via `store.CreateProtectedOrg` (same path the playground provision hook
+uses), adds a creator member, issues a `PATCH session_invite_policy=members_only`,
+asserts 409 + `error=org.protected`, and verifies the policy was not
+mutated in the database.
+
+**store.go docstring:** Widened `OrgProtected` comment to include "policy
+mutations via PatchOrg" alongside the existing "delete or rename" wording.
+
+All tests pass (`go test ./...`).

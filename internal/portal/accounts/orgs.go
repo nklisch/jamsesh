@@ -84,6 +84,29 @@ func (h *Handler) PatchOrg(ctx context.Context, req openapi.PatchOrgRequestObjec
 		}, nil
 	}
 
+	// Defense-in-depth: reject any mutation on a protected org, regardless of
+	// which fields the caller is changing. The playground org is seeded with
+	// OrgProtected=true and must never have its session_invite_policy (or any
+	// future mutable field) changed via this handler.
+	org, err := h.store.GetOrgByID(ctx, req.OrgID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return openapi.PatchOrg404JSONResponse{
+				NotFoundJSONResponse: openapi.NotFoundJSONResponse{
+					Error:   "org.not_found",
+					Message: "org not found",
+				},
+			}, nil
+		}
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: get org (org=%s): %w", req.OrgID, err))
+	}
+	if org.OrgProtected {
+		return openapi.PatchOrg409JSONResponse{
+			Error:   "org.protected",
+			Message: "this org is protected and cannot be modified",
+		}, nil
+	}
+
 	if req.Body.SessionInvitePolicy != "" {
 		val := string(req.Body.SessionInvitePolicy)
 		// Belt-and-suspenders: the OpenAPI enum should have already rejected
@@ -103,7 +126,8 @@ func (h *Handler) PatchOrg(ctx context.Context, req openapi.PatchOrgRequestObjec
 		}
 	}
 
-	org, err := h.store.GetOrgByID(ctx, req.OrgID)
+	// Re-fetch after any mutation so the 200 response reflects the updated state.
+	org, err = h.store.GetOrgByID(ctx, req.OrgID)
 	if err != nil {
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: get org (org=%s): %w", req.OrgID, err))
 	}

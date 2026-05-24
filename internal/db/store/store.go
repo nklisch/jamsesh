@@ -97,9 +97,10 @@ type Org struct {
 	CreatedAt           time.Time
 	SessionInvitePolicy string // "members_only" or "open"
 	// OrgProtected marks system-owned reserved orgs (e.g. the playground org).
-	// Any handler that deletes or renames an org MUST check this flag and
-	// return 409 if true. The playground org is seeded with OrgProtected=true
-	// at startup when JAMSESH_PLAYGROUND_ENABLED=true.
+	// Any handler that deletes, renames, or mutates policy fields on an org
+	// MUST check this flag and return 409 if true. This includes
+	// session_invite_policy mutations via PatchOrg. The playground org is
+	// seeded with OrgProtected=true at startup when JAMSESH_PLAYGROUND_ENABLED=true.
 	OrgProtected bool
 }
 

@@ -686,6 +686,53 @@ func TestPatchOrg_Grandfather(t *testing.T) {
 	}
 }
 
+// TestPatchOrg_ProtectedOrg_Returns409 verifies the defense-in-depth guard:
+// a creator calling PATCH on a protected org is rejected with 409 org.protected,
+// regardless of which fields are being mutated. This mirrors the playground org
+// case where session_invite_policy="open" is load-bearing for anonymous joins.
+func TestPatchOrg_ProtectedOrg_Returns409(t *testing.T) {
+	env := newOrgsMembersTestEnv(t)
+
+	creator := seedAccount(t, env.s, "creator-protected@example.com")
+
+	// Seed a protected org (org_protected=true, session_invite_policy=open),
+	// matching how the playground org is provisioned at startup.
+	protectedOrg, err := env.s.CreateProtectedOrg(context.Background(), store.CreateProtectedOrgParams{
+		ID:        "protected-org-id-test",
+		Name:      "PlaygroundOrg",
+		Slug:      "playground-org",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("seed protected org: %v", err)
+	}
+	seedMember(t, env.s, protectedOrg.ID, creator.ID, "creator")
+
+	tok := env.bearerToken(t, creator.ID)
+	resp := patchJSON(t, env.srv, "/api/orgs/"+protectedOrg.ID, tok,
+		map[string]any{"session_invite_policy": "members_only"})
+
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", resp.StatusCode)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if code, _ := body["error"].(string); code != "org.protected" {
+		t.Errorf("error code: want org.protected, got %q", code)
+	}
+
+	// Verify the policy was NOT mutated — the org remains open.
+	reloaded, err := env.s.GetOrgByID(context.Background(), protectedOrg.ID)
+	if err != nil {
+		t.Fatalf("reload org: %v", err)
+	}
+	if reloaded.SessionInvitePolicy != "open" {
+		t.Errorf("session_invite_policy mutated on protected org: got %q, want open", reloaded.SessionInvitePolicy)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Dep-failure tests: authfail transient DB path
 // ---------------------------------------------------------------------------
