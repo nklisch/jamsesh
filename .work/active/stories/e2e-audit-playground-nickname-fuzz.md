@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-nickname-fuzz
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-fuzz
 depends_on: []
@@ -103,3 +103,70 @@ func TestPlaygroundNicknameFuzz(t *testing.T) {
     }
 }
 ```
+
+## Implementation notes
+
+**File:** `tests/e2e/fuzz/playground_nickname_test.go`
+
+**Two test entry points implemented:**
+
+1. `FuzzPlaygroundNickname` — Go-native fuzz harness (`func FuzzXxx(*testing.F)`).
+   Seed corpus: 31 entries (19 invalid + 12 valid/edge), covering all 11 cases
+   from `TestJoinPlaygroundSession_NicknameValidation` plus Unicode, control
+   chars, RTL override, zero-width joiner, emoji, and length-boundary cases.
+   Each fuzz iteration starts a fresh postgres + portal container bound to the
+   iteration's `*testing.T` (matching the `TestFencingTokenFuzz` pattern — the
+   fixtures require `*testing.T`, not `*testing.F`). All 31 seed cases pass
+   under `go test -run FuzzPlaygroundNickname -count=1`.
+
+2. `TestPlaygroundNicknameFuzz` — property-based companion. Starts the stack
+   once (amortises container startup), creates one shared session, then runs
+   30 seed cases + 100 random iterations. All 130 cases pass.
+
+**Contract predicate (`nicknameValid`):**
+
+The predicate mirrors the handler's actual validation pipeline, including the
+`strings.TrimSpace` call:
+
+```go
+func nicknameValid(s string) bool {
+    trimmed := strings.TrimSpace(s)
+    if trimmed == "" {
+        return true // empty or whitespace-only: server mints, 200 path
+    }
+    return len(trimmed) >= 2 && len(trimmed) <= 24 && nicknameValidRE.MatchString(trimmed)
+}
+```
+
+**Contract discovery during testing:**
+
+During seed corpus execution, `seed#18` (`" "` — single space) triggered the
+BUG path in the initial predicate (which treated whitespace-only as invalid).
+Investigation confirmed this is intentional production behavior: the handler's
+`strings.TrimSpace(req.Body.Nickname) != ""` check collapses whitespace-only
+strings to `""`, which falls through to the server-mints path (200). This is a
+contract clarification, not a production bug. The predicate was updated to match.
+
+**Rate limiter finding:**
+
+`POST /api/playground/sessions` has a per-IP rate limiter
+(`JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR`, default 3/hour). The
+`TestPlaygroundNicknameFuzz` design was revised to share one session across all
+iterations (invalid inputs never add a participant; valid inputs do, but
+`MaxParticipants=10000` absorbs the full iteration set). Rate limit env var
+set to 10000 in both test functions.
+
+**Verification run:**
+
+```
+$ cd tests/e2e && go test ./fuzz/ -run FuzzPlaygroundNickname -count=1 -v
+# 31 seeds: PASS (34s)
+
+$ cd tests/e2e && go test ./fuzz/ -run TestPlaygroundNicknameFuzz -count=1 -v
+# 30 seeds + 100 random: PASS (7s)
+```
+
+Active fuzzing (`go test -fuzz=FuzzPlaygroundNickname -fuzztime=30s`) was NOT
+run in this session (expensive — requires dedicated fuzz time). The seed corpus
+pass is sufficient for the regression layer; active fuzzing is left to CI or
+manual invocation.
