@@ -1,7 +1,7 @@
 ---
 id: story-refactor-frontend-god-components-joiner-picker
 kind: story
-stage: implementing
+stage: review
 tags: [ui, refactor]
 parent: feature-refactor-frontend-god-components
 depends_on: []
@@ -56,3 +56,32 @@ acceptance. Extracting either one as a sub-component is sufficient.
 ## Rollback
 
 `git revert` the commit.
+
+## Implementation notes
+
+**Actual concerns identified:** The 580-line file split cleanly along two lines:
+
+1. **Nickname picker / join form** (`idle` + `joining` states) — extracted to
+   `frontend/src/lib/components/JoinerForm.svelte`. Owns: nickname state,
+   avatar derivation, wordlist generator, reroll, validation, and submit
+   handler. Props: `viewState: 'idle' | 'joining'`, `onjoin(nickname)`,
+   `onnavplayground()`.
+
+2. **Join outcome states** (`full` + `error` states) — extracted to
+   `frontend/src/lib/components/JoinerOutcome.svelte`. Owns: the session-full
+   and generic-error panels. Props: `viewState: 'full' | 'error'`, `errorMsg`,
+   `onretry()`, `onnavplayground()`.
+
+**JoinerPicker.svelte** is now a thin screen orchestrator: imports both
+components, owns the ViewState machine and the async `handleJoin` function
+(API call, auth context write, navigation), delegates all rendering.
+
+**LoC delta:** 580 → 162 lines on JoinerPicker.svelte (−418 lines).
+JoinerForm.svelte: 260 lines. JoinerOutcome.svelte: 118 lines.
+
+**No shared rune module needed:** state is not shared between picker and
+outcome — they are mutually exclusive branches. Props + callbacks suffice.
+
+**Test result:** All 22 JoinerPicker tests pass unchanged — the test renders
+the screen component and the extracted sub-components are transparent to it.
+`npm run check` 0 errors. `npm run build` clean.
