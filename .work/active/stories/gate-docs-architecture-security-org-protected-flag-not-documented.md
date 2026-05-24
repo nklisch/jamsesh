@@ -1,7 +1,7 @@
 ---
 id: gate-docs-architecture-security-org-protected-flag-not-documented
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,10 @@ A new `org_protected` boolean column on `orgs` ships in this bundle (migrations 
 
 ## Required edit
 Extend the "Reserved orgs" paragraph in `docs/ARCHITECTURE.md` to note the `org_protected` schema column and that the playground org is provisioned with `org_protected=true`, blocking delete / rename / policy mutations with `409 org.protected`. Add the `org.protected` error code to PROTOCOL.md's error-code list.
+
+## Implementation notes
+
+- Extended `docs/ARCHITECTURE.md` lines 550–557 ("Reserved orgs" paragraph) with a new paragraph describing the `org_protected` boolean column (migration 00017, `NOT NULL DEFAULT false`), that the playground org is provisioned with `org_protected=true`, and that any `PATCH /api/orgs/{orgID}` targeting a protected org is rejected with `409 org.protected` before mutation.
+- Added `org.protected` to the common error-code list in `docs/PROTOCOL.md` immediately before `playground.session_full`, consistent with list ordering.
+- Code semantics confirmed: `internal/portal/accounts/orgs.go` `PatchOrg` checks `org.OrgProtected` and returns `409 org.protected` for all mutations (rename, `session_invite_policy`). No discrepancy with story claims.
+- `go build ./...` passes with no errors.

@@ -461,6 +461,7 @@ Common error codes:
 - `push.missing_trailer` (with `details.missing` listing absent trailers)
 - `fork.target_not_found`
 - `fork.invalid_target_ref`
+- `org.protected` (409; `PATCH /api/orgs/{orgID}` rejected because the target org carries `org_protected=true`; the playground org is the only protected org by default)
 - `playground.session_full` (409; playground `join` rejected because the session is at the `MaxParticipants` cap; response body includes `retry_after_seconds`)
 - `playground.session_ended` (410; playground `join` rejected because the session's `hard_cap_at` has elapsed or the session is no longer active)
 - `playground.size_exceeded` (pre-receive; playground push rejected because the session's accumulated repo size would exceed the configured content cap; `details` includes `current_bytes`, `pack_bytes`, `total_bytes`, `max_bytes`, `session_id`)

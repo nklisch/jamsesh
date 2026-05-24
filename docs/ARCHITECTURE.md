@@ -556,6 +556,13 @@ standard `org_id`-in-WHERE filters without special-casing. The
 session-destruction sweep targets rows by `session_id`; the org row itself
 persists across session lifecycles.
 
+The `orgs` table carries an `org_protected` boolean column (migration 00017,
+`NOT NULL DEFAULT false`). The playground org is provisioned with
+`org_protected=true`. Any `PATCH /api/orgs/{orgID}` request targeting a
+protected org — including rename, delete, and `session_invite_policy`
+mutations — is rejected with `409 org.protected` before any mutation is
+attempted. No other org is protected by default.
+
 ## Membership model
 
 Every persisted entity carries `org_id`. Every API route is org-scoped.
