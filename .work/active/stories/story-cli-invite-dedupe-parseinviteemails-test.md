@@ -1,14 +1,14 @@
 ---
 id: story-cli-invite-dedupe-parseinviteemails-test
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup, test-debt]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Dedupe `TestParseInviteEmails` across `new_test.go` and `invite_test.go`
@@ -41,3 +41,19 @@ cleanup, but it doesn't harm correctness to have both").
   `invite_test.go` (alongside the function it tests)
 - `go test ./cmd/jamsesh/sessioncmd/...` clean
 - `go vet ./cmd/jamsesh/...` clean
+
+## Implementation notes
+
+Canonical test lives in `cmd/jamsesh/sessioncmd/invite_test.go` alongside
+`parseInviteEmails` in `invite.go`.
+
+- Removed `TestParseInviteEmails` (6 cases) from `new_test.go` (was left
+  behind after the helper moved from `new.go` → `invite.go`).
+- Renamed `TestParseInviteEmails_inviteFile` → `TestParseInviteEmails` in
+  `invite_test.go` and stripped the now-stale "intentionally duplicated"
+  comment block.
+- The `invite_test.go` version had one extra case
+  (`"a@x.com,b@y.com,c@z.com"`) that documents the comma-joined input
+  inviteAction produces; it was retained as-is.
+- `go build ./...`, `go test ./...`, and `go vet ./cmd/jamsesh/...` all
+  pass cleanly.

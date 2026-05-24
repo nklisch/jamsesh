@@ -844,32 +844,3 @@ func TestPlaygroundAction_pushUsesBearerNotOAuthToken(t *testing.T) {
 			expectedB64, capturedGitArgs)
 	}
 }
-
-// TestParseInviteEmails tests the parseInviteEmails helper.
-func TestParseInviteEmails(t *testing.T) {
-	tests := []struct {
-		input string
-		want  []string
-	}{
-		{"a@x.com", []string{"a@x.com"}},
-		{"a@x.com,b@y.com", []string{"a@x.com", "b@y.com"}},
-		{"a@x.com, b@y.com , c@z.com", []string{"a@x.com", "b@y.com", "c@z.com"}},
-		{"a@x.com,,b@y.com", []string{"a@x.com", "b@y.com"}},
-		{"", []string{}},
-		{"  ,  ", []string{}},
-	}
-
-	for _, tc := range tests {
-		got := parseInviteEmails(tc.input)
-		if len(got) != len(tc.want) {
-			t.Errorf("parseInviteEmails(%q) = %v (len %d), want %v (len %d)",
-				tc.input, got, len(got), tc.want, len(tc.want))
-			continue
-		}
-		for i, e := range tc.want {
-			if got[i] != e {
-				t.Errorf("parseInviteEmails(%q)[%d] = %q, want %q", tc.input, i, got[i], e)
-			}
-		}
-	}
-}

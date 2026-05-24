@@ -227,12 +227,7 @@ func TestInviteAction_usageError(t *testing.T) {
 }
 
 // TestParseInviteEmails tests the parseInviteEmails helper with a table of inputs.
-// NOTE: TestParseInviteEmails is intentionally also in new_test.go because it
-// was there before invite.go was created. This copy exercises the helper from
-// the invite.go perspective; both live in the same package and test the same func.
-// (The new_test.go copy can be removed in a follow-up cleanup, but it doesn't
-// harm correctness to have both.)
-func TestParseInviteEmails_inviteFile(t *testing.T) {
+func TestParseInviteEmails(t *testing.T) {
 	tests := []struct {
 		input string
 		want  []string
