@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wordlist-empty-or-dashonly-corruption-resistance
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -34,3 +34,15 @@ func TestPick_NeverProducesEmptyOrDashOnly(t *testing.T) {
 
 ## Test location (suggested)
 `internal/portal/playground/wordlist/wordlist_test.go`
+
+## Implementation notes
+
+Added `internal/portal/playground/wordlist/corruption_resistance_test.go` (internal/white-box package so `splitNonEmpty` is directly accessible). Five tests:
+
+- `TestPick_NeverProducesEmptyOrDashOnly` — 10 000 iterations; asserts every handle is non-empty, has exactly one hyphen, and neither the adjective nor animal part is empty.
+- `TestSplitNonEmpty_FiltersBlankAndWhitespaceLines` — verifies blank/whitespace lines are stripped.
+- `TestSplitNonEmpty_EmptyInput` — empty, all-whitespace, and all-newline inputs return empty slice without panic.
+- `TestSplitNonEmpty_DashOnlyLinesPassThrough` — documents the design boundary: `splitNonEmpty` is a blank-line stripper, not a word validator; dash-only entries pass through. Protection is the curated wordlist, not the parser.
+- `TestSplitNonEmpty_TrimsLeadingTrailingSpacesFromEntries` — entries with surrounding whitespace are trimmed before they reach the slice.
+
+All 8 tests (5 new + 3 pre-existing) pass. No production bugs found; the real wordlists contain no blank or dash-only lines.
