@@ -255,7 +255,9 @@ Equivalent to CC's `SessionEnd`. Fires when the agent runtime exits.
 ## Commit trailer conventions
 
 All session commits carry structured trailers. The pre-receive hook enforces
-presence of the required ones.
+presence of the required ones on every collaborative push — the only
+exemption is the inaugural push to a session's base ref (see "Base-ref
+bootstrap exemption" below).
 
 **Required on every session commit:**
 
@@ -264,6 +266,16 @@ Jam-Session: <session-id>
 Jam-Turn: <turn-number>
 Jam-Author: <user-id-or-handle>
 ```
+
+**Base-ref bootstrap exemption.** The very first push to
+`refs/heads/jam/<session-id>/base` (with `OldSHA` empty — i.e. creating
+the ref rather than updating it) is exempted from per-commit trailer and
+scope validation. The seed commits a user pushes here are their
+pre-session working-tree commits — they predate the session existing and
+so cannot carry session-aware trailers naming this session. Subsequent
+updates to the base ref (rare; usually force-push for reseeding, which
+is independently rejected by the force-push check) and every push to
+non-base refs still go through full per-commit validation.
 
 **Optional, recognized by the system:**
 
