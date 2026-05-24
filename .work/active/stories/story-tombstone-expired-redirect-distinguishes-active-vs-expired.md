@@ -1,7 +1,7 @@
 ---
-id: idea-tombstone-expired-redirect-distinguishes-active-vs-expired
+id: story-tombstone-expired-redirect-distinguishes-active-vs-expired
 kind: story
-stage: backlog
+stage: implementing
 tags: [ui, playground, ux]
 parent: null
 depends_on: []
