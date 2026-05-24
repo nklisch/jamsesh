@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-store-narrow-handler-signatures
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal, refactor]
 parent: null
 depends_on: [feature-refactor-adapter-generic-wrap-helpers]
@@ -152,3 +152,63 @@ should be picked up only after the Option A feature reaches
 
 Pure refactor. Tagged `[refactor]`. No public API beyond
 `internal/` is affected.
+
+## Refactor Overview & Design (2026-05-24, autopilot)
+
+Consumer audit:
+- 54 non-test references to `store.Store` in production code
+- 80 references in tests (mostly the `failingFooStore struct { store.Store }` embedding pattern)
+- 19 existing sub-interfaces ready to be consumed
+
+Plan: 3-step serial chain. Step 1 narrows production signatures.
+Step 2 narrows test mocks to match. Step 3 rolls the foundation doc
+forward.
+
+## Refactor Steps
+
+### Step 1: Handler/service/worker signature sweep
+**Priority**: High  **Risk**: Medium
+**Files**: ~50 files across `internal/portal/` and `cmd/portal/`
+**Story**: `story-store-partition-handler-signature-sweep`
+
+Sweep production consumers to take narrowest sub-interface union.
+Multi-domain consumers use lowercase composed interfaces declared in
+their own package. `WithTx` callbacks unchanged. cmd/portal/main.go
+still passes full `store.Store` (the producer surface).
+
+### Step 2: Test fixture sweep
+**Priority**: High  **Risk**: Low
+**Files**: ~30+ test files
+**Story**: `story-store-partition-test-fixture-sweep`
+**Depends on**: Step 1
+
+Drop `struct { store.Store }` embedding pattern in test mocks; implement
+only the narrow interface the consumer-under-test takes. Test mocks
+shrink ~30-40%.
+
+### Step 3: Foundation-doc roll-forward
+**Priority**: Low  **Risk**: Very Low
+**Files**: `docs/ARCHITECTURE.md`
+**Story**: `story-store-partition-architecture-doc`
+**Depends on**: Step 2
+
+One-paragraph addition describing the consumer/producer split.
+
+## Implementation Order
+
+Serial chain: Step 1 → Step 2 → Step 3.
+
+Step 1 is the wide-blast-radius work; the compiler catches every type
+mismatch. Step 2 follows naturally as test files inherit the narrowed
+signatures. Step 3 documents the final state.
+
+## Design decisions
+
+- **Mild flavor only** — narrowing consumer signatures, not splitting
+  the adapter or introducing multi-handle DB. The producer (adapter)
+  continues to implement the umbrella.
+- **Composed interfaces in consumer packages, lowercase** — package-
+  private; consumer-owned; the producer doesn't know they exist.
+- **`TxStore` umbrella kept** — tx scope is a different concern.
+- **No partial advance** — Step 1 must run to completion; partial
+  consumer narrowing leaves the codebase in a mixed state.
