@@ -1,0 +1,138 @@
+---
+id: story-refactor-per-package-clock-compliance-auth
+kind: story
+stage: implementing
+tags: [portal, refactor, testing]
+parent: feature-refactor-per-package-clock-compliance
+depends_on: []
+release_binding: null
+gate_origin: refactor-design
+created: 2026-05-23
+updated: 2026-05-23
+---
+
+# auth package: route OAuthHandler + FindOrProvision through the existing Clock
+
+## Brief
+
+`internal/portal/auth/` already defines a `Clock` interface and `realClock`
+in `magic_link.go` (used by `MagicLinkHandler`). Two sibling code paths in
+the same package bypass it and call `time.Now()` directly:
+
+- `auth/oauth.go:110` — `if time.Now().UTC().After(stateRow.ExpiresAt) {` in
+  the OAuth callback's state-expiry check. `OAuthHandler` has no clock field.
+- `auth/provision.go:43` — `return FindOrProvisionAt(ctx, s, id, time.Now().UTC())`.
+  The clock-injectable variant already exists (`FindOrProvisionAt`); this
+  wrapper is the only call site that defeats it.
+
+This story brings both into compliance with `per-package-clock-interface`.
+
+## Current state
+
+```go
+// oauth.go (around line 19, 110)
+type OAuthHandler struct {
+    providers map[string]portaloauth.Provider
+    store     store.Store
+    portalURL string
+}
+
+func NewOAuthHandler(providers map[string]portaloauth.Provider, store store.Store, portalURL string) *OAuthHandler {
+    return &OAuthHandler{providers: providers, store: store, portalURL: portalURL}
+}
+
+func (h *OAuthHandler) OauthCallback(...) {
+    // ...
+    if time.Now().UTC().After(stateRow.ExpiresAt) {
+        return oauthBadRequest("oauth.expired_state", ...), nil
+    }
+    // ...
+}
+
+// provision.go (around line 32)
+func FindOrProvision(ctx context.Context, s store.TxStore, id auth.Identity) (...) {
+    return FindOrProvisionAt(ctx, s, id, time.Now().UTC())
+}
+```
+
+## Target state
+
+```go
+// oauth.go
+type OAuthHandler struct {
+    providers map[string]portaloauth.Provider
+    store     store.Store
+    portalURL string
+    clock     Clock
+}
+
+func NewOAuthHandler(providers ..., store ..., portalURL string) *OAuthHandler {
+    return NewOAuthHandlerWithClock(providers, store, portalURL, realClock{})
+}
+
+func NewOAuthHandlerWithClock(providers ..., store ..., portalURL string, clock Clock) *OAuthHandler {
+    return &OAuthHandler{providers: providers, store: store, portalURL: portalURL, clock: clock}
+}
+
+func (h *OAuthHandler) OauthCallback(...) {
+    // ...
+    if h.clock.Now().After(stateRow.ExpiresAt) {
+        return oauthBadRequest("oauth.expired_state", ...), nil
+    }
+    // ...
+}
+
+// provision.go — convert callers of FindOrProvision to use FindOrProvisionAt
+// with their own clock. If no callers remain, delete FindOrProvision.
+```
+
+## Implementation notes
+
+- The package's existing `Clock` interface and `realClock` (in `magic_link.go`)
+  satisfy this need — do NOT redefine. `OAuthHandler` gets the same `Clock`
+  field as `MagicLinkHandler`.
+- `OauthCallback` line 110: `time.Now().UTC().After(...)` becomes
+  `h.clock.Now().After(...)`. Note `realClock.Now()` already returns UTC, so
+  the wording shortens.
+- `FindOrProvision`: identify every caller via grep (`grep -rn "auth.FindOrProvision\b\|FindOrProvision(" internal/`).
+  For each caller, either thread their existing clock into a direct
+  `FindOrProvisionAt` call, or — if the caller has no clock and gains
+  nothing from injection — leave it on `FindOrProvision`. Goal: every
+  call site that has a clock should route around the wrapper. The
+  wrapper itself can stay (still useful for boot-path code with no
+  clock) but the production call sites of clock-aware handlers must use
+  `FindOrProvisionAt`.
+- Add a unit test for `OAuthHandler` that uses a fake clock to drive the
+  `state expired` branch deterministically — currently the only way to hit
+  that branch in tests is to wait or manipulate `stateRow.ExpiresAt`.
+
+## Acceptance criteria
+
+- [ ] `OAuthHandler` carries a `clock Clock` field; constructor pair
+      (`NewOAuthHandler` + `NewOAuthHandlerWithClock`) mirrors `MagicLinkHandler`.
+- [ ] `oauth.go:110` reads `h.clock.Now()` instead of `time.Now().UTC()`.
+- [ ] At least one OAuth caller (the one that drove this discovery — likely the
+      magic-link → OAuth integration test) uses `FindOrProvisionAt` directly
+      with the caller's clock.
+- [ ] A new test in `internal/portal/auth/oauth_test.go` (or extension of an
+      existing test) drives the expired-state branch via a fake clock.
+- [ ] `go build ./...` clean.
+- [ ] `go test ./internal/portal/auth/...` clean.
+
+## Risk
+
+**Low.** The Clock interface and pattern already exist in the same package; no
+cross-package coupling introduced. The constructor pair pattern keeps existing
+callers compiling without changes.
+
+## Rollback
+
+`git revert` the implementation commit. No schema/state changes; the
+`time.Now().UTC()` form returns the same value as `realClock{}.Now()` in
+production.
+
+## Out of scope
+
+- `auth/slug.go:66` (`time.Now().UnixNano()` as PRNG seed) — tracked
+  separately under a non-`[refactor]` story; replacing the seed changes
+  RNG behavior.

@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-per-package-clock-compliance
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal, refactor, testing]
 parent: null
 depends_on: []
@@ -71,3 +71,84 @@ classification.
 
 Behavior-preserving — production wiring uses `realClock{}` so calls
 to `Now()` return the same value as before. The intent is testability.
+
+## Refactor Overview
+
+The 7 call sites listed in the brief partition cleanly across 4 package
+boundaries. Each boundary lands as one child story; all four are
+independent (no `depends_on` between them) so they run as a single
+parallel wave.
+
+Two patterns are deliberately mixed across the children:
+- **Struct-field Clock** (matches `events.Log`, `tokens.Service`, etc.) —
+  used when the touched code is on a long-lived service:
+  `auth.OAuthHandler`, `objectstore.LifecycleManager`, `ratelimit.Store`.
+- **Parameter-passing `now time.Time`** (matches `auth.FindOrProvisionAt`) —
+  used when the touched code is a free function or per-call value type:
+  `lease.RunRetention`, `objectstore.Manifest.Save`.
+
+Both `auth` and `storage` already define a package-local `Clock` interface
+that callers can lean on; `objectstore`, `ratelimit`, and `lease` need
+fresh package-local definitions (or, for `lease`, just the parameter).
+
+## Refactor Steps
+
+### Step 1: auth (OAuthHandler + provision)
+**Priority**: Medium  **Risk**: Low
+**Files**: `internal/portal/auth/oauth.go`, `internal/portal/auth/provision.go`
+**Story**: `story-refactor-per-package-clock-compliance-auth`
+
+Route `OAuthHandler.OauthCallback`'s state-expiry check through the
+existing `auth.Clock`. Update clock-aware callers of `FindOrProvision`
+to call `FindOrProvisionAt` directly with their clock's `Now()`.
+
+### Step 2: storage/objectstore (LifecycleManager + Manifest.Save)
+**Priority**: High  **Risk**: Medium
+**Files**: `internal/portal/storage/objectstore/lifecycle.go`,
+`internal/portal/storage/objectstore/manifest.go`,
+`internal/portal/storage/objectstore/clock.go` (new)
+**Story**: `story-refactor-per-package-clock-compliance-objectstore`
+
+Define `objectstore.Clock` interface + `realClock`. `LifecycleManager`
+gets a clock field (3 call sites); `Manifest.Save` takes a `now time.Time`
+parameter (1 call site). Caller surface: `Syncer.SyncPushPath` is the
+primary `Save` caller and must thread the clock through.
+
+### Step 3: ratelimit.Store
+**Priority**: Medium  **Risk**: Low
+**Files**: `internal/portal/ratelimit/store.go`
+**Story**: `story-refactor-per-package-clock-compliance-ratelimit`
+
+Add `Clock` interface + `realClock` (in `store.go` or a sibling `clock.go`).
+`Store` gets a clock field (3 sites); constructor pair
+`NewStore` + `NewStoreWithClock`.
+
+### Step 4: lease.RunRetention
+**Priority**: Low  **Risk**: Low
+**Files**: `internal/portal/lease/retention.go`
+**Story**: `story-refactor-per-package-clock-compliance-lease`
+
+`RunRetention` accepts an explicit `now time.Time` parameter — matches
+the `FindOrProvisionAt` shape. No package-level Clock interface needed;
+the function is small enough that the parameter form is cleaner.
+
+## Implementation Order
+
+All four stories run in parallel (Wave 1). No `depends_on` between them.
+
+## Bonus findings (out of scope; logged for follow-up)
+
+The discovery scan surfaced a few related sites that this feature
+deliberately does NOT touch:
+
+- `internal/portal/automerger/outcomes.go:66` — direct `time.Now().UTC()`
+  despite the package having a `realClock` at line 33. Looks like a missed
+  substitution; small follow-up story candidate.
+- `internal/portal/githttp/receive_pack.go:337` — direct `time.Now().UTC()`;
+  the package has no `Clock` pattern yet. Larger follow-up — receive-pack
+  is on the hot path for git operations and would benefit from injectable
+  time for testing.
+- `internal/portal/lease/postgres.go:177` — direct `time.Now()` in the
+  lease driver, separate from `retention.go`. Follow-up.
+- `internal/portal/auth/slug.go:66` — `time.Now().UnixNano()` PRNG seed —
+  intentionally out of scope (behavior-changing).
