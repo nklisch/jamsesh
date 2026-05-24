@@ -160,3 +160,21 @@ gone. Real filesystem, not stub map.
 
 Re-enable with `git grep -n "blocked on idea-playground-clock-not-wired-e2etest"`
 when the bug closes.
+
+## Update — blocking bug resolved inline
+
+The `idea-playground-clock-not-wired-e2etest` blocker was resolved as a
+single-stride fix at commit `cc55579` (added `playgroundClock()` to
+`testClockProvider` and wired both the Handler and Worker via the
+nil-check pattern). The `t.Skip` annotation was removed and the test
+now passes end-to-end:
+
+- Create playground session → bare repo present on disk
+- `p.AdvanceClock(60s)` past idle-timeout
+- Tombstone appears within 1-2s with `end_reason=idle, members_count=1,
+  duration_seconds=60`
+- Post-destruction GET returns 401 (bearer revoked by destruction cascade)
+- Bare repo confirmed absent at the on-disk path
+
+Story stays at `stage: review` — the test landed and passes; ready for
+the review skill to verify.

@@ -38,15 +38,6 @@ import (
 //     bearer is revoked by the destruction cascade before the session row is deleted).
 //  8. Assert bare repo is gone from the portal container filesystem.
 func TestPlayground_AbandonmentDestructionSweep(t *testing.T) {
-	// Blocked on idea-playground-clock-not-wired-e2etest: the playground
-	// Handler and destruction Worker in cmd/portal/main.go are wired with
-	// playground.RealClock() instead of the testClockProvider's
-	// AdvanceableClock, so POST /test/clock-advance has zero effect on
-	// playground session expiry checks or destruction-worker sweep decisions.
-	// This test relies on AdvanceClock to trigger idle-timeout destruction
-	// and will silently never see the sweep fire until the wiring is fixed.
-	t.Skip("blocked on idea-playground-clock-not-wired-e2etest")
-
 	ctx := context.Background()
 
 	// ── Stack boot ─────────────────────────────────────────────────────────────
