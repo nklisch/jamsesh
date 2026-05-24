@@ -1,7 +1,7 @@
 ---
 id: story-playground-server-hardening-writable-scope-validation
 kind: story
-stage: review
+stage: done
 tags: [portal, playground, validation]
 parent: feature-playground-server-hardening
 depends_on: [story-playground-server-hardening-handler-test-coverage]
@@ -151,3 +151,39 @@ explicitly notes the conceptual overlap and why both exist.
 - `go vet ./...` → clean
 - `go test ./...` → all green across the whole repo (no regressions in
   any other package that imports prereceive or sessions).
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Test file uses a hand-rolled `contains` helper to dodge a one-call-site
+  `strings` import (`internal/portal/prereceive/scope_test.go`). Choice is
+  documented inline and reasonable; leaving as-is.
+
+**Notes**:
+- `ValidateWritableScope` extraction is faithful — verbatim move from
+  `sessions/handler.go:443-455` with empty/`[]`/well-formed/multi-glob/
+  non-json/json-string/malformed-glob test coverage in
+  `prereceive/scope_test.go::TestValidateWritableScope`.
+- Both sessions call sites (`CreateSession` line 91, `PatchSession` line
+  217) delegate to the shared helper; envelope shape and error code
+  (`session.invalid_writable_scope`) are byte-identical to the pre-extract
+  behavior — no breaking change.
+- Playground front-door validation closes the poisoned-session DoS path
+  described in the original problem statement; validation runs after the
+  `["**"]` default is applied so the default itself is compile-checked.
+- `playground` has no PATCH endpoint — no second call site to retrofit.
+- `prereceive`'s package-internal `parseWritableScope` (different
+  signature, used by `Validator.Validate` hot path) is intentionally kept
+  alongside the new export; the doc comment on `ValidateWritableScope`
+  explains the dual existence.
+- `go build ./...`, `go vet ./...`, `go test ./internal/portal/playground/...
+  ./internal/portal/sessions/... ./internal/portal/prereceive/...` all
+  green at review time.
+- Sibling `story-playground-server-hardening-handler-test-coverage`
+  remains at stage:review; parent
+  `feature-playground-server-hardening` advances only once that sibling
+  is also reviewed-and-approved.
