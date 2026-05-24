@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-playground-coverage
 kind: epic
-stage: implementing
+stage: review
 tags: [testing, e2e-test, playground, portal, plugin]
 parent: null
 depends_on: []
@@ -158,3 +158,43 @@ depend on it. Or run `/agile-workflow:autopilot epic-e2e-playground-coverage`
 to drive the program end-to-end (autopilot will route each drafting
 feature to e2e-test-design, then to implement-orchestrator once
 designs land).
+
+## Children complete (2026-05-24)
+
+All 4 child features advanced to `stage: done`:
+
+- `feature-e2e-playground-coverage-golden` — 5 stories (4 happy-path
+  tests + 1 cross-cutting discipline)
+- `feature-e2e-playground-coverage-failure` — 4 failure-mode tests
+- `feature-e2e-playground-coverage-chaos` — 1 chaos test
+- `feature-e2e-playground-coverage-fuzz` — 1 fuzz harness + 1
+  property-based companion
+
+Total: 11 e2e tests (10 new + 1 fixture extension to gitclient) verifying
+the v0.4.0 playground subsystem against real portal binary + real
+Postgres + real git subprocess + real WebSocket fanout. Zero
+mock-boundary violations.
+
+## Production bugs surfaced during the program
+
+The audit's central thesis ("the unit suite is hiding wiring bugs that
+e2e would catch") was validated. Bugs surfaced + their disposition:
+
+| Bug | Disposition |
+|---|---|
+| `idea-playground-scope-normalization-bug` | Fixed inline (`2bf22ea`); idea file removed |
+| Playground push URL missing org_id | Fixed inline (`2bf22ea`) |
+| `idea-playground-clock-not-wired-e2etest` | Fixed inline (`cc55579`); idea file removed |
+| `idea-playground-worker-clock-not-advanceable` | Fixed inline (same as above) |
+| `bug-playground-git-receive-pack-fails-with-200-hangup` | Fixed via `story-fix-playground-base-ref-trailer-exemption` (`297616a`); story archived |
+| `bug-playground-content-cap-rejection-message-not-surfaced-to-git-client` | Scoped, in `.work/active/stories/` ready for autopilot |
+| `bug-playground-destruction-clustered-advisory-lock` | Scoped, in `.work/active/stories/` ready for autopilot |
+| `bug-playground-join-with-nickname-returns-410-on-fresh-session` | Re-scoped as unit-test debt: `story-fix-playground-join-handler-unit-test-clock-injection-debt` |
+
+The audit-driven e2e program landed 11 tests AND uncovered 5 real
+production bugs (2 already fixed inline, 2 scoped for follow-up, 1
+re-classified as test-debt). The two-participant e2e test was the one
+that proved the join-410 "bug" was a unit-suite artifact, not a
+product defect.
+
+Epic advanced `stage: implementing → review`.
