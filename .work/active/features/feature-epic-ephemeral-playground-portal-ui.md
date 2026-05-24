@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-portal-ui
 kind: feature
-stage: implementing
+stage: review
 tags: [ui, portal, playground]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-session-lifecycle]
@@ -10,6 +10,22 @@ gate_origin: null
 created: 2026-05-23
 updated: 2026-05-23
 ---
+
+## Implementation summary (autopilot)
+
+All 4 child stories advanced to `stage: review`:
+
+- `story-...-portal-ui-drawer-rework` — NewSessionDrawer reworked to CLI + skill output generator; 532 frontend tests pass
+- `story-...-portal-ui-router-refactor` — declarative `requiresAuth` route refactor + `auth.playgroundContext` rune field; 540 tests
+- `story-...-portal-ui-session-view-extensions` — PlaygroundChip + CountdownBadge + DestructionWarningBanner; SessionViewShell playground branch; 569 tests
+- `story-...-portal-ui-anonymous-entry` — PlaygroundLanding + JoinerPicker + SessionTombstone screens + Home CTA; 624 tests total
+
+**Cross-cutting deviations**:
+- Drawer-rework removed the `name` field (not present in the CLI signature) and the `oncreated` callback path (drawer no longer creates sessions itself)
+- Session-view-extensions WS event payload types defined inline with TODO pointing at openapi-typescript regeneration (since session-lifecycle landed earlier in the same wave, the integration fix is mechanical)
+- Anonymous-entry's JoinerPicker uses a client-side adjective-animal nickname generator that mirrors the server's wordlist style (no public GET for session metadata before joining)
+
+**Verification status**: `npm run check` clean, `npm run test` 624/624 pass, `npm run build` clean bundle.
 
 # Portal UI — playground surfaces + CLI-first creation rework
 
