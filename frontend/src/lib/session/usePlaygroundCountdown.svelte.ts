@@ -14,24 +14,8 @@ import { navigate } from '$lib/router.svelte';
 import type { components } from '$lib/api/types.gen';
 
 type PlaygroundSessionSummary = components['schemas']['PlaygroundSessionSummary'];
-
-// Playground WS event payload types.
-// TODO(idea-playground-ws-event-types-missing-from-openapi): EventEnvelope's type
-// enum in types.gen.ts does not yet include 'playground.destruction_warning' (the
-// openapi-typescript generator saw an older snapshot). Once types.gen.ts is
-// regenerated from the current docs/openapi.yaml, replace these inline annotations
-// with the generated types and remove this block.
-type PlaygroundDestructionWarningEvent = {
-  type: 'playground.destruction_warning';
-  reason: 'idle_timeout' | 'hard_cap';
-  ends_at: string;       // ISO 8601 — absolute deadline for the indicated timer
-  remaining_seconds: number;
-  session_id: string;
-};
-type SessionEndedEvent = {
-  type: 'session.ended';
-  reason: 'finalize' | 'abandon' | 'timeout' | 'shipped';
-};
+type PlaygroundDestructionWarningPayload = components['schemas']['PlaygroundDestructionWarningPayload'];
+type SessionEndedPayload = components['schemas']['SessionEndedPayload'];
 
 export function createPlaygroundCountdown(sessionId: string) {
   // Capture sessionId in a closure so that svelte-check doesn't warn about
@@ -113,7 +97,7 @@ export function createPlaygroundCountdown(sessionId: string) {
         sessionId,
         'playground.destruction_warning',
         (env) => {
-          const e = env as unknown as PlaygroundDestructionWarningEvent;
+          const e = env as unknown as PlaygroundDestructionWarningPayload;
           if (!e.ends_at) return;
           const endsAt = new Date(e.ends_at);
           if (e.reason === 'hard_cap') {
@@ -128,7 +112,7 @@ export function createPlaygroundCountdown(sessionId: string) {
         sessionId,
         'session.ended',
         (_env: unknown) => {
-          void (_env as SessionEndedEvent);
+          void (_env as SessionEndedPayload);
           navigate(`/playground/s/${sessionId}/ended`);
         },
       );

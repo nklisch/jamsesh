@@ -1,7 +1,7 @@
 ---
 id: story-refactor-replace-inline-event-types-with-openapi-typescript-gen
 kind: story
-stage: drafting
+stage: review
 tags: [ui, refactor, cleanup]
 parent: feature-spec-discipline
 depends_on: [story-spec-discipline-audit-and-close-emit-vs-yaml-gaps]
@@ -104,3 +104,30 @@ reference `idea-playground-ws-event-types-missing-from-openapi`.
 (add the two payload schemas + `EventEnvelope` discriminator entries to
 `docs/openapi.yaml`, re-run codegen), re-open this story at `implementing`
 and it becomes a straightforward `import type { components }` swap.
+
+**2026-05-24 — Implementation complete (dep story closed the spec gap).**
+
+`story-spec-discipline-audit-and-close-emit-vs-yaml-gaps` is done; codegen
+re-ran and `types.gen.ts` now includes `PlaygroundDestructionWarningPayload`,
+`SessionEndedPayload`, and both event types in the `EventEnvelope` discriminator.
+
+**TODOs removed:**
+- `frontend/src/lib/components/CountdownBadge.svelte` — stale informational
+  `TODO(idea-playground-ws-event-types-missing-from-openapi)` comment block
+  removed (5 lines). File has no inline event-payload type.
+- `frontend/src/lib/session/usePlaygroundCountdown.svelte.ts` — entire
+  `TODO(...)` comment and both inline type definitions removed.
+
+**Types swapped in `usePlaygroundCountdown.svelte.ts`:**
+- `PlaygroundDestructionWarningEvent` (inline) →
+  `components['schemas']['PlaygroundDestructionWarningPayload']`
+- `SessionEndedEvent` (inline) →
+  `components['schemas']['SessionEndedPayload']`
+- Handler casts updated to match: `env as unknown as PlaygroundDestructionWarningPayload`
+  and `_env as SessionEndedPayload`.
+
+**`SessionViewShell.svelte`** — already clean; `import type { components }` was
+present with no inline event-payload types remaining.
+
+**Verification:** `npm run check` (0 errors), `npm run test` (635/635 pass),
+`npm run build` — all clean.
