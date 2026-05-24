@@ -1,14 +1,14 @@
 ---
 id: story-epic-ephemeral-playground-portal-ui-session-view-extensions
 kind: story
-stage: implementing
+stage: review
 tags: [ui, playground]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # SessionViewShell playground extensions
@@ -138,3 +138,62 @@ threshold consistent across both components. The component-level
 isolation tests are thorough and well-structured. The substrate of the
 work is sound — only the cross-feature integration with
 session-lifecycle is broken.
+
+## Implementation notes (2026-05-24 — protocol mismatch fix)
+
+**Land mode with targeted protocol fixes.** The components (PlaygroundChip,
+CountdownBadge, DestructionWarningBanner) and the SessionViewShell integration
+were already present. This pass fixes the three protocol mismatches identified
+in the review blocker and adds the missing shell-level WS wire-up tests.
+
+### Fixes applied
+
+**1. `session.destroyed` → `session.ended`**
+The backend emits `session.ended` (PROTOCOL.md, SessionEndedPayload) when a
+session ends. The code subscribed to a non-existent `session.destroyed` event.
+Fixed in `usePlaygroundCountdown.svelte.ts`: subscription renamed, inline type
+renamed to `SessionEndedEvent` with correct fields.
+
+**2. `playground.activity_reset` → `playground.destruction_warning`**
+No `playground.activity_reset` event exists in the protocol. The actual event
+is `playground.destruction_warning` with `reason: 'idle_timeout' | 'hard_cap'`,
+`ends_at`, `remaining_seconds`, `session_id` (PROTOCOL.md canonical fields).
+Fixed: subscribe to `playground.destruction_warning` instead; on receipt, update
+`_hardCapAt` or `_idleTimeoutAt` to the server-provided `ends_at` value based
+on `reason`. This is the correct integration — the server updates the precise
+deadline server-side and broadcasts it as an authoritative timestamp.
+
+**3. Session data source for playground sessions**
+The generic `Session` schema from `GET /api/orgs/{orgID}/sessions/{sessionID}`
+does NOT carry `hard_cap_at` or `idle_timeout_at`. Those fields live only on
+`PlaygroundSessionSummary` from `GET /api/playground/sessions/{id}`.
+Fixed in `SessionViewShell.svelte`: when `orgId === 'org_playground'`, load
+from `/api/playground/sessions/{id}` instead. `seedFromSession()` updated to
+accept `PlaygroundSessionSummary` (typed, no runtime `'in' s` checks needed).
+
+**SessionDisplay normalization:** `SessionViewShell` now uses a `SessionDisplay`
+type (`{ name, goal, scope, membersCount, defaultMode }`) as the template's
+data source, populated from either a `PlaygroundSessionSummary` (playground
+path) or a `Session` (durable path). This unifies the template and avoids
+type-unsafe field access.
+
+**4. Shell-level WS wire-up tests added** (`SessionViewShell.test.ts`)
+New playground describe block covers:
+- Correct endpoint called (`/api/playground/sessions/{id}`, not orgs endpoint)
+- PlaygroundChip renders for playground sessions, absent for durable sessions
+- `subscribe()` called with `playground.destruction_warning` and `session.ended`
+  (and NOT with the now-invalid legacy names)
+- `session.ended` handler triggers navigate to `/playground/s/:id/ended`
+- `playground.destruction_warning` handler updates the idle timer; CountdownBadge
+  goes urgent when the delivered `ends_at` is < 5 minutes away
+
+**5. PlaygroundChip script body** (nit from review)
+The `<script lang="ts">` block previously contained only comments. Kept the
+block (required for Svelte type inference) but replaced the comment style with
+a note that this is a style-only component.
+
+### Verification
+
+- `npm run check` — 0 errors, 2 pre-existing warnings (unrelated files)
+- `npm run test` — 635 tests passed, 50 test files
+- `npm run build` — clean bundle

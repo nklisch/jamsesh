@@ -25,7 +25,18 @@
   import type { components } from '$lib/api/types.gen';
 
   type Session = components['schemas']['Session'];
+  type PlaygroundSessionSummary = components['schemas']['PlaygroundSessionSummary'];
   type BottomTab = 'activity' | 'comments';
+
+  // Normalized display shape used by the session-header template regardless of
+  // whether the data came from a durable Session or a PlaygroundSessionSummary.
+  type SessionDisplay = {
+    name: string;
+    goal: string;
+    scope: string;
+    membersCount: number;
+    defaultMode: string;
+  };
 
   let {
     orgId,
@@ -46,7 +57,11 @@
   const composer = createCommentComposer();
 
   // ── Session data ──────────────────────────────────────────────────────────
-  let session = $state<Session | null>(null);
+  // `sessionDisplay` is the normalized shape used by the template. It is set
+  // from either a durable Session (orgId !== 'org_playground') or a
+  // PlaygroundSessionSummary (orgId === 'org_playground'). Both paths
+  // populate sessionDisplay before setting it so the template stays clean.
+  let sessionDisplay = $state<SessionDisplay | null>(null);
   let loadError = $state<string | null>(null);
 
   // ── Bottom panel ──────────────────────────────────────────────────────────
@@ -69,14 +84,43 @@
 
   // ── Data loading ──────────────────────────────────────────────────────────
   async function loadSession() {
-    const { data, error } = await client.GET('/api/orgs/{orgID}/sessions/{sessionID}', {
-      params: { path: { orgID: orgId, sessionID: sessionId } },
-    });
-    if (error) {
-      loadError = 'Failed to load session.';
-    } else if (data) {
-      session = data;
-      playground.seedFromSession(data);
+    if (orgId === 'org_playground') {
+      // Playground sessions: use the dedicated endpoint that returns
+      // PlaygroundSessionSummary — it carries hard_cap_at and idle_timeout_at
+      // which are needed for the countdown. The generic Session endpoint
+      // does not include those fields.
+      const { data, error } = await client.GET('/api/playground/sessions/{id}', {
+        params: { path: { id: sessionId } },
+      });
+      if (error) {
+        loadError = 'Failed to load session.';
+      } else if (data) {
+        playground.seedFromSession(data as PlaygroundSessionSummary);
+        sessionDisplay = {
+          name: data.name,
+          goal: data.goal,
+          scope: data.scope,
+          membersCount: data.members_count,
+          defaultMode: 'sync', // PlaygroundSessionSummary has no default_mode; sync is the playground default
+        };
+      }
+    } else {
+      // Durable sessions: use the standard org-scoped endpoint.
+      const { data, error } = await client.GET('/api/orgs/{orgID}/sessions/{sessionID}', {
+        params: { path: { orgID: orgId, sessionID: sessionId } },
+      });
+      if (error) {
+        loadError = 'Failed to load session.';
+      } else if (data) {
+        const s = data as Session;
+        sessionDisplay = {
+          name: s.name,
+          goal: s.goal,
+          scope: s.scope,
+          membersCount: s.members.length,
+          defaultMode: s.default_mode,
+        };
+      }
     }
   }
 
@@ -105,7 +149,7 @@
       <!-- Playground branch: chip + session name (no org breadcrumb) -->
       <PlaygroundChip />
       <nav class="breadcrumb" aria-label="Breadcrumb">
-        <span class="here">{session?.name ?? sessionId}</span>
+        <span class="here">{sessionDisplay?.name ?? sessionId}</span>
       </nav>
     {:else}
       <!-- Durable session breadcrumb -->
@@ -114,18 +158,20 @@
           {orgId}
         </button>
         <span class="sep" aria-hidden="true">/</span>
-        <span class="here">{session?.name ?? sessionId}</span>
+        <span class="here">{sessionDisplay?.name ?? sessionId}</span>
       </nav>
     {/if}
 
     <div class="chrome-spacer"></div>
 
-    {#if playground.isPlayground && playground.hardCapAt && playground.idleTimeoutAt && playground.lastActivityAt}
-      <!-- Countdown badge replaces org-name in playground mode -->
+    {#if playground.isPlayground && playground.hardCapAt && playground.idleTimeoutAt}
+      <!-- Countdown badge replaces org-name in playground mode.
+           lastSubstantiveActivityAt is accepted by CountdownBadge for interface
+           compatibility; idleTimeoutAt already incorporates it server-side. -->
       <CountdownBadge
         hardCapAt={playground.hardCapAt}
         idleTimeoutAt={playground.idleTimeoutAt}
-        lastSubstantiveActivityAt={playground.lastActivityAt}
+        lastSubstantiveActivityAt={playground.idleTimeoutAt}
         onremainingupdate={(idleMs, hardMs) => playground.updateRemaining(idleMs, hardMs)}
       />
     {/if}
@@ -139,20 +185,20 @@
 
   {#if loadError}
     <div class="load-error" role="alert">{loadError}</div>
-  {:else if session}
+  {:else if sessionDisplay}
     <!-- Session header -->
     <div class="session-header">
       <div class="header-info">
-        <h1>{session.name}</h1>
-        <p class="goal">{session.goal}</p>
+        <h1>{sessionDisplay.name}</h1>
+        <p class="goal">{sessionDisplay.goal}</p>
         <div class="meta-strip">
-          {#each parseScopeGlobs(session.scope).slice(0, 3) as glob}
+          {#each parseScopeGlobs(sessionDisplay.scope).slice(0, 3) as glob}
             <span>scope <code>{glob}</code></span>
             <span aria-hidden="true">·</span>
           {/each}
-          <span>default mode <code>{session.default_mode}</code></span>
+          <span>default mode <code>{sessionDisplay.defaultMode}</code></span>
           <span aria-hidden="true">·</span>
-          <span>{session.members.length} member{session.members.length !== 1 ? 's' : ''}</span>
+          <span>{sessionDisplay.membersCount} member{sessionDisplay.membersCount !== 1 ? 's' : ''}</span>
         </div>
       </div>
       <div class="header-actions">
@@ -182,7 +228,7 @@
       <!-- Tree pane -->
       <aside class="pane tree" aria-label="Tree">
         <div class="tree-head">
-          <span class="tree-title">tree · {session.members.length} refs</span>
+          <span class="tree-title">tree · {sessionDisplay.membersCount} refs</span>
           <button
             class="tree-resize-btn"
             onclick={treeState.cycle}

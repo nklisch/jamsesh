@@ -3,6 +3,7 @@
   // session belongs to the reserved playground org ('org_playground').
   // Visual: amber pill with a clock icon, uppercase monospace label.
   // Matches the `.playground-chip` style from mockup 03-creator-session.html.
+  // Style-only component — no props or reactive state.
 </script>
 
 <span class="playground-chip" aria-label="Playground session">

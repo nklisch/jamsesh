@@ -1,8 +1,8 @@
 // Playground-mode countdown state + WS subscription management.
 //
-// Holds the countdown dates (hard-cap, idle-timeout, last-activity) and
-// the remaining-time snapshots fed back from CountdownBadge. Also
-// registers the playground.activity_reset and session.destroyed WS
+// Holds the countdown dates (hard-cap, idle-timeout) and the
+// remaining-time snapshots fed back from CountdownBadge. Also
+// registers the playground.destruction_warning and session.ended WS
 // handlers when mountSubscriptions() is called from onMount.
 //
 // Uses the wrapper-object-rune-store pattern via a factory so that each
@@ -13,20 +13,24 @@ import { subscribe } from '$lib/ws.svelte';
 import { navigate } from '$lib/router.svelte';
 import type { components } from '$lib/api/types.gen';
 
-type Session = components['schemas']['Session'];
+type PlaygroundSessionSummary = components['schemas']['PlaygroundSessionSummary'];
 
 // Playground WS event payload types.
-// TODO(idea-playground-ws-event-types-missing-from-openapi): these two event types
-// are absent from docs/openapi.yaml and therefore from types.gen.ts. Once the spec
-// gap is closed and codegen is re-run, replace these inline annotations with
-// generated types from '$lib/api/types.gen' and remove this block.
-type PlaygroundActivityResetEvent = {
-  type: 'playground.activity_reset';
-  last_substantive_activity_at: string; // ISO 8601
-  idle_timeout_at: string; // ISO 8601
+// TODO(idea-playground-ws-event-types-missing-from-openapi): EventEnvelope's type
+// enum in types.gen.ts does not yet include 'playground.destruction_warning' (the
+// openapi-typescript generator saw an older snapshot). Once types.gen.ts is
+// regenerated from the current docs/openapi.yaml, replace these inline annotations
+// with the generated types and remove this block.
+type PlaygroundDestructionWarningEvent = {
+  type: 'playground.destruction_warning';
+  reason: 'idle_timeout' | 'hard_cap';
+  ends_at: string;       // ISO 8601 — absolute deadline for the indicated timer
+  remaining_seconds: number;
+  session_id: string;
 };
-type SessionDestroyedEvent = {
-  type: 'session.destroyed';
+type SessionEndedEvent = {
+  type: 'session.ended';
+  reason: 'finalize' | 'abandon' | 'timeout' | 'shipped';
 };
 
 export function createPlaygroundCountdown(sessionId: string) {
@@ -35,22 +39,22 @@ export function createPlaygroundCountdown(sessionId: string) {
   // component instance and sessionId never changes after mount.
   const getSessionId = () => sessionId;
 
-  // Session reference — updated by seedFromSession() after the API load.
-  let _session = $state<Session | null>(null);
+  // Derived: true when auth.playgroundContext is set for this session.
+  // Set after seedFromSession() or when an anonymous joiner lands here.
+  let _isPlayground = $state(false);
 
-  // Derived: true when this session belongs to the reserved playground org.
-  // Uses auth.playgroundContext as a fallback for anonymous joiners who may
-  // land here before the session load completes.
-  let _isPlayground = $derived(
-    _session?.org_id === 'org_playground' ||
-      auth.playgroundContext?.sessionId === getSessionId(),
+  // Derived from auth as a fallback for anonymous joiners who may land
+  // here before the session load completes.
+  let _isPlaygroundFromAuth = $derived(
+    auth.playgroundContext?.sessionId === getSessionId(),
   );
 
-  // Countdown props — initialised from session data when available, updated by
-  // the playground.activity_reset WS event.
+  let _effectiveIsPlayground = $derived(_isPlayground || _isPlaygroundFromAuth);
+
+  // Countdown props — initialised from PlaygroundSessionSummary after the
+  // API load, updated by the playground.destruction_warning WS event.
   let _hardCapAt = $state<Date | null>(null);
   let _idleTimeoutAt = $state<Date | null>(null);
-  let _lastActivityAt = $state<Date | null>(null);
 
   // Current remaining times (ms) — set by CountdownBadge via onremainingupdate.
   let _idleRemainingMs = $state<number>(Infinity);
@@ -58,16 +62,13 @@ export function createPlaygroundCountdown(sessionId: string) {
 
   return {
     get isPlayground(): boolean {
-      return _isPlayground;
+      return _effectiveIsPlayground;
     },
     get hardCapAt(): Date | null {
       return _hardCapAt;
     },
     get idleTimeoutAt(): Date | null {
       return _idleTimeoutAt;
-    },
-    get lastActivityAt(): Date | null {
-      return _lastActivityAt;
     },
     get idleRemainingMs(): number {
       return _idleRemainingMs;
@@ -76,19 +77,15 @@ export function createPlaygroundCountdown(sessionId: string) {
       return _hardCapRemainingMs;
     },
 
-    /** Call after the session API load completes to seed countdown dates. */
-    seedFromSession(s: Session) {
-      _session = s;
-      if (
-        s.org_id === 'org_playground' &&
-        'hard_cap_at' in s &&
-        'idle_timeout_at' in s &&
-        'last_substantive_activity_at' in s
-      ) {
-        _hardCapAt = new Date(s.hard_cap_at as string);
-        _idleTimeoutAt = new Date(s.idle_timeout_at as string);
-        _lastActivityAt = new Date(s.last_substantive_activity_at as string);
-      }
+    /**
+     * Call after a PlaygroundSessionSummary load completes to seed countdown
+     * dates. PlaygroundSessionSummary carries hard_cap_at and idle_timeout_at
+     * as required fields — no runtime 'in' checks needed.
+     */
+    seedFromSession(s: PlaygroundSessionSummary) {
+      _isPlayground = s.org_id === 'org_playground';
+      _hardCapAt = new Date(s.hard_cap_at);
+      _idleTimeoutAt = new Date(s.idle_timeout_at);
     },
 
     /** Feed back remaining-time snapshots from CountdownBadge. */
@@ -100,34 +97,45 @@ export function createPlaygroundCountdown(sessionId: string) {
     /**
      * Register WS subscriptions for playground events.
      * Call from onMount; use the returned cleanup fn as the onMount return value.
+     *
+     * Subscribes to:
+     *   playground.destruction_warning — updates the relevant timer's deadline
+     *     when the server detects < 5-minute proximity to destruction. The
+     *     `reason` field selects idle vs hard-cap; `ends_at` is the precise
+     *     deadline. (PROTOCOL.md canonical fields: reason, ends_at,
+     *     remaining_seconds, session_id)
+     *   session.ended — navigates to the tombstone page when the session
+     *     is destroyed (reason may be 'timeout' for playground idle/hard-cap
+     *     destruction). (PROTOCOL.md canonical fields: reason, final_branch_name)
      */
     mountSubscriptions(): () => void {
-      const unsubActivity = subscribe(
+      const unsubWarning = subscribe(
         sessionId,
-        'playground.activity_reset',
+        'playground.destruction_warning',
         (env) => {
-          const e = env as unknown as PlaygroundActivityResetEvent;
-          if (e.last_substantive_activity_at) {
-            _lastActivityAt = new Date(e.last_substantive_activity_at);
-          }
-          if (e.idle_timeout_at) {
-            _idleTimeoutAt = new Date(e.idle_timeout_at);
+          const e = env as unknown as PlaygroundDestructionWarningEvent;
+          if (!e.ends_at) return;
+          const endsAt = new Date(e.ends_at);
+          if (e.reason === 'hard_cap') {
+            _hardCapAt = endsAt;
+          } else if (e.reason === 'idle_timeout') {
+            _idleTimeoutAt = endsAt;
           }
         },
       );
 
-      const unsubDestroyed = subscribe(
+      const unsubEnded = subscribe(
         sessionId,
-        'session.destroyed',
+        'session.ended',
         (_env: unknown) => {
-          void (_env as SessionDestroyedEvent);
+          void (_env as SessionEndedEvent);
           navigate(`/playground/s/${sessionId}/ended`);
         },
       );
 
       return () => {
-        unsubActivity();
-        unsubDestroyed();
+        unsubWarning();
+        unsubEnded();
       };
     },
   };
