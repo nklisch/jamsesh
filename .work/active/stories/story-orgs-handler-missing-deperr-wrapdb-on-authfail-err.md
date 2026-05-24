@@ -1,0 +1,85 @@
+---
+id: story-orgs-handler-missing-deperr-wrapdb-on-authfail-err
+kind: story
+stage: implementing
+tags: [portal, security]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: refactor-design
+created: 2026-05-23
+updated: 2026-05-23
+---
+
+# accounts/orgs.go: wrap authfail-Err returns with deperr.WrapDBIfTransient
+
+## Brief
+
+`GetOrg` and `PatchOrg` in `internal/portal/accounts/orgs.go` deviate
+from the documented `authfail-three-branch-guard` +
+`deperr-translate-pipeline` patterns: when `handlerauth.RequireOrgMember`
+returns a non-nil `fail.Err`, both handlers wrap it with a bare
+`fmt.Errorf` rather than `deperr.WrapDBIfTransient`. Every other
+handler in the same package follows the deperr wrap.
+
+Effect: a transient DB-unavailability surfacing through the auth lookup
+returns a generic 500 from this handler instead of the canonical
+`dep.db_unavailable` envelope with `Retry-After`, so clients lose the
+typed retry signal for these two endpoints.
+
+Surfaced by a discovery-mode `/agile-workflow:refactor-design` scan.
+**Behavior-changing — this is a bug fix, not a pure refactor.** Not
+tagged `[refactor]` so the design pass routes through feature-design
+classification if it grows.
+
+## Current state
+
+```go
+// GetOrg, line 33-35
+if fail.Err != nil {
+    return nil, fmt.Errorf("accounts: get org: %w", fail.Err)
+}
+
+// PatchOrg, line 72-74
+if fail.Err != nil {
+    return nil, fmt.Errorf("accounts: patch org: %w", fail.Err)
+}
+```
+
+## Target state
+
+```go
+if fail.Err != nil {
+    return nil, deperr.WrapDBIfTransient(fmt.Errorf("accounts: get org: %w", fail.Err))
+}
+// (and matching for PatchOrg)
+```
+
+Same wording, same shape — only the `deperr.WrapDBIfTransient` wrap
+added so `httperr.WriteFromError` can classify and emit the typed
+envelope.
+
+## Acceptance criteria
+
+- `GetOrg` and `PatchOrg` both wrap `fail.Err` returns with
+  `deperr.WrapDBIfTransient`.
+- A new (or existing-extended) handler test exercises the
+  authfail-Err transient path and asserts the typed
+  `dep.db_unavailable` envelope is emitted.
+- `go test ./internal/portal/accounts/...` clean.
+- The change is consistent with sibling handlers in the same file
+  (`CreateOrgInvite`, `AcceptOrgInvite`).
+
+## Verification of scope
+
+Grep `internal/portal/` for handlers that match the pattern
+`if fail.Err != nil { return nil, fmt.Errorf(...) }` without an
+adjacent `deperr.Wrap*`. If more sites surface during implementation,
+extend this story rather than spinning new ones — the fix is
+mechanical.
+
+## Notes
+
+This is the only handler-level deviation from the deperr pipeline
+found in the discovery scan. The fix is surgical (~2 lines in one
+file plus a test).
