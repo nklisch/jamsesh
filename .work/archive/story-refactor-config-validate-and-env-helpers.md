@@ -1,7 +1,7 @@
 ---
 id: story-refactor-config-validate-and-env-helpers
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -101,3 +101,14 @@ guard that the generic `readEnvInt64` doesn't carry.
 **Pre-existing build failures:** `cmd/portal`, `internal/portal/router`, and
 `internal/portal/server` test packages fail to build due to an unrelated
 in-flight router refactor story. These failures pre-date this commit.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The `if v, err := readEnvOrFile(...); err != nil { return err } else if v != "" { ... }` shape may trigger `revive: indent-error-flow` linting. Cosmetic.
+
+**Notes**: All 53 JAMSESH_* env vars preserved 1:1 (verified by extracting var names from both sides of the diff). `validate()` collapsed into table-driven `mustBePositive` loop with identical error wording. `HydrationCacheMaxBytes` correctly routed to `mustBeNonNegative(int64)` preserving the "zero or positive" semantic. Three bool knobs (`OBJECT_STORAGE_PATH_STYLE`, `AUTH_RATE_LIMIT_ENABLED`, `PLAYGROUND_ENABLED`) kept inline with documented distinct truthiness rules. `API_BODY_LIMIT_BYTES` kept inline for `n > 0` guard. Secret knobs still flow through `readEnvOrFile`. `go test ./internal/portal/config/...` clean.
