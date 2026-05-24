@@ -22,7 +22,7 @@ const defaultHeartbeatInterval = 10 * time.Second
 // the pool.
 //
 // DB must be a *sql.DB backed by pgxpool (opened via pgx/v5/stdlib). Store
-// must be a PG-backed store.Store (the SQLite adapter returns errors for
+// must be a PG-backed store.LeaseStore (the SQLite adapter returns errors for
 // IssueLeaseFencingToken and the sequence-based advisory-lock path).
 type PostgresManager struct {
 	DB                *sql.DB           // pgxpool-backed *sql.DB
