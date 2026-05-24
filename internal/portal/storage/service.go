@@ -87,10 +87,16 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now().UTC() }
 
+// storageStore is the minimal store interface consumed by service.
+type storageStore interface {
+	store.ArchivedSessionStore
+	store.SessionStore
+}
+
 // service is the concrete implementation of Service.
 type service struct {
-	root  string      // absolute path to the storage root directory
-	store store.Store // data layer; used by archive methods
+	root  string       // absolute path to the storage root directory
+	store storageStore // data layer; used by archive methods
 	clock Clock
 }
 
@@ -98,13 +104,13 @@ type service struct {
 // rootDir is the storage root (e.g. /var/jamsesh/storage); it need not exist
 // yet — CreateRepo creates subdirectories on demand. Uses the real system
 // clock for archive timestamps.
-func New(rootDir string, s store.Store) Service {
+func New(rootDir string, s storageStore) Service {
 	return NewWithClock(rootDir, s, realClock{})
 }
 
 // NewWithClock returns a Service backed by rootDir, the given Store, and the
 // supplied clock. Used by unit tests (fakeClock) and the e2etest-tagged
 // binary (testclock.AdvanceableClock).
-func NewWithClock(rootDir string, s store.Store, clock Clock) Service {
+func NewWithClock(rootDir string, s storageStore, clock Clock) Service {
 	return &service{root: rootDir, store: s, clock: clock}
 }

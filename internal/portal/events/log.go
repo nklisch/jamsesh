@@ -55,11 +55,18 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now().UTC() }
 
+// eventStore is the minimal store interface consumed by Log.
+type eventStore interface {
+	store.EventLogStore
+	store.PresenceStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
+}
+
 // Log is the write-side and read-side entry point for the event log.
 // Construct it once per server lifetime via New and share it across
 // components.
 type Log struct {
-	s      store.Store
+	s      eventStore
 	metrics *metrics.Registry // optional; nil disables metric recording
 	muSubs sync.RWMutex
 	subs   []*subscriberRec
@@ -69,14 +76,14 @@ type Log struct {
 // New constructs a Log backed by the given store using the real system clock.
 // The store must implement EventLogStore and PresenceStore (satisfied by both
 // dialect adapters).
-func New(s store.Store) *Log {
+func New(s eventStore) *Log {
 	return NewWithClock(s, realClock{})
 }
 
 // NewWithClock constructs a Log backed by the given store and the supplied
 // clock. Used by unit tests (fakeClock) and the e2etest-tagged binary
 // (testclock.AdvanceableClock).
-func NewWithClock(s store.Store, clock Clock) *Log {
+func NewWithClock(s eventStore, clock Clock) *Log {
 	return &Log{s: s, clock: clock}
 }
 

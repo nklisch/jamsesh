@@ -28,6 +28,16 @@ import (
 	"jamsesh/internal/portal/tokens"
 )
 
+// orgMemberStore is the minimal store interface required by RequireOrgMember.
+type orgMemberStore interface {
+	store.OrgMemberStore
+}
+
+// sessionMemberStore is the minimal store interface required by RequireSessionMember.
+type sessionMemberStore interface {
+	store.SessionMemberStore
+}
+
 // AuthFail carries the typed failure payload and HTTP status hint.
 //
 // Status is 401, 403, or 500. For 401 the Unauthorized field is populated.
@@ -68,7 +78,7 @@ func RequireAccount(ctx context.Context) (*store.Account, AuthFail, bool) {
 //   - Status 401 when no account is in ctx
 //   - Status 403 when the account is not a member of the org
 //   - Status 500 (Err populated) when the store returns an unexpected error
-func RequireOrgMember(ctx context.Context, s store.Store, orgID string) (*store.Account, store.OrgMember, AuthFail, bool) {
+func RequireOrgMember(ctx context.Context, s orgMemberStore, orgID string) (*store.Account, store.OrgMember, AuthFail, bool) {
 	acc, fail, ok := RequireAccount(ctx)
 	if !ok {
 		return nil, store.OrgMember{}, fail, false
@@ -106,7 +116,7 @@ func RequireOrgMember(ctx context.Context, s store.Store, orgID string) (*store.
 //   - Status 401 when no account is in ctx
 //   - Status 403 when the account is not a member of the session
 //   - Status 500 (Err populated) when the store returns an unexpected error
-func RequireSessionMember(ctx context.Context, s store.Store, orgID, sessionID string) (*store.Account, store.SessionMember, AuthFail, bool) {
+func RequireSessionMember(ctx context.Context, s sessionMemberStore, orgID, sessionID string) (*store.Account, store.SessionMember, AuthFail, bool) {
 	acc, fail, ok := RequireAccount(ctx)
 	if !ok {
 		return nil, store.SessionMember{}, fail, false

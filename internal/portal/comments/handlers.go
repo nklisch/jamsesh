@@ -14,7 +14,7 @@ import (
 // Handler implements the openapi.StrictServerInterface comment methods.
 type Handler struct {
 	svc *Service
-	s   store.Store
+	s   commentsStore
 }
 
 // NewHandler constructs a Handler.

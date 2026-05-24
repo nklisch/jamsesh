@@ -34,6 +34,16 @@ type Clock interface {
 	Now() time.Time
 }
 
+// commentsStore is the minimal store interface consumed by the comments package
+// (both Service and Handler).
+type commentsStore interface {
+	store.CommentStore
+	store.SessionStore
+	store.SessionMemberStore
+	store.PlaygroundSessionStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
+}
+
 // Service is the business-logic layer for comments.
 //
 // Service is struct-literal-initialized in cmd/portal/main.go. The Clock field
@@ -41,7 +51,7 @@ type Clock interface {
 // helper. This preserves backwards compatibility with tests that construct
 // Service directly without setting Clock.
 type Service struct {
-	Store store.Store
+	Store commentsStore
 	Log   *events.Log
 	Clock Clock
 	// PlaygroundIdleTimeout, when > 0, enables activity-reset on successful

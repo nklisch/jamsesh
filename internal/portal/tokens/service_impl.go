@@ -23,18 +23,25 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now().UTC() }
 
+// tokensStore is the minimal store interface consumed by service.
+type tokensStore interface {
+	store.OAuthTokenStore
+	store.AccountStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
+}
+
 type service struct {
-	store store.Store
+	store tokensStore
 	clock Clock
 }
 
 // New returns a Service backed by the given Store using the real system clock.
-func New(s store.Store) Service {
+func New(s tokensStore) Service {
 	return &service{store: s, clock: realClock{}}
 }
 
 // NewWithClock returns a Service with an injected clock. Intended for tests.
-func NewWithClock(s store.Store, c Clock) Service {
+func NewWithClock(s tokensStore, c Clock) Service {
 	return &service{store: s, clock: c}
 }
 
