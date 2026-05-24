@@ -1,7 +1,7 @@
 ---
-id: idea-sessionviewshell-test-playground-branch-coverage
+id: story-sessionviewshell-test-playground-branch-coverage
 kind: story
-stage: backlog
+stage: implementing
 tags: [test, ui, playground]
 parent: null
 depends_on: [story-playground-ws-protocol-mismatch-session-view-extensions]
