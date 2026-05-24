@@ -1,7 +1,7 @@
 ---
 id: story-orgs-handler-missing-deperr-wrapdb-on-authfail-err
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: null
 depends_on: []
@@ -98,3 +98,14 @@ file plus a test).
 **Cross-package scope scan:** All other `if fail.Err != nil` sites in `internal/portal/` (comments/handlers.go ×3, sessions/handler.go ×3, playground/handler.go ×1) already wrap with `deperr.WrapDBIfTransient`. No additional fixes required.
 
 **Verification:** `go build ./...` and `go test ./...` both clean.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `assertDepDBUnavailable` is local to `orgs_test.go`; if more dep-failure tests land in this package it could move to a shared helper file. Future-proofing only.
+
+**Notes**: Two-line wrap matches sibling handlers exactly. `WrapDBIfTransient` preserves nil and non-transient sentinels (`ErrNotFound`/`ErrUniqueViolation`) so there's no over-classification risk. Test injection wraps the real store and overrides only `GetOrgMember` so token validation still flows through real auth — the request reaches the handler where the bug lived. Agent's cross-package scope scan confirmed every other `fail.Err != nil` site in `internal/portal/` was already correctly wrapped. `go test ./internal/portal/accounts/...` and full `go test ./...` clean.
