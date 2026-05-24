@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-automerger-decomposition
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -146,3 +146,14 @@ lands as its own commit so individual rollback is possible.
 - `automerger/outcomes.go` (363 lines) — not touched.
 - The behaviour-preservation invariant: no merge-strategy changes, no new
   outcomes, no event-payload changes. Pure structural decomposition.
+
+## Implementation summary (orchestrator)
+
+All 4 child stories advanced to `stage: review`:
+
+- `story-refactor-automerger-decomposition-side-changes-helper` — `buildSideChanges` helper extracted; `computeMergeDiff` -24 LoC, error wording preserved exactly via `side` parameter
+- `story-refactor-automerger-decomposition-both-modified-helper` — `mergeBothModifiedPath` + `runThreeWayMerge` extracted; `applyChangesPerPath` 96 → 36 LoC, nesting depth 4 → 2
+- `story-refactor-automerger-decomposition-merge-file-split` — `runMergeFileTool` + `interpretMergeFileExit` extracted; agent caught git's exit-code 255 quirk for binary files and preserved original semantics (treat all non-zero exit as conflict count rather than gating on 128+)
+- `story-refactor-automerger-decomposition-flatten-submodule-extract` — **no-op land**: agent found the submodule branch is already shared with `filemode.Dir` under a single 3-LoC body. Per story's own decision rule (≤5 LoC = no extraction warranted), no change to `merge.go`. Story honestly closed.
+
+**Verification**: `go build ./...` clean, `go test ./internal/portal/automerger/...` clean (11 tests pass).

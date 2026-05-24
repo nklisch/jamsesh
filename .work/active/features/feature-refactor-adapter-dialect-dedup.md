@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-adapter-dialect-dedup
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -167,3 +167,13 @@ The deferred options (code-gen, generics, CI lint) remain
 candidate ideas. If someone wants to revisit, scope as a new
 feature with explicit human input on which path to take. This
 feature should NOT be re-opened — it has fulfilled its scope.
+
+## Implementation summary (orchestrator)
+
+The single child story landed:
+
+- `story-refactor-adapter-dialect-dedup-colocate-null-converters` — moved 8 dialect-specific null/text/time converters into a shared `internal/db/store/nullable_converters.go`. ~34 LoC removed from each adapter file (~68 total). Structural duplication now visible in one place; future generics/code-gen has a single home.
+
+The feature's design pass explicitly deferred the deeper structural dedup (row converters, method wrappers) with documented rationale — the conservative slice is the only step in this feature.
+
+**Verification**: `go build ./...` clean, `go test ./...` clean.

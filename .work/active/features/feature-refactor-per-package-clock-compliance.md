@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-per-package-clock-compliance
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, refactor, testing]
 parent: null
 depends_on: []
@@ -152,3 +152,14 @@ deliberately does NOT touch:
   lease driver, separate from `retention.go`. Follow-up.
 - `internal/portal/auth/slug.go:66` — `time.Now().UnixNano()` PRNG seed —
   intentionally out of scope (behavior-changing).
+
+## Implementation summary (orchestrator)
+
+All 4 child stories advanced to `stage: review`:
+
+- `story-refactor-per-package-clock-compliance-ratelimit` — `ratelimit.Store` gained `clock Clock` field + constructor pair; 3 `time.Now()` sites routed; 2 new fake-clock tests (GC + bucket refill) with no wall-clock sleep
+- `story-refactor-per-package-clock-compliance-lease` — `RunRetention` accepts explicit `now time.Time`; cutoff regression test with no sleep
+- `story-refactor-per-package-clock-compliance-auth` — `OAuthHandler` clock field + `NewOAuthHandlerWithClock`; expired-state branch now driven by fake clock; `FindOrProvision` callers routed through `FindOrProvisionAt(..., h.clock.Now())`
+- `story-refactor-per-package-clock-compliance-objectstore` — new `objectstore.Clock` interface; `LifecycleManager` clock field via `m.now()` accessor; `ManifestStore.Save` parameter form (matches `FindOrProvisionAt`); 2 new fake-clock tests
+
+**Verification**: `go build ./...` clean, `go test ./...` clean across all 57 packages.

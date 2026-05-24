@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-frontend-god-components
 kind: feature
-stage: implementing
+stage: review
 tags: [ui, refactor]
 parent: null
 depends_on: []
@@ -150,3 +150,16 @@ will dispatch them as 2 waves of 3 agents (cap is 3 per wave).
   ForkDialog, ModeSwitchDialog, NewSessionDrawer, CommentComposer).
   Surfaced in the per-feature discovery as a candidate but tracked
   separately if anyone wants it.
+
+## Implementation summary (orchestrator)
+
+All 6 child stories advanced to `stage: review`:
+
+- `story-refactor-frontend-god-components-finalize-view` — 882 → 699 LoC; 4 rune modules at `$lib/finalize/` (lock, plan, curation, execution); module-singleton-reset pattern preserves component-local semantics
+- `story-refactor-frontend-god-components-session-view-shell` — 802 → 676 LoC (script+template 458 → 332, under 350 target); 4 rune modules at `$lib/session/` (tree, playground countdown, ref actions, comment composer)
+- `story-refactor-frontend-god-components-session-attach-walkthrough` — 747 → 163 LoC; agent discovered file was a two-mode modal (not a wizard) and adapted, extracting `CcPane`, `FullCard`, `CompactCard` under `view-state-union-machine`
+- `story-refactor-frontend-god-components-joiner-picker` — 580 → 162 LoC; concerns split as `JoinerForm` (idle/joining) + `JoinerOutcome` (full/error), driven by view-state union in parent
+- `story-refactor-frontend-god-components-new-session-drawer` — 566 → 213 LoC; `useNewSessionForm.svelte.ts` (form state + command builders) + `SessionCommandPreview.svelte` (pure rendering)
+- `story-refactor-frontend-god-components-org-settings` — 555 → 173 LoC; agent discovered only one of four documented concerns was actually implemented (others are "soon" placeholders), extracted `OrgInvitePolicyEditor` + `OrgSettingsSidebar`
+
+**Verification**: `npm run check` 0 errors, `npm run test` 624/624 across all 50 test files, `npm run build` clean.
