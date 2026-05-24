@@ -743,12 +743,71 @@ func TestPatchOrg_ProtectedOrg_Returns409(t *testing.T) {
 // auth. This exercises the fail.Err branch in GetOrg and PatchOrg, which must
 // wrap the error with deperr.WrapDBIfTransient so httperr.WriteFromError emits
 // the canonical dep.db_unavailable envelope.
+//
+// Implements the accountsStore interface (OrgStore + OrgMemberStore +
+// OrgInviteStore + WithTx), delegating all methods except GetOrgMember to the
+// embedded real store.
 type failingGetOrgMemberStore struct {
-	store.Store
+	realStore store.Store
 }
 
+// OrgStore delegation
+func (f *failingGetOrgMemberStore) CreateOrg(ctx context.Context, p store.CreateOrgParams) (store.Org, error) {
+	return f.realStore.CreateOrg(ctx, p)
+}
+func (f *failingGetOrgMemberStore) CreateProtectedOrg(ctx context.Context, p store.CreateProtectedOrgParams) (store.Org, error) {
+	return f.realStore.CreateProtectedOrg(ctx, p)
+}
+func (f *failingGetOrgMemberStore) GetOrgByID(ctx context.Context, id string) (store.Org, error) {
+	return f.realStore.GetOrgByID(ctx, id)
+}
+func (f *failingGetOrgMemberStore) GetOrgBySlug(ctx context.Context, slug string) (store.Org, error) {
+	return f.realStore.GetOrgBySlug(ctx, slug)
+}
+func (f *failingGetOrgMemberStore) UpdateOrgSessionInvitePolicy(ctx context.Context, p store.UpdateOrgSessionInvitePolicyParams) error {
+	return f.realStore.UpdateOrgSessionInvitePolicy(ctx, p)
+}
+
+// OrgMemberStore delegation (GetOrgMember overridden below)
+func (f *failingGetOrgMemberStore) AddOrgMember(ctx context.Context, p store.AddOrgMemberParams) error {
+	return f.realStore.AddOrgMember(ctx, p)
+}
 func (f *failingGetOrgMemberStore) GetOrgMember(_ context.Context, _ store.GetOrgMemberParams) (store.OrgMember, error) {
 	return store.OrgMember{}, fmt.Errorf("conn refused")
+}
+func (f *failingGetOrgMemberStore) ListOrgsForAccount(ctx context.Context, accountID string) ([]store.Org, error) {
+	return f.realStore.ListOrgsForAccount(ctx, accountID)
+}
+func (f *failingGetOrgMemberStore) ListOrgMembers(ctx context.Context, orgID string) ([]store.OrgMemberWithAccount, error) {
+	return f.realStore.ListOrgMembers(ctx, orgID)
+}
+func (f *failingGetOrgMemberStore) RemoveOrgMember(ctx context.Context, p store.RemoveOrgMemberParams) error {
+	return f.realStore.RemoveOrgMember(ctx, p)
+}
+
+// OrgInviteStore delegation
+func (f *failingGetOrgMemberStore) InsertOrgInvite(ctx context.Context, p store.InsertOrgInviteParams) (store.OrgInvite, error) {
+	return f.realStore.InsertOrgInvite(ctx, p)
+}
+func (f *failingGetOrgMemberStore) GetOrgInviteByID(ctx context.Context, id string) (store.OrgInvite, error) {
+	return f.realStore.GetOrgInviteByID(ctx, id)
+}
+func (f *failingGetOrgMemberStore) GetOrgInviteByTokenHash(ctx context.Context, h string) (store.OrgInvite, error) {
+	return f.realStore.GetOrgInviteByTokenHash(ctx, h)
+}
+func (f *failingGetOrgMemberStore) MarkOrgInviteAccepted(ctx context.Context, p store.MarkOrgInviteAcceptedParams) error {
+	return f.realStore.MarkOrgInviteAccepted(ctx, p)
+}
+func (f *failingGetOrgMemberStore) ListPendingOrgInvitesForOrg(ctx context.Context, p store.ListPendingOrgInvitesForOrgParams) ([]store.OrgInvite, error) {
+	return f.realStore.ListPendingOrgInvitesForOrg(ctx, p)
+}
+func (f *failingGetOrgMemberStore) ListPendingOrgInvitesForEmail(ctx context.Context, p store.ListPendingOrgInvitesForEmailParams) ([]store.OrgInvite, error) {
+	return f.realStore.ListPendingOrgInvitesForEmail(ctx, p)
+}
+
+// WithTx delegation
+func (f *failingGetOrgMemberStore) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	return f.realStore.WithTx(ctx, fn)
 }
 
 // newOrgsDepFailTestEnv returns a test env wired with the failing store.
@@ -757,7 +816,7 @@ func (f *failingGetOrgMemberStore) GetOrgMember(_ context.Context, _ store.GetOr
 func newOrgsDepFailTestEnv(t *testing.T) (*orgsMembersTestEnv, store.Store) {
 	t.Helper()
 	realStore := openStore(t)
-	failing := &failingGetOrgMemberStore{Store: realStore}
+	failing := &failingGetOrgMemberStore{realStore: realStore}
 
 	svc := tokens.New(realStore) // tokens validated against real store
 	sender := &captureSenderOrgs{}
@@ -852,14 +911,73 @@ func TestPatchOrg_DBTransientOnAuthLookup_Returns503DepDBUnavailable(t *testing.
 // correctly, none of these methods should be reached. A call here means the
 // guard was bypassed — the test trip-wires the store so a bypass is
 // immediately detectable.
+//
+// Implements the accountsStore interface (OrgStore + OrgMemberStore +
+// OrgInviteStore + WithTx), delegating all methods except
+// UpdateOrgSessionInvitePolicy to the embedded real store.
 type protectedMutationGuardStore struct {
-	store.Store
+	realStore      store.Store
 	mutationCalled string // name of the first bypassed mutation, if any
 }
 
+// OrgStore delegation (UpdateOrgSessionInvitePolicy overridden below)
+func (s *protectedMutationGuardStore) CreateOrg(ctx context.Context, p store.CreateOrgParams) (store.Org, error) {
+	return s.realStore.CreateOrg(ctx, p)
+}
+func (s *protectedMutationGuardStore) CreateProtectedOrg(ctx context.Context, p store.CreateProtectedOrgParams) (store.Org, error) {
+	return s.realStore.CreateProtectedOrg(ctx, p)
+}
+func (s *protectedMutationGuardStore) GetOrgByID(ctx context.Context, id string) (store.Org, error) {
+	return s.realStore.GetOrgByID(ctx, id)
+}
+func (s *protectedMutationGuardStore) GetOrgBySlug(ctx context.Context, slug string) (store.Org, error) {
+	return s.realStore.GetOrgBySlug(ctx, slug)
+}
 func (s *protectedMutationGuardStore) UpdateOrgSessionInvitePolicy(_ context.Context, _ store.UpdateOrgSessionInvitePolicyParams) error {
 	s.mutationCalled = "UpdateOrgSessionInvitePolicy"
 	return fmt.Errorf("protectedMutationGuardStore: UpdateOrgSessionInvitePolicy called on protected org — guard bypass detected")
+}
+
+// OrgMemberStore delegation
+func (s *protectedMutationGuardStore) AddOrgMember(ctx context.Context, p store.AddOrgMemberParams) error {
+	return s.realStore.AddOrgMember(ctx, p)
+}
+func (s *protectedMutationGuardStore) GetOrgMember(ctx context.Context, p store.GetOrgMemberParams) (store.OrgMember, error) {
+	return s.realStore.GetOrgMember(ctx, p)
+}
+func (s *protectedMutationGuardStore) ListOrgsForAccount(ctx context.Context, accountID string) ([]store.Org, error) {
+	return s.realStore.ListOrgsForAccount(ctx, accountID)
+}
+func (s *protectedMutationGuardStore) ListOrgMembers(ctx context.Context, orgID string) ([]store.OrgMemberWithAccount, error) {
+	return s.realStore.ListOrgMembers(ctx, orgID)
+}
+func (s *protectedMutationGuardStore) RemoveOrgMember(ctx context.Context, p store.RemoveOrgMemberParams) error {
+	return s.realStore.RemoveOrgMember(ctx, p)
+}
+
+// OrgInviteStore delegation
+func (s *protectedMutationGuardStore) InsertOrgInvite(ctx context.Context, p store.InsertOrgInviteParams) (store.OrgInvite, error) {
+	return s.realStore.InsertOrgInvite(ctx, p)
+}
+func (s *protectedMutationGuardStore) GetOrgInviteByID(ctx context.Context, id string) (store.OrgInvite, error) {
+	return s.realStore.GetOrgInviteByID(ctx, id)
+}
+func (s *protectedMutationGuardStore) GetOrgInviteByTokenHash(ctx context.Context, h string) (store.OrgInvite, error) {
+	return s.realStore.GetOrgInviteByTokenHash(ctx, h)
+}
+func (s *protectedMutationGuardStore) MarkOrgInviteAccepted(ctx context.Context, p store.MarkOrgInviteAcceptedParams) error {
+	return s.realStore.MarkOrgInviteAccepted(ctx, p)
+}
+func (s *protectedMutationGuardStore) ListPendingOrgInvitesForOrg(ctx context.Context, p store.ListPendingOrgInvitesForOrgParams) ([]store.OrgInvite, error) {
+	return s.realStore.ListPendingOrgInvitesForOrg(ctx, p)
+}
+func (s *protectedMutationGuardStore) ListPendingOrgInvitesForEmail(ctx context.Context, p store.ListPendingOrgInvitesForEmailParams) ([]store.OrgInvite, error) {
+	return s.realStore.ListPendingOrgInvitesForEmail(ctx, p)
+}
+
+// WithTx delegation
+func (s *protectedMutationGuardStore) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	return s.realStore.WithTx(ctx, fn)
 }
 
 // TestOrgProtectedGuard_RegressionTrip_AllMutationHandlers verifies the
@@ -881,7 +999,7 @@ func TestOrgProtectedGuard_RegressionTrip_AllMutationHandlers(t *testing.T) {
 
 	// Build a fresh env where the real store is wrapped in the guard.
 	s := openStore(t)
-	guardedStore := &protectedMutationGuardStore{Store: s}
+	guardedStore := &protectedMutationGuardStore{realStore: s}
 
 	svc := tokens.New(s) // tokens backed by real store
 	sender := &captureSenderOrgs{}

@@ -461,12 +461,70 @@ func TestCreateOrg_NoAuth_Returns401(t *testing.T) {
 
 // failingListOrgsStore wraps a real store and returns a transient error from
 // ListOrgsForAccount, simulating a DB connection failure.
+//
+// Implements accountsStore (OrgStore + OrgMemberStore + OrgInviteStore +
+// WithTx), delegating all methods except ListOrgsForAccount to the real store.
 type failingListOrgsStore struct {
-	store.Store
+	realStore store.Store
 }
 
+// OrgStore delegation
+func (f *failingListOrgsStore) CreateOrg(ctx context.Context, p store.CreateOrgParams) (store.Org, error) {
+	return f.realStore.CreateOrg(ctx, p)
+}
+func (f *failingListOrgsStore) CreateProtectedOrg(ctx context.Context, p store.CreateProtectedOrgParams) (store.Org, error) {
+	return f.realStore.CreateProtectedOrg(ctx, p)
+}
+func (f *failingListOrgsStore) GetOrgByID(ctx context.Context, id string) (store.Org, error) {
+	return f.realStore.GetOrgByID(ctx, id)
+}
+func (f *failingListOrgsStore) GetOrgBySlug(ctx context.Context, slug string) (store.Org, error) {
+	return f.realStore.GetOrgBySlug(ctx, slug)
+}
+func (f *failingListOrgsStore) UpdateOrgSessionInvitePolicy(ctx context.Context, p store.UpdateOrgSessionInvitePolicyParams) error {
+	return f.realStore.UpdateOrgSessionInvitePolicy(ctx, p)
+}
+
+// OrgMemberStore delegation (ListOrgsForAccount overridden below)
+func (f *failingListOrgsStore) AddOrgMember(ctx context.Context, p store.AddOrgMemberParams) error {
+	return f.realStore.AddOrgMember(ctx, p)
+}
+func (f *failingListOrgsStore) GetOrgMember(ctx context.Context, p store.GetOrgMemberParams) (store.OrgMember, error) {
+	return f.realStore.GetOrgMember(ctx, p)
+}
 func (f *failingListOrgsStore) ListOrgsForAccount(_ context.Context, _ string) ([]store.Org, error) {
 	return nil, errors.New("conn refused")
+}
+func (f *failingListOrgsStore) ListOrgMembers(ctx context.Context, orgID string) ([]store.OrgMemberWithAccount, error) {
+	return f.realStore.ListOrgMembers(ctx, orgID)
+}
+func (f *failingListOrgsStore) RemoveOrgMember(ctx context.Context, p store.RemoveOrgMemberParams) error {
+	return f.realStore.RemoveOrgMember(ctx, p)
+}
+
+// OrgInviteStore delegation
+func (f *failingListOrgsStore) InsertOrgInvite(ctx context.Context, p store.InsertOrgInviteParams) (store.OrgInvite, error) {
+	return f.realStore.InsertOrgInvite(ctx, p)
+}
+func (f *failingListOrgsStore) GetOrgInviteByID(ctx context.Context, id string) (store.OrgInvite, error) {
+	return f.realStore.GetOrgInviteByID(ctx, id)
+}
+func (f *failingListOrgsStore) GetOrgInviteByTokenHash(ctx context.Context, h string) (store.OrgInvite, error) {
+	return f.realStore.GetOrgInviteByTokenHash(ctx, h)
+}
+func (f *failingListOrgsStore) MarkOrgInviteAccepted(ctx context.Context, p store.MarkOrgInviteAcceptedParams) error {
+	return f.realStore.MarkOrgInviteAccepted(ctx, p)
+}
+func (f *failingListOrgsStore) ListPendingOrgInvitesForOrg(ctx context.Context, p store.ListPendingOrgInvitesForOrgParams) ([]store.OrgInvite, error) {
+	return f.realStore.ListPendingOrgInvitesForOrg(ctx, p)
+}
+func (f *failingListOrgsStore) ListPendingOrgInvitesForEmail(ctx context.Context, p store.ListPendingOrgInvitesForEmailParams) ([]store.OrgInvite, error) {
+	return f.realStore.ListPendingOrgInvitesForEmail(ctx, p)
+}
+
+// WithTx delegation
+func (f *failingListOrgsStore) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	return f.realStore.WithTx(ctx, fn)
 }
 
 func TestGetMe_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
@@ -475,11 +533,31 @@ func TestGetMe_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
 	// handler reaches the failing call site.
 	acc := seedAccount(t, realStore, "depfail@example.com")
 
-	failing := &failingListOrgsStore{Store: realStore}
-	env := newAccountsTestEnvWithStore(t, failing)
+	failing := &failingListOrgsStore{realStore: realStore}
 
-	tok := env.bearerToken(t, acc.ID)
-	resp := getJSON(t, env.srv, "/api/me", tok)
+	// Build the env manually: tokens backed by the real store (for auth),
+	// accounts handler backed by the failing store (to inject the error).
+	svc := tokens.New(realStore)
+	h := accounts.New(failing, &noopSender{}, "https://portal.example.com")
+	strictAPI := openapi.NewStrictHandlerWithOptions(&accountsOnlyStrict{h}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
+	r := chi.NewRouter()
+	r.Group(func(r chi.Router) {
+		r.Use(tokens.BearerMiddleware(svc))
+		r.Get("/api/me", strictAPI.GetMe)
+	})
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	pair, err := svc.Issue(context.Background(), acc.ID)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+	tok := pair.AccessToken
+	resp := getJSON(t, srv, "/api/me", tok)
 
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d", resp.StatusCode)
