@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-anon-bearer
 kind: feature
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-ephemeral-playground
 depends_on: []
@@ -645,3 +645,41 @@ error` as the WithTx callback type but the actual interface is
 package. Implemented `randID(n int) (string, error)` using `crypto/rand` +
 `encoding/hex` as a private helper, consistent with the token generation
 approach already used for `generateToken()`.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none (one was fixed inline — see Notes)
+
+**Important**:
+- `anon-bearer-transactional-rollback-test-coverage` —
+  `TestIssueAnonymousSessionBearer_TransactionalRollback` does not actually
+  exercise transactional rollback; the body only validates the empty-sessionID
+  pre-tx guard. The acceptance criterion called for a real rollback test.
+- `anon-bearer-migration-updownup-test-coverage` —
+  `TestMigrate00016_AnonymousBearers_UpDownUp` runs Up once and inserts data;
+  it never invokes Down nor re-applies Up. The acceptance criterion called
+  for verifying the Down migration reverses cleanly.
+
+**Nits**:
+- `service_impl.go:232` uses `"tok_" + uuid.New().String()` for the bearer ID
+  while the existing `Issue` and `IssueShortLived` paths use bare
+  `uuid.New().String()`. Minor inconsistency in ID prefixing — pick one and
+  stick with it across the package.
+
+**Notes**:
+- Foundation-doc drift was fixed inline as part of this review. `docs/SPEC.md`
+  previously asserted "Anonymous identities have no account row outside the
+  session's `session_members`" which contradicts the locked design (real
+  `accounts` row with `is_anonymous: true` and synthetic email). Rewrote the
+  bullet to describe the as-implemented contract. The rolling-foundation
+  principle made this a blocker; an inline edit was the smallest fix.
+- All 7 implementation units are present and the test suite passes locally
+  (`go test ./internal/portal/tokens/... ./internal/db/store/... ./internal/db/`).
+- Build is clean.
+- Implementation notes faithfully document the deviations from the design
+  guide (TxStore vs Querier, randID newly added, sqlc unicode-arrow quirk).
+- Parent epic `epic-ephemeral-playground` still has a child at
+  stage:implementing (`feature-epic-ephemeral-playground-skill-consolidation`),
+  so this advance does not trigger an epic-level advance.

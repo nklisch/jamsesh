@@ -202,8 +202,13 @@ user creates.
   bearer that's valid for the session lifetime only and is revoked on session
   destruction. The bearer plugs into the same MCP / REST / git-Basic surfaces
   as a normal user token — handlers don't branch on identity kind, only on
-  membership. Anonymous identities have no account row outside the session's
-  `session_members` and never appear in `org_members`.
+  membership. Anonymous identities live as real `accounts` rows marked
+  `is_anonymous: true` (with a synthetic `anon_<random>@playground.local`
+  email that satisfies the `email NOT NULL UNIQUE` constraint without
+  schema relaxation) so the existing `session_members.account_id` FK and the
+  `RequireSessionMember` middleware work unchanged. Anonymous accounts and
+  their session-scoped bearers are cascade-deleted with the session and
+  never appear in `org_members`.
 
 ## Lifecycle
 
