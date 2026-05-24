@@ -1,7 +1,7 @@
 ---
 id: story-store-partition-architecture-doc
 kind: story
-stage: implementing
+stage: review
 tags: [portal, documentation]
 parent: feature-refactor-store-narrow-handler-signatures
 depends_on: [story-store-partition-test-fixture-sweep]
@@ -55,3 +55,7 @@ workers) accept the narrowest sub-interface union they need.
 
 `depends_on: [story-store-partition-test-fixture-sweep]` — the doc
 describes the post-state including the test fixture shape.
+
+## Implementation notes
+
+Added the **"Store interface partitioning"** paragraph to the "Data layer (multi-tenancy)" section of `docs/ARCHITECTURE.md`, describing the producer/consumer split: the adapter implements the umbrella `store.Store`; production consumers accept the narrowest sub-interface union (or a lowercase package-private composed interface in their own package); `WithTx` callbacks retain `TxStore`; `cmd/portal/main.go` wires the full adapter at construction time.
