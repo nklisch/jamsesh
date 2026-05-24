@@ -1,7 +1,7 @@
 ---
 id: story-state-readtoken-sweep-step-1-helper
 kind: story
-stage: review
+stage: done
 tags: [plugin, refactor]
 parent: feature-state-readtoken-per-session-sweep
 depends_on: []
@@ -122,3 +122,13 @@ func ReadCurrentBearer(sessionID string) (string, error) {
   - `TestReadCurrentBearer_EmptySessionID_UsesLegacy` — empty sessionID skips per-session lookup.
   - `TestReadCurrentBearer_PostMigrationStub_PassesThrough` — stub value passes through unchanged.
 - `go build ./...` and `go test ./...` both clean.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Behavior-preserving refactor delivered cleanly. Step 1 added the helper with 4 unit tests; step 2 swept the call sites (5 in story body + 1 bonus from mcpheaders found during grep). `go grep -n "state.ReadToken" -- 'cmd/'` returns nothing. Tests pass; build clean.

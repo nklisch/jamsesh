@@ -1,7 +1,7 @@
 ---
 id: story-state-readtoken-sweep-step-2-callsites
 kind: story
-stage: review
+stage: done
 tags: [plugin, refactor]
 parent: feature-state-readtoken-per-session-sweep
 depends_on: [story-state-readtoken-sweep-step-1-helper]
@@ -135,3 +135,13 @@ go build ./...                          # clean
 go test ./...                           # all pass
 git grep -n "state.ReadToken" -- 'cmd/' # returns nothing
 ```
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Behavior-preserving refactor delivered cleanly. Step 1 added the helper with 4 unit tests; step 2 swept the call sites (5 in story body + 1 bonus from mcpheaders found during grep). `go grep -n "state.ReadToken" -- 'cmd/'` returns nothing. Tests pass; build clean.

@@ -1,7 +1,7 @@
 ---
 id: feature-state-readtoken-per-session-sweep
 kind: feature
-stage: implementing
+stage: done
 tags: [plugin, cleanup, refactor]
 parent: null
 depends_on: []
@@ -159,3 +159,13 @@ through per the per-callsite table in the story body.
 
 Serial: Step 1 → Step 2. The compiler catches missing sessionID
 parameters in step 2 once step 1 lands.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve — feature delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Both child stories at done. The `state.ReadCurrentBearer(sessionID)` helper encapsulates the per-session-first / legacy-fallback pattern; all 5 read callsites + 1 bonus mcpheaders fallback site swept. Verification confirmed `git grep -n "state.ReadToken" -- 'cmd/'` returns nothing — the upgrade-path footgun (binary sending `Authorization: Bearer MIGRATED_TO_PER_SESSION`) is closed before first external release.
