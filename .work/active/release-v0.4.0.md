@@ -105,4 +105,6 @@ updated: 2026-05-24
 
 ## Gate runs
 
-<populated in Phase 4>
+- **gate-security** (2026-05-24) — 9 findings (0 critical, 0 high, 2 medium, 7 low)
+  - Medium → active/stories (2): `gate-security-playground-create-handler-no-maxlength-enforcement`, `gate-security-anon-bearer-localstorage-xss-exposure`
+  - Low → backlog (7): refresh-error-body-leak, anon-bearer-validate-no-session-binding, githttp-receivepack-wallclock-not-injected, oauth-callback-log-scrubbing, playground-create-orphan-anon-account-on-member-failure, getplaygroundsession-404-vs-401-asymmetry, playground-internal-sql-errors-surface-to-anon
