@@ -1,7 +1,7 @@
 ---
 id: story-refactor-automerger-decomposition-merge-file-split
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: feature-refactor-automerger-decomposition
 depends_on: [story-refactor-automerger-decomposition-both-modified-helper]
@@ -112,3 +112,19 @@ via fixtures. The split is mechanical.
 `depends_on: [story-refactor-automerger-decomposition-both-modified-helper]`
 — this story touches the same file (`merge.go`) and lines further down.
 Serial chain to avoid concurrent edits.
+
+## Implementation discovery
+
+**git merge-file exit-code dialect quirk:** The git documentation states exit values are *negative on error* and 1..N for conflicts (capped at 127). However, the OS delivers these as unsigned bytes: git's `-1` arrives as `255`, `-2` as `254`, etc. The `binary-file` corpus fixture confirms this: merging binary content causes `git merge-file` to exit with code 255 (git's -1 error).
+
+The original `mergeFileContent` used `ExitCode() > 0` to catch all positive codes as conflicts, which incidentally captured 255 and routed binary files into the conflict path (hard-conflict escalation via `ParseConflictRanges` returning an empty range list). Introducing a strict `128+ = subprocess error` rule in `interpretMergeFileExit` broke the binary-file test.
+
+**Resolution:** `interpretMergeFileExit` treats any non-zero exit code as "at least one conflict region" rather than gating on 128+. Genuine subprocess failures (binary not found, signal termination) are caught in `runMergeFileTool` before `cmd.Run()` returns an `*exec.ExitError` at all — those cases return a non-nil `err` directly. The two layers together preserve the original semantics while cleanly separating subprocess invocation from exit-code interpretation.
+
+## Implementation notes (post-landing)
+
+- `mergeFileContent` is 10 LoC (lines 671–680) — well within the ≤15 LoC target.
+- No `context.Context` parameter existed on the original; none added.
+- Error-wrapping prefixes updated from `mergeFileContent` to `runMergeFileTool` to match caller.
+- `ParseConflictRanges` confirmed as the conflict-marker scanner over merged bytes; no parallel parser introduced in `interpretMergeFileExit`.
+- `go build ./...` and `go test ./...` clean.

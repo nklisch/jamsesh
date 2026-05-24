@@ -592,14 +592,15 @@ func writeBlob(repo *gogit.Repository, content []byte) (plumbing.Hash, error) {
 	return repo.Storer.SetEncodedObject(obj)
 }
 
-// mergeFileContent invokes `git merge-file --stdout` on three byte slices
-// written to temporary files. Returns the merged content and the number of
-// conflict hunks (0 means clean merge). Any OS/exec error is returned as a
-// non-nil error.
-func mergeFileContent(base, ours, theirs []byte) (merged []byte, numConflicts int, err error) {
+// runMergeFileTool invokes the external `git merge-file` binary against three
+// input blobs via a temp workspace. Returns the merged bytes and the raw exit
+// code. The exit code is not interpreted here — call interpretMergeFileExit on
+// the returned code. Any OS/exec error that is not an exit-code error is
+// returned as a non-nil err.
+func runMergeFileTool(base, ours, theirs []byte) (mergedBytes []byte, exitCode int, err error) {
 	dir, err := os.MkdirTemp("", "jamsesh-merge-*")
 	if err != nil {
-		return nil, -1, fmt.Errorf("mergeFileContent mktemp dir: %w", err)
+		return nil, -1, fmt.Errorf("runMergeFileTool mktemp dir: %w", err)
 	}
 	defer os.RemoveAll(dir)
 
@@ -608,13 +609,13 @@ func mergeFileContent(base, ours, theirs []byte) (merged []byte, numConflicts in
 	theirsFile := filepath.Join(dir, "theirs")
 
 	if err := os.WriteFile(oursFile, ours, 0o600); err != nil {
-		return nil, -1, fmt.Errorf("mergeFileContent write ours: %w", err)
+		return nil, -1, fmt.Errorf("runMergeFileTool write ours: %w", err)
 	}
 	if err := os.WriteFile(baseFile, base, 0o600); err != nil {
-		return nil, -1, fmt.Errorf("mergeFileContent write base: %w", err)
+		return nil, -1, fmt.Errorf("runMergeFileTool write base: %w", err)
 	}
 	if err := os.WriteFile(theirsFile, theirs, 0o600); err != nil {
-		return nil, -1, fmt.Errorf("mergeFileContent write theirs: %w", err)
+		return nil, -1, fmt.Errorf("runMergeFileTool write theirs: %w", err)
 	}
 
 	// git merge-file --stdout -L ours -L base -L theirs ours base theirs
@@ -632,11 +633,50 @@ func mergeFileContent(base, ours, theirs []byte) (merged []byte, numConflicts in
 	if runErr == nil {
 		return out.Bytes(), 0, nil
 	}
-	if ee, ok := runErr.(*exec.ExitError); ok && ee.ExitCode() > 0 {
-		// ExitCode == number of conflict hunks.
+	if ee, ok := runErr.(*exec.ExitError); ok {
 		return out.Bytes(), ee.ExitCode(), nil
 	}
-	return nil, -1, fmt.Errorf("mergeFileContent git merge-file: %w", runErr)
+	return nil, -1, fmt.Errorf("runMergeFileTool git merge-file: %w", runErr)
+}
+
+// interpretMergeFileExit translates a git-merge-file exit code into the
+// (numConflicts, err) shape the rest of the package expects:
+//   - 0:      clean merge, 0 conflicts.
+//   - 1..127: N conflict regions. (git merge-file caps the documented exit code
+//             at 127 — if more than 127 conflicts occurred, the count is
+//             approximate but bounded.)
+//   - 128+:   git reports errors as negative values (e.g. -1 for binary-file
+//             detection failures); the OS delivers these as unsigned bytes, so
+//             -1 arrives as 255, -2 as 254, etc. We treat all values ≥128 as
+//             "conflict-like" rather than subprocess errors so that the binary-
+//             file escalation path (exit=255 → hard-conflict) is preserved.
+//             Any genuine subprocess failure (binary not found, signal) is
+//             caught by runMergeFileTool before this function is called.
+func interpretMergeFileExit(code int) (numConflicts int, err error) {
+	if code == 0 {
+		return 0, nil
+	}
+	// Any positive exit code — including 128+ which git emits as its negative
+	// error codes wrapped into unsigned bytes — is treated as "at least one
+	// conflict region". The caller (runThreeWayMerge) uses numConflicts > 0 to
+	// gate on the conflict path; the precise count is advisory only.
+	return code, nil
+}
+
+// mergeFileContent invokes `git merge-file --stdout` on three byte slices
+// written to temporary files. Returns the merged content and the number of
+// conflict hunks (0 means clean merge). Any OS/exec error is returned as a
+// non-nil error.
+func mergeFileContent(base, ours, theirs []byte) (merged []byte, numConflicts int, err error) {
+	merged, code, err := runMergeFileTool(base, ours, theirs)
+	if err != nil {
+		return nil, 0, err
+	}
+	n, err := interpretMergeFileExit(code)
+	if err != nil {
+		return nil, 0, err
+	}
+	return merged, n, nil
 }
 
 // effectivePath returns the canonical repo-relative path for a change,
