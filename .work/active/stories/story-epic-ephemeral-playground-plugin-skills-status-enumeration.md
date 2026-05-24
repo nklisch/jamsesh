@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-plugin-skills-status-enumeration
 kind: story
-stage: review
+stage: done
 tags: [plugin, playground]
 parent: feature-epic-ephemeral-playground-plugin-skills
 depends_on: [story-epic-ephemeral-playground-plugin-skills-bearer-storage]
@@ -81,3 +81,39 @@ this note.
 the legacy `token` file but `MigrateToPerSessionTokens` (Story 2) has
 already written a `MIGRATED_TO_PER_SESSION` stub. These failures pre-date
 this story and are tracked separately.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `playgroundStatusOutput.IdleTimeout` Go field name doesn't match its JSON
+  tag `idle_timeout_at` (other fields follow `XAt` ↔ `x_at`). Cosmetic
+  inconsistency in a frozen-shape struct; leave as-is unless touched again.
+- `durableStatusOutput.Comments` is always emitted as `[]` (the addressed-
+  comment filter was intentionally dropped per implementation notes). The
+  field is retained for backward-compatible JSON shape. Consider removing
+  the always-empty field in a future cleanup once consumers actually exist.
+- `statusOutput = durableStatusOutput` type alias exists solely to keep
+  legacy tests compiling. Can be deleted once sibling test files no longer
+  reference it.
+
+**Notes**:
+- Verified: `go build ./cmd/jamsesh/...` clean; `go vet ./cmd/jamsesh/...`
+  clean; `go test -count=1 ./cmd/jamsesh/...` all packages PASS (including
+  the previously-flagged `mcpheaders`, now green after sibling stories).
+- All 10 `TestStatusAction_*` cases pass, exercising durable / playground /
+  mixed / missing-token / no-sessions / JSON shapes / legacy text path.
+- Bearer enforcement is asserted by the mock handlers in
+  `TestStatusAction_durableSession` and `TestStatusAction_playgroundSession`,
+  validating the per-session `GetJSONWithBearer` wire-up end-to-end.
+- Backward-compat JSON change (`{durable, playground}` envelope replacing
+  flat single-session shape) is intentional, documented in the body, and
+  acceptable under the pre-launch reality.
+- `endsInString` correctly takes the earlier of `hard_cap_at` /
+  `idle_timeout_at`, handles zero-value timestamps, and reports `ended` for
+  past deadlines.
+- Foundation docs unaffected — no existing assertion locked the previous
+  JSON shape.
