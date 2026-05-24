@@ -1,7 +1,7 @@
 ---
 id: story-anon-bearer-test-integrity-migration-updownup
 kind: story
-stage: implementing
+stage: review
 tags: [testing, migrations]
 parent: feature-anon-bearer-test-integrity
 depends_on: []
@@ -110,3 +110,44 @@ in parallel.
 Surfaced during review of
 `feature-epic-ephemeral-playground-anon-bearer`. Filed under the
 test-integrity discipline in CLAUDE.md.
+
+## Implementation notes (2026-05-23)
+
+Both additions landed in `internal/db/migrate_test.go`:
+
+1. **`migrateDown(t, ctx, db, dialect, version)` helper** — unexported,
+   takes `testing.TB`, re-derives the goose Provider locally (same switch
+   on dialect → embed.FS → fs.Sub → goose.NewProvider as `MigrateUp`).
+   Uses `t.Fatalf` for fail-fast on every error.
+
+2. **`TestMigrate00016_AnonymousBearers_UpDownUp` body extension** —
+   appended Down + re-Up steps after the existing post-Up assertions.
+   Order of Down assertions matters: `anonymous_session_bearer` rows
+   asserted gone BEFORE re-Up so the assertion can't be satisfied by
+   the re-Up's re-creation.
+
+### Goose-semantics correction
+
+Story design said `DownTo(16)` would leave the DB at version 15 ("rolls
+back all migrations down to, but not including, the specified version").
+Actual goose v3.27.1 semantics: `Provider.DownTo(N)` rolls back every
+migration with version **strictly greater than N**, leaving the DB at
+version N. Concretely, `DownTo(16)` rolls back 17 and 18 but leaves 16
+applied. The first test run failed because of this — the post-Down
+assertions all saw the 00016 schema still in place.
+
+Resolution: call `migrateDown(t, ctx, db, "sqlite", 15)` to revert
+through 00016, and document the corrected semantics in the helper's
+doc comment so the next caller doesn't trip on the same misconception.
+This also cleanly rolls back migrations 17 and 18 (org_protected,
+playground_sessions) along with 16 — which is intentional and necessary,
+since 00018 has a FK to oauth_tokens.session_id that 00016 introduces.
+
+### Verification
+
+- `go test -run TestMigrate00016 ./internal/db/...` → PASS
+- `go test ./internal/db/...` → PASS (other migration tests unaffected)
+- The Down assertions ARE meaningful: each one would fail if the Down SQL
+  in 00016 (or any prerequisite Down) were broken, e.g. forgetting to
+  delete `anonymous_session_bearer` rows before recreating the table
+  without that CHECK value.

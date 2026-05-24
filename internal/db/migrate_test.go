@@ -3,12 +3,63 @@ package db
 import (
 	"context"
 	"database/sql"
+	"embed"
+	"io/fs"
 	"os"
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
+
+	"github.com/pressly/goose/v3"
 )
+
+// migrateDown rolls back the database to the given goose version. Test-only:
+// takes testing.TB so it can only be called from a test binary. Replicates
+// the provider-construction block from MigrateUp, then calls Provider.DownTo.
+//
+// Goose semantics: DownTo(N) rolls back every migration with version > N,
+// leaving the DB at version N. To revert migration M, pass version M-1.
+// For example, migrateDown(t, ctx, db, "sqlite", 15) rolls the DB back
+// through migration 00016 (and any later migrations), leaving it at the
+// post-00015 schema.
+//
+// Why locally re-derive the Provider instead of factoring a shared helper out
+// of MigrateUp? Production MigrateUp should not expose its Provider just for
+// tests; one test isn't enough demand to justify the public surface. If a
+// second migration test arrives, factor then.
+func migrateDown(t testing.TB, ctx context.Context, db *sql.DB, dialect string, version int64) {
+	t.Helper()
+
+	var rawFS embed.FS
+	var subDir string
+	var gooseDialect goose.Dialect
+
+	switch dialect {
+	case "sqlite":
+		rawFS = sqliteMigrations
+		subDir = "migrations/sqlite"
+		gooseDialect = goose.DialectSQLite3
+	case "postgres":
+		rawFS = postgresMigrations
+		subDir = "migrations/postgres"
+		gooseDialect = goose.DialectPostgres
+	default:
+		t.Fatalf("migrateDown: unknown dialect %q", dialect)
+	}
+
+	fsys, err := fs.Sub(rawFS, subDir)
+	if err != nil {
+		t.Fatalf("migrateDown: embed sub-FS (%s): %v", dialect, err)
+	}
+	provider, err := goose.NewProvider(gooseDialect, db, fsys)
+	if err != nil {
+		t.Fatalf("migrateDown: goose provider init (%s): %v", dialect, err)
+	}
+	if _, err := provider.DownTo(ctx, version); err != nil {
+		t.Fatalf("migrateDown: provider.DownTo(%d): %v", version, err)
+	}
+}
 
 // expectedTables is the set of application tables the initial migration
 // creates. The goose_db_version table is created by goose itself and is
@@ -264,6 +315,63 @@ func TestMigrate00016_AnonymousBearers_UpDownUp(t *testing.T) {
 	}
 	if kind != "access" {
 		t.Errorf("pre-migration token kind: want 'access', got %q", kind)
+	}
+
+	// --- Down: roll back through 00016 ---
+	// Goose Provider.DownTo(N) rolls back all migrations with version > N,
+	// leaving the DB at version N. To revert 00016 we must pass version 15.
+	migrateDown(t, ctx, db, "sqlite", 15)
+
+	// Assert: anonymous_session_bearer rows deleted (CHECK now rejects the kind).
+	// This must be asserted BEFORE re-Up, otherwise the assertion proves nothing.
+	var anonCount int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM oauth_tokens WHERE kind='anonymous_session_bearer'`,
+	).Scan(&anonCount); err != nil {
+		t.Fatalf("count anonymous_session_bearer after Down: %v", err)
+	}
+	if anonCount != 0 {
+		t.Errorf("after Down: anonymous_session_bearer rows: want 0, got %d", anonCount)
+	}
+
+	// Assert: pre-migration access token survived the Down without data loss.
+	var preCount int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM oauth_tokens WHERE id='tok-001'`,
+	).Scan(&preCount); err != nil {
+		t.Fatalf("count pre-migration token after Down: %v", err)
+	}
+	if preCount != 1 {
+		t.Errorf("after Down: tok-001 should survive: want 1 row, got %d", preCount)
+	}
+
+	// Assert: is_anonymous column removed from accounts. INSERT including the
+	// column should fail because the column no longer exists.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO accounts (id, email, display_name, created_at, is_anonymous)
+		 VALUES ('acc-test-002', 'test2@example.com', 'Test2', datetime('now'), 0)`); err == nil {
+		t.Error("after Down: is_anonymous column should be gone but INSERT succeeded")
+	}
+
+	// Assert: session_id column removed from oauth_tokens. INSERT including
+	// the column should fail because the column no longer exists.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO oauth_tokens (id, account_id, token_hash, kind, session_id, issued_at, expires_at)
+		 VALUES ('tok-003', 'acc-test-001', 'hash-003', 'access', 'sess-001', datetime('now'), datetime('now', '+1 hour'))`); err == nil {
+		t.Error("after Down: session_id column should be gone but INSERT succeeded")
+	}
+
+	// --- Re-Up: reapply 00016 ---
+	if err := MigrateUp(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("MigrateUp (re-apply after Down): %v", err)
+	}
+
+	// Assert: is_anonymous column back; session_id column back; new kind accepted.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO oauth_tokens (id, account_id, token_hash, kind, session_id, issued_at, expires_at)
+		 VALUES ('tok-004', 'acc-test-001', 'hash-004', 'anonymous_session_bearer', 'sess-001', datetime('now'), datetime('now', '+1 hour'))`,
+	); err != nil {
+		t.Errorf("after re-Up: anonymous_session_bearer insert: %v", err)
 	}
 }
 
