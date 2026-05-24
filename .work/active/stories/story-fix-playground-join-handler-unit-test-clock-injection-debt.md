@@ -1,0 +1,137 @@
+---
+id: story-fix-playground-join-handler-unit-test-clock-injection-debt
+kind: story
+stage: implementing
+tags: [bug, testing, portal, playground]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-24
+updated: 2026-05-24
+---
+
+# Repair clock-injection mismatch in two failing playground join unit tests
+
+## Symptom
+
+Two tests in `internal/portal/playground/handler_test.go` fail
+deterministically against `main`:
+
+```
+$ go test ./internal/portal/playground/ -run 'TestJoinPlaygroundSession_(Success|WithNickname_UsesIt)' -count=1
+--- TestJoinPlaygroundSession_WithNickname_UsesIt
+    handler_test.go:553: join: want 200, got 410
+    handler_test.go:558: want nickname=custom-nick, got ""
+
+--- TestJoinPlaygroundSession_Success
+    handler_test.go:537: want non-empty nickname
+    handler_test.go:545: want members_count=2, got 0
+```
+
+The 410 message indicates `playground.session_ended` (hard-cap or
+status check fired). Both tests create a fresh session and then
+attempt to join it — neither expects the 410.
+
+## Root cause
+
+These tests were originally parked in
+`.work/backlog/bug-playground-join-with-nickname-returns-410-on-fresh-session.md`
+(now removed; that bug presumed the production handler was broken).
+
+The two-participant e2e test
+`TestPlayground_TwoParticipantJoinMerge` (which DOES join a freshly
+created session against the real portal binary + real wall clock) passes
+reliably 5/5 runs. So the production handler is correct; the bug is in
+the unit suite's clock injection.
+
+Two likely culprits (an implementer should diagnose which applies):
+
+1. **Handler bypass of injected clock**: a code path in
+   `internal/portal/playground/handler.go > JoinPlaygroundSession`
+   compares against `time.Now()` instead of `h.Clock.Now()`. The
+   ended-check (`!h.Clock.Now().UTC().Before(*sess.HardCapAt)` at
+   handler.go:219) uses the injected clock, but the TTL math at line
+   257-265 (`time.Until(*sess.HardCapAt)`) uses real wall time
+   internally. If the unit test's `fixedClock` is set to a time in the
+   past relative to wall clock, `time.Until` could return a negative
+   value that triggers the 410.
+
+2. **Test setup mismatch**: `newTestEnvWithClock` in `handler_test.go`
+   may construct the session with `HardCapAt` derived from the wall
+   clock at test-setup time, then the join uses the `fixedClock` to
+   read "now" but `time.Until(HardCapAt)` uses real time — the
+   asymmetry causes the 410 path to fire if real wall time has
+   advanced past the test's intended `HardCapAt`.
+
+## Fix approach
+
+Read the failing tests + the JoinPlaygroundSession handler:
+
+- `internal/portal/playground/handler.go` lines 195-302 (JoinPlaygroundSession)
+- `internal/portal/playground/handler_test.go > TestJoinPlaygroundSession_Success` (~line 530)
+- `internal/portal/playground/handler_test.go > TestJoinPlaygroundSession_WithNickname_UsesIt` (~line 547)
+- `internal/portal/playground/handler_test.go > fixedClock` (~line 30) and `newTestEnvWithClock` (~line 264)
+
+Then:
+
+1. **Find the leaking time.Now() call.** Grep
+   `internal/portal/playground/handler.go` for `time.Now`,
+   `time.Until`, `time.Since` — any of these that should be using
+   `h.Clock.Now()` is the bug. Patch them to use the injected clock.
+
+2. **OR fix the test setup.** If the handler is fully clock-injected
+   already, the bug is in the test: the session's `HardCapAt` is
+   constructed from a different time basis than the clock the handler
+   reads. Align them — both should come from `clk.Now().Add(cfg.HardCap)`
+   at test setup.
+
+3. **Re-run the failing tests** until they pass against the
+   `fixedClock` setup. Then run the full handler_test.go suite to
+   confirm no other tests regressed.
+
+4. **Add a unit-level regression**: pin the clock-injection contract
+   so this can't drift again. For example: a test that constructs a
+   session with `HardCapAt = clock.Now() + 1*time.Hour` and asserts
+   that `JoinPlaygroundSession` returns 200 (not 410) even when the
+   real wall clock has not advanced. If this test fails, the handler
+   is reading wall time somewhere it shouldn't.
+
+## Why this is a fix, not a redesign
+
+The behavior is correct in production (verified by
+`TestPlayground_TwoParticipantJoinMerge`). The unit tests have been
+silently broken for the whole v0.4.0 release cycle — they were the
+canary the e2e suite was supposed to be, and they didn't fire because
+the e2e suite didn't exist yet. Now both layers exist; the e2e suite
+caught the issue (no real-time bug), and the unit suite needs to be
+repaired to match the production contract.
+
+## Regression test
+
+Either the existing `TestJoinPlaygroundSession_Success` and
+`TestJoinPlaygroundSession_WithNickname_UsesIt` should pass after the
+fix (preferred — they document the contract), OR new tests should
+replace them with the corrected clock-injection setup (if the existing
+tests have other drift). Implementer's call.
+
+The most honest signal: after the fix, running
+`go test ./internal/portal/playground/ -count=1` returns ALL green
+(currently it returns those two as the only failures).
+
+## Scope guardrail
+
+This is a single-stride test-debt fix. Do NOT expand into a broader
+"clock injection audit across all handlers" — that's a separate refactor
+concern. Just fix what's needed for these two tests to pass against
+the existing clock-injection contract.
+
+## Related
+
+- `.work/archive/e2e-audit-playground-two-participant-join-merge-journey.md`
+  — the e2e test that confirmed production correctness; the
+  Implementation Notes there explicitly cite this finding.
+- `internal/portal/playground/clock.go` — the per-package Clock
+  interface that the handler should be using.
+- `.claude/skills/patterns/per-package-clock-interface.md` — the
+  project's standard pattern for clock injection.

@@ -1,7 +1,7 @@
 ---
 id: bug-playground-destruction-clustered-advisory-lock
 kind: story
-stage: backlog
+stage: implementing
 tags: [portal, playground, clustered, bug]
 parent: null
 depends_on: []
