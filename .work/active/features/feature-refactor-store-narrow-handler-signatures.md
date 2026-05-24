@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-store-narrow-handler-signatures
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: null
 depends_on: [feature-refactor-adapter-generic-wrap-helpers]
@@ -212,3 +212,37 @@ signatures. Step 3 documents the final state.
 - **`TxStore` umbrella kept** — tx scope is a different concern.
 - **No partial advance** — Step 1 must run to completion; partial
   consumer narrowing leaves the codebase in a mixed state.
+
+## Implementation summary (2026-05-24, autopilot)
+
+All three child stories landed and are at `stage: review`.
+
+**Step 1 — `story-store-partition-handler-signature-sweep`** (commits
+`2692fd7`..`ce5cc9f`):
+- 54 production `store.Store` references → **0**
+- 20 production files modified across 15 packages
+- 19 lowercase package-private composed interfaces declared
+- `cmd/portal/main.go` continues to wire the full adapter
+- `WithTx(TxStore)` callbacks left untouched
+- 0 intentional `store.Store` exceptions
+
+**Step 2 — `story-store-partition-test-fixture-sweep`**:
+- 12 `struct { store.Store }` test-mock embeddings → **0**
+- 13 test files modified across 8 packages
+- Largest mock shrank ~380 → ~50 LoC (`handlerauth/stubStore`)
+- `TxStore` embedding intentionally retained where present
+
+**Step 3 — `story-store-partition-architecture-doc`**:
+- "Store interface partitioning" paragraph added to
+  `docs/ARCHITECTURE.md`'s data-layer section. Documents
+  producer-umbrella / consumer-narrow / `TxStore`-stays convention.
+
+**Verification**: `go build ./...` and `go test ./...` clean. No
+behavior change — the type-system narrowing was the entire delivery.
+
+**Acceptance criteria met**:
+- No production consumer (excluding `cmd/portal/main.go`) takes `store.Store` ✓
+- Test fixtures use narrow interface mocks ✓
+- `docs/ARCHITECTURE.md` data-layer section updated ✓
+- `go build ./...` and `go test ./...` clean ✓
+- No behavior change ✓
