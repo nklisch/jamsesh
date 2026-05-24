@@ -196,6 +196,39 @@ Mitigation:
 - Active access tokens expire within 1 hour, limiting the post-revocation
   window.
 
+## Client-side token storage and XSS residual risk
+
+The portal SPA stores two categories of token on the client:
+
+**Durable OAuth tokens (refresh tokens persisted to `localStorage`):**
+`frontend/src/lib/auth.svelte.ts` writes both the access token and the
+30-day refresh token to `localStorage` under the keys `jamsesh.token` and
+`jamsesh.refresh`. Any XSS vulnerability in the SPA — including a future
+inline-script regression in the Svelte bundle — can exfiltrate both halves of
+the token pair. The access token has a short TTL (≤1 hour); the refresh token
+is long-lived and would allow an attacker to issue fresh access tokens until
+the refresh token is explicitly revoked.
+
+Residual risk accepted: moving refresh tokens to an `httpOnly Secure` cookie
+requires rework of the token-refresh API contract and is deferred to a future
+hardening pass. The current `script-src 'self'` CSP directive blocks inline
+script injection from known-XSS vectors; a CSP report endpoint (see below)
+surfaces regressions.
+
+**Playground anonymous bearers (in-memory only, NOT in `localStorage`):**
+The `_playgroundContext` rune in `auth.svelte.ts` holds the anonymous bearer
+for the current playground session in module-level `$state` — it is never
+written to `localStorage` or any persistent storage. A page reload loses the
+playground context (by design). XSS can still exfiltrate the in-memory bearer
+during the page session, but the blast radius is limited to the single
+playground session (see [Anonymous session-scoped bearers](#anonymous-session-scoped-bearers)).
+
+**CSP regression detection:** A `Content-Security-Policy-Report-Only` header
+with `report-uri /_csp-report` is emitted alongside the enforced CSP so
+inline-script policy violations surface in server logs. The `/_csp-report`
+route is a placeholder; see backlog item
+`bug-csp-report-endpoint-not-wired` for wiring an actual report receiver.
+
 ## Supply chain and integrity
 
 - The `jamsesh` binary is built reproducibly from public source and

@@ -40,6 +40,19 @@ func defaultCSP() string {
 		"form-action 'self'"
 }
 
+// cspReportOnly returns the Content-Security-Policy-Report-Only directive
+// string. It mirrors defaultCSP() but adds a report-uri directive so that
+// inline-script regressions surface in server logs without breaking the page.
+//
+// The /_csp-report endpoint is a placeholder; see backlog item
+// bug-csp-report-endpoint-not-wired for wiring an actual report receiver.
+// Until the receiver is wired, browsers will POST reports to /_csp-report
+// and receive a 404, which is harmless — the reports are still emitted to
+// the browser's console and any devtools network panel.
+func cspReportOnly() string {
+	return defaultCSP() + "; report-uri /_csp-report"
+}
+
 // SecurityHeaders returns a middleware that sets standard security headers on
 // every response. It should be mounted globally at the start of the middleware
 // stack, before RequestID, so all routes — including /healthz, /metrics, and
@@ -49,10 +62,16 @@ func SecurityHeaders(opts SecurityHeadersOptions) func(http.Handler) http.Handle
 	if csp == "" {
 		csp = defaultCSP()
 	}
+	cspRO := cspReportOnly()
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := w.Header()
 			h.Set("Content-Security-Policy", csp)
+			// Report-Only header: mirrors the enforced CSP with report-uri added.
+			// Inline-script violations (e.g. a future Svelte build regression that
+			// emits an inline <script>) are reported to /_csp-report without
+			// breaking the page, catching XSS-mitigation regressions early.
+			h.Set("Content-Security-Policy-Report-Only", cspRO)
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Referrer-Policy", "no-referrer")

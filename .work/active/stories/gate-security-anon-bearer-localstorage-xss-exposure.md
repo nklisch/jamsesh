@@ -1,7 +1,7 @@
 ---
 id: gate-security-anon-bearer-localstorage-xss-exposure
 kind: story
-stage: implementing
+stage: review
 tags: [security, ui, tokens, data-protection]
 parent: null
 depends_on: []
@@ -53,3 +53,37 @@ Move refresh tokens to an httpOnly Secure cookie (or document the
 localStorage decision explicitly in `docs/SECURITY.md` and accept the
 residual XSS-exfil risk); add a CSP `report-uri` / `report-to` so
 inline-script regressions surface.
+
+## Implementation notes
+
+**Direction taken:** Direction 2 (document + CSP report-uri), not Direction 1
+(move tokens to httpOnly cookies). Reasons: refresh tokens are already in
+`localStorage` as a documented design decision; moving to cookies requires
+auth-flow rework out of scope for a medium-severity mid-release finding.
+
+**`docs/SECURITY.md` — new section "Client-side token storage and XSS residual risk"**
+inserted immediately before "Supply chain and integrity". The section:
+- Documents that refresh tokens are persisted to `localStorage` (`jamsesh.token`,
+  `jamsesh.refresh` keys) and explicitly calls out the XSS-exfil risk and
+  residual-risk acceptance rationale.
+- Confirms that the playground anonymous bearer (`_playgroundContext`) is held
+  in-memory only — NOT in `localStorage` — and that a page reload intentionally
+  drops it.
+- References the CSP report endpoint (see below) as the regression-detection
+  mechanism.
+
+**`internal/portal/router/security_headers.go` — `Content-Security-Policy-Report-Only` header**
+A new `cspReportOnly()` helper mirrors `defaultCSP()` and appends
+`report-uri /_csp-report`. The `SecurityHeaders` middleware now emits this as a
+second header alongside the enforced `Content-Security-Policy`. The
+`Report-Only` mode means violations are reported but never block the page —
+appropriate for a regression-detection signal.
+
+**`/_csp-report` endpoint:** The route is a placeholder; browsers will POST
+reports there and receive 404 (harmless — the reports still appear in browser
+devtools). A backlog item `bug-csp-report-endpoint-not-wired` has been parked
+for wiring an actual log-and-204 receiver.
+
+**Verification:** `go build ./...` clean; `go test ./internal/portal/router/...`
+clean (existing security-headers tests pass); `npm run check` 0 errors;
+`npm test` 693/693 passing.
