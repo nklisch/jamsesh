@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-portal-ui-anonymous-entry
 kind: story
-stage: review
+stage: done
 tags: [ui, playground]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: [story-epic-ephemeral-playground-portal-ui-router-refactor]
@@ -112,3 +112,36 @@ session-lifecycle-rest-endpoints story).
 
 **Test counts**: PlaygroundLanding 14, JoinerPicker 22, SessionTombstone 19.
 All 624 suite tests pass. `npm run check` 0 errors. `npm run build` clean.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: 1
+- Tombstone 404 conflates two cases (session still active vs tombstone
+  TTL expired). Current code redirects all 404s to the live session
+  view, which loops for 30+ day-old URLs. Filed as
+  `.work/backlog/idea-tombstone-expired-redirect-distinguishes-active-vs-expired.md`.
+  Low priority — only affects users hitting expired-tombstone URLs.
+
+**Nits** (not items):
+- `JoinerPicker.svelte` line 2 imports `onMount` but never uses it; line 8
+  aliases `PlaygroundSessionSummary` but never references it. Minor
+  cleanup — would be flagged by `noUnusedLocals` / lint if enabled.
+- `PlaygroundLanding.copyCmd`: rapid double-click within 1.6s captures
+  "Copied!" as `orig`, restoring "Copied!" instead of "Copy". Cosmetic.
+- Clipboard write failures fail silently. Comment says "the text is still
+  visible" which is true, but an aria-live "Copy failed — select
+  manually" would be slightly more accessible.
+
+**Notes**:
+- 3 screens, 3 new public routes, 1 Home CTA. 55 new tests, all 624
+  pass. `npm run check` clean.
+- Design deviation (client-side nickname suggestion vs design's
+  server-suggested) is documented inline with rationale (no public GET
+  endpoint exists pre-join). Acceptable.
+- Pattern compliance: `view-state-union-machine`,
+  `openapi-fetch-result-branch`, `wrapper-object-rune-store`,
+  `spa-test-module-mock-barrel`, `snippet-children-component`
+  (Home.svelte `playgroundCta`). All clean.
