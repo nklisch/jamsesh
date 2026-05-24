@@ -4,7 +4,7 @@ kind: story
 stage: implementing
 tags: [portal, infra, testing]
 parent: feature-spec-discipline
-depends_on: [story-spec-discipline-add-playground-event-payloads]
+depends_on: [story-spec-discipline-audit-and-close-emit-vs-yaml-gaps]
 release_binding: null
 gate_origin: null
 created: 2026-05-24
@@ -47,7 +47,7 @@ equivalent location near the canonical event-type list) that:
      (`EventCommitArrived = "commit.arrived"`, etc.), OR
    - A scan over `events.Emit(ctx, ..., "<type>", ...)` call sites
      using `go/parser`.
-   The depending story (`story-spec-discipline-add-playground-event-payloads`)
+   The depending story (`story-spec-discipline-audit-and-close-emit-vs-yaml-gaps`)
    will likely consolidate these into a package-level constants block
    as part of its server-emit cleanup. This story should rely on
    that consolidated list. If no constants block exists when this
@@ -86,7 +86,7 @@ discovery so the test still works when run from a different cwd.
 - [ ] Test exists at the chosen location and runs under
       `go test ./internal/portal/events/...` (or wherever it lands).
 - [ ] Test passes against the current state AFTER
-      `story-spec-discipline-add-playground-event-payloads` lands.
+      `story-spec-discipline-audit-and-close-emit-vs-yaml-gaps` lands.
 - [ ] Inject a deliberate mismatch (add a fake constant in the test
       package locally; verify the test fails with a clear diff
       message; remove). Document the failure-mode output in

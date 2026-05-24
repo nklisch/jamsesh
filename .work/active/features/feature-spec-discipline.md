@@ -1,7 +1,7 @@
 ---
 id: feature-spec-discipline
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal, ui, documentation, infra]
 parent: null
 depends_on: []
@@ -51,7 +51,7 @@ Three concerns, decomposed into the child stories below:
 
 | Child | Stage | Depends on |
 |---|---|---|
-| `story-spec-discipline-add-playground-event-payloads` | drafting | — |
+| `story-spec-discipline-audit-and-close-emit-vs-yaml-gaps` | drafting | — |
 | `story-spec-discipline-drift-ci-check` | implementing | add-playground-event-payloads |
 | `story-spec-discipline-pattern-doc` | implementing | drift-ci-check |
 | `story-refactor-replace-inline-event-types-with-openapi-typescript-gen` (existing, re-parented) | drafting | add-playground-event-payloads |
@@ -89,3 +89,47 @@ Three concerns, decomposed into the child stories below:
 - Restructuring the spec authoring workflow generally. The convention
   already exists; this feature just enforces and closes one leak.
 - Anything code-first about OpenAPI. The direction stays spec-first.
+
+## Design Discovery (feature-design 2026-05-24)
+
+The Phase 3 audit revealed the original child story's framing was wrong
+in detail but right in spirit:
+
+- The events `playground.activity_reset` and `session.destroyed` (the
+  original spec-gap claim) **do not exist** — they were wrong frontend
+  assumptions. The actual events are `session.ended` and
+  `playground.destruction_warning`, both already in the YAML enum.
+  The portal-ui session-view-extensions story (`d50e575`) corrected
+  the frontend to use the real names.
+
+- The **real** gap class is server-emits-not-specced. Concrete example
+  found: `session.created` is emitted by `sessions/handler.go:155`,
+  used by `SessionList.svelte`, but absent from the YAML enum.
+
+- A second gap class: codegen-stale. `playground.destruction_warning`
+  is in the YAML but missing from `types.gen.ts` — `make generate`
+  hasn't been re-run since that schema added.
+
+The child story is rescoped accordingly:
+
+- `story-spec-discipline-add-playground-event-payloads` →
+  **renamed** to `story-spec-discipline-audit-and-close-emit-vs-yaml-gaps`.
+  Scope: audit Go emit vs YAML, close all observed gaps, run codegen,
+  re-enable frontend type imports. Now at `stage: implementing` since
+  the audit-and-fix work is concrete.
+
+Sibling stories unchanged:
+- `story-spec-discipline-drift-ci-check` — CI test catches the
+  gap-class going forward. Still depends on the (renamed) audit story.
+- `story-spec-discipline-pattern-doc` — documents the rule. Still
+  depends on drift-ci-check.
+
+## Implementation Order
+
+Serial chain:
+1. `story-spec-discipline-audit-and-close-emit-vs-yaml-gaps` —
+   closes the current gaps + runs codegen
+2. `story-spec-discipline-drift-ci-check` — prevents recurrence
+3. `story-spec-discipline-pattern-doc` — codifies the rule
+4. `story-refactor-replace-inline-event-types-with-openapi-typescript-gen` —
+   unblocked once codegen refreshes the generated types
