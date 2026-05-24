@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-reserved-org-slug-boot-conflict
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-failure
 depends_on: []
@@ -118,3 +118,41 @@ func TestPlayground_ReservedSlugBootConflict(t *testing.T) {
     require.True(t, protected, "portal must protect reserved org on boot")
 }
 ```
+
+## Implementation notes
+
+**Outcome implemented by v0.4.0**: Outcome A (exit-on-conflict).
+`ProvisionReservedOrg` in `internal/portal/playground/provision.go` returns
+`ErrReservedSlugConflict` when it finds an unprotected org with slug
+`"playground"`. `cmd/portal/main.go` logs the error (including a remediation
+hint) and exits 1. The portal does NOT take ownership of the row.
+
+**No `TryStart` fixture extension needed.** The test uses the existing
+`startFailingPortal` helper (defined in `config_and_deps_test.go`) which
+starts a container without a health-check wait strategy and polls until it
+exits. This helper was already established for boot-failure tests in this
+package and is the right surface for Outcome A — no new portal fixture API
+was required.
+
+**Setup approach**: boot a migration-only portal (playground disabled) first
+so the `orgs` table exists, then pre-seed the conflict row via a direct
+`database/sql` connection using `pg.DSN`, then boot the second portal with
+playground enabled. This avoids any pre-seeding timing race against an
+unschematised database.
+
+**Test assertions**:
+1. Container is not running after `startFailingPortal`'s 15-second deadline.
+2. Container logs contain at least one of `["reserved slug conflict", "playground"]`.
+3. The `org_protected` column on the pre-seeded row is still `false` after
+   portal exit — confirming Outcome B (take-ownership) did NOT fire.
+
+**Observed container log output** (from passing test run):
+```
+{"msg":"playground enabled but reserved slug is taken — refusing to start",
+ "err":"reserved slug conflict: an unprotected org with slug \"playground\" exists
+        (id=org-preexisting-unprotected); rename it before enabling playground",
+ "remediation":"rename the existing 'playground' org or set JAMSESH_PLAYGROUND_ENABLED=false"}
+```
+
+**Test runtime**: ~10s (dominated by Postgres container startup and migration
+portal boot).

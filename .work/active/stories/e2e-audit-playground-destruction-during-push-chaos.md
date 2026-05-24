@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-destruction-during-push-chaos
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-chaos
 depends_on: []
@@ -119,3 +119,53 @@ func TestPlayground_DestructionDuringPush_NoCorruption(t *testing.T) {
     }
 }
 ```
+
+## Implementation notes
+
+### Approach used
+
+Clock-based orchestration (Approach 2 from the feature design brief), structured
+as two sub-tests sharing a single portal+postgres stack:
+
+**`push_before_destroy`** (deterministic push-wins):
+Push a commit while the clock is still within the hard-cap, then advance the
+clock 70s past the 60s hard-cap to trigger destruction. Asserts that the
+tombstone's `commits_count >= 1` (no silent data loss) and the repo is removed
+after destruction.
+
+**`concurrent_race/iter_N`** (5 iterations of the race):
+Clone + prepare commit → spawn push goroutine → immediately advance clock 70s
+past hard-cap. The push races with the destruction sweep (which fires within
+0-1s real time of the clock advance). On fast local/CI hardware the sweep
+consistently wins by revoking the bearer between git's unauthenticated challenge
+and its authenticated retry (two consecutive info/refs requests). Each iteration
+asserts: tombstone present, session inaccessible, repo gone — no torn state in
+either outcome.
+
+### Key discovery during implementation
+
+The anonymous playground bearer has a real-time TTL equal to `HARD_CAP_S`.
+Setting `HARD_CAP_S=5` (as initially attempted) caused the bearer to expire
+during git clone + commit setup (~5-7s), making all pushes fail with 401 before
+the clock was even advanced. Solution: set `HARD_CAP_S=60` to give the bearer
+ample real-time margin, then advance the clock by 70s (10s past the new cap).
+
+Additionally, the rate limiter (`NewCreateRateLimiter`) uses `realClock{}` not
+the injectable clock, so clock advances do NOT reset rate limits. Setting
+`JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR=3600` (perMinute=60, burst=60) allows
+6+ back-to-back session creates in the test.
+
+On fast hardware the concurrent_race iterations consistently show destroy-wins
+because the sweep fires between git's two info/refs calls (~10-50ms apart).
+The `push_before_destroy` sub-test explicitly covers the push-wins path with a
+deterministic sequential ordering.
+
+### Flake results
+
+4 consecutive runs, all passing (4/4 PASS):
+- Run 1: 15.65s — 6 sub-tests, all PASS
+- Run 2: 10.09s — 6 sub-tests, all PASS
+- Run 3: 12.32s — 6 sub-tests, all PASS
+- Run 4: 13.28s — 6 sub-tests, all PASS
+
+No torn state observed in any run. Test is stable.
