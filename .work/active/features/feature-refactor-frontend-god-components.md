@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-frontend-god-components
 kind: feature
-stage: drafting
+stage: implementing
 tags: [ui, refactor]
 parent: null
 depends_on: []
@@ -64,3 +64,89 @@ Surfaced by a discovery-mode `/agile-workflow:refactor-design` scan.
 - The `view-state-union-machine` and `wrapper-object-rune-store`
   patterns already documented in `.claude/skills/patterns/` apply to
   most of the extractions.
+
+## Refactor Overview
+
+Six target files, each decomposed in its own child story. All six
+touch disjoint Svelte files — no `depends_on` chain — so the
+implementer runs them in 2 parallel waves of 3 agents.
+
+Decomposition strategy varies by file:
+
+- **State-heavy screens** (FinalizeView, SessionViewShell) — extract
+  rune modules (`wrapper-object-rune-store` pattern) rather than more
+  sub-components. FinalizeView already had its sub-component split
+  land; the remaining bulk is state.
+- **Multi-step / multi-concern screens** (SessionAttachWalkthrough,
+  OrgSettings, JoinerPicker, NewSessionDrawer) — extract sub-components
+  along the natural concern boundaries (one per step, one per concern).
+
+The `view-state-union-machine` and `wrapper-object-rune-store` patterns
+already documented in `.claude/skills/patterns/` are the load-bearing
+references.
+
+## Refactor Steps
+
+### Step 1: FinalizeView state-management decomposition
+**Priority**: High  **Risk**: Medium
+**Files**: `frontend/src/lib/screens/FinalizeView.svelte` (+ new rune modules)
+**Story**: `story-refactor-frontend-god-components-finalize-view`
+
+Extract lock state, plan-fetch debounce, curation state, and execution
+UX into rune modules at `$lib/finalize/`.
+
+### Step 2: SessionViewShell rune-module decomposition
+**Priority**: High  **Risk**: Medium
+**Files**: `frontend/src/lib/screens/SessionViewShell.svelte` (+ new rune modules)
+**Story**: `story-refactor-frontend-god-components-session-view-shell`
+
+Extract tree-state, playground countdown, ref-actions menu, and
+comment composer into rune modules at `$lib/session/`.
+
+### Step 3: SessionAttachWalkthrough step components
+**Priority**: Medium  **Risk**: Low
+**Files**: `frontend/src/lib/components/SessionAttachWalkthrough.svelte` (+ step components)
+**Story**: `story-refactor-frontend-god-components-session-attach-walkthrough`
+
+Extract each wizard step as its own component; extract step-state
+machine into a rune module.
+
+### Step 4: JoinerPicker picker vs acceptance split
+**Priority**: Medium  **Risk**: Low
+**Files**: `frontend/src/lib/screens/JoinerPicker.svelte` (+ extracted component)
+**Story**: `story-refactor-frontend-god-components-joiner-picker`
+
+Extract the invitation-acceptance flow into `InvitationList.svelte`
+(or equivalent).
+
+### Step 5: NewSessionDrawer form + CLI output split
+**Priority**: Medium  **Risk**: Low
+**Files**: `frontend/src/lib/components/NewSessionDrawer.svelte`
+**Story**: `story-refactor-frontend-god-components-new-session-drawer`
+
+Extract form state into a rune module OR the CLI-output renderer
+into a sub-component (whichever cuts cleaner for the file's actual
+structure).
+
+### Step 6: OrgSettings concern split
+**Priority**: Medium  **Risk**: Low
+**Files**: `frontend/src/lib/screens/OrgSettings.svelte` (+ extracted components)
+**Story**: `story-refactor-frontend-god-components-org-settings`
+
+Extract MemberList, InviteForm (and optionally InfoEditor /
+DangerZone) into separate components.
+
+## Implementation Order
+
+All six stories are independent and run in parallel. The orchestrator
+will dispatch them as 2 waves of 3 agents (cap is 3 per wave).
+
+## Out of scope
+
+- New tests beyond what the existing per-screen test suite covers.
+  Each story's acceptance criteria requires `npm run test` to still
+  pass; per-extracted-module unit tests are a follow-up.
+- Cross-component refactors (e.g. shared form-state helpers across
+  ForkDialog, ModeSwitchDialog, NewSessionDrawer, CommentComposer).
+  Surfaced in the per-feature discovery as a candidate but tracked
+  separately if anyone wants it.
