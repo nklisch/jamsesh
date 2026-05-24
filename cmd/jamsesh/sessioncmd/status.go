@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/urfave/cli/v3"
 
@@ -15,11 +17,13 @@ import (
 	"jamsesh/internal/api/openapi"
 )
 
+const playgroundOrgID = "org_playground"
+
 // StatusCommand returns the urfave/cli command descriptor for "jamsesh status".
 func StatusCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "status",
-		Usage: "Show current session status",
+		Usage: "Show status for all bound sessions",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "json",
@@ -30,115 +34,214 @@ func StatusCommand() *cli.Command {
 	}
 }
 
-// statusOutput is the structured form emitted by --json.
-type statusOutput struct {
+// durableStatusOutput is the per-session entry in --json "durable" array.
+// Fields match the former single-session statusOutput for backward compat.
+type durableStatusOutput struct {
 	SessionID string            `json:"session_id"`
+	OrgID     string            `json:"org_id"`
 	Name      string            `json:"name"`
 	Goal      string            `json:"goal"`
 	Mode      string            `json:"mode"`
 	YourRef   string            `json:"your_ref"`
 	Refs      []openapi.Ref     `json:"refs"`
+	Members   []openapi.MemberSummary `json:"members"`
 	Comments  []openapi.Comment `json:"unresolved_comments"`
 }
+
+// playgroundStatusOutput is the per-session entry in --json "playground" array.
+type playgroundStatusOutput struct {
+	SessionID  string    `json:"session_id"`
+	OrgID      string    `json:"org_id"`
+	Name       string    `json:"name"`
+	Nickname   string    `json:"nickname"`
+	HardCapAt  time.Time `json:"hard_cap_at"`
+	IdleTimeout time.Time `json:"idle_timeout_at"`
+	Members    int       `json:"members_count"`
+	Status     string    `json:"status"`
+}
+
+// statusJSONOutput is the top-level --json envelope.
+type statusJSONOutput struct {
+	Durable    []durableStatusOutput    `json:"durable"`
+	Playground []playgroundStatusOutput `json:"playground"`
+}
+
+// statusOutput is kept for --json backward compat in single-session tests only.
+// The new public JSON shape is statusJSONOutput.
+type statusOutput = durableStatusOutput
 
 func statusAction(ctx context.Context, cmd *cli.Command) error {
 	asJSON := cmd.Bool("json")
 
-	// Resolve the current session ID via the shared helper in session.go.
-	sessionID, err := ResolveSession()
+	sessions, err := state.ListSessions()
 	if err != nil {
-		return fmt.Errorf("resolving current session: %w", err)
+		return fmt.Errorf("listing sessions: %w", err)
 	}
 
-	// Read orgID and your ref from per-session state files.
-	orgID, yourRef := readSessionState(sessionID)
+	if len(sessions) == 0 {
+		if asJSON {
+			return json.NewEncoder(os.Stdout).Encode(statusJSONOutput{
+				Durable:    []durableStatusOutput{},
+				Playground: []playgroundStatusOutput{},
+			})
+		}
+		fmt.Println("No sessions bound to this Claude Code instance.")
+		fmt.Println("Start one with /jamsesh:jam.")
+		return nil
+	}
 
 	portalURL, err := state.ReadPortalURL()
 	if err != nil {
 		return fmt.Errorf("resolving portal URL: %w", err)
 	}
-	pc := &portalclient.Client{BaseURL: portalURL}
-	portalclient.WireRefresh(pc)
 
-	// Fetch me (for account ID used to filter comments).
-	me, err := portalclient.GetJSON[openapi.MeResponse](ctx, pc, "/api/me")
-	if err != nil {
-		return fmt.Errorf("fetching account info: %w", err)
-	}
+	var durables []durableStatusOutput
+	var playgrounds []playgroundStatusOutput
 
-	// If orgID is empty (not stored in state), discover it from user's orgs.
-	if orgID == "" {
-		orgID, err = findOrgForSession(ctx, pc, me, sessionID)
+	for _, sessID := range sessions {
+		tokenBytes, err := state.ReadSessionToken(sessID)
 		if err != nil {
-			return fmt.Errorf("locating session %q: %w", sessionID, err)
+			// Token missing — warn and skip; don't fail the whole command.
+			fmt.Fprintf(os.Stderr, "warning: no token for session %s (skipping)\n", sessID)
+			continue
 		}
-	}
+		bearer := strings.TrimSpace(string(tokenBytes))
 
-	// Fetch session metadata.
-	session, err := portalclient.GetJSON[openapi.Session](
-		ctx, pc,
-		fmt.Sprintf("/api/orgs/%s/sessions/%s", orgID, sessionID),
-	)
-	if err != nil {
-		return fmt.Errorf("fetching session metadata: %w", err)
-	}
+		orgID, yourRef := readSessionState(sessID)
 
-	// Fetch refs.
-	refList, err := portalclient.GetJSON[openapi.RefListResponse](
-		ctx, pc,
-		fmt.Sprintf("/api/orgs/%s/sessions/%s/refs", orgID, sessionID),
-	)
-	if err != nil {
-		return fmt.Errorf("fetching session refs: %w", err)
-	}
-
-	// Fetch unresolved comments addressed to this user.
-	addressedTo := "@" + me.Id
-	commentList, err := portalclient.GetJSON[openapi.CommentListResponse](
-		ctx, pc,
-		fmt.Sprintf("/api/orgs/%s/sessions/%s/comments?addressed_to=%s&resolved=false",
-			orgID, sessionID, addressedTo),
-	)
-	if err != nil {
-		return fmt.Errorf("fetching comments: %w", err)
-	}
-
-	out := statusOutput{
-		SessionID: sessionID,
-		Name:      session.Name,
-		Goal:      session.Goal,
-		Mode:      string(session.DefaultMode),
-		YourRef:   yourRef,
-		Refs:      refList.Refs,
-		Comments:  commentList.Items,
+		if orgID == playgroundOrgID {
+			// Playground session.
+			summary, err := portalclient.GetJSONWithBearer[openapi.PlaygroundSessionSummary](
+				ctx, nil, portalURL,
+				fmt.Sprintf("/api/playground/sessions/%s", sessID),
+				bearer,
+			)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: status fetch failed for playground session %s: %v\n", sessID, err)
+				continue
+			}
+			nickname := readNickname(sessID)
+			playgrounds = append(playgrounds, playgroundStatusOutput{
+				SessionID:   sessID,
+				OrgID:       playgroundOrgID,
+				Name:        summary.Name,
+				Nickname:    nickname,
+				HardCapAt:   summary.HardCapAt,
+				IdleTimeout: summary.IdleTimeoutAt,
+				Members:     summary.MembersCount,
+				Status:      string(summary.Status),
+			})
+		} else {
+			// Durable session — orgID must be known from state.
+			if orgID == "" {
+				fmt.Fprintf(os.Stderr, "warning: no org_id for session %s (skipping)\n", sessID)
+				continue
+			}
+			session, err := portalclient.GetJSONWithBearer[openapi.Session](
+				ctx, nil, portalURL,
+				fmt.Sprintf("/api/orgs/%s/sessions/%s", orgID, sessID),
+				bearer,
+			)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: status fetch failed for durable session %s: %v\n", sessID, err)
+				continue
+			}
+			refList, err := portalclient.GetJSONWithBearer[openapi.RefListResponse](
+				ctx, nil, portalURL,
+				fmt.Sprintf("/api/orgs/%s/sessions/%s/refs", orgID, sessID),
+				bearer,
+			)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: refs fetch failed for session %s: %v\n", sessID, err)
+				// Continue with empty refs rather than skipping.
+				refList = openapi.RefListResponse{}
+			}
+			durables = append(durables, durableStatusOutput{
+				SessionID: sessID,
+				OrgID:     orgID,
+				Name:      session.Name,
+				Goal:      session.Goal,
+				Mode:      string(session.DefaultMode),
+				YourRef:   yourRef,
+				Refs:      refList.Refs,
+				Members:   session.Members,
+				Comments:  []openapi.Comment{},
+			})
+		}
 	}
 
 	if asJSON {
+		out := statusJSONOutput{
+			Durable:    durables,
+			Playground: playgrounds,
+		}
+		if out.Durable == nil {
+			out.Durable = []durableStatusOutput{}
+		}
+		if out.Playground == nil {
+			out.Playground = []playgroundStatusOutput{}
+		}
 		return json.NewEncoder(os.Stdout).Encode(out)
 	}
 
-	// Human-readable output.
-	fmt.Printf("Session:  %s (%s)\n", out.Name, out.SessionID)
-	fmt.Printf("Goal:     %s\n", out.Goal)
-	fmt.Printf("Mode:     %s\n", out.Mode)
-	fmt.Printf("Your ref: %s\n", out.YourRef)
-	fmt.Println("Tree:")
-	for _, r := range out.Refs {
-		sha := r.Sha
-		if len(sha) > 7 {
-			sha = sha[:7]
-		}
-		fmt.Printf("  %s @ %s [%s]\n", r.Ref, sha, r.Mode)
-	}
-	if len(out.Comments) > 0 {
-		fmt.Printf("Unresolved comments addressed to you (%d):\n", len(out.Comments))
-		for _, c := range out.Comments {
-			fmt.Printf("  [%s] %s: %s\n", c.Kind, c.Id, truncate(c.Body, 80))
-		}
-	} else {
-		fmt.Println("No unresolved comments addressed to you.")
-	}
+	printStatusGrouped(durables, playgrounds)
 	return nil
+}
+
+// printStatusGrouped writes grouped human-readable status to stdout.
+func printStatusGrouped(durables []durableStatusOutput, playgrounds []playgroundStatusOutput) {
+	if len(durables) > 0 {
+		fmt.Println("== Durable sessions ==")
+		for _, d := range durables {
+			membersCount := len(d.Members)
+			fmt.Printf("%-20s  Org: %-20s  Members: %d   Ref: %s\n",
+				d.SessionID, d.OrgID, membersCount, d.YourRef)
+		}
+	}
+	if len(playgrounds) > 0 {
+		if len(durables) > 0 {
+			fmt.Println()
+		}
+		fmt.Println("== Playground sessions ==")
+		for _, p := range playgrounds {
+			endsIn := endsInString(p.HardCapAt, p.IdleTimeout)
+			fmt.Printf("%-20s  Nickname: %-20s  Ends in: %s   Members: %d\n",
+				p.SessionID, p.Nickname, endsIn, p.Members)
+		}
+	}
+	if len(durables) == 0 && len(playgrounds) == 0 {
+		fmt.Println("No sessions reported status.")
+	}
+}
+
+// endsInString returns a human-readable "X h Y m" until the earlier of the
+// two deadline timestamps. Zero-value times are ignored.
+func endsInString(hardCap, idleTimeout time.Time) string {
+	var deadline time.Time
+	switch {
+	case hardCap.IsZero() && idleTimeout.IsZero():
+		return "unknown"
+	case hardCap.IsZero():
+		deadline = idleTimeout
+	case idleTimeout.IsZero():
+		deadline = hardCap
+	default:
+		if hardCap.Before(idleTimeout) {
+			deadline = hardCap
+		} else {
+			deadline = idleTimeout
+		}
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return "ended"
+	}
+	hours := int(math.Floor(remaining.Hours()))
+	minutes := int(math.Floor(remaining.Minutes())) % 60
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+	return fmt.Sprintf("%dm", minutes)
 }
 
 // readSessionState reads orgID and your ref from the per-session state directory.
@@ -159,11 +262,17 @@ func readSessionState(sessionID string) (orgID, yourRef string) {
 	return orgID, yourRef
 }
 
-// truncate shortens s to at most n runes, appending "…" if truncated.
-func truncate(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
+// readNickname returns the joiner's nickname for a playground session.
+// If the sidecar file is absent, an empty string is returned.
+func readNickname(sessionID string) string {
+	dir, err := state.PluginDataDir()
+	if err != nil {
+		return ""
 	}
-	return string(runes[:n]) + "…"
+	data, err := os.ReadFile(filepath.Join(dir, "sessions", sessionID, "nickname"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
+

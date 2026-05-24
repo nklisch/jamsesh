@@ -137,6 +137,43 @@ func GetJSON[T any](ctx context.Context, c *Client, path string) (T, error) {
 	return result, nil
 }
 
+// GetJSONWithBearer issues a GET to baseURL+path with an explicit Authorization
+// header (Authorization: Bearer <bearer>). Unlike GetJSON it does NOT go through
+// the Client's refresh-retry machinery — the caller supplies the bearer directly.
+// This is used for per-session status fetches where the token is already in hand
+// and refresh may not be applicable (e.g., playground anonymous tokens).
+func GetJSONWithBearer[T any](ctx context.Context, httpClient *http.Client, baseURL, path, bearer string) (T, error) {
+	var zero T
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
+	if err != nil {
+		return zero, fmt.Errorf("portalclient: building GET request for %q: %w", path, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+bearer)
+
+	hc := httpClient
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+
+	resp, err := hc.Do(req)
+	if err != nil {
+		return zero, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return zero, fmt.Errorf("portalclient: GET %q returned %d: %s", path, resp.StatusCode, body)
+	}
+
+	var result T
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return zero, fmt.Errorf("portalclient: decoding GET %q response: %w", path, err)
+	}
+	return result, nil
+}
+
 // PostJSON marshals body to JSON, issues a POST to <c.BaseURL><path> through
 // Do, decodes the response body as JSON into T, and returns it.
 func PostJSON[T any](ctx context.Context, c *Client, path string, body any) (T, error) {
