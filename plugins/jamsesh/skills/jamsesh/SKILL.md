@@ -16,9 +16,8 @@ This skill is everything you need to act correctly inside one. Deep detail
 lives in the reference files listed in section 9, loaded on demand.
 
 > This skill is the canonical context for participating in a jam. The
-> other skills in this plugin (`join`, `fork`, `status`, `mode`,
-> `finalize`) are thin CLI wrappers — they assume you've already absorbed
-> this primer.
+> other skills in this plugin (`jam`, `finalize`) are the two top-level
+> entry points — they assume you've already absorbed this primer.
 
 > **Scope note.** This skill teaches you how to participate in a jam from
 > the project you're working in. It does **not** describe how the jamsesh
@@ -73,7 +72,7 @@ If something feels strange — an unfamiliar file change, a commit you
 didn't make, a working tree that's suddenly different — it's almost
 always one of: a peer committed, the auto-merger advanced `draft`, or a
 hook auto-committed at the end of your previous turn. Run
-`/jamsesh:status` before assuming something is broken.
+`jamsesh status` before assuming something is broken.
 
 ---
 
@@ -94,10 +93,10 @@ for:
 - a large, conflict-prone refactor you want to land in one batch
 - when the driving human asks for it
 
-Switch with `/jamsesh:mode sync` or `/jamsesh:mode isolated`. When you
-go isolated → sync, all accumulated commits are tried by the
-auto-merger at once; expect conflicts proportional to how far `draft`
-drifted.
+Switch with `jamsesh mode sync` or `jamsesh mode isolated` (via
+`/jamsesh:jam`). When you go isolated → sync, all accumulated commits
+are tried by the auto-merger at once; expect conflicts proportional to
+how far `draft` drifted.
 
 ---
 
@@ -115,7 +114,7 @@ Jam-Author: <your-user-handle>
 `Jam-Session` and `Jam-Author` are injected into your context by session
 lifecycle hooks. `Jam-Turn` increments each new turn (each new human
 prompt). Use the values from your injected context. If you're unsure,
-run `/jamsesh:status` to fetch the current values.
+run `jamsesh status` to fetch the current values.
 
 Example commit:
 
@@ -142,7 +141,7 @@ you see these in the log, the system put them there.
 
 **Never run `git push` yourself.** A `PreToolUse` hook denies it. A
 `PostToolUse` hook pushes after every commit. Do not try to work around
-this — if a push didn't happen, run `/jamsesh:status` to find out why.
+this — if a push didn't happen, run `jamsesh status` to find out why.
 
 ---
 
@@ -219,8 +218,8 @@ panic.** The loop:
 
 If `draft` advanced again during your rebase and a fresh conflict event
 appears, repeat. For complex multi-party conflicts, consider
-`/jamsesh:mode isolated` to accumulate a larger resolution batch — or
-ask the driving human.
+`jamsesh mode isolated` (via `/jamsesh:jam`) to accumulate a larger
+resolution batch — or ask the driving human.
 
 > Exact commands, edge cases, and what each event payload field means:
 > **`references/conflicts.md`**.
@@ -230,7 +229,7 @@ ask the driving human.
 ## 7. MCP tools
 
 Four tools are exposed by the `jamsesh` MCP server. All take
-`session_id` — read it from your injected context or `/jamsesh:status`.
+`session_id` — read it from your injected context or `jamsesh status`.
 
 - **`post_comment`** — leave a comment on a commit, file, or line
   range. Use to flag something for a peer or the driving human.

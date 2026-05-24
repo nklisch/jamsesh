@@ -1,14 +1,14 @@
 ---
 id: story-skill-consolidation-primer-stale-slash-refs
 kind: story
-stage: implementing
+stage: review
 tags: [bug]
 parent: feature-epic-ephemeral-playground-skill-consolidation
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Auto-loaded primer still instructs agents to run deleted slashes
@@ -66,3 +66,27 @@ Sibling story `story-skill-consolidation-references-stale-slash-refs`
 covers the same problem in the primer's reference files
 (`references/mcp-tools.md`, `references/conflicts.md`); they could be
 batched into one PR.
+
+## Implementation notes
+
+Fixed 7 stale slash references in `plugins/jamsesh/skills/jamsesh/SKILL.md`:
+
+- **Lines 19-21 blockquote**: replaced `join`, `fork`, `status`, `mode`,
+  `finalize` enumeration with `jam`, `finalize` — the only two skills that
+  actually exist post-consolidation.
+- **Line 76** (`/jamsesh:status` → `jamsesh status`): "run before assuming
+  something is broken" context — binary invocation is correct here.
+- **Line 97** (`/jamsesh:mode sync` / `/jamsesh:mode isolated` →
+  `jamsesh mode sync` / `jamsesh mode isolated` via `/jamsesh:jam`):
+  mode-switch instruction updated to reflect binary subcommand via the jam
+  skill.
+- **Line 118** (`/jamsesh:status` → `jamsesh status`): "fetch current
+  trailer values" context — binary invocation.
+- **Line 145** (`/jamsesh:status` → `jamsesh status`): "push didn't
+  happen" context — binary invocation.
+- **Line 222** (`/jamsesh:mode isolated` → `jamsesh mode isolated` via
+  `/jamsesh:jam`): conflict-resolution accumulation context.
+- **Line 233** (`/jamsesh:status` → `jamsesh status`): MCP tools section
+  session_id lookup — binary invocation.
+
+Verification: `grep -n "/jamsesh:status\|/jamsesh:fork\|/jamsesh:mode\|/jamsesh:join"` returns nothing.
