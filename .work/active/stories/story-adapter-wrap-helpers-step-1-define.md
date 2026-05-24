@@ -1,7 +1,7 @@
 ---
 id: story-adapter-wrap-helpers-step-1-define
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: feature-refactor-adapter-generic-wrap-helpers
 depends_on: []
@@ -113,3 +113,21 @@ tests are obvious.
 
 The helpers use Go generics (1.21+). The project already uses generics
 elsewhere; verify by `grep -rn "^func [a-zA-Z]*\[" internal/` if uncertain.
+
+## Implementation notes
+
+- Created `internal/db/store/wrap.go` with the exact `wrap1` and `wrapList`
+  signatures from the story body, plus a package-level comment block pointing
+  at the parent feature.
+- Created `internal/db/store/wrap_test.go` with all 5 required tests using
+  `int` → `string` as the trivial type pair:
+  - `TestWrap1_Success` — asserts `convert(row)` returned, nil error.
+  - `TestWrap1_Error` — asserts zero value (`""`), `mapErr` invoked, error
+    wraps sentinel via `errors.Is`.
+  - `TestWrapList_Success` — asserts correctly mapped `[]string`, nil error.
+  - `TestWrapList_Error` — asserts nil slice, `mapErr` invoked, error wraps
+    sentinel.
+  - `TestWrapList_EmptySlice` — asserts non-nil zero-length slice, nil error,
+    `mapErr` not called.
+- `go build ./...` clean; `go test ./...` clean (all packages pass).
+- No existing adapter methods touched.
