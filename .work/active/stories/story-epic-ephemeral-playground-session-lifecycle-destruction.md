@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-destruction
 kind: story
-stage: review
+stage: done
 tags: [portal, playground]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: [story-epic-ephemeral-playground-session-lifecycle-rest-endpoints]
@@ -117,3 +117,54 @@ runs.
 - **`hard_cap` reason priority**: When both `hard_cap_at` and `idle_timeout_at` are elapsed, `reasonFor()` returns `"hard_cap"` to make the audit trail maximally clear. `"idle"` is only returned when idle alone is elapsed.
 
 - **Pre-existing test failure parked**: `TestMcpHeaders_tokenPresent` and related tests in `internal/portal/handlerauth/` were already failing with `Authorization = "Bearer MIGRATED_TO_PER_SESSION"` before this story. Parked as `bug-mcpheaders-stale-fixture-migrated-stub` in `.work/backlog/`.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments
+
+**Summary**: The 8-step idempotent cascade, dual-dialect store extensions,
+wordlist of new queries, and worker wiring are well-executed. Build clean,
+all 16 worker/destruction tests pass. The implementation correctly captures
+summary stats and anon-account IDs before the session-row delete, uses
+ON CONFLICT DO NOTHING for the tombstone insert, tolerates ErrNotFound on
+duplicate DeleteSession, and relies on os.RemoveAll for filesystem
+idempotency. Step ordering matches the design.
+
+**Blockers**: none
+
+**Important**:
+- Missing PG advisory lock for clustered-mode safety
+  (`internal/portal/playground/destruction.go`): the parent feature design
+  Risks section and this story's "Notes for the implementing agent" both
+  call for `Destruction.Destroy` to wrap the cascade in a per-session
+  advisory lock via the existing LeaseManager (NoopManager under
+  single-instance, real PG advisory lock under clustered). Implementation
+  omits the wrapping. Not a correctness bug today — idempotency absorbs
+  most races — but it is a design-vs-impl drift that will silently
+  introduce bugs if a non-idempotent step is added later.
+  → Filed: `.work/backlog/bug-playground-destruction-clustered-advisory-lock.md`
+
+**Nits**:
+- `destruction.go` step 5 retains a long comment block describing
+  "delete comments and conflict_events" while the actual code is empty
+  (relies on FK cascade in step 6). This is a deliberate forward-compat
+  placeholder per the inline comment, but reads as dead-prose. Consider
+  shortening to a one-liner ("Step 5: cascade in step 6 handles comments
+  + conflict_events; reserved here for future audit hooks").
+- `Worker.purgeEvery` is a `const 60` tick count rather than a wall-clock
+  interval. At the default 60s sweep interval this means purge ~1/hour;
+  at any other interval the purge cadence drifts proportionally. Not
+  wrong, but a duration-based `lastPurgeAt` field would be more robust
+  if the sweep interval is ever made aggressive (e.g. 1s for tests). The
+  current shape is fine for production defaults.
+- `postgresAdapter.ListExpiredPlaygroundSessions` constructs a params
+  struct whose field is named `HardCapAt` but semantically carries `now`
+  (because Postgres dedupes the SQL placeholder). The naming is from the
+  generated sqlc params and is harmless; a one-line comment in the
+  adapter explaining the field-name oddity would prevent future
+  confusion.
+
+**Notes**: Pre-existing fixture failure in handlerauth_test (parked as
+`bug-mcpheaders-stale-fixture-migrated-stub`) is correctly handled —
+stub methods added to satisfy the expanded interface without faking
+behavior; the parked bug is the audit trail.
