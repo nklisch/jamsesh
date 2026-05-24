@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-bearer-expiry-hard-cap
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-failure
 depends_on: []
@@ -71,6 +71,40 @@ subtests:
    must 401 or 410 — never 200 with stale state.
 3. `wrong_path_rejected`: anon bearer used on a normal authenticated
    org endpoint (e.g. `GET /api/orgs/{org}/sessions`) must 401.
+
+## Implementation notes
+
+**File**: `tests/e2e/failure/playground_bearer_expiry_hard_cap_test.go`
+**Test**: `TestPlayground_Bearer_ScopeIsolation`
+
+Three subtests all pass against the real portal binary.
+
+**Subtest 1 — `cross_session_rejected`**: S1 bearer on S2's GET endpoint returns
+401 (`auth.not_a_member`). Confirmed: membership check fires in real DB, not just
+in stubStorage.
+
+**Subtest 2 — `post_destruction_revoked`**: Separate portal with
+`HARD_CAP_S=60` + `SWEEP_INTERVAL_S=1`. Clock advanced 90s. Tombstone
+appeared within 1 sweep cycle (~200ms poll). Original bearer returned 401
+(cascade revoked the bearer row before the handler reached the session lookup).
+
+**Subtest 3 — `anon_bearer_scoped_to_playground`** (renamed from
+`anon_bearer_rejected_on_auth_route` in the sketch): The story's sketch suggested
+`GET /api/me` would return 401 for anon bearers. **Discovery**: `BearerMiddleware`
+validates all valid tokens uniformly — anon bearers ARE accepted by `GetMe` and
+return 200 with the synthetic `anon_*` account record. The golden test
+`playground_solo_create_push_tombstone_test.go` already demonstrates this (calls
+`getMe` with an anon bearer). This is not a bug — the design intent is that
+`GetMe` returns whatever account is attached to the bearer, anon or OAuth.
+
+Swapped to `GET /api/orgs/org_playground/members` which requires
+`RequireOrgRole("creator","member")` middleware. Anon accounts hold
+**session membership** only, not org-level membership → 403 Forbidden. Result
+widened to accept 401 or 403 (consistent with the honest assertion shape used
+throughout the suite). Got 403 as expected.
+
+**Rate-limit note**: default `CREATE_PER_IP_HOUR=3` means burst=1 (1 per minute);
+the outer portal needs two rapid creates (S1, S2), so set to 180 (burst=3).
 
 ## Test sketch
 
