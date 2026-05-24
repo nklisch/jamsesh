@@ -59,9 +59,21 @@ Option 1 is likely correct. The helper should be locked behind a
 `testing.TB` argument or a build tag to prevent accidental
 production use.
 
+## Design decisions
+
+- **`MigrateDown` helper home**: test-only helper in `internal/db/migrate_test.go`. Unexported, takes `testing.TB`, replicates the provider-creation block from `MigrateUp(ctx, db, dialect)` then calls `provider.DownTo(ctx, version int64)`. Cannot be called from production code. Confirms the feature body's recommendation. Future migration tests in the same file get reuse for free; cross-package reuse can come later if a second migration test needs it.
+- **Rollback test interposition pattern**: embed real `store.Store`, override only `WithTx` to pass a wrapped `TxStore` whose `CreateAnonymousBearer` returns the injected error. Go's struct embedding handles the other ~20 sub-interface methods automatically. Lightest implementation — no full TxStore decorator, no driver-level shim. The pattern is introduced fresh in `internal/portal/tokens/anon_bearer_test.go`; future tests in the package needing similar interception can copy it.
+- **Rename strategy for both misleading tests**: rename existing tests to describe what they actually do AND add new properly-named tests:
+  - `TestIssueAnonymousSessionBearer_TransactionalRollback` → `TestIssueAnonymousSessionBearer_EmptySessionID_NoDBCalls` (preserves the no-DB-calls assertion that is its real value); add new `TestIssueAnonymousSessionBearer_TransactionalRollback` that exercises the bearer-insert-error rollback path with the embedded-store pattern.
+  - `TestMigrate00016_AnonymousBearers_UpDownUp` → keep the name AND implement the real Up-Down-Up cycle in its body (the existing body is mostly post-Up shape assertions; extend with Down step + re-Up step). The existing assertions document the post-Up state, which is still valuable; no rename needed if the body actually does the cycle.
+  - (The migration test essentially absorbs option-3 wording for itself, since its current body is salvageable. The bearer test follows the rename-and-add path.)
+
 ## Acceptance (rollup)
 
 - Both children at stage:done with verdicts ≥ approve
-- No test in the package has a name that lies about what it
-  asserts
-- `MigrateDown` test helper available for future migration tests
+- No test in the package has a name that lies about what it asserts
+- `TestIssueAnonymousSessionBearer_TransactionalRollback` actually
+  exercises a bearer-insert-error rollback via the embedded-store pattern
+- `TestMigrate00016_AnonymousBearers_UpDownUp` actually runs Up → Down → Up
+- `MigrateDown` test helper available in `internal/db/migrate_test.go`
+  for future migration tests
