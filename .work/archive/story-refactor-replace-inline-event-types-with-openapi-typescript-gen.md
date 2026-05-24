@@ -5,7 +5,7 @@ stage: done
 tags: [ui, refactor, cleanup]
 parent: feature-spec-discipline
 depends_on: [story-spec-discipline-audit-and-close-emit-vs-yaml-gaps]
-release_binding: null
+release_binding: v0.4.0
 gate_origin: refactor-design
 created: 2026-05-23
 updated: 2026-05-24

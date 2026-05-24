@@ -5,7 +5,7 @@ stage: done
 tags: [portal, refactor, testing]
 parent: feature-refactor-per-package-clock-compliance
 depends_on: []
-release_binding: null
+release_binding: v0.4.0
 gate_origin: refactor-design
 created: 2026-05-23
 updated: 2026-05-23

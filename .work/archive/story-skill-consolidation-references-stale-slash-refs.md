@@ -5,7 +5,7 @@ stage: done
 tags: [bug, documentation]
 parent: feature-epic-ephemeral-playground-skill-consolidation
 depends_on: []
-release_binding: null
+release_binding: v0.4.0
 gate_origin: null
 created: 2026-05-23
 updated: 2026-05-24

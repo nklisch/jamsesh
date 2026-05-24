@@ -5,7 +5,7 @@ stage: done
 tags: [plugin]
 parent: feature-epic-ephemeral-playground-plugin-skills
 depends_on: [story-foundation-doc-drift-bearer-storage-architecture]
-release_binding: null
+release_binding: v0.4.0
 gate_origin: null
 created: 2026-05-23
 updated: 2026-05-24

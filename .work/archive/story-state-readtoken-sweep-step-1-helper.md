@@ -5,7 +5,7 @@ stage: done
 tags: [plugin, refactor]
 parent: feature-state-readtoken-per-session-sweep
 depends_on: []
-release_binding: null
+release_binding: v0.4.0
 gate_origin: refactor-design
 created: 2026-05-24
 updated: 2026-05-24

@@ -5,7 +5,7 @@ stage: done
 tags: [testing, tokens]
 parent: feature-anon-bearer-test-integrity
 depends_on: []
-release_binding: null
+release_binding: v0.4.0
 gate_origin: null
 created: 2026-05-23
 updated: 2026-05-23

@@ -5,7 +5,7 @@ stage: done
 tags: [portal, playground]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-cli-first-creation, feature-epic-ephemeral-playground-anon-bearer, feature-epic-ephemeral-playground-reserved-org]
-release_binding: null
+release_binding: v0.4.0
 gate_origin: null
 created: 2026-05-23
 updated: 2026-05-23

@@ -5,7 +5,7 @@ stage: done
 tags: [portal, playground, polish]
 parent: feature-playground-server-hardening
 depends_on: []
-release_binding: null
+release_binding: v0.4.0
 gate_origin: null
 created: 2026-05-23
 updated: 2026-05-23

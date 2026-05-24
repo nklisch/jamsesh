@@ -5,7 +5,7 @@ stage: done
 tags: [portal, refactor]
 parent: feature-refactor-adapter-generic-wrap-helpers
 depends_on: [story-adapter-wrap-helpers-step-1-define]
-release_binding: null
+release_binding: v0.4.0
 gate_origin: refactor-design
 created: 2026-05-24
 updated: 2026-05-24
