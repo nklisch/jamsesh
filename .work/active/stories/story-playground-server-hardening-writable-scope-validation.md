@@ -1,7 +1,7 @@
 ---
 id: story-playground-server-hardening-writable-scope-validation
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground, validation]
 parent: feature-playground-server-hardening
 depends_on: [story-playground-server-hardening-handler-test-coverage]
@@ -93,3 +93,61 @@ Highlights:
   must land first so the new playground test
   (`TestCreatePlaygroundSession_InvalidScope_Returns400`) can use the
   per-dialect `storetest.Stores(t)` harness from the start.
+
+## Implementation notes (2026-05-23)
+
+### `ValidateWritableScope` export
+
+Added to `internal/portal/prereceive/scope.go`. Signature:
+
+    func ValidateWritableScope(raw string) (msg string, ok bool)
+
+Body is the verbatim move from
+`internal/portal/sessions/handler.go:443-455`. Added `encoding/json` to
+scope.go's imports. The package-internal `parseWritableScope` in
+`validate.go:86` stays — different signature `([]string, error)` used by
+`Validator.Validate` hot path. The doc comment on the new export
+explicitly notes the conceptual overlap and why both exist.
+
+### Call-site updates
+
+- `internal/portal/sessions/handler.go` — deleted local
+  `validateWritableScope` and the lingering `encoding/json`+`fmt` uses it
+  required. Both call sites (`CreateSession` line 91, `PatchSession` line
+  217) now delegate to `prereceive.ValidateWritableScope`. Identical
+  behavior — same error code, same envelope shape, same response.
+
+- `internal/portal/playground/handler.go` — added validation block
+  immediately after the scope-default fallback (so the default `["**"]`
+  also gets compile-checked). On rejection returns
+  `openapi.CreatePlaygroundSession400JSONResponse` with
+  `error: "session.invalid_writable_scope"`. The generated type
+  `CreatePlaygroundSession400JSONResponse` was already present in
+  `internal/api/openapi/server.gen.go:6662` — no openapi.yaml change
+  required.
+
+### Tests
+
+- `internal/portal/prereceive/scope_test.go::TestValidateWritableScope` —
+  new table-driven test with the seven cases from the parent-feature
+  acceptance: empty / `[]` / well-formed src/** / multi-glob / non-json
+  / json-string-not-array / malformed-glob. Added a small private
+  `contains` helper to avoid pulling `strings` into the test file just
+  for one substring check.
+
+- `internal/portal/playground/handler_test.go::TestCreatePlaygroundSession_InvalidScope_Returns400` —
+  exercises both `["docs/{"]` (malformed glob) and `"not json"` (non-JSON
+  payload). Uses the `storetest.Stores(t)` per-dialect harness from the
+  unblocking story, so the test runs against SQLite always and Postgres
+  when `JAMSESH_TEST_PG_DSN` is set. Identical malformed-glob payload to
+  the durable-session test in `scope_validation_test.go` so identical
+  inputs prove identical answers.
+
+### Verification
+
+- `go test ./internal/portal/playground/... ./internal/portal/sessions/...
+  ./internal/portal/prereceive/...` → all green
+- `go build ./...` → clean
+- `go vet ./...` → clean
+- `go test ./...` → all green across the whole repo (no regressions in
+  any other package that imports prereceive or sessions).

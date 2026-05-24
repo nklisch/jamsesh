@@ -24,6 +24,7 @@ import (
 	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/handlerauth"
 	"jamsesh/internal/portal/playground/wordlist"
+	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
@@ -98,6 +99,18 @@ func (h *Handler) CreatePlaygroundSession(ctx context.Context, req openapi.Creat
 	scope := strings.TrimSpace(body.Scope)
 	if scope == "" {
 		scope = `["**"]`
+	}
+	// Validate writable_scope at the front door. Matches the durable-session
+	// CreateSession contract (same envelope shape, same error code), so a
+	// caller-supplied malformed scope is surfaced as an immediate 400 instead
+	// of a deferred pre-receive failure that would leave a poisoned session
+	// behind. Validating after the default is applied also compile-checks
+	// the default value as cheap insurance against a future default typo.
+	if msg, ok := prereceive.ValidateWritableScope(scope); !ok {
+		return openapi.CreatePlaygroundSession400JSONResponse(openapi.ErrorEnvelope{
+			Error:   "session.invalid_writable_scope",
+			Message: msg,
+		}), nil
 	}
 
 	hardCapAt := now.Add(h.Cfg.HardCap)

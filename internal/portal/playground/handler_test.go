@@ -893,6 +893,50 @@ func TestJoinPlaygroundSession_StatusNotActive_Returns410(t *testing.T) {
 	}
 }
 
+// TestCreatePlaygroundSession_InvalidScope_Returns400 covers the front-door
+// scope validation. Mirrors the durable-session
+// scope_validation_test.go::TestCreateSession_InvalidScope_Returns400 — same
+// error code, same envelope shape — so clients can use a single branch for
+// both surfaces.
+func TestCreatePlaygroundSession_InvalidScope_Returns400(t *testing.T) {
+	for _, h := range stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t), defaultCfg())
+
+			// Malformed glob — same payload used in the sessions test for
+			// identical-input/identical-answer guarantee.
+			resp := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"scope": `["docs/{"]`,
+			})
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("want 400, got %d", resp.StatusCode)
+			}
+			var body openapi.ErrorEnvelope
+			decodeJSON(t, resp, &body)
+			if body.Error != "session.invalid_writable_scope" {
+				t.Errorf("want error=session.invalid_writable_scope, got %q", body.Error)
+			}
+			if body.Message == "" {
+				t.Error("want non-empty message")
+			}
+
+			// Non-JSON payload — also rejected at the same gate.
+			resp2 := postJSON(t, env.srv, "/api/playground/sessions", "", map[string]string{
+				"scope": "not json",
+			})
+			if resp2.StatusCode != http.StatusBadRequest {
+				t.Errorf("non-json: want 400, got %d", resp2.StatusCode)
+			}
+			var body2 openapi.ErrorEnvelope
+			decodeJSON(t, resp2, &body2)
+			if body2.Error != "session.invalid_writable_scope" {
+				t.Errorf("non-json: want error=session.invalid_writable_scope, got %q", body2.Error)
+			}
+		})
+	}
+}
+
 // TestCreatePlaygroundSession_RepoCreateFails_ReturnsError covers the bare-repo
 // CreateRepo failure path. The session insert + bearer issue + member-add all
 // succeed; CreateRepo fails. Verify the handler returns an error AND that the

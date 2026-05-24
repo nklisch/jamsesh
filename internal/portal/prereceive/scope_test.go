@@ -109,3 +109,50 @@ func TestScopeMatcher_Match(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateWritableScope(t *testing.T) {
+	cases := []struct {
+		name      string
+		raw       string
+		wantOK    bool
+		msgContains string
+	}{
+		{name: "empty string -> ok (deny-all)", raw: "", wantOK: true},
+		{name: "empty json array -> ok (deny-all)", raw: "[]", wantOK: true},
+		{name: "well-formed src/** -> ok", raw: `["src/**"]`, wantOK: true},
+		{name: "multiple well-formed globs -> ok", raw: `["docs/**","src/*.go"]`, wantOK: true},
+		{name: "non-json payload -> err with parse message", raw: "not json", wantOK: false, msgContains: "writable_scope must be a JSON array of strings"},
+		{name: "json string (not array) -> err with parse message", raw: `"src/**"`, wantOK: false, msgContains: "writable_scope must be a JSON array of strings"},
+		{name: "malformed glob (unclosed brace after path prefix) -> err with bad pattern syntax", raw: `["docs/{"]`, wantOK: false, msgContains: "bad pattern syntax"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			msg, ok := ValidateWritableScope(tc.raw)
+			if ok != tc.wantOK {
+				t.Errorf("ValidateWritableScope(%q): ok=%v, want %v (msg=%q)", tc.raw, ok, tc.wantOK, msg)
+			}
+			if !tc.wantOK && tc.msgContains != "" {
+				if msg == "" {
+					t.Errorf("ValidateWritableScope(%q): want non-empty msg containing %q, got empty", tc.raw, tc.msgContains)
+				} else if !contains(msg, tc.msgContains) {
+					t.Errorf("ValidateWritableScope(%q): msg=%q, want to contain %q", tc.raw, msg, tc.msgContains)
+				}
+			}
+			if tc.wantOK && msg != "" {
+				t.Errorf("ValidateWritableScope(%q): want empty msg, got %q", tc.raw, msg)
+			}
+		})
+	}
+}
+
+// contains reports whether substr is a substring of s. Avoids the strings
+// import dependency in this test file just for one call site.
+func contains(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

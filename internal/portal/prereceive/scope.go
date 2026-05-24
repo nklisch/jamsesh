@@ -1,11 +1,44 @@
 package prereceive
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
+
+// ValidateWritableScope parses the JSON-encoded writable_scope payload and
+// compiles each glob through CompileScope. It returns ("", true) when the
+// payload is acceptable (including the deny-all empty-string and "[]"
+// cases), or (message, false) when the payload is unparseable JSON or
+// contains a malformed glob. The message is suitable for the body of a
+// `session.invalid_writable_scope` 400 envelope.
+//
+// Callers: sessions.CreateSession (front door), sessions.PatchSession
+// (mutation), playground.CreatePlaygroundSession (front door). All three
+// must give identical answers for identical inputs so the front-door
+// contract is consistent regardless of which surface the session was
+// created through.
+//
+// This export is intentionally a superset of the package-internal
+// parseWritableScope helper used by Validator.Validate — that one returns
+// the parsed glob list (which the validator hot-path needs), whereas this
+// export folds parse-error and compile-error reporting into a single
+// caller-friendly (message, ok) shape.
+func ValidateWritableScope(raw string) (msg string, ok bool) {
+	if raw == "" {
+		return "", true
+	}
+	var globs []string
+	if err := json.Unmarshal([]byte(raw), &globs); err != nil {
+		return fmt.Sprintf("writable_scope must be a JSON array of strings: %v", err), false
+	}
+	if _, err := CompileScope(globs); err != nil {
+		return err.Error(), false
+	}
+	return "", true
+}
 
 // normalizeForDoublestar rewrites gobwas/glob-style patterns to their
 // doublestar equivalents. In gobwas/glob (with '/' separator), "**" always
