@@ -1,7 +1,7 @@
 ---
 id: gate-tests-bare-repo-create-orphan-destruction-cleanup
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -39,3 +39,26 @@ exists but never exercises cleanup end-to-end.
 
 ## Test location (suggested)
 `internal/portal/playground/handler_test.go`
+
+## Implementation notes
+
+Added `TestCreatePlaygroundSession_RepoCreateFails_DestructionSweepCleansUp` to
+`internal/portal/playground/handler_test.go` (immediately after the existing
+`TestCreatePlaygroundSession_RepoCreateFails_ReturnsError` test).
+
+The test:
+1. Sets `stubStorage.createError = errors.New("disk full")` and drives
+   `CreatePlaygroundSession` via the HTTP endpoint — gets 5xx.
+2. Uses `ListExpiredPlaygroundSessions` with `Now + 48h` to locate the orphaned
+   session row (same technique as the existing sibling test).
+3. Asserts orphan state: session row present, `CountSessionMembers` > 0, no bare
+   repo in stub storage (since `CreateRepo` was never called successfully).
+4. Calls `destruction.Destroy(ctx, sess, "manual")` directly (bypassing the
+   worker sweep).
+5. Asserts full cleanup: session row gone (`ErrNotFound`), member count zero
+   (FK cascade), all anonymous account IDs deleted, bare repo still absent
+   (exercises `RemoveRepo` idempotency on a never-created repo).
+
+Verified: `go build ./internal/portal/playground/...` + both
+`TestCreatePlaygroundSession_RepoCreateFails_*` tests pass (SQLite dialect).
+No new backlog items required — destruction sweep cleanly handles the orphan.

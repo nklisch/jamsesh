@@ -958,3 +958,137 @@ func TestCreatePlaygroundSession_RepoCreateFails_ReturnsError(t *testing.T) {
 		})
 	}
 }
+
+// TestCreatePlaygroundSession_RepoCreateFails_DestructionSweepCleansUp is an
+// end-to-end seam test for the orphan-cleanup path described in the playground
+// lifecycle spec.
+//
+// Flow:
+//
+//  1. CreatePlaygroundSession with stubStorage.createError set — session row +
+//     creator member row are inserted, but CreateRepo fails → 5xx.
+//  2. Verify orphan state: session row present, creator member present, no bare
+//     repo on disk.
+//  3. Call destruction.Destroy directly (bypassing the worker sweep), passing
+//     the orphaned session row.
+//  4. Assert: session row gone, member row gone (FK cascade), anonymous account
+//     deleted, bare repo absent (RemoveRepo is a no-op on a never-created repo).
+func TestCreatePlaygroundSession_RepoCreateFails_DestructionSweepCleansUp(t *testing.T) {
+	for _, h := range stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			ctx := context.Background()
+			s := h.Open(t)
+			env := newTestEnv(t, s, defaultCfg())
+
+			// Step 1: trigger the CreateRepo failure path.
+			env.stor.createError = errors.New("disk full")
+			resp := postJSON(t, env.srv, "/api/playground/sessions", "", nil)
+			if resp.StatusCode < 500 {
+				t.Fatalf("want 5xx after repo-create failure, got %d", resp.StatusCode)
+			}
+
+			// Step 2: verify the orphan state.
+			// The worker sweep uses ListExpiredPlaygroundSessions with a
+			// far-future Now to include sessions whose hard_cap_at has not
+			// yet elapsed; we do the same here to locate the orphaned row.
+			farFuture := time.Now().Add(48 * time.Hour)
+			orphans, err := s.ListExpiredPlaygroundSessions(ctx, store.ListExpiredPlaygroundSessionsParams{
+				OrgID: playground.ReservedOrgID,
+				Now:   farFuture,
+			})
+			if err != nil {
+				t.Fatalf("ListExpiredPlaygroundSessions: %v", err)
+			}
+			if len(orphans) == 0 {
+				t.Fatal("orphan session row should exist after CreateRepo failure, got none")
+			}
+			sess := orphans[0]
+
+			// Creator member row must be present.
+			memberCount, err := s.CountSessionMembers(ctx, store.CountSessionMembersParams{
+				OrgID:     playground.ReservedOrgID,
+				SessionID: sess.ID,
+			})
+			if err != nil {
+				t.Fatalf("CountSessionMembers: %v", err)
+			}
+			if memberCount == 0 {
+				t.Fatal("creator member row should exist after CreateRepo failure, got 0")
+			}
+
+			// Collect anon account IDs before destruction so we can verify deletion.
+			anonIDs, err := s.ListAnonymousSessionMemberIDs(ctx, playground.ReservedOrgID, sess.ID)
+			if err != nil {
+				t.Fatalf("ListAnonymousSessionMemberIDs: %v", err)
+			}
+			if len(anonIDs) == 0 {
+				t.Fatal("expected at least one anonymous member account, got none")
+			}
+
+			// Bare repo should NOT exist (CreateRepo was never called successfully).
+			repoExists, err := env.stor.RepoExists(playground.ReservedOrgID, sess.ID)
+			if err != nil {
+				t.Fatalf("RepoExists: %v", err)
+			}
+			if repoExists {
+				t.Error("bare repo should not exist after a failed CreateRepo")
+			}
+
+			// Step 3: run the destruction cascade directly.
+			// Clear createError so the storage stub doesn't interfere with
+			// RemoveRepo (which is a delete — not gated by createError anyway,
+			// but belt-and-suspenders).
+			env.stor.createError = nil
+			d := &playground.Destruction{
+				Store:        s,
+				Storage:      env.stor,
+				Clock:        env.clock,
+				Logger:       noopLogger(),
+				TombstoneTTL: 30 * 24 * time.Hour,
+			}
+			if err := d.Destroy(ctx, sess, "manual"); err != nil {
+				t.Fatalf("Destroy: %v", err)
+			}
+
+			// Step 4: assert full cleanup.
+
+			// Session row must be gone.
+			_, err = s.GetSession(ctx, playground.ReservedOrgID, sess.ID)
+			if !errors.Is(err, store.ErrNotFound) {
+				t.Errorf("session row: want ErrNotFound after Destroy, got %v", err)
+			}
+
+			// Member row must be gone (FK cascade from session delete).
+			postCount, err := s.CountSessionMembers(ctx, store.CountSessionMembersParams{
+				OrgID:     playground.ReservedOrgID,
+				SessionID: sess.ID,
+			})
+			if err != nil {
+				t.Fatalf("CountSessionMembers after Destroy: %v", err)
+			}
+			if postCount != 0 {
+				t.Errorf("member rows: want 0 after Destroy, got %d", postCount)
+			}
+
+			// Anonymous account(s) must be deleted (not cascaded — deleted explicitly
+			// by Destruction step 7).
+			for _, anonID := range anonIDs {
+				_, err := s.GetAccountByID(ctx, anonID)
+				if !errors.Is(err, store.ErrNotFound) {
+					t.Errorf("anon account %s: want ErrNotFound after Destroy, got %v", anonID, err)
+				}
+			}
+
+			// Bare repo remains absent (RemoveRepo on a non-existent key is a
+			// no-op in stubStorage — this exercises the idempotency of step 8).
+			repoExists, err = env.stor.RepoExists(playground.ReservedOrgID, sess.ID)
+			if err != nil {
+				t.Fatalf("RepoExists after Destroy: %v", err)
+			}
+			if repoExists {
+				t.Error("bare repo: should remain absent after Destroy of an orphan with no repo")
+			}
+		})
+	}
+}
