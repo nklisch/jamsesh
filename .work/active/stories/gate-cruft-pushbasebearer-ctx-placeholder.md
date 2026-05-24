@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-pushbasebearer-ctx-placeholder
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -30,3 +30,12 @@ func pushBaseRefWithBearer(ctx context.Context, baseURL, sessionID, bearer strin
 
 ## Removal
 Either wire `ctx` through `runGitWithEnv` / `exec.CommandContext` for real cancellation propagation now (it'd be a tiny change and is the documented intent), or drop the `ctx` parameter and the placeholder line. "Reserved for future" parameters tend to ossify; pick a direction.
+
+## Implementation notes
+
+Chose to drop the `ctx` parameter from `pushBaseRefWithBearer` rather than wiring it through, because `runGitWithEnv` (a package-level var) does not accept a context — adding one would change the signature for all callers and is a broader refactor. Dropping the parameter removes the placeholder entirely and keeps the function signature honest.
+
+Changes:
+- `cmd/jamsesh/sessioncmd/new.go`: removed `ctx context.Context` from `pushBaseRefWithBearer` signature; removed `_ = ctx` placeholder line; updated the single call site in `newPlaygroundAction` to pass three args instead of four.
+- `context` import is retained — it is used by multiple other functions in the file.
+- `go build ./...` and `go test ./cmd/jamsesh/sessioncmd/...` both pass cleanly.

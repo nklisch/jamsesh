@@ -408,7 +408,7 @@ func newPlaygroundAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// Push local HEAD as base ref using the just-received bearer (no OAuth token).
-	if err := pushBaseRefWithBearer(ctx, baseURL, resp.Session.Id, resp.Bearer); err != nil {
+	if err := pushBaseRefWithBearer(baseURL, resp.Session.Id, resp.Bearer); err != nil {
 		// Session stays live with base_sha NULL per locked decision.
 		return wrapPlaygroundPushError(err, resp.Session, baseURL)
 	}
@@ -428,9 +428,7 @@ func newPlaygroundAction(ctx context.Context, cmd *cli.Command) error {
 // an OAuth token — the anonymous session bearer is sufficient.
 // Credentials are injected via -c http.extraHeader (NOT URL-embedded) to
 // prevent token leakage into git's reflog or `git remote -v` output.
-func pushBaseRefWithBearer(ctx context.Context, baseURL, sessionID, bearer string) error {
-	_ = ctx // reserved for future cancellation propagation
-
+func pushBaseRefWithBearer(baseURL, sessionID, bearer string) error {
 	// Verify we're in a git checkout with a HEAD.
 	if err := runGit("rev-parse", "--git-dir"); err != nil {
 		return fmt.Errorf("not a git checkout: %w", err)
