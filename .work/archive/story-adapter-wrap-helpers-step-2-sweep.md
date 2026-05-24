@@ -1,7 +1,7 @@
 ---
 id: story-adapter-wrap-helpers-step-2-sweep
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: feature-refactor-adapter-generic-wrap-helpers
 depends_on: [story-adapter-wrap-helpers-step-1-define]
@@ -147,3 +147,13 @@ This still saves 3 LoC per scalar method and 5+ LoC per list method.
 **Outcome:** Both adapter files reduced by ~230 combined LoC. All 48
 `go test ./...` packages pass. Build clean. Dual-dialect mirror invariant
 intact.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Step 1 — clean helper definitions + 5 unit tests, no callers touched. Step 2 — ~766 raw LoC removed across both adapter files (better than the autopilot's revised 240 estimate; agent also swept the txStore variants). 4 method categories deliberately skipped (multi-arg converters, inline-struct builders, type-cast-in-loop, timestamptz-unwrap-inline) with documented reasons. Go multi-value spreading constraint surfaced honestly in implementation notes. Tests pass; build clean.

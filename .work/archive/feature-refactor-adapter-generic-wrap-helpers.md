@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-adapter-generic-wrap-helpers
 kind: feature
-stage: implementing
+stage: done
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -195,3 +195,15 @@ Step 2 applies them across the adapters.
 - **Skip row-converter genericization** — confirmed out-of-scope by the
   earlier research pass. Each converter handles dialect-specific field
   types; genericizing would lose readability.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve — feature delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Both child stories at done. Aggregate review: ~766 LoC removed from the two adapter files, scalar-return and list-return methods now use the `wrap1` / `wrapList` helpers, action methods unchanged (already concise), dialect-mirror invariant intact, no public API changes. The agent's honest implementation note about Go's multi-value spreading constraint (every call site needs 2 lines, not 1, due to a language limitation) is a real and worth-knowing detail for future maintainers.
+
+The deferred code-gen Option B remains parked; revisit conditions documented in the "Out of scope" section above.
