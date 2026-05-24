@@ -1,7 +1,7 @@
 ---
 id: story-refactor-per-package-clock-compliance-lease
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor, testing]
 parent: feature-refactor-per-package-clock-compliance
 depends_on: []
@@ -74,6 +74,24 @@ func RunRetention(ctx context.Context, store store.LeaseStore, retentionAfter ti
 
 **Low.** Single function, signature change is mechanical, compiler catches
 missed callers.
+
+## Implementation notes
+
+- Changed `RunRetention` signature from
+  `(ctx, s, interval, retentionAfter)` to
+  `(ctx, s, interval, retentionAfter, now time.Time)`.
+- Cutoff line changed from `time.Now().Add(-retentionAfter)` to
+  `now.Add(-retentionAfter)`.
+- One caller updated: `cmd/portal/main.go:363` — boot-path, no clock field,
+  passes `time.Now().UTC()` explicitly at the boundary.
+- Added `TestRunRetention_CutoffUsesNow` in `retention_test.go`: uses a
+  `retentionStub` (inline stub implementing only
+  `DeleteReleasedLeasesOlderThan`) with a synthetic `now` of
+  2026-01-15T12:00:00Z and a 30-day retention window; asserts the cutoff
+  delivered to the store equals `2025-12-16T12:00:00Z`. No `time.Sleep`.
+  Passes in ~0.01s.
+- Updated the two existing test calls to pass `time.Now().UTC()`.
+- `go build ./...` clean; `go test ./...` fully green (no failures).
 
 ## Rollback
 

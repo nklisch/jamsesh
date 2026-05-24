@@ -3,10 +3,12 @@ package lease_test
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"jamsesh/internal/db"
+	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/lease"
 )
 
@@ -30,7 +32,7 @@ func TestRunRetention_CancelExits(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		// Use a very short interval so the tick fires quickly.
-		done <- lease.RunRetention(ctx, s, 10*time.Millisecond, 30*24*time.Hour)
+		done <- lease.RunRetention(ctx, s, 10*time.Millisecond, 30*24*time.Hour, time.Now().UTC())
 	}()
 
 	// Give the goroutine a moment to start and tick at least once.
@@ -44,6 +46,76 @@ func TestRunRetention_CancelExits(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("RunRetention did not exit after context cancellation")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Unit test: deterministic cutoff regression (no real-time wait)
+// ---------------------------------------------------------------------------
+
+// retentionStub is a minimal store.Store stub that records the cutoff passed
+// to DeleteReleasedLeasesOlderThan and unblocks a channel on first call.
+// All other Store methods panic — they are not exercised by RunRetention.
+type retentionStub struct {
+	store.Store // embed to satisfy the interface; unimplemented methods panic
+
+	mu     sync.Mutex
+	called []time.Time
+	notify chan struct{}
+}
+
+func newRetentionStub() *retentionStub {
+	return &retentionStub{notify: make(chan struct{}, 1)}
+}
+
+func (s *retentionStub) DeleteReleasedLeasesOlderThan(_ context.Context, before time.Time) error {
+	s.mu.Lock()
+	s.called = append(s.called, before)
+	s.mu.Unlock()
+	select {
+	case s.notify <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+// TestRunRetention_CutoffUsesNow verifies that RunRetention computes the
+// cutoff as now.Add(-retentionAfter) rather than calling time.Now() itself.
+// The test passes a synthetic "now" and asserts that
+// DeleteReleasedLeasesOlderThan receives the expected cutoff — no real
+// wall-clock wait required.
+func TestRunRetention_CutoffUsesNow(t *testing.T) {
+	syntheticNow := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	retention := 30 * 24 * time.Hour
+	wantCutoff := syntheticNow.Add(-retention) // 2025-12-16 12:00:00 UTC
+
+	stub := newRetentionStub()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lease.RunRetention(ctx, stub, 5*time.Millisecond, retention, syntheticNow)
+	}()
+
+	// Wait for at least one DeleteReleasedLeasesOlderThan call.
+	select {
+	case <-stub.notify:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("RunRetention did not call DeleteReleasedLeasesOlderThan within timeout")
+	}
+	cancel()
+	<-done
+
+	stub.mu.Lock()
+	got := stub.called
+	stub.mu.Unlock()
+
+	if len(got) == 0 {
+		t.Fatal("DeleteReleasedLeasesOlderThan was never called")
+	}
+	if !got[0].Equal(wantCutoff) {
+		t.Errorf("cutoff = %v, want %v", got[0], wantCutoff)
 	}
 }
 
@@ -74,7 +146,7 @@ func TestRunRetention_DeletesOldRows(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- lease.RunRetention(retentionCtx, s, 50*time.Millisecond, 30*24*time.Hour)
+		done <- lease.RunRetention(retentionCtx, s, 50*time.Millisecond, 30*24*time.Hour, time.Now().UTC())
 	}()
 
 	// Allow a couple of ticks before cancelling.
