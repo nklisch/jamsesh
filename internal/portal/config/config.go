@@ -20,7 +20,11 @@
 //	hydration_idle_timeout_s, hydration_cache_max_bytes,
 //	hydration_idle_check_period_s, hydration_workers,
 //	metrics_token,
-//	api_body_limit_bytes
+//	api_body_limit_bytes,
+//	playground_enabled, playground_idle_timeout_s,
+//	playground_hard_cap_s, playground_create_per_ip_hour,
+//	playground_max_participants, playground_max_content_bytes,
+//	playground_destruction_sweep_interval_s
 //
 // Env vars:   JAMSESH_AUTH_RATE_LIMIT_ENABLED,
 //
@@ -60,7 +64,14 @@
 //	JAMSESH_HYDRATION_IDLE_TIMEOUT_S,
 //	JAMSESH_HYDRATION_CACHE_MAX_BYTES,
 //	JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S,
-//	JAMSESH_HYDRATION_WORKERS
+//	JAMSESH_HYDRATION_WORKERS,
+//	JAMSESH_PLAYGROUND_ENABLED,
+//	JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S,
+//	JAMSESH_PLAYGROUND_HARD_CAP_S,
+//	JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR,
+//	JAMSESH_PLAYGROUND_MAX_PARTICIPANTS,
+//	JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES,
+//	JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S
 //
 // Secret env vars with _FILE variants (file contents take precedence):
 //
@@ -216,6 +227,50 @@ type Config struct {
 	// use the built-in default of 1 MiB (1 << 20 = 1048576).
 	// Env: JAMSESH_API_BODY_LIMIT_BYTES
 	APIBodyLimitBytes int64 `yaml:"api_body_limit_bytes"`
+
+	// PlaygroundEnabled gates the entire ephemeral-playground subsystem.
+	// false (default) — playground REST routes return 503; no reserved
+	// `playground` org is provisioned at startup. true — startup
+	// provisions the reserved org idempotently and the routes accept
+	// traffic, subject to the abuse caps below.
+	// Env: JAMSESH_PLAYGROUND_ENABLED
+	PlaygroundEnabled bool `yaml:"playground_enabled"`
+
+	// PlaygroundIdleTimeoutS is the idle-timeout window for playground
+	// sessions (seconds). A session whose `last_substantive_activity_at`
+	// is older than this is destroyed by the next sweep. Default: 1800 (30m).
+	// Env: JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S
+	PlaygroundIdleTimeoutS int `yaml:"playground_idle_timeout_s"`
+
+	// PlaygroundHardCapS is the wall-clock cap on playground session
+	// lifetime (seconds, measured from session creation). Whichever fires
+	// first between idle and hard cap, the session ends. Default: 86400 (24h).
+	// Env: JAMSESH_PLAYGROUND_HARD_CAP_S
+	PlaygroundHardCapS int `yaml:"playground_hard_cap_s"`
+
+	// PlaygroundCreatePerIPHour caps anonymous session creation per IP
+	// per hour. Reserved here; consumed by the session-lifecycle feature's
+	// rate-limiting middleware. Default: 3.
+	// Env: JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR
+	PlaygroundCreatePerIPHour int `yaml:"playground_create_per_ip_hour"`
+
+	// PlaygroundMaxParticipants caps concurrent participants per
+	// playground session. Reserved here; consumed by session-lifecycle.
+	// Default: 5.
+	// Env: JAMSESH_PLAYGROUND_MAX_PARTICIPANTS
+	PlaygroundMaxParticipants int `yaml:"playground_max_participants"`
+
+	// PlaygroundMaxContentBytes is the per-session accumulated content
+	// cap (bytes). pre-receive rejects pushes that would exceed it.
+	// Reserved here; consumed by session-lifecycle. Default: 52428800 (50 MiB).
+	// Env: JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES
+	PlaygroundMaxContentBytes int64 `yaml:"playground_max_content_bytes"`
+
+	// PlaygroundDestructionSweepIntervalS is how often the destruction
+	// worker walks active playground sessions to apply idle/hard-cap
+	// expiry. Default: 60.
+	// Env: JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S
+	PlaygroundDestructionSweepIntervalS int `yaml:"playground_destruction_sweep_interval_s"`
 }
 
 // DBConfig holds database connection pool settings.
@@ -414,12 +469,19 @@ func defaults() Config {
 		LeaseHeartbeatIntervalS:     10,
 		LeaseRetentionDays:          30,
 		LeaseRetentionIntervalHours: 1,
-		ObjectStorageSyncQueueSize:  256,
-		HydrationIdleTimeoutS:       300,
-		HydrationCacheMaxBytes:      0,
-		HydrationIdleCheckPeriodS:   30,
-		HydrationWorkers:            8,
-		AuthRateLimitEnabled:        true,
+		ObjectStorageSyncQueueSize:          256,
+		HydrationIdleTimeoutS:               300,
+		HydrationCacheMaxBytes:              0,
+		HydrationIdleCheckPeriodS:           30,
+		HydrationWorkers:                    8,
+		AuthRateLimitEnabled:                true,
+		PlaygroundEnabled:                   false,
+		PlaygroundIdleTimeoutS:              1800,
+		PlaygroundHardCapS:                  86400,
+		PlaygroundCreatePerIPHour:           3,
+		PlaygroundMaxParticipants:           5,
+		PlaygroundMaxContentBytes:           52428800,
+		PlaygroundDestructionSweepIntervalS: 60,
 	}
 }
 
@@ -547,6 +609,7 @@ func applyEnv(c *Config) error {
 	applyAuthRateLimitEnv(c)
 	applyMetricsEnv(c)
 	applyAPIBodyLimitEnv(c)
+	applyPlaygroundEnv(c)
 	return nil
 }
 
@@ -694,6 +757,45 @@ func applyAPIBodyLimitEnv(c *Config) {
 	if v := os.Getenv("JAMSESH_API_BODY_LIMIT_BYTES"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			c.APIBodyLimitBytes = n
+		}
+	}
+}
+
+// applyPlaygroundEnv overlays playground-subsystem environment variables.
+// JAMSESH_PLAYGROUND_ENABLED accepts "true", "1", or "yes" (case-insensitive)
+// for enabled; any other non-empty value is treated as disabled.
+func applyPlaygroundEnv(c *Config) {
+	if v := os.Getenv("JAMSESH_PLAYGROUND_ENABLED"); v != "" {
+		c.PlaygroundEnabled = v == "true" || v == "1" || v == "yes"
+	}
+	if v := os.Getenv("JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.PlaygroundIdleTimeoutS = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_PLAYGROUND_HARD_CAP_S"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.PlaygroundHardCapS = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.PlaygroundCreatePerIPHour = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_PLAYGROUND_MAX_PARTICIPANTS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.PlaygroundMaxParticipants = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			c.PlaygroundMaxContentBytes = n
+		}
+	}
+	if v := os.Getenv("JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.PlaygroundDestructionSweepIntervalS = n
 		}
 	}
 }

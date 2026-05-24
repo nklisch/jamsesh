@@ -34,6 +34,10 @@ type Querier interface {
 	CreateMagicLinkToken(ctx context.Context, arg CreateMagicLinkTokenParams) (MagicLinkToken, error)
 	CreateOAuthToken(ctx context.Context, arg CreateOAuthTokenParams) (OauthToken, error)
 	CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, error)
+	// Inserts an org row with org_protected=true. Used at startup by the
+	// playground provisioning hook for the reserved `playground` org.
+	// Slug uniqueness is enforced by the existing UNIQUE constraint on orgs.slug.
+	CreateProtectedOrg(ctx context.Context, arg CreateProtectedOrgParams) (Org, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	DeleteReleasedLeasesOlderThan(ctx context.Context, releasedAt *time.Time) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error

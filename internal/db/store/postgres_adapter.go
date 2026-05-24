@@ -108,6 +108,7 @@ func pgOrg(row pgstore.Org) Org {
 		Slug:                row.Slug,
 		CreatedAt:           row.CreatedAt,
 		SessionInvitePolicy: row.SessionInvitePolicy,
+		OrgProtected:        row.OrgProtected,
 	}
 }
 
@@ -252,6 +253,19 @@ func pgArchivedSession(row pgstore.ArchivedSession) ArchivedSession {
 
 func (a *postgresAdapter) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, error) {
 	row, err := a.q.CreateOrg(ctx, pgstore.CreateOrgParams{
+		ID:        p.ID,
+		Name:      p.Name,
+		Slug:      p.Slug,
+		CreatedAt: p.CreatedAt,
+	})
+	if err != nil {
+		return Org{}, mapPostgresErr(err)
+	}
+	return pgOrg(row), nil
+}
+
+func (a *postgresAdapter) CreateProtectedOrg(ctx context.Context, p CreateProtectedOrgParams) (Org, error) {
+	row, err := a.q.CreateProtectedOrg(ctx, pgstore.CreateProtectedOrgParams{
 		ID:        p.ID,
 		Name:      p.Name,
 		Slug:      p.Slug,
@@ -1128,6 +1142,13 @@ func (a *postgresAdapter) ListPendingSessionInvitesForSession(ctx context.Contex
 // OrgStore
 func (s *postgresTxStore) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, error) {
 	row, err := s.q.CreateOrg(ctx, pgstore.CreateOrgParams{ID: p.ID, Name: p.Name, Slug: p.Slug, CreatedAt: p.CreatedAt})
+	if err != nil {
+		return Org{}, mapPostgresErr(err)
+	}
+	return pgOrg(row), nil
+}
+func (s *postgresTxStore) CreateProtectedOrg(ctx context.Context, p CreateProtectedOrgParams) (Org, error) {
+	row, err := s.q.CreateProtectedOrg(ctx, pgstore.CreateProtectedOrgParams{ID: p.ID, Name: p.Name, Slug: p.Slug, CreatedAt: p.CreatedAt})
 	if err != nil {
 		return Org{}, mapPostgresErr(err)
 	}

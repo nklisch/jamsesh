@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-reserved-org
 kind: feature
-stage: implementing
+stage: review
 tags: [portal]
 parent: epic-ephemeral-playground
 depends_on: []
@@ -544,3 +544,71 @@ No fan-out — single implementing agent walks the sequence.
   accept the operator-foot-gun and document. Recommended: extend the
   guard. Cost: one extra `if org.OrgProtected { return 409 }` line in
   the `UpdateOrgSessionInvitePolicy` handler.
+
+## Implementation notes
+
+### Units completed
+
+1. **Unit 1 — Config struct**: 7 new fields added to `Config` struct with
+   inline doc comments; `applyPlaygroundEnv()` function added to
+   `config.go`; `JAMSESH_PLAYGROUND_ENABLED` accepts `"true"`, `"1"`,
+   `"yes"` (consistent with the feature spec; note this differs slightly
+   from `AuthRateLimitEnabled` which uses `v != "false"` — here we use
+   explicit positive matching for the safer default-false bool).
+
+2. **Unit 2 — Schema migration**: `00017_org_protected.sql` added for both
+   SQLite and Postgres dialects. SQLite Down migration uses `DROP COLUMN`
+   (available since SQLite 3.35.0; `modernc.org/sqlite` bundles 3.49+).
+   Schema source-of-truth files (`db/schema/sqlite.sql`,
+   `db/schema/postgres.sql`) updated with the new column.
+   `ListOrgsForAccount` query (in `org_members.sql` for both dialects)
+   also updated to include `org_protected` — necessary because the
+   generated row type changed to `Org` (was `ListOrgsForAccountRow`
+   before the column existed).
+
+3. **Unit 3 — sqlc queries**: `CreateProtectedOrg` and updated
+   `GetOrgBySlug` / `GetOrgByID` added to both dialect query files.
+   `sqlc generate` ran cleanly. `OrgProtected` is `int64` in the SQLite
+   model (stored as `INTEGER NOT NULL DEFAULT 0`) and `bool` in the
+   Postgres model; the store adapters map them both to `bool` in the
+   domain `Org` struct (`row.OrgProtected != 0` for SQLite).
+
+4. **Unit 4 — Playground package + startup hook**: `internal/portal/playground/provision.go`
+   created; `ProvisionReservedOrg` implements all three branches (no-op,
+   create, conflict). `cmd/portal/main.go` updated with the
+   `if cfg.PlaygroundEnabled { ... }` block immediately after the DB is
+   opened and migrations have run. `internal/portal/playground/provision_test.go`
+   covers all three branches via the SQLite dialect harness (Postgres
+   skipped unless `JAMSESH_TEST_PG_DSN` is set).
+   `internal/portal/handlerauth/handlerauth_test.go`'s `stubStore` updated
+   to implement the new `CreateProtectedOrg` method (interface compliance).
+
+5. **Unit 5 — SELF_HOST.md**: Section 15 "Playground configuration" added
+   at the end of the document with the 7-row env var table, Conflict
+   resolution subsection, and Disable behavior subsection.
+
+### Deviations from design
+
+- The design spec skeleton showed `store.ErrNoRows` as the sentinel to
+  check. The actual store uses `store.ErrNotFound` (the canonical error
+  returned by all Get* methods). The implementation uses `store.ErrNotFound`.
+
+- `GetOrgBySlug` already existed in both query files (used by other
+  features). The column list was updated from explicit column enumeration
+  to include `org_protected`; the feature spec's instruction to add it as
+  a new query was interpreted as "update the existing query to return the
+  new column" rather than adding a duplicate.
+
+- `ListOrgsForAccount` in `org_members.sql` also required updating to add
+  `org_protected` to the SELECT list; otherwise the generated Go type
+  (`ListOrgsForAccountRow`) would not match `sqlitestore.Org` in the
+  adapter's `sqliteOrg()` call. This was not called out in the feature
+  design but is a natural consequence of adding the column to the schema.
+
+### Verification status
+
+- `sqlc generate`: clean, no errors
+- `go build ./...`: passes
+- `go test ./internal/db/... ./internal/portal/playground/... ./internal/portal/config/... ./cmd/portal/...`: all pass
+- `go test ./...` (full suite, 54 packages): all pass
+- `go vet ./...`: clean

@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -43,6 +44,7 @@ import (
 	"jamsesh/internal/portal/mcpendpoint"
 	"jamsesh/internal/portal/metrics"
 	portaloauth "jamsesh/internal/portal/oauth"
+	"jamsesh/internal/portal/playground"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/probes"
@@ -289,6 +291,25 @@ func main() {
 	defer dbStore.Close()
 	if sqlDB != nil {
 		defer sqlDB.Close()
+	}
+
+	// Playground provisioning: when enabled, seed the reserved `playground` org
+	// row idempotently on every boot. If an unprotected org already holds the
+	// slug "playground" (slug collision with a pre-existing user org), the portal
+	// refuses to start until the operator resolves the conflict — the error
+	// message includes the conflicting org's ID and the remediation steps.
+	if cfg.PlaygroundEnabled {
+		if err := playground.ProvisionReservedOrg(ctx, dbStore, time.Now().UTC(), slog.Default()); err != nil {
+			if errors.Is(err, playground.ErrReservedSlugConflict) {
+				slog.Error("playground enabled but reserved slug is taken — refusing to start",
+					"err", err,
+					"remediation", "rename the existing 'playground' org or set JAMSESH_PLAYGROUND_ENABLED=false")
+				os.Exit(1)
+			}
+			// Other errors (transient DB failure): fail fast; operator can fix DB and restart.
+			slog.Error("playground org provisioning failed", "err", err)
+			os.Exit(1)
+		}
 	}
 
 	// Determine the pod ID used to identify this instance in the distributed

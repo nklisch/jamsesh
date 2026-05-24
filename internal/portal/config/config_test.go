@@ -443,6 +443,13 @@ func clearEnv(t *testing.T) {
 		"JAMSESH_HYDRATION_CACHE_MAX_BYTES",
 		"JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S",
 		"JAMSESH_HYDRATION_WORKERS",
+		"JAMSESH_PLAYGROUND_ENABLED",
+		"JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S",
+		"JAMSESH_PLAYGROUND_HARD_CAP_S",
+		"JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR",
+		"JAMSESH_PLAYGROUND_MAX_PARTICIPANTS",
+		"JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES",
+		"JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S",
 	}
 	for _, v := range vars {
 		t.Setenv(v, "") // t.Setenv restores on cleanup; set to "" to clear
@@ -896,6 +903,149 @@ func TestHydrationConfigValidation(t *testing.T) {
 			t.Error("expected error for JAMSESH_HYDRATION_CACHE_MAX_BYTES=-1, got nil")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Playground config tests
+// ---------------------------------------------------------------------------
+
+// TestPlaygroundDefaults verifies that all playground fields have the correct
+// default values when no env vars or YAML keys are set.
+func TestPlaygroundDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.PlaygroundEnabled != false {
+		t.Errorf("PlaygroundEnabled default: got %v, want false", cfg.PlaygroundEnabled)
+	}
+	if cfg.PlaygroundIdleTimeoutS != 1800 {
+		t.Errorf("PlaygroundIdleTimeoutS default: got %d, want 1800", cfg.PlaygroundIdleTimeoutS)
+	}
+	if cfg.PlaygroundHardCapS != 86400 {
+		t.Errorf("PlaygroundHardCapS default: got %d, want 86400", cfg.PlaygroundHardCapS)
+	}
+	if cfg.PlaygroundCreatePerIPHour != 3 {
+		t.Errorf("PlaygroundCreatePerIPHour default: got %d, want 3", cfg.PlaygroundCreatePerIPHour)
+	}
+	if cfg.PlaygroundMaxParticipants != 5 {
+		t.Errorf("PlaygroundMaxParticipants default: got %d, want 5", cfg.PlaygroundMaxParticipants)
+	}
+	if cfg.PlaygroundMaxContentBytes != 52428800 {
+		t.Errorf("PlaygroundMaxContentBytes default: got %d, want 52428800", cfg.PlaygroundMaxContentBytes)
+	}
+	if cfg.PlaygroundDestructionSweepIntervalS != 60 {
+		t.Errorf("PlaygroundDestructionSweepIntervalS default: got %d, want 60", cfg.PlaygroundDestructionSweepIntervalS)
+	}
+}
+
+// TestPlaygroundEnabledEnvOverride verifies JAMSESH_PLAYGROUND_ENABLED
+// accepts "true", "1", and "yes" for enabled.
+func TestPlaygroundEnabledEnvOverride(t *testing.T) {
+	for _, val := range []string{"true", "1", "yes"} {
+		val := val
+		t.Run(val, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("JAMSESH_PLAYGROUND_ENABLED", val)
+			cfg, err := config.Load("")
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if !cfg.PlaygroundEnabled {
+				t.Errorf("PlaygroundEnabled: got false, want true (from %q)", val)
+			}
+		})
+	}
+	// "false" and other strings should leave PlaygroundEnabled=false.
+	for _, val := range []string{"false", "0", "no", "off"} {
+		val := val
+		t.Run(val, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("JAMSESH_PLAYGROUND_ENABLED", val)
+			cfg, err := config.Load("")
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.PlaygroundEnabled {
+				t.Errorf("PlaygroundEnabled: got true, want false (from %q)", val)
+			}
+		})
+	}
+}
+
+// TestPlaygroundEnvOverrides verifies all numeric playground env vars.
+func TestPlaygroundEnvOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S", "600")
+	t.Setenv("JAMSESH_PLAYGROUND_HARD_CAP_S", "3600")
+	t.Setenv("JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR", "10")
+	t.Setenv("JAMSESH_PLAYGROUND_MAX_PARTICIPANTS", "20")
+	t.Setenv("JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES", "104857600")
+	t.Setenv("JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S", "30")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.PlaygroundIdleTimeoutS != 600 {
+		t.Errorf("PlaygroundIdleTimeoutS: got %d, want 600", cfg.PlaygroundIdleTimeoutS)
+	}
+	if cfg.PlaygroundHardCapS != 3600 {
+		t.Errorf("PlaygroundHardCapS: got %d, want 3600", cfg.PlaygroundHardCapS)
+	}
+	if cfg.PlaygroundCreatePerIPHour != 10 {
+		t.Errorf("PlaygroundCreatePerIPHour: got %d, want 10", cfg.PlaygroundCreatePerIPHour)
+	}
+	if cfg.PlaygroundMaxParticipants != 20 {
+		t.Errorf("PlaygroundMaxParticipants: got %d, want 20", cfg.PlaygroundMaxParticipants)
+	}
+	if cfg.PlaygroundMaxContentBytes != 104857600 {
+		t.Errorf("PlaygroundMaxContentBytes: got %d, want 104857600", cfg.PlaygroundMaxContentBytes)
+	}
+	if cfg.PlaygroundDestructionSweepIntervalS != 30 {
+		t.Errorf("PlaygroundDestructionSweepIntervalS: got %d, want 30", cfg.PlaygroundDestructionSweepIntervalS)
+	}
+}
+
+// TestPlaygroundYAML verifies playground fields can be set via YAML.
+func TestPlaygroundYAML(t *testing.T) {
+	clearEnv(t)
+	yamlContent := `
+playground_enabled: true
+playground_idle_timeout_s: 900
+playground_hard_cap_s: 7200
+playground_create_per_ip_hour: 5
+playground_max_participants: 8
+playground_max_content_bytes: 10485760
+playground_destruction_sweep_interval_s: 120
+`
+	path := writeTempConfig(t, yamlContent)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.PlaygroundEnabled {
+		t.Error("PlaygroundEnabled: got false, want true")
+	}
+	if cfg.PlaygroundIdleTimeoutS != 900 {
+		t.Errorf("PlaygroundIdleTimeoutS: got %d, want 900", cfg.PlaygroundIdleTimeoutS)
+	}
+	if cfg.PlaygroundHardCapS != 7200 {
+		t.Errorf("PlaygroundHardCapS: got %d, want 7200", cfg.PlaygroundHardCapS)
+	}
+	if cfg.PlaygroundCreatePerIPHour != 5 {
+		t.Errorf("PlaygroundCreatePerIPHour: got %d, want 5", cfg.PlaygroundCreatePerIPHour)
+	}
+	if cfg.PlaygroundMaxParticipants != 8 {
+		t.Errorf("PlaygroundMaxParticipants: got %d, want 8", cfg.PlaygroundMaxParticipants)
+	}
+	if cfg.PlaygroundMaxContentBytes != 10485760 {
+		t.Errorf("PlaygroundMaxContentBytes: got %d, want 10485760", cfg.PlaygroundMaxContentBytes)
+	}
+	if cfg.PlaygroundDestructionSweepIntervalS != 120 {
+		t.Errorf("PlaygroundDestructionSweepIntervalS: got %d, want 120", cfg.PlaygroundDestructionSweepIntervalS)
+	}
 }
 
 // writeTempConfig writes content to a temp YAML file and returns its path.

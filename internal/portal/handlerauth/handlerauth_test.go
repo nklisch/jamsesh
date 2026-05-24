@@ -28,6 +28,9 @@ type stubStore struct {
 func (s *stubStore) CreateOrg(_ context.Context, _ store.CreateOrgParams) (store.Org, error) {
 	panic("not implemented")
 }
+func (s *stubStore) CreateProtectedOrg(_ context.Context, _ store.CreateProtectedOrgParams) (store.Org, error) {
+	panic("not implemented")
+}
 func (s *stubStore) GetOrgByID(_ context.Context, _ string) (store.Org, error) {
 	panic("not implemented")
 }

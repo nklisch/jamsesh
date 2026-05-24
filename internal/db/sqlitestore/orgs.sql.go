@@ -13,7 +13,7 @@ import (
 const createOrg = `-- name: CreateOrg :one
 INSERT INTO orgs (id, name, slug, created_at)
 VALUES (?, ?, ?, ?)
-RETURNING id, name, slug, created_at, session_invite_policy
+RETURNING id, name, slug, created_at, session_invite_policy, org_protected
 `
 
 type CreateOrgParams struct {
@@ -37,12 +37,48 @@ func (q *Queries) CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, erro
 		&i.Slug,
 		&i.CreatedAt,
 		&i.SessionInvitePolicy,
+		&i.OrgProtected,
+	)
+	return i, err
+}
+
+const createProtectedOrg = `-- name: CreateProtectedOrg :one
+INSERT INTO orgs (id, name, slug, session_invite_policy, created_at, org_protected)
+VALUES (?, ?, ?, 'open', ?, 1)
+RETURNING id, name, slug, created_at, session_invite_policy, org_protected
+`
+
+type CreateProtectedOrgParams struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Inserts an org row with org_protected=true. Used at startup by the
+// playground provisioning hook for the reserved `playground` org.
+// Slug uniqueness is enforced by the existing UNIQUE constraint on orgs.slug.
+func (q *Queries) CreateProtectedOrg(ctx context.Context, arg CreateProtectedOrgParams) (Org, error) {
+	row := q.db.QueryRowContext(ctx, createProtectedOrg,
+		arg.ID,
+		arg.Name,
+		arg.Slug,
+		arg.CreatedAt,
+	)
+	var i Org
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.CreatedAt,
+		&i.SessionInvitePolicy,
+		&i.OrgProtected,
 	)
 	return i, err
 }
 
 const getOrgByID = `-- name: GetOrgByID :one
-SELECT id, name, slug, created_at, session_invite_policy
+SELECT id, name, slug, created_at, session_invite_policy, org_protected
 FROM orgs
 WHERE id = ?
 `
@@ -56,12 +92,13 @@ func (q *Queries) GetOrgByID(ctx context.Context, id string) (Org, error) {
 		&i.Slug,
 		&i.CreatedAt,
 		&i.SessionInvitePolicy,
+		&i.OrgProtected,
 	)
 	return i, err
 }
 
 const getOrgBySlug = `-- name: GetOrgBySlug :one
-SELECT id, name, slug, created_at, session_invite_policy
+SELECT id, name, slug, created_at, session_invite_policy, org_protected
 FROM orgs
 WHERE slug = ?
 `
@@ -75,6 +112,7 @@ func (q *Queries) GetOrgBySlug(ctx context.Context, slug string) (Org, error) {
 		&i.Slug,
 		&i.CreatedAt,
 		&i.SessionInvitePolicy,
+		&i.OrgProtected,
 	)
 	return i, err
 }

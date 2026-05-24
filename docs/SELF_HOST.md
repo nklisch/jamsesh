@@ -1529,3 +1529,42 @@ active sessions):
 
 Monitor `jamsesh_object_storage_uploads_total{result="error"}` to detect
 object-storage errors that would degrade push reliability.
+
+---
+
+## 15. Playground configuration
+
+Ephemeral anonymous playground sessions are an operator-opt-in feature.
+The default deployment ships with playground disabled.
+
+| Env var | Default | Effect |
+|---|---|---|
+| `JAMSESH_PLAYGROUND_ENABLED` | `false` | Master switch. When `true`, startup provisions the reserved `playground` org and the `/api/playground/*` routes serve traffic. When `false`, those routes return 503. |
+| `JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S` | `1800` (30m) | Idle window for active playground sessions. A session whose last substantive activity (commit, comment, finalize-attempt) is older than this is destroyed by the destruction sweep. |
+| `JAMSESH_PLAYGROUND_HARD_CAP_S` | `86400` (24h) | Wall-clock cap on session lifetime since creation. Whichever of idle / hard-cap fires first ends the session. |
+| `JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR` | `3` | Per-IP rate limit on `POST /api/playground/sessions` (session creation). |
+| `JAMSESH_PLAYGROUND_MAX_PARTICIPANTS` | `5` | Cap on concurrent participants per playground session. Excess joiners get a friendly "session full" page. |
+| `JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES` | `52428800` (50 MiB) | Per-session accumulated push throughput cap. Enforced at `pre-receive`. |
+| `JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S` | `60` | How often the destruction worker walks active playground sessions to apply idle and hard-cap expiry. |
+
+### Conflict resolution
+
+If the database already contains an unprotected org with slug
+`playground` (e.g. a real org you created before enabling this feature),
+the portal refuses to start with a clear error message. Rename the
+existing org (`UPDATE orgs SET slug = 'playground-renamed' WHERE id = '<id>'`)
+and restart, or unset `JAMSESH_PLAYGROUND_ENABLED` to disable the
+feature.
+
+### Disable behavior
+
+Flipping `JAMSESH_PLAYGROUND_ENABLED` from `true` to `false` rejects
+new session creates immediately (503). **Active sessions are not
+force-terminated** — they age out naturally through the destruction
+sweep (which continues to run regardless of the enabled flag). Within
+the configured hard-cap window (default 24h), the deployment is
+naturally playground-free.
+
+For an immediate shutdown, the operator can additionally invoke a
+manual destruction sweep via the ops tooling (out of scope; documented
+when the ops surface lands).

@@ -109,6 +109,7 @@ func sqliteOrg(row sqlitestore.Org) Org {
 		Slug:                row.Slug,
 		CreatedAt:           row.CreatedAt,
 		SessionInvitePolicy: row.SessionInvitePolicy,
+		OrgProtected:        row.OrgProtected != 0,
 	}
 }
 
@@ -248,6 +249,19 @@ func sqliteArchivedSession(row sqlitestore.ArchivedSession) ArchivedSession {
 
 func (a *sqliteAdapter) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, error) {
 	row, err := a.q.CreateOrg(ctx, sqlitestore.CreateOrgParams{
+		ID:        p.ID,
+		Name:      p.Name,
+		Slug:      p.Slug,
+		CreatedAt: p.CreatedAt,
+	})
+	if err != nil {
+		return Org{}, mapSQLiteErr(err)
+	}
+	return sqliteOrg(row), nil
+}
+
+func (a *sqliteAdapter) CreateProtectedOrg(ctx context.Context, p CreateProtectedOrgParams) (Org, error) {
+	row, err := a.q.CreateProtectedOrg(ctx, sqlitestore.CreateProtectedOrgParams{
 		ID:        p.ID,
 		Name:      p.Name,
 		Slug:      p.Slug,
@@ -1124,6 +1138,13 @@ func (a *sqliteAdapter) WithTx(ctx context.Context, fn func(TxStore) error) erro
 // OrgStore
 func (s *sqliteTxStore) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, error) {
 	row, err := s.q.CreateOrg(ctx, sqlitestore.CreateOrgParams{ID: p.ID, Name: p.Name, Slug: p.Slug, CreatedAt: p.CreatedAt})
+	if err != nil {
+		return Org{}, mapSQLiteErr(err)
+	}
+	return sqliteOrg(row), nil
+}
+func (s *sqliteTxStore) CreateProtectedOrg(ctx context.Context, p CreateProtectedOrgParams) (Org, error) {
+	row, err := s.q.CreateProtectedOrg(ctx, sqlitestore.CreateProtectedOrgParams{ID: p.ID, Name: p.Name, Slug: p.Slug, CreatedAt: p.CreatedAt})
 	if err != nil {
 		return Org{}, mapSQLiteErr(err)
 	}

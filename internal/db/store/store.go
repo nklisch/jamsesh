@@ -92,6 +92,11 @@ type Org struct {
 	Slug                string
 	CreatedAt           time.Time
 	SessionInvitePolicy string // "members_only" or "open"
+	// OrgProtected marks system-owned reserved orgs (e.g. the playground org).
+	// Any handler that deletes or renames an org MUST check this flag and
+	// return 409 if true. The playground org is seeded with OrgProtected=true
+	// at startup when JAMSESH_PLAYGROUND_ENABLED=true.
+	OrgProtected bool
 }
 
 // Account represents a user account.
@@ -221,6 +226,16 @@ type ArchivedSession struct {
 // ---------------------------------------------------------------------------
 
 type CreateOrgParams struct {
+	ID        string
+	Name      string
+	Slug      string
+	CreatedAt time.Time
+}
+
+// CreateProtectedOrgParams are the parameters for CreateProtectedOrg.
+// session_invite_policy is hardcoded to "open" in the query; org_protected is
+// hardcoded to true. The caller supplies identity fields only.
+type CreateProtectedOrgParams struct {
 	ID        string
 	Name      string
 	Slug      string
@@ -452,6 +467,11 @@ type GetRefModeParams struct {
 // OrgStore covers org CRUD.
 type OrgStore interface {
 	CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, error)
+	// CreateProtectedOrg inserts a system-owned org row with org_protected=true
+	// and session_invite_policy='open'. Used exclusively by the playground
+	// provisioning hook at startup. Any handler that deletes or renames an org
+	// MUST check OrgProtected and return 409 if true.
+	CreateProtectedOrg(ctx context.Context, arg CreateProtectedOrgParams) (Org, error)
 	GetOrgByID(ctx context.Context, id string) (Org, error)
 	GetOrgBySlug(ctx context.Context, slug string) (Org, error)
 	// UpdateOrgSessionInvitePolicy sets the session invite policy for an org.

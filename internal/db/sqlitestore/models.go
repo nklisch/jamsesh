@@ -139,6 +139,7 @@ type Org struct {
 	Slug                string    `json:"slug"`
 	CreatedAt           time.Time `json:"created_at"`
 	SessionInvitePolicy string    `json:"session_invite_policy"`
+	OrgProtected        int64     `json:"org_protected"`
 }
 
 type OrgInvite struct {

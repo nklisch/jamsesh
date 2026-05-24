@@ -4,7 +4,8 @@ CREATE TABLE orgs (
     slug TEXT NOT NULL UNIQUE,
     created_at DATETIME NOT NULL,
     session_invite_policy TEXT NOT NULL DEFAULT 'members_only'
-        CHECK (session_invite_policy IN ('members_only', 'open'))
+        CHECK (session_invite_policy IN ('members_only', 'open')),
+    org_protected INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE accounts (
