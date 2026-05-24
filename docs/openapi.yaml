@@ -167,6 +167,7 @@ components:
             - mode.changed
             - turn.ended
             - presence.updated
+            - session.created
             - session.finalizing
             - session.ended
             - playground.destruction_warning
@@ -189,6 +190,7 @@ components:
             - $ref: '#/components/schemas/ModeChangedPayload'
             - $ref: '#/components/schemas/TurnEndedPayload'
             - $ref: '#/components/schemas/PresenceUpdatedPayload'
+            - $ref: '#/components/schemas/SessionCreatedPayload'
             - $ref: '#/components/schemas/SessionFinalizingPayload'
             - $ref: '#/components/schemas/SessionEndedPayload'
             - $ref: '#/components/schemas/PlaygroundDestructionWarningPayload'
@@ -205,6 +207,7 @@ components:
           mode.changed: '#/components/schemas/ModeChangedPayload'
           turn.ended: '#/components/schemas/TurnEndedPayload'
           presence.updated: '#/components/schemas/PresenceUpdatedPayload'
+          session.created: '#/components/schemas/SessionCreatedPayload'
           session.finalizing: '#/components/schemas/SessionFinalizingPayload'
           session.ended: '#/components/schemas/SessionEndedPayload'
           playground.destruction_warning: '#/components/schemas/PlaygroundDestructionWarningPayload'
@@ -503,6 +506,26 @@ components:
           type: string
           format: date-time
           description: ISO-8601 timestamp of last participant activity
+
+    SessionCreatedPayload:
+      type: object
+      description: >
+        A new session was created.
+        PROTOCOL.md canonical fields: session_id, org_id, name, creator_id.
+      required: [session_id, org_id, name, creator_id]
+      properties:
+        session_id:
+          type: string
+          description: ID of the newly created session
+        org_id:
+          type: string
+          description: ID of the org this session belongs to
+        name:
+          type: string
+          description: Display name of the session
+        creator_id:
+          type: string
+          description: Account ID of the session creator
 
     SessionFinalizingPayload:
       type: object

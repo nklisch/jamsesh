@@ -800,7 +800,7 @@ export interface components {
              * @description Event type; used as discriminator for payload
              * @enum {string}
              */
-            type: "commit.arrived" | "merge.succeeded" | "conflict.detected" | "conflict.resolved" | "comment.added" | "comment.resolved" | "ref.forked" | "mode.changed" | "turn.ended" | "presence.updated" | "session.finalizing" | "session.ended";
+            type: "commit.arrived" | "merge.succeeded" | "conflict.detected" | "conflict.resolved" | "comment.added" | "comment.resolved" | "ref.forked" | "mode.changed" | "turn.ended" | "presence.updated" | "session.created" | "session.finalizing" | "session.ended" | "playground.destruction_warning";
             /**
              * Format: date-time
              * @description ISO-8601 timestamp of event emission
@@ -808,7 +808,7 @@ export interface components {
             timestamp: string;
             /** @description Session this event belongs to */
             session_id: string;
-            payload: components["schemas"]["CommitArrivedPayload"] | components["schemas"]["MergeSucceededPayload"] | components["schemas"]["ConflictDetectedPayload"] | components["schemas"]["ConflictResolvedPayload"] | components["schemas"]["CommentAddedPayload"] | components["schemas"]["CommentResolvedPayload"] | components["schemas"]["RefForkedPayload"] | components["schemas"]["ModeChangedPayload"] | components["schemas"]["TurnEndedPayload"] | components["schemas"]["PresenceUpdatedPayload"] | components["schemas"]["SessionFinalizingPayload"] | components["schemas"]["SessionEndedPayload"];
+            payload: components["schemas"]["CommitArrivedPayload"] | components["schemas"]["MergeSucceededPayload"] | components["schemas"]["ConflictDetectedPayload"] | components["schemas"]["ConflictResolvedPayload"] | components["schemas"]["CommentAddedPayload"] | components["schemas"]["CommentResolvedPayload"] | components["schemas"]["RefForkedPayload"] | components["schemas"]["ModeChangedPayload"] | components["schemas"]["TurnEndedPayload"] | components["schemas"]["PresenceUpdatedPayload"] | components["schemas"]["SessionCreatedPayload"] | components["schemas"]["SessionFinalizingPayload"] | components["schemas"]["SessionEndedPayload"] | components["schemas"]["PlaygroundDestructionWarningPayload"];
         };
         /** @description A commit was pushed to a session ref. PROTOCOL.md canonical fields: ref, sha, author_id, summary. */
         CommitArrivedPayload: {
@@ -981,6 +981,17 @@ export interface components {
              */
             last_active: string;
         };
+        /** @description A new session was created. PROTOCOL.md canonical fields: session_id, org_id, name, creator_id. */
+        SessionCreatedPayload: {
+            /** @description ID of the newly created session */
+            session_id: string;
+            /** @description ID of the org this session belongs to */
+            org_id: string;
+            /** @description Display name of the session */
+            name: string;
+            /** @description Account ID of the session creator */
+            creator_id: string;
+        };
         /** @description A session has entered the finalizing state. PROTOCOL.md canonical fields: by_user_id. */
         SessionFinalizingPayload: {
             /** @description Account ID of the participant who initiated finalization */
@@ -999,6 +1010,23 @@ export interface components {
              *     Null otherwise.
              */
             final_branch_name?: string | null;
+        };
+        /** @description A playground session is ~5 minutes from destruction due to idle timeout or hard cap. Emitted once per warning kind per session lifetime. PROTOCOL.md canonical fields: reason, ends_at, remaining_seconds, session_id. */
+        PlaygroundDestructionWarningPayload: {
+            /**
+             * @description What triggered the destruction countdown
+             * @enum {string}
+             */
+            reason: "idle_timeout" | "hard_cap";
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the session will be destroyed
+             */
+            ends_at: string;
+            /** @description Approximate seconds remaining until destruction at time of emission */
+            remaining_seconds: number;
+            /** @description ID of the playground session that is about to be destroyed */
+            session_id: string;
         };
         MeOrgMembership: {
             /**
@@ -1309,7 +1337,9 @@ export interface components {
         /**
          * @description Turn-start digest for the local binary's additionalContext injection.
          *     Contains a formatted text block summarising activity since the cursor,
-         *     and a next_cursor for the next call.
+         *     a next_cursor for the next call, and an optional list of urgent events
+         *     (e.g. playground destruction warnings) that the binary should surface
+         *     prominently regardless of the text content.
          */
         DigestResponse: {
             /**
@@ -1323,6 +1353,12 @@ export interface components {
              * @description Max event seq seen in this digest. Pass as `since` on the next call.
              */
             next_cursor: number;
+            /**
+             * @description Optional list of time-sensitive events the binary must surface prominently.
+             *     Currently only playground.destruction_warning events appear here.
+             *     Absent (or empty) on non-playground sessions or when no urgent events exist.
+             */
+            urgent_events?: components["schemas"]["PlaygroundDestructionWarningPayload"][];
         };
         /** @description Request body for inviting an account to a session by email. */
         InviteRequest: {
@@ -2209,6 +2245,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Org is protected and cannot be mutated */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     listOrgMembers: {

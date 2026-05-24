@@ -1,7 +1,7 @@
 ---
 id: story-spec-discipline-audit-and-close-emit-vs-yaml-gaps
 kind: story
-stage: implementing
+stage: review
 tags: [portal, ui]
 parent: feature-spec-discipline
 depends_on: []
@@ -118,3 +118,61 @@ where it was inlining types; switch to generated types.
 ## Rollback
 
 `git revert` the implementation commit.
+
+## Implementation notes
+
+### Gaps found and closed
+
+Full audit of Go-emitted event-type strings vs `docs/openapi.yaml` EventEnvelope.type enum:
+
+| Event | Emitted | In YAML enum | In types.gen.ts | Action |
+|---|---|---|---|---|
+| `session.created` | `sessions/handler.go:155` | NO | NO | Added schema + enum + oneOf + mapping |
+| `playground.destruction_warning` | Via `UrgentEvents` field (not Emit()) | YES | NO (stale codegen) | codegen rerun fixed |
+| `commit.arrived` | `postreceive/emitter.go`, `automerger/outcomes.go` | YES | YES | No action needed |
+| `merge.succeeded` | `automerger/outcomes.go` | YES | YES | No action needed |
+| `conflict.detected` | `automerger/outcomes.go` | YES | YES | No action needed |
+| `conflict.resolved` | `automerger/outcomes.go` | YES | YES | No action needed |
+| `ref.forked` | `mcpendpoint/tools.go` | YES | YES | No action needed |
+| `session.ended` | `finalize/mark_shipped.go`, `sessions/handler.go` | YES | YES | No action needed |
+| `mode.changed` | `sessions/refmodes.go` | YES | YES | No action needed |
+| `session.finalizing` | `sessions/handler.go`, `finalize/lock_acquire.go` | YES | YES | No action needed |
+| `presence.updated` | `events/log.go` (struct literal) | YES | YES | No action needed |
+| `comment.added` | `comments/service.go` (struct literal) | YES | YES | No action needed |
+| `comment.resolved` | `comments/service.go` (struct literal) | YES | YES | No action needed |
+| `turn.ended` | No emit site found | YES | YES | In YAML for future use — no action |
+
+Note: `playground.destruction_warning` is surfaced via the `UrgentEvents` field in the digest response
+(`GetSessionDigest`), not via `events.Log.Emit()`. It IS specced in the YAML and was already in the
+Go generated code. The only gap was stale TypeScript codegen.
+
+### `SessionCreatedPayload` schema added
+
+Mirrors the Go struct exactly (`sessions/handler.go` lines 143-148):
+- `session_id` (string, required)
+- `org_id` (string, required)
+- `name` (string, required)
+- `creator_id` (string, required)
+
+Added to:
+1. `EventEnvelope.type` enum (before `session.finalizing`)
+2. `payload.oneOf` (before `SessionFinalizingPayload`)
+3. `discriminator.mapping` (before `session.finalizing`)
+4. New schema definition `SessionCreatedPayload` (before `SessionFinalizingPayload`)
+
+### Codegen result
+
+- `go generate ./internal/api/openapi/...` — clean; produced `SessionCreated` type constant,
+  `SessionCreatedPayload` struct, `AsSessionCreatedPayload`/`FromSessionCreatedPayload`/
+  `MergeSessionCreatedPayload` union accessor methods.
+- `npm run generate` — clean; `types.gen.ts` now includes `session.created` in the
+  EventEnvelope type union and `SessionCreatedPayload` + `PlaygroundDestructionWarningPayload`
+  schemas.
+
+### Verification
+
+- `go build ./...` — clean
+- `go test ./...` — 58 packages, all passing
+- `npm run check` — 0 errors, 2 pre-existing warnings (unrelated)
+- `npm run test` — 50 test files, 635 tests, all passing
+- `npm run build` — clean production build
