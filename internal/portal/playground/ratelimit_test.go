@@ -3,6 +3,7 @@ package playground_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"jamsesh/internal/portal/playground"
@@ -268,5 +269,61 @@ func TestNewCreateRateLimiter_LargePerHour(t *testing.T) {
 	allowed2, _ := store.Allow("10.0.2.1")
 	if !allowed1 || !allowed2 {
 		t.Error("first 2 requests should be within the per-minute burst of 2")
+	}
+}
+
+// TestCreateRateLimitMiddleware_Returns429WithRetryAfter verifies the acceptance
+// criterion from Story 3 AC #1: "4th create within an hour from same IP returns
+// 429 with Retry-After header."
+//
+// Uses CreatePerIPHour=180 → perMinute=3 → burst=3. After the burst is exhausted
+// the 4th request must receive a 429 response whose Retry-After header value is a
+// positive integer (number of seconds the client should wait before retrying).
+func TestCreateRateLimitMiddleware_Returns429WithRetryAfter(t *testing.T) {
+	cfg := playground.Config{
+		Enabled:         true,
+		CreatePerIPHour: 180, // perMinute = ceil(180/60) = 3 → burst = 3
+	}
+	store := playground.NewCreateRateLimiter(cfg)
+	mw := playground.CreateRateLimitMiddleware(store, true)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	handler := mw(inner)
+
+	ip := "10.0.3.1:5555"
+
+	// Exhaust the burst (3 requests allowed).
+	for i := range 3 {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/playground/sessions", nil)
+		r.RemoteAddr = ip
+		handler.ServeHTTP(w, r)
+		if w.Code != http.StatusCreated {
+			t.Errorf("request %d within burst: want 201, got %d", i+1, w.Code)
+		}
+	}
+
+	// 4th request must be rate-limited with a parseable positive Retry-After.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/api/playground/sessions", nil)
+	r.RemoteAddr = ip
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("4th request: want 429, got %d", w.Code)
+	}
+
+	retryAfterHeader := w.Header().Get("Retry-After")
+	if retryAfterHeader == "" {
+		t.Fatal("4th request: want Retry-After header on 429 response, got none")
+	}
+
+	secs, err := strconv.Atoi(retryAfterHeader)
+	if err != nil {
+		t.Errorf("Retry-After header %q must be an integer, got parse error: %v", retryAfterHeader, err)
+	} else if secs <= 0 {
+		t.Errorf("Retry-After header must be a positive integer, got %d", secs)
 	}
 }

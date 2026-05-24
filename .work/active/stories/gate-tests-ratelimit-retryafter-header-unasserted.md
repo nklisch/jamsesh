@@ -1,7 +1,7 @@
 ---
 id: gate-tests-ratelimit-retryafter-header-unasserted
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -37,3 +37,23 @@ block but does not verify the `Retry-After` header.
 
 ## Test location (suggested)
 `internal/portal/playground/ratelimit_test.go`
+
+## Implementation notes
+
+Added `TestCreateRateLimitMiddleware_Returns429WithRetryAfter` to
+`internal/portal/playground/ratelimit_test.go`. The test:
+
+- Configures `CreatePerIPHour=180` → `perMinute=3` → `burst=3` so the
+  4th request hits the rate limit without any real-time wait.
+- Exhausts the burst with 3 allowed requests, then fires the 4th.
+- Asserts `resp.StatusCode == 429`.
+- Asserts `Retry-After` header is present, parses as an integer, and is > 0.
+
+Investigation found the header WAS already set correctly: `response.go`
+calls `writeTooManyRequests` which sets `Retry-After` to
+`ceil(retryAfter.Seconds())` (minimum 1). The existing
+`TestCreateRateLimitMiddleware_Enabled_BlocksAfterBurst` only checked
+presence (non-empty string); this new test validates the value parses as a
+positive integer, fully covering Story 3 AC #1.
+
+All tests pass: `go test ./internal/portal/playground/... -run TestCreateRateLimitMiddleware`.
