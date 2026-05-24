@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-content-cap-pre-receive-enforcement
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-failure
 depends_on: []
@@ -102,4 +102,41 @@ func TestPlayground_ContentCap_PreReceiveRejectsOversize(t *testing.T) {
     size := dockerExecDuBytes(t, p, portalRepoPath("playground", sess.ID))
     require.LessOrEqualf(t, size, int64(1<<20), "repo size %d exceeds cap", size)
 }
+```
+
+## Implementation notes
+
+**File**: `tests/e2e/failure/playground_content_cap_test.go`
+
+**Test function**: `TestPlayground_ContentCap_PreReceiveRejectsOversize`
+
+**What was implemented**:
+Two subtests:
+1. `oversize_push_rejected` — pushes a small seed on the base ref (succeeds), then pushes
+   a ~1.5 MiB random blob (gzip-incompressible) on a user ref. Push exits non-zero.
+   On-disk repo size after rejection is 23,286 bytes (cap=1 MiB, well within limit).
+   The pre-receive check fires BEFORE spawning the git-receive-pack subprocess, so
+   the oversize pack is never written to disk. No partial-write bug found.
+
+2. `per_session_isolation` — S1 pushes 900 KiB (succeeds), then S2 (independent session)
+   pushes 900 KiB (also succeeds). Quota is confirmed per-session, not global.
+
+**`CommitBytes` added to gitclient**: New method on `*Repo` in
+`tests/e2e/fixtures/gitclient/gitclient.go` that takes `[]byte` instead of `string`,
+enabling binary/random-data blobs without string-encoding roundtrips.
+
+**Rejection message format finding (parked)**:
+The pre-receive rejection IS enforced (push exits non-zero), but the git client shows
+`fatal: the remote end hung up unexpectedly` instead of the human-readable cap message
+(`playground session content limit exceeded`). This is because git's stateless-RPC
+two-POST protocol may cause the capabilities (including `side-band-64k`) to be absent
+from the second POST's command list, making `writeReportStatusRejection` write
+non-sideband pkt-lines while git expects sideband format.
+
+Parked as:
+`.work/backlog/bug-playground-content-cap-rejection-message-not-surfaced-to-git-client.md`
+
+**All subtests pass**. Run with:
+```
+cd tests/e2e && go test ./failure/ -run TestPlayground_ContentCap -count=1 -v
 ```

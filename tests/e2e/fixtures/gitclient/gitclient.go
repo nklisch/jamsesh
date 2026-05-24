@@ -114,6 +114,43 @@ func (r *Repo) Commit(ctx context.Context, t *testing.T, relPath, content, messa
 	return strings.TrimSpace(out)
 }
 
+// CommitBytes writes raw bytes to relPath inside the working tree, stages it,
+// and creates a commit with the supplied message plus the required Jam-*
+// trailers. Unlike Commit, the content parameter is a raw byte slice so callers
+// can commit binary or randomly-generated data without Go's string-conversion
+// semantics interfering with the byte values.
+//
+// A fresh Jam-Turn UUID is generated for each commit.
+//
+// Returns the full commit SHA (40 hex chars).
+func (r *Repo) CommitBytes(ctx context.Context, t *testing.T, relPath string, content []byte, message string) string {
+	t.Helper()
+
+	absPath := filepath.Join(r.Dir, relPath)
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		t.Fatalf("gitclient.CommitBytes: mkdir %s: %v", filepath.Dir(absPath), err)
+	}
+	if err := os.WriteFile(absPath, content, 0o644); err != nil {
+		t.Fatalf("gitclient.CommitBytes: write %s: %v", absPath, err)
+	}
+
+	run(ctx, t, r.Dir, "git", "add", relPath)
+
+	turnID := uuid.New().String()
+	fullMessage := fmt.Sprintf("%s\n\nJam-Session: %s\nJam-Turn: %s\nJam-Author: %s\n",
+		message, r.SessionID, turnID, r.UserID)
+
+	msgFile := filepath.Join(t.TempDir(), "commit-msg")
+	if err := os.WriteFile(msgFile, []byte(fullMessage), 0o644); err != nil {
+		t.Fatalf("gitclient.CommitBytes: write message file: %v", err)
+	}
+
+	run(ctx, t, r.Dir, "git", "commit", "-F", msgFile)
+
+	out := runOutput(ctx, t, r.Dir, "git", "rev-parse", "HEAD")
+	return strings.TrimSpace(out)
+}
+
 // Push pushes HEAD to the given ref on the origin remote. The ref should be
 // in the jam/<sessionID>/<userID>/<branch> namespace; other namespaces are
 // rejected by the portal's pre-receive hook.
