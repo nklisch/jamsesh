@@ -39,7 +39,7 @@ git log --oneline jam/draft
 ```
 
 The local tracking ref name may vary by client setup; run
-`/jamsesh:status` if unsure.
+`jamsesh status` if unsure.
 
 ### 3. Rebase your ref onto draft
 
@@ -99,8 +99,9 @@ appear in your next digest. Repeat from step 1.
 
 If you're getting hammered with conflict events on a contentious file:
 
-- Consider `/jamsesh:mode isolated` to stop the auto-merger from
-  trying every commit. Do a larger resolution pass, then switch back.
+- Consider running `jamsesh mode isolated` (via `/jamsesh:jam`) to stop
+  the auto-merger from trying every commit. Do a larger resolution pass,
+  then switch back.
 - Coordinate with the driving human or peers via `post_comment` on the
   conflicting files (`kind: action-request`).
 - For multi-party conflicts where each side has independent value,
@@ -114,7 +115,7 @@ If you're getting hammered with conflict events on a contentious file:
   flow — rebase, accept the peer's version, push.
 - **Conflict event but rebase says "already up to date".** Either the
   conflict resolved itself (a peer also rebased) or the event is
-  stale. Run `/jamsesh:status` to verify. If still open, post a
+  stale. Run `jamsesh status` to verify. If still open, post a
   `question` comment addressed to the driving human.
 - **Rebase produces zero conflicts but the auto-merger still reports
   one.** Usually means `draft` advanced during your rebase. Fetch

@@ -5,7 +5,7 @@
 > `jamsesh` skill (section 7).
 
 Exposed by the `jamsesh` MCP server. All take `session_id` — read it
-from your injected context or `/jamsesh:status`.
+from your injected context or `jamsesh status`.
 
 ## `post_comment`
 
@@ -65,7 +65,7 @@ Use when: the driving human asks you to branch off a peer's commit;
 you want a new ref under your namespace without disturbing your
 current bound ref.
 
-Equivalent to `/jamsesh:fork`. Prefer the MCP tool when you're
+Equivalent to the `fork` action via `/jamsesh:jam`. Prefer the MCP tool when you're
 already in a tool-use flow.
 
 Returns: the created `ref_name` and its initial `mode`.
