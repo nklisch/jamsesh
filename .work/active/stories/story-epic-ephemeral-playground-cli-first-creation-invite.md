@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-cli-first-creation-invite
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: feature-epic-ephemeral-playground-cli-first-creation
 depends_on: []
@@ -110,3 +110,33 @@ OrgID resolution: `--org` flag overrides; falls back to
 
 **Verification**: `go build ./cmd/jamsesh/...` clean; all 48 tests in
 `sessioncmd` pass; `go vet ./...` clean.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- `cli-invite-dedupe-parseinviteemails-test` — `TestParseInviteEmails` is
+  now defined twice (`new_test.go:849` and `invite_test.go:235` as
+  `_inviteFile`). The implementer flagged this in an inline comment as
+  deferred cleanup. Filed as a backlog item to drop the `new_test.go`
+  copy and rename the `invite_test.go` copy back to the canonical name.
+
+**Nits**:
+- Acceptance criterion wording says "exit 1" for partial failure — the
+  implementation returns a non-nil error from `Action`, and `main.go`
+  prints it and exits 1. Behaviorally correct; no change needed.
+- `url.PathEscape(orgID)` and `url.PathEscape(sessionID)` are used when
+  constructing the invite path — good defensive hygiene against
+  shell-injected or test-mangled IDs.
+
+**Notes**: Lenses applied — Correctness, Tests, Design alignment,
+Security (lightweight), Foundation-doc alignment, Naming. Endpoint shape
+(`POST /api/orgs/{orgID}/sessions/{sessionID}/invites`) confirmed against
+`docs/openapi.yaml:2367`. Request body `{"email": ...}` matches
+`InviteRequest` schema. `state.Read` properly wraps `fs.ErrNotExist` so
+the `errors.Is` check in `inviteAction` works as intended. The helper
+move from `new.go` → `invite.go` is package-local, so the sibling Story
+`-new`'s callsite in `newAction` continues to resolve via package scope
+(verified by clean build). 7 invite tests pass.
