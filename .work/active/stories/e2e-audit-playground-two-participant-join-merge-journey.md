@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-two-participant-join-merge-journey
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -71,6 +71,52 @@ same session URL. Assert:
 4. Auto-merger advances draft to include both commits and emits
    `merge.succeeded` (same assertion as `auto_merge_test.go`).
 5. The two anonymous accounts persisted in DB have distinct nicknames.
+
+## Implementation notes
+
+**Test file**: `tests/e2e/golden/playground_two_participant_join_merge_test.go`
+
+**What landed**:
+- Boots postgres + portal (playground enabled, HARD_CAP_S=300, IDLE_TIMEOUT_S=600,
+  DESTRUCTION_SWEEP_INTERVAL_S=1). No clock advance needed — this is a
+  happy-path journey test.
+- Participant A creates via `POST /api/playground/sessions` (201). Base ref push
+  uses the trailer exemption landed at commit 297616a.
+- Participant B joins via `POST /api/playground/sessions/{id}/join` (200). AccountID
+  derived from `/api/me` with the anon bearer, same pattern as the solo test.
+- WebSocket connections established for both A and B BEFORE any per-user-ref pushes
+  (prevents race where events arrive before the subscriber is ready).
+- A and B push independent commits (alice.md / bob.md) on their per-user refs.
+  `gitclient.Clone` + `gitclient.Commit` adds Jam-Session/Jam-Turn/Jam-Author trailers
+  automatically. B's repo is reset to `origin/base` before committing so both commits
+  share the base as a common ancestor — required for the auto-merger to find a
+  merge base.
+- **WS event discipline**: used `wsclient.WaitFor` (channel drain, not sleep) for
+  both `commit.arrived` (5s) and `merge.succeeded` (20s) — zero sleeps in the test.
+- `waitForMergeSucceeded` (from `auto_merge_test.go`, same package) checks both
+  A's and B's merge.succeeded on both subscribers.
+- Cross-fetch verification: A fetches and checks B's ref tip SHA; B fetches and checks
+  A's ref tip SHA.
+- Draft ref assertion: `git merge-base --is-ancestor` confirms both source commits
+  are reachable from `jam/<session>/draft`.
+- Anti-tautology (Unit 5): `p.Exec(ctx, ["ls", repoPath])` asserts bare repo exists
+  on real disk immediately after session create.
+
+**Decisions**:
+- Did NOT send a suggested nickname in the join call (passed "" → server picks one).
+  Server correctly picked distinct nicknames on all 5 runs.
+- The parked unit-test bug `bug-playground-join-with-nickname-returns-410-on-fresh-session`
+  is a clock-injection issue in the unit test harness only. Against the real portal binary
+  (wall clock), `hard_cap_at` is always in the future immediately after session creation,
+  and the join handler behaves correctly. Added a comment in `playgroundJoin` linking the
+  bug for future investigators.
+- Used `soloCreateResponse` (defined in `playground_solo_create_push_tombstone_test.go`,
+  same package) for the create response decode — no duplication.
+- Reused `gitResetToRef`, `waitForMergeSucceeded`, `requireCommitInLog` from
+  `auto_merge_test.go` — all in `golden_test` package, no import needed.
+
+**Flake check**: 5/5 passes on consecutive runs (8–12s each). No flakes observed.
+The `wsclient.WaitFor` gating eliminated the race risk identified in the pre-mortem.
 
 ## Test sketch
 
