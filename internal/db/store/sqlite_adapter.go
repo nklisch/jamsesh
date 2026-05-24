@@ -685,6 +685,41 @@ func (a *sqliteAdapter) ResetSessionIdleTimer(ctx context.Context, p ResetSessio
 	}))
 }
 
+func (a *sqliteAdapter) ListExpiredPlaygroundSessions(ctx context.Context, p ListExpiredPlaygroundSessionsParams) ([]Session, error) {
+	now := sql.NullTime{Time: p.Now, Valid: true}
+	rows, err := a.q.ListExpiredPlaygroundSessions(ctx, sqlitestore.ListExpiredPlaygroundSessionsParams{
+		OrgID:         p.OrgID,
+		HardCapAt:     now,
+		IdleTimeoutAt: now,
+	})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	sessions := make([]Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = sqliteSession(r)
+	}
+	return sessions, nil
+}
+
+func (a *sqliteAdapter) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	return mapSQLiteErr(a.q.PurgeExpiredTombstones(ctx, before))
+}
+
+func (a *sqliteAdapter) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessionID string) ([]string, error) {
+	ids, err := a.q.ListAnonymousSessionMemberIDs(ctx, orgID, sessionID)
+	return ids, mapSQLiteErr(err)
+}
+
+func (a *sqliteAdapter) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return mapSQLiteErr(a.q.DeleteAccountsByIDs(ctx, ids))
+}
+
+func (a *sqliteAdapter) CountSessionEventsByType(ctx context.Context, sessionID, eventType string) (int64, error) {
+	count, err := a.q.CountSessionEventsByType(ctx, sessionID, eventType)
+	return count, mapSQLiteErr(err)
+}
+
 // ---------------------------------------------------------------------------
 // OAuthTokenStore
 // ---------------------------------------------------------------------------
@@ -1480,6 +1515,41 @@ func (s *sqliteTxStore) ResetSessionIdleTimer(ctx context.Context, p ResetSessio
 		OrgID:                     p.OrgID,
 		ID:                        p.SessionID,
 	}))
+}
+
+func (s *sqliteTxStore) ListExpiredPlaygroundSessions(ctx context.Context, p ListExpiredPlaygroundSessionsParams) ([]Session, error) {
+	now := sql.NullTime{Time: p.Now, Valid: true}
+	rows, err := s.q.ListExpiredPlaygroundSessions(ctx, sqlitestore.ListExpiredPlaygroundSessionsParams{
+		OrgID:         p.OrgID,
+		HardCapAt:     now,
+		IdleTimeoutAt: now,
+	})
+	if err != nil {
+		return nil, mapSQLiteErr(err)
+	}
+	sessions := make([]Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = sqliteSession(r)
+	}
+	return sessions, nil
+}
+
+func (s *sqliteTxStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	return mapSQLiteErr(s.q.PurgeExpiredTombstones(ctx, before))
+}
+
+func (s *sqliteTxStore) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessionID string) ([]string, error) {
+	ids, err := s.q.ListAnonymousSessionMemberIDs(ctx, orgID, sessionID)
+	return ids, mapSQLiteErr(err)
+}
+
+func (s *sqliteTxStore) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return mapSQLiteErr(s.q.DeleteAccountsByIDs(ctx, ids))
+}
+
+func (s *sqliteTxStore) CountSessionEventsByType(ctx context.Context, sessionID, eventType string) (int64, error) {
+	count, err := s.q.CountSessionEventsByType(ctx, sessionID, eventType)
+	return count, mapSQLiteErr(err)
 }
 
 // OAuthTokenStore

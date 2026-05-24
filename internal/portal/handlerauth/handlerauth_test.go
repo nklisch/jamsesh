@@ -380,6 +380,21 @@ func (s *stubStore) RecordTombstone(_ context.Context, _ store.RecordTombstonePa
 func (s *stubStore) ResetSessionIdleTimer(_ context.Context, _ store.ResetSessionIdleTimerParams) error {
 	panic("not implemented")
 }
+func (s *stubStore) ListExpiredPlaygroundSessions(_ context.Context, _ store.ListExpiredPlaygroundSessionsParams) ([]store.Session, error) {
+	panic("not implemented")
+}
+func (s *stubStore) PurgeExpiredTombstones(_ context.Context, _ time.Time) error {
+	panic("not implemented")
+}
+func (s *stubStore) ListAnonymousSessionMemberIDs(_ context.Context, _, _ string) ([]string, error) {
+	panic("not implemented")
+}
+func (s *stubStore) DeleteAccountsByIDs(_ context.Context, _ []string) error {
+	panic("not implemented")
+}
+func (s *stubStore) CountSessionEventsByType(_ context.Context, _, _ string) (int64, error) {
+	panic("not implemented")
+}
 
 // Compile-time interface check.
 var _ store.Store = (*stubStore)(nil)

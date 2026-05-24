@@ -591,6 +591,12 @@ type TombstoneStore interface {
 	RecordTombstone(ctx context.Context, p RecordTombstoneParams) error
 }
 
+// ListExpiredPlaygroundSessionsParams are the parameters for ListExpiredPlaygroundSessions.
+type ListExpiredPlaygroundSessionsParams struct {
+	OrgID string
+	Now   time.Time
+}
+
 // PlaygroundSessionStore covers playground-specific session queries.
 type PlaygroundSessionStore interface {
 	// ResetSessionIdleTimer updates last_substantive_activity_at and
@@ -598,6 +604,26 @@ type PlaygroundSessionStore interface {
 	// handlers to prevent the destruction worker from treating the session
 	// as idle.
 	ResetSessionIdleTimer(ctx context.Context, p ResetSessionIdleTimerParams) error
+	// ListExpiredPlaygroundSessions returns active playground sessions whose
+	// hard_cap_at or idle_timeout_at has elapsed. Used by the destruction worker
+	// sweep to identify candidates for destruction.
+	ListExpiredPlaygroundSessions(ctx context.Context, p ListExpiredPlaygroundSessionsParams) ([]Session, error)
+	// PurgeExpiredTombstones deletes tombstone rows whose expires_at is before
+	// the given time. Safe to call frequently; no-ops when nothing is expired.
+	PurgeExpiredTombstones(ctx context.Context, before time.Time) error
+	// ListAnonymousSessionMemberIDs returns account_ids for all anonymous
+	// accounts that are members of the given session. Called by the destruction
+	// routine BEFORE deleting the session row so the join is still queryable.
+	ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessionID string) ([]string, error)
+	// DeleteAccountsByIDs hard-deletes account rows by ID. Used by the
+	// destruction routine to remove anonymous accounts after the session row
+	// and its member cascade have been applied.
+	DeleteAccountsByIDs(ctx context.Context, ids []string) error
+	// CountSessionEventsByType returns the count of events for a session with
+	// the given type string. Used by the destruction routine to compute
+	// tombstone summary stats (commits_count via "commit.arrived",
+	// auto_merges_count via "merge.succeeded").
+	CountSessionEventsByType(ctx context.Context, sessionID, eventType string) (int64, error)
 }
 
 // ArchivedSessionStore covers archived-session reads and writes.

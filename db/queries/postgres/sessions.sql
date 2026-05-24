@@ -86,3 +86,20 @@ ON CONFLICT (session_id) DO NOTHING;
 UPDATE sessions
 SET last_substantive_activity_at = $1, idle_timeout_at = $2
 WHERE org_id = $3 AND id = $4;
+
+-- name: ListExpiredPlaygroundSessions :many
+-- Returns active playground sessions where the hard cap or idle timer has elapsed.
+SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at, end_reason,
+       finalize_locked_by_account_id, last_substantive_activity_at, hard_cap_at, idle_timeout_at
+FROM sessions
+WHERE org_id = $1
+  AND status = 'active'
+  AND (hard_cap_at IS NOT NULL OR idle_timeout_at IS NOT NULL)
+  AND (
+        (hard_cap_at IS NOT NULL AND hard_cap_at <= $2)
+     OR (idle_timeout_at IS NOT NULL AND idle_timeout_at <= $2)
+  );
+
+-- name: PurgeExpiredTombstones :exec
+DELETE FROM tombstones
+WHERE expires_at <= $1;

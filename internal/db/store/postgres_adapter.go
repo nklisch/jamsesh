@@ -685,6 +685,39 @@ func (a *postgresAdapter) ResetSessionIdleTimer(ctx context.Context, p ResetSess
 	}))
 }
 
+func (a *postgresAdapter) ListExpiredPlaygroundSessions(ctx context.Context, p ListExpiredPlaygroundSessionsParams) ([]Session, error) {
+	rows, err := a.q.ListExpiredPlaygroundSessions(ctx, pgstore.ListExpiredPlaygroundSessionsParams{
+		OrgID:     p.OrgID,
+		HardCapAt: pgtype.Timestamptz{Time: p.Now, Valid: true},
+	})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	sessions := make([]Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = pgSession(r)
+	}
+	return sessions, nil
+}
+
+func (a *postgresAdapter) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	return mapPostgresErr(a.q.PurgeExpiredTombstones(ctx, before))
+}
+
+func (a *postgresAdapter) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessionID string) ([]string, error) {
+	ids, err := a.q.ListAnonymousSessionMemberIDs(ctx, orgID, sessionID)
+	return ids, mapPostgresErr(err)
+}
+
+func (a *postgresAdapter) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return mapPostgresErr(a.q.DeleteAccountsByIDs(ctx, ids))
+}
+
+func (a *postgresAdapter) CountSessionEventsByType(ctx context.Context, sessionID, eventType string) (int64, error) {
+	count, err := a.q.CountSessionEventsByType(ctx, sessionID, eventType)
+	return count, mapPostgresErr(err)
+}
+
 // ---------------------------------------------------------------------------
 // OAuthTokenStore
 // ---------------------------------------------------------------------------
@@ -1480,6 +1513,39 @@ func (s *postgresTxStore) ResetSessionIdleTimer(ctx context.Context, p ResetSess
 		OrgID:                     p.OrgID,
 		ID:                        p.SessionID,
 	}))
+}
+
+func (s *postgresTxStore) ListExpiredPlaygroundSessions(ctx context.Context, p ListExpiredPlaygroundSessionsParams) ([]Session, error) {
+	rows, err := s.q.ListExpiredPlaygroundSessions(ctx, pgstore.ListExpiredPlaygroundSessionsParams{
+		OrgID:     p.OrgID,
+		HardCapAt: pgtype.Timestamptz{Time: p.Now, Valid: true},
+	})
+	if err != nil {
+		return nil, mapPostgresErr(err)
+	}
+	sessions := make([]Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = pgSession(r)
+	}
+	return sessions, nil
+}
+
+func (s *postgresTxStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	return mapPostgresErr(s.q.PurgeExpiredTombstones(ctx, before))
+}
+
+func (s *postgresTxStore) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessionID string) ([]string, error) {
+	ids, err := s.q.ListAnonymousSessionMemberIDs(ctx, orgID, sessionID)
+	return ids, mapPostgresErr(err)
+}
+
+func (s *postgresTxStore) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return mapPostgresErr(s.q.DeleteAccountsByIDs(ctx, ids))
+}
+
+func (s *postgresTxStore) CountSessionEventsByType(ctx context.Context, sessionID, eventType string) (int64, error) {
+	count, err := s.q.CountSessionEventsByType(ctx, sessionID, eventType)
+	return count, mapPostgresErr(err)
 }
 
 // OAuthTokenStore

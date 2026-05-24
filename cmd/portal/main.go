@@ -638,6 +638,35 @@ func main() {
 		Clock:    testClk.mcpClock(),
 	}
 
+	// Start the playground destruction worker when playground is enabled.
+	// The worker sweeps for expired sessions every PlaygroundDestructionSweepIntervalS
+	// seconds and runs the idempotent 8-step cascade for each expired session.
+	// It participates in graceful shutdown via ctx cancellation: when ctx is
+	// cancelled (SIGTERM), the ticker loop exits on the next fire (within one
+	// Interval window). This mirrors the lifecycle goroutine above.
+	if cfg.PlaygroundEnabled {
+		destructionWorker := &playground.Worker{
+			Store:   dbStore,
+			Storage: storageSvc,
+			Cfg: playground.Config{
+				Enabled:         cfg.PlaygroundEnabled,
+				IdleTimeout:     time.Duration(cfg.PlaygroundIdleTimeoutS) * time.Second,
+				HardCap:         time.Duration(cfg.PlaygroundHardCapS) * time.Second,
+				MaxParticipants: cfg.PlaygroundMaxParticipants,
+			},
+			Clock:    playground.RealClock(),
+			Interval: time.Duration(cfg.PlaygroundDestructionSweepIntervalS) * time.Second,
+			Logger:   slog.Default(),
+		}
+		go func() {
+			if err := destructionWorker.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("playground destruction worker exited with error", "err", err)
+			}
+		}()
+		slog.Info("playground destruction worker started",
+			"sweep_interval_s", cfg.PlaygroundDestructionSweepIntervalS)
+	}
+
 	// Build and start the auto-merger worker. It subscribes to commit.arrived
 	// events and runs merge + apply in per-session goroutines.
 	// In e2etest builds, inject the advanceable clock so the merger

@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-destruction
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: [story-epic-ephemeral-playground-session-lifecycle-rest-endpoints]
@@ -85,3 +85,35 @@ runs.
   here makes Story 2 land in wave 2b alongside Stories 3 and 4. The
   feature body's order section is approximate; the substrate (this
   story's `depends_on`) is authoritative.
+
+## Implementation notes
+
+### Files delivered
+
+- `internal/portal/playground/worker.go` — `Worker` struct with `Run()`, `sweep()`, `purgeTombstones()`, `reasonFor()`
+- `internal/portal/playground/destruction.go` — `Destruction` struct with `Destroy()` 8-step cascade
+- `internal/portal/playground/worker_test.go` — 6 tests covering sweep, graceful shutdown, purge, reason priority
+- `internal/portal/playground/destruction_test.go` — 10 tests covering cascade correctness, idempotency, tombstone stats, anon account deletion, repo removal
+- `db/queries/sqlite/sessions.sql` — extended with `ListExpiredPlaygroundSessions` and `PurgeExpiredTombstones`
+- `db/queries/postgres/sessions.sql` — same queries mirrored with `$N` placeholders
+- `internal/db/sqlitestore/playground_extra.go` — hand-written queries for dynamic IN clause (`DeleteAccountsByIDs`), `ListAnonymousSessionMemberIDs`, `CountSessionEventsByType`
+- `internal/db/pgstore/playground_extra.go` — Postgres equivalents
+- `internal/db/store/store.go` — `ListExpiredPlaygroundSessionsParams` + 5 new methods on `PlaygroundSessionStore`
+- `internal/db/store/sqlite_adapter.go` — adapter impls for all 5 new methods
+- `internal/db/store/postgres_adapter.go` — adapter impls for all 5 new methods
+- `cmd/portal/main.go` — worker wired on boot when `cfg.PlaygroundEnabled`, using main ctx (SIGTERM cancellation)
+- `internal/portal/handlerauth/handlerauth_test.go` — added 5 panicking stubs on `stubStore` to satisfy expanded interface
+
+### Design decisions
+
+- **cmd/portal/main.go wiring**: Used `go func()` with the existing main `ctx` rather than the WaitGroup pattern noted in the story. The main goroutine cancels ctx on SIGTERM; the worker exits within one tick interval, which matches the graceful-shutdown guarantee. WaitGroup was not wired because the worker only logs on exit — there is no cleanup that must complete before the process exits.
+
+- **SQLite param duplication**: SQLite generates two separate params (`HardCapAt`, `IdleTimeoutAt`) for the `ListExpiredPlaygroundSessions` query because `?` placeholders are positional. Postgres dedupes `$2` to a single `HardCapAt` param. The adapter layer handles both cases transparently.
+
+- **Hand-written extra queries**: `DeleteAccountsByIDs` uses a dynamic IN clause that sqlc cannot generate. Both dialect-specific `playground_extra.go` files build the placeholder string at runtime and fall through as a no-op when the ids slice is empty.
+
+- **Tombstone purge cadence**: Purge runs every 60th sweep tick (every ~1 hour at the default 60s interval). This runs in `purgeTombstones()` called from `sweep()` — no separate goroutine needed.
+
+- **`hard_cap` reason priority**: When both `hard_cap_at` and `idle_timeout_at` are elapsed, `reasonFor()` returns `"hard_cap"` to make the audit trail maximally clear. `"idle"` is only returned when idle alone is elapsed.
+
+- **Pre-existing test failure parked**: `TestMcpHeaders_tokenPresent` and related tests in `internal/portal/handlerauth/` were already failing with `Authorization = "Bearer MIGRATED_TO_PER_SESSION"` before this story. Parked as `bug-mcpheaders-stale-fixture-migrated-stub` in `.work/backlog/`.
