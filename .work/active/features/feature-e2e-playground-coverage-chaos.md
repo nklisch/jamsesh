@@ -1,7 +1,7 @@
 ---
 id: feature-e2e-playground-coverage-chaos
 kind: feature
-stage: implementing
+stage: review
 tags: [testing, e2e-test, playground, portal, chaos]
 parent: epic-e2e-playground-coverage
 depends_on: [feature-e2e-playground-coverage-golden]
@@ -121,3 +121,8 @@ is also advanced to `implementing`.
 
 `/agile-workflow:implement-orchestrator feature-e2e-playground-coverage-chaos`
 — single-agent run for Unit 1.
+
+## Children complete (2026-05-24)
+
+All child stories advanced to `stage: done`. Feature advanced
+`stage: implementing → review`.

@@ -1,7 +1,7 @@
 ---
 id: feature-e2e-playground-coverage-failure
 kind: feature
-stage: implementing
+stage: review
 tags: [testing, e2e-test, playground, portal]
 parent: epic-e2e-playground-coverage
 depends_on: [feature-e2e-playground-coverage-golden]
@@ -189,3 +189,8 @@ can pick them up in waves.
 — spawns sub-agents per the implementation order above. Units 1, 2, 3
 have no story-level deps; Unit 4 implicitly depends on Unit 1 for
 pattern establishment.
+
+## Children complete (2026-05-24)
+
+All child stories advanced to `stage: done`. Feature advanced
+`stage: implementing → review`.
