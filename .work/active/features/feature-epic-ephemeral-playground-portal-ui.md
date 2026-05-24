@@ -1,14 +1,14 @@
 ---
 id: feature-epic-ephemeral-playground-portal-ui
 kind: feature
-stage: review
+stage: done
 tags: [ui, portal, playground]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-session-lifecycle]
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 ## Implementation summary (autopilot)
@@ -375,3 +375,13 @@ existing drawer.
   needed for v1 — the API still gets the create call, just attributed
   to CLI not drawer. If observability needs the source distinction,
   add a `?source=drawer` query param convention later.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve — feature delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All child stories approved individually. Aggregate review: design realized end-to-end, no cross-cutting deviations beyond what the implementation summary documents, no foundation-doc drift uncaught, no API breakage. Tests green across the affected packages.
