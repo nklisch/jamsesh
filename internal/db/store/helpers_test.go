@@ -1,4 +1,7 @@
-// Package store_test provides a cross-dialect test harness for the store layer.
+// Package store_test provides fixture helpers for the cross-dialect store
+// test suite. The dialect harness itself lives in
+// jamsesh/internal/db/store/storetest so it is importable from other _test
+// packages (this _test package cannot itself be imported).
 //
 // # Postgres path
 //
@@ -15,96 +18,19 @@ package store_test
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
-	// pgx stdlib bridge — only used in truncateAll
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
-
-	"jamsesh/internal/db"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/db/store/storetest"
 )
 
-// dialectHarness bundles a name and a factory that opens a fresh store for
-// one test. The open function registers a t.Cleanup to close (and for
-// Postgres, truncate) the store so callers need not do it themselves.
-type dialectHarness struct {
-	name string
-	open func(t *testing.T) store.Store
-}
-
-// stores returns one harness per available dialect. SQLite is always present.
-// Postgres is included only when JAMSESH_TEST_PG_DSN is set; it is skipped
-// (not failed) when the env var is absent so local iteration remains fast.
-func stores(t *testing.T) []dialectHarness {
+// stores is a one-line wrapper over storetest.Stores so existing call sites
+// in this package don't have to spell the package-qualified name each time.
+// The dialect-harness type is the exported storetest.DialectHarness.
+func stores(t *testing.T) []storetest.DialectHarness {
 	t.Helper()
-
-	var out []dialectHarness
-
-	// SQLite: each call gets a fresh :memory: database with migrations applied.
-	out = append(out, dialectHarness{
-		name: "sqlite",
-		open: func(t *testing.T) store.Store {
-			t.Helper()
-			s, _, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
-			if err != nil {
-				t.Fatalf("open sqlite :memory:: %v", err)
-			}
-			t.Cleanup(func() { _ = s.Close() })
-			return s
-		},
-	})
-
-	// Postgres: shared schema, TRUNCATE between calls for isolation.
-	if dsn := os.Getenv("JAMSESH_TEST_PG_DSN"); dsn != "" {
-		out = append(out, dialectHarness{
-			name: "postgres",
-			open: func(t *testing.T) store.Store {
-				t.Helper()
-				s, _, err := db.Open(context.Background(), "postgres", dsn, db.PoolConfig{})
-				if err != nil {
-					t.Fatalf("open postgres: %v", err)
-				}
-				t.Cleanup(func() {
-					truncateAll(t, dsn)
-					_ = s.Close()
-				})
-				return s
-			},
-		})
-	}
-
-	return out
-}
-
-// truncateAll clears all tables in dependency-safe order using a temporary
-// *sql.DB opened from the pgx stdlib bridge. CASCADE handles FK children.
-func truncateAll(t *testing.T, dsn string) {
-	t.Helper()
-
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		t.Logf("truncateAll: parse dsn: %v", err)
-		return
-	}
-	pool, err := pgxpool.New(context.Background(), cfg.ConnString())
-	if err != nil {
-		t.Logf("truncateAll: connect: %v", err)
-		return
-	}
-	defer pool.Close()
-
-	sqlDB := stdlib.OpenDBFromPool(pool)
-	defer sqlDB.Close()
-
-	// Truncate root tables with CASCADE — child tables are handled automatically.
-	_, err = sqlDB.ExecContext(context.Background(),
-		`TRUNCATE orgs, accounts, magic_link_tokens, oauth_tokens CASCADE`)
-	if err != nil {
-		t.Logf("truncateAll: truncate: %v", err)
-	}
+	return storetest.Stores(t)
 }
 
 // ---------------------------------------------------------------------------

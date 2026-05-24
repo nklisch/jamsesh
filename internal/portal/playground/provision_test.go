@@ -8,52 +8,17 @@ import (
 	"testing"
 	"time"
 
-	"jamsesh/internal/db"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/db/store/storetest"
 	"jamsesh/internal/portal/playground"
 )
 
-// dialectHarness bundles a name and a factory that opens a fresh store for
-// one test. SQLite is always present; Postgres is included when
-// JAMSESH_TEST_PG_DSN is set.
-type dialectHarness struct {
-	name string
-	open func(t *testing.T) store.Store
-}
-
-// stores returns one harness per available dialect.
-func stores(t *testing.T) []dialectHarness {
+// stores is a one-line wrapper over storetest.Stores so existing call sites
+// in this package read tt.Name / tt.Open(t) without the package-qualified
+// type name in the type literal.
+func stores(t *testing.T) []storetest.DialectHarness {
 	t.Helper()
-	var out []dialectHarness
-
-	out = append(out, dialectHarness{
-		name: "sqlite",
-		open: func(t *testing.T) store.Store {
-			t.Helper()
-			s, _, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
-			if err != nil {
-				t.Fatalf("open sqlite :memory:: %v", err)
-			}
-			t.Cleanup(func() { _ = s.Close() })
-			return s
-		},
-	})
-
-	if dsn := os.Getenv("JAMSESH_TEST_PG_DSN"); dsn != "" {
-		out = append(out, dialectHarness{
-			name: "postgres",
-			open: func(t *testing.T) store.Store {
-				t.Helper()
-				s, _, err := db.Open(context.Background(), "postgres", dsn, db.PoolConfig{})
-				if err != nil {
-					t.Fatalf("open postgres: %v", err)
-				}
-				t.Cleanup(func() { _ = s.Close() })
-				return s
-			},
-		})
-	}
-	return out
+	return storetest.Stores(t)
 }
 
 // discardLogger returns a slog.Logger that drops all output.
@@ -67,9 +32,9 @@ func discardLogger() *slog.Logger {
 func TestProvisionReservedOrg_NoExistingOrg(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 			logger := discardLogger()
 			now := time.Now().UTC()
 
@@ -108,9 +73,9 @@ func TestProvisionReservedOrg_NoExistingOrg(t *testing.T) {
 func TestProvisionReservedOrg_AlreadyProvisioned(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 			logger := discardLogger()
 			now := time.Now().UTC()
 
@@ -142,9 +107,9 @@ func TestProvisionReservedOrg_AlreadyProvisioned(t *testing.T) {
 func TestProvisionReservedOrg_UnprotectedSlugConflict(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 			logger := discardLogger()
 			now := time.Now().UTC()
 

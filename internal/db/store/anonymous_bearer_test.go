@@ -32,10 +32,10 @@ func TestCreateAnonymousBearer_RoundTrip(t *testing.T) {
 
 	for _, h := range stores(t) {
 		h := h
-		t.Run(h.name, func(t *testing.T) {
-			s := h.open(t)
+		t.Run(h.Name, func(t *testing.T) {
+			s := h.Open(t)
 
-			org := mustCreateOrg(t, ctx, s, "anon-bearer-"+h.name)
+			org := mustCreateOrg(t, ctx, s, "anon-bearer-"+h.Name)
 			sess := mustCreateSession(t, ctx, s, org.ID, "anon-bearer-session")
 			acct := mustCreateAnonAccount(t, ctx, s, "cedar-hawk")
 
@@ -74,10 +74,10 @@ func TestRevokeBearersForSession_Idempotent(t *testing.T) {
 
 	for _, h := range stores(t) {
 		h := h
-		t.Run(h.name, func(t *testing.T) {
-			s := h.open(t)
+		t.Run(h.Name, func(t *testing.T) {
+			s := h.Open(t)
 
-			org := mustCreateOrg(t, ctx, s, "revoke-idem-"+h.name)
+			org := mustCreateOrg(t, ctx, s, "revoke-idem-"+h.Name)
 			sess := mustCreateSession(t, ctx, s, org.ID, "revoke-idem-session")
 			acct := mustCreateAnonAccount(t, ctx, s, "dawn-elk")
 
@@ -122,10 +122,10 @@ func TestAnonymousBearer_CascadeDeleteWithSession(t *testing.T) {
 
 	for _, h := range stores(t) {
 		h := h
-		t.Run(h.name, func(t *testing.T) {
-			s := h.open(t)
+		t.Run(h.Name, func(t *testing.T) {
+			s := h.Open(t)
 
-			org := mustCreateOrg(t, ctx, s, "cascade-"+h.name)
+			org := mustCreateOrg(t, ctx, s, "cascade-"+h.Name)
 			sess := mustCreateSession(t, ctx, s, org.ID, "cascade-session")
 			acct := mustCreateAnonAccount(t, ctx, s, "ember-crow")
 

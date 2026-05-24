@@ -36,9 +36,9 @@ import (
 func TestOrgIDDiscipline(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
 			// ── Fixture setup ──────────────────────────────────────────────
 			//
@@ -47,13 +47,13 @@ func TestOrgIDDiscipline(t *testing.T) {
 			// sessA belongs to orgA; sessB belongs to orgB.
 			// accA is a session-member of sessA.
 
-			orgA := mustCreateOrg(t, ctx, s, "org-a-"+tt.name)
-			orgB := mustCreateOrg(t, ctx, s, "org-b-"+tt.name)
-			accA := mustCreateAccount(t, ctx, s, "alice-"+tt.name+"@example.com")
+			orgA := mustCreateOrg(t, ctx, s, "org-a-"+tt.Name)
+			orgB := mustCreateOrg(t, ctx, s, "org-b-"+tt.Name)
+			accA := mustCreateAccount(t, ctx, s, "alice-"+tt.Name+"@example.com")
 
 			mustAddOrgMember(t, ctx, s, orgA.ID, accA.ID, "creator")
-			sessA := mustCreateSession(t, ctx, s, orgA.ID, "sess-a-"+tt.name)
-			sessB := mustCreateSession(t, ctx, s, orgB.ID, "sess-b-"+tt.name)
+			sessA := mustCreateSession(t, ctx, s, orgA.ID, "sess-a-"+tt.Name)
+			sessB := mustCreateSession(t, ctx, s, orgB.ID, "sess-b-"+tt.Name)
 			mustAddSessionMember(t, ctx, s, orgA.ID, sessA.ID, accA.ID, "member")
 
 			// ── 1. GetSession cross-org returns ErrNotFound ────────────────
@@ -181,20 +181,20 @@ func TestOrgIDDiscipline(t *testing.T) {
 func TestListSessionMembershipsForAccount_CrossOrgException(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
 			// acc is a member of sessions in two distinct orgs.
-			orgA := mustCreateOrg(t, ctx, s, "cross-a-"+tt.name)
-			orgB := mustCreateOrg(t, ctx, s, "cross-b-"+tt.name)
-			acc := mustCreateAccount(t, ctx, s, "multi-"+tt.name+"@example.com")
+			orgA := mustCreateOrg(t, ctx, s, "cross-a-"+tt.Name)
+			orgB := mustCreateOrg(t, ctx, s, "cross-b-"+tt.Name)
+			acc := mustCreateAccount(t, ctx, s, "multi-"+tt.Name+"@example.com")
 
 			mustAddOrgMember(t, ctx, s, orgA.ID, acc.ID, "creator")
 			mustAddOrgMember(t, ctx, s, orgB.ID, acc.ID, "member")
 
-			sessA := mustCreateSession(t, ctx, s, orgA.ID, "sess-in-a-"+tt.name)
-			sessB := mustCreateSession(t, ctx, s, orgB.ID, "sess-in-b-"+tt.name)
+			sessA := mustCreateSession(t, ctx, s, orgA.ID, "sess-in-a-"+tt.Name)
+			sessB := mustCreateSession(t, ctx, s, orgB.ID, "sess-in-b-"+tt.Name)
 
 			mustAddSessionMember(t, ctx, s, orgA.ID, sessA.ID, acc.ID, "member")
 			mustAddSessionMember(t, ctx, s, orgB.ID, sessB.ID, acc.ID, "member")

@@ -17,15 +17,15 @@ import (
 func TestOrgCRUD(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
 			now := time.Now().UTC().Truncate(time.Second)
 			org, err := s.CreateOrg(ctx, store.CreateOrgParams{
 				ID:        nextID("org-crud"),
 				Name:      "CRUD Org",
-				Slug:      "crud-org-" + tt.name,
+				Slug:      "crud-org-" + tt.Name,
 				CreatedAt: now,
 			})
 			assertNoError(t, err)
@@ -50,15 +50,15 @@ func TestOrgCRUD(t *testing.T) {
 func TestAccountCRUD(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
 			now := time.Now().UTC().Truncate(time.Second)
 			ghID := "gh-99"
 			acc, err := s.CreateAccount(ctx, store.CreateAccountParams{
 				ID:           nextID("acc-crud"),
-				Email:        "crud-" + tt.name + "@example.com",
+				Email:        "crud-" + tt.Name + "@example.com",
 				DisplayName:  "CRUD User",
 				GithubUserID: &ghID,
 				CreatedAt:    now,
@@ -107,12 +107,12 @@ func TestAccountCRUD(t *testing.T) {
 func TestOrgMemberCRUD(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
-			org := mustCreateOrg(t, ctx, s, "org-member-"+tt.name)
-			acc := mustCreateAccount(t, ctx, s, "member-"+tt.name+"@example.com")
+			org := mustCreateOrg(t, ctx, s, "org-member-"+tt.Name)
+			acc := mustCreateAccount(t, ctx, s, "member-"+tt.Name+"@example.com")
 
 			mustAddOrgMember(t, ctx, s, org.ID, acc.ID, "creator")
 
@@ -167,12 +167,12 @@ func TestOrgMemberCRUD(t *testing.T) {
 func TestSessionCRUDDialects(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
-			org := mustCreateOrg(t, ctx, s, "sess-crud-"+tt.name)
-			sess := mustCreateSession(t, ctx, s, org.ID, "sprint-"+tt.name)
+			org := mustCreateOrg(t, ctx, s, "sess-crud-"+tt.Name)
+			sess := mustCreateSession(t, ctx, s, org.ID, "sprint-"+tt.Name)
 
 			// GetSession
 			got, err := s.GetSession(ctx, org.ID, sess.ID)
@@ -226,13 +226,13 @@ func TestSessionCRUDDialects(t *testing.T) {
 func TestSessionMemberCRUD(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
-			org := mustCreateOrg(t, ctx, s, "sm-crud-"+tt.name)
-			acc := mustCreateAccount(t, ctx, s, "sm-"+tt.name+"@example.com")
-			sess := mustCreateSession(t, ctx, s, org.ID, "sm-sess-"+tt.name)
+			org := mustCreateOrg(t, ctx, s, "sm-crud-"+tt.Name)
+			acc := mustCreateAccount(t, ctx, s, "sm-"+tt.Name+"@example.com")
+			sess := mustCreateSession(t, ctx, s, org.ID, "sm-sess-"+tt.Name)
 
 			mustAddSessionMember(t, ctx, s, org.ID, sess.ID, acc.ID, "member")
 
@@ -280,17 +280,17 @@ func TestSessionMemberCRUD(t *testing.T) {
 func TestOAuthTokenCRUD(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
-			acc := mustCreateAccount(t, ctx, s, "oauth-"+tt.name+"@example.com")
+			acc := mustCreateAccount(t, ctx, s, "oauth-"+tt.Name+"@example.com")
 			now := time.Now().UTC().Truncate(time.Second)
 
 			tok, err := s.CreateOAuthToken(ctx, store.CreateOAuthTokenParams{
 				ID:         nextID("tok"),
 				AccountID:  acc.ID,
-				TokenHash:  "hash-" + tt.name,
+				TokenHash:  "hash-" + tt.Name,
 				Kind:       "access",
 				IssuedAt:   now,
 				ExpiresAt:  now.Add(time.Hour),
@@ -300,7 +300,7 @@ func TestOAuthTokenCRUD(t *testing.T) {
 			assertNoError(t, err)
 
 			// GetByHash
-			byHash, err := s.GetOAuthTokenByHash(ctx, "hash-"+tt.name)
+			byHash, err := s.GetOAuthTokenByHash(ctx, "hash-"+tt.Name)
 			assertNoError(t, err)
 			if byHash.ID != tok.ID {
 				t.Errorf("GetOAuthTokenByHash id: got %q, want %q", byHash.ID, tok.ID)
@@ -332,7 +332,7 @@ func TestOAuthTokenCRUD(t *testing.T) {
 			})
 			assertNoError(t, err)
 
-			after, err := s.GetOAuthTokenByHash(ctx, "hash-"+tt.name)
+			after, err := s.GetOAuthTokenByHash(ctx, "hash-"+tt.Name)
 			assertNoError(t, err)
 			if after.RevokedAt == nil {
 				t.Error("RevokedAt should be set after RevokeOAuthToken")
@@ -342,7 +342,7 @@ func TestOAuthTokenCRUD(t *testing.T) {
 			_, err = s.CreateOAuthToken(ctx, store.CreateOAuthTokenParams{
 				ID:        nextID("tok2"),
 				AccountID: acc.ID,
-				TokenHash: "hash2-" + tt.name,
+				TokenHash: "hash2-" + tt.Name,
 				Kind:      "refresh",
 				IssuedAt:  now,
 				ExpiresAt: now.Add(24 * time.Hour),
@@ -364,22 +364,22 @@ func TestOAuthTokenCRUD(t *testing.T) {
 func TestMagicLinkTokenCRUD(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
 			now := time.Now().UTC().Truncate(time.Second)
 			tok, err := s.CreateMagicLinkToken(ctx, store.CreateMagicLinkTokenParams{
 				ID:        nextID("ml"),
-				TokenHash: "ml-hash-" + tt.name,
-				Email:     "magic-" + tt.name + "@example.com",
+				TokenHash: "ml-hash-" + tt.Name,
+				Email:     "magic-" + tt.Name + "@example.com",
 				IssuedAt:  now,
 				ExpiresAt: now.Add(15 * time.Minute),
 			})
 			assertNoError(t, err)
 
 			// GetByHash
-			got, err := s.GetMagicLinkTokenByHash(ctx, "ml-hash-"+tt.name)
+			got, err := s.GetMagicLinkTokenByHash(ctx, "ml-hash-"+tt.Name)
 			assertNoError(t, err)
 			if got.ID != tok.ID {
 				t.Errorf("GetMagicLinkTokenByHash id: got %q, want %q", got.ID, tok.ID)
@@ -396,7 +396,7 @@ func TestMagicLinkTokenCRUD(t *testing.T) {
 			})
 			assertNoError(t, err)
 
-			after, err := s.GetMagicLinkTokenByHash(ctx, "ml-hash-"+tt.name)
+			after, err := s.GetMagicLinkTokenByHash(ctx, "ml-hash-"+tt.Name)
 			assertNoError(t, err)
 			if after.UsedAt == nil {
 				t.Error("UsedAt should be set after ConsumeMagicLinkToken")

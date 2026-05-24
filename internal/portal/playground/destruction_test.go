@@ -84,7 +84,7 @@ func newDestruction(env *testEnv) *playground.Destruction {
 
 func TestDestruction_CascadeCorrectness(t *testing.T) {
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 
 	sess, accountID := setupDestructionSession(t, ctx, env)
 	d := newDestruction(env)
@@ -133,7 +133,7 @@ func TestDestruction_TombstoneInsertedBeforeSessionDelete(t *testing.T) {
 	// Verifies that the tombstone captures members_count > 0, which requires
 	// querying session_members BEFORE the session row is deleted.
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 
 	sess, _ := setupDestructionSession(t, ctx, env)
 	d := newDestruction(env)
@@ -162,7 +162,7 @@ func TestDestruction_Idempotent(t *testing.T) {
 	// bearer revoke is a no-op when already revoked, session delete returns
 	// ErrNotFound (tolerated), anon account delete is a no-op when IDs are gone.
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 
 	sess, _ := setupDestructionSession(t, ctx, env)
 	d := newDestruction(env)
@@ -183,7 +183,7 @@ func TestDestruction_Idempotent(t *testing.T) {
 func TestDestruction_TombstoneStats(t *testing.T) {
 	// Verify that duration_seconds, end_reason, expires_at are set correctly.
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 
 	now := env.clock.Now()
 	ttl := 30 * 24 * time.Hour
@@ -225,7 +225,7 @@ func TestDestruction_BearersRevoked(t *testing.T) {
 	// We verify the session row is gone (which triggers the cascade), and the
 	// revoke step ran (defense-in-depth: the bearer hash lookup would return ErrNotFound).
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 
 	sess, _ := setupDestructionSession(t, ctx, env)
 	d := newDestruction(env)
@@ -249,7 +249,7 @@ func TestDestruction_BearersRevoked(t *testing.T) {
 
 func TestDestruction_AnonymousAccountsDeleted(t *testing.T) {
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 
 	// Two participants in the same session.
 	svc := tokens.New(env.s)
@@ -316,7 +316,7 @@ func TestDestruction_AnonymousAccountsDeleted(t *testing.T) {
 
 func TestDestruction_RepoRemovedFromStorage(t *testing.T) {
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 	sess, _ := setupDestructionSession(t, ctx, env)
 
 	// Confirm repo exists before destruction.
@@ -342,7 +342,7 @@ func TestDestruction_RepoRemovedFromStorage(t *testing.T) {
 
 func TestDestruction_DeleteAccountsByIDs_Empty(t *testing.T) {
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 
 	// Should be a no-op without error.
 	if err := env.s.DeleteAccountsByIDs(ctx, []string{}); err != nil {
@@ -356,7 +356,7 @@ func TestDestruction_DeleteAccountsByIDs_Empty(t *testing.T) {
 
 func TestDestruction_CountSessionEventsByType(t *testing.T) {
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 	sess, _ := setupDestructionSession(t, ctx, env)
 
 	// Count with no events — should be 0.
@@ -375,7 +375,7 @@ func TestDestruction_CountSessionEventsByType(t *testing.T) {
 
 func TestDestruction_ListAnonymousSessionMemberIDs(t *testing.T) {
 	ctx := context.Background()
-	env := newTestEnv(t, defaultCfg())
+	env := newTestEnvSQLite(t, defaultCfg())
 	sess, anonID := setupDestructionSession(t, ctx, env)
 
 	ids, err := env.s.ListAnonymousSessionMemberIDs(ctx, playground.ReservedOrgID, sess.ID)

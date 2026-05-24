@@ -17,8 +17,8 @@ func TestCreateAnonymousAccount_RoundTrip(t *testing.T) {
 
 	for _, h := range stores(t) {
 		h := h
-		t.Run(h.name, func(t *testing.T) {
-			s := h.open(t)
+		t.Run(h.Name, func(t *testing.T) {
+			s := h.Open(t)
 
 			accountID := nextID("anon")
 			email := accountID + "@playground.local"
@@ -71,8 +71,8 @@ func TestCreateAnonymousAccount_SyntheticEmail(t *testing.T) {
 
 	for _, h := range stores(t) {
 		h := h
-		t.Run(h.name, func(t *testing.T) {
-			s := h.open(t)
+		t.Run(h.Name, func(t *testing.T) {
+			s := h.Open(t)
 
 			accountID := nextID("anon")
 			email := accountID + "@playground.local"
@@ -101,8 +101,8 @@ func TestCreateAccount_IsAnonymous_DefaultsFalse(t *testing.T) {
 
 	for _, h := range stores(t) {
 		h := h
-		t.Run(h.name, func(t *testing.T) {
-			s := h.open(t)
+		t.Run(h.Name, func(t *testing.T) {
+			s := h.Open(t)
 
 			acct := mustCreateAccount(t, ctx, s, nextID("regular")+"@example.com")
 			if acct.IsAnonymous {

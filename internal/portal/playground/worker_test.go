@@ -31,7 +31,7 @@ func (c *mutableClock) Advance(d time.Duration) { c.now = c.now.Add(d) }
 func newWorkerEnv(t *testing.T) (*testEnv, *playground.Worker, *mutableClock) {
 	t.Helper()
 	cfg := defaultCfg()
-	env := newTestEnv(t, cfg)
+	env := newTestEnvSQLite(t, cfg)
 	clk := &mutableClock{now: env.clock.Now()}
 
 	worker := &playground.Worker{

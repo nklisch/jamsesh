@@ -15,8 +15,8 @@ import (
 	"github.com/google/uuid"
 
 	"jamsesh/internal/api/openapi"
-	"jamsesh/internal/db"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/db/store/storetest"
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/sessions"
@@ -216,15 +216,17 @@ type testEnv struct {
 	eventLog *events.Log
 }
 
+// openStore delegates to the shared storetest harness, returning the SQLite
+// store from storetest.Stores(t) (always present). Postgres remains opt-in
+// via JAMSESH_TEST_PG_DSN, but the existing sessions tests are SQLite-only
+// for historical reasons — see story-playground-server-hardening-handler-test-coverage
+// for the rationale for not retrofitting every test here as a per-dialect
+// loop (the per-dialect treatment is applied to playground handler tests
+// where the Postgres adapter for new queries actually has coverage gaps).
 func openStore(t *testing.T) store.Store {
 	t.Helper()
-	// Use a unique file path per test to avoid shared-cache interference.
-	s, _, err := db.Open(context.Background(), "sqlite", "file::memory:?cache=shared&mode=memory", db.PoolConfig{})
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s
+	harnesses := storetest.Stores(t)
+	return harnesses[0].Open(t) // SQLite is always the first harness
 }
 
 func newTestEnv(t *testing.T) *testEnv {

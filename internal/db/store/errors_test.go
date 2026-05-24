@@ -21,9 +21,9 @@ import (
 func TestErrNotFoundAllDialects(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
 			t.Run("GetOrgByID", func(t *testing.T) {
 				_, err := s.GetOrgByID(ctx, "nonexistent-org")
@@ -111,14 +111,14 @@ func TestErrNotFoundAllDialects(t *testing.T) {
 func TestErrUniqueViolationAllDialects(t *testing.T) {
 	for _, tt := range stores(t) {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *testing.T) {
 			ctx := context.Background()
-			s := tt.open(t)
+			s := tt.Open(t)
 
 			now := time.Now().UTC()
 
 			t.Run("CreateOrg_duplicate_slug", func(t *testing.T) {
-				slug := "dup-slug-" + tt.name
+				slug := "dup-slug-" + tt.Name
 				p := store.CreateOrgParams{
 					ID:        nextID("org-dup1"),
 					Name:      "Org Dup 1",
@@ -138,7 +138,7 @@ func TestErrUniqueViolationAllDialects(t *testing.T) {
 			})
 
 			t.Run("CreateAccount_duplicate_email", func(t *testing.T) {
-				email := "dup-" + tt.name + "@example.com"
+				email := "dup-" + tt.Name + "@example.com"
 				p := store.CreateAccountParams{
 					ID:        nextID("acc-dup1"),
 					Email:     email,
@@ -158,11 +158,11 @@ func TestErrUniqueViolationAllDialects(t *testing.T) {
 			})
 
 			t.Run("CreateMagicLinkToken_duplicate_hash", func(t *testing.T) {
-				hash := "ml-dup-hash-" + tt.name
+				hash := "ml-dup-hash-" + tt.Name
 				p := store.CreateMagicLinkTokenParams{
 					ID:        nextID("ml-dup1"),
 					TokenHash: hash,
-					Email:     "ml1-" + tt.name + "@example.com",
+					Email:     "ml1-" + tt.Name + "@example.com",
 					IssuedAt:  now,
 					ExpiresAt: now.Add(15 * time.Minute),
 				}
@@ -171,7 +171,7 @@ func TestErrUniqueViolationAllDialects(t *testing.T) {
 				}
 
 				p.ID = nextID("ml-dup2")
-				p.Email = "ml2-" + tt.name + "@example.com"
+				p.Email = "ml2-" + tt.Name + "@example.com"
 				_, err := s.CreateMagicLinkToken(ctx, p)
 				if !errors.Is(err, store.ErrUniqueViolation) {
 					t.Fatalf("expected ErrUniqueViolation on duplicate token_hash, got %v", err)
@@ -179,8 +179,8 @@ func TestErrUniqueViolationAllDialects(t *testing.T) {
 			})
 
 			t.Run("CreateOAuthToken_duplicate_hash", func(t *testing.T) {
-				acc := mustCreateAccount(t, ctx, s, "oauth-dup-"+tt.name+"@example.com")
-				hash := "oauth-dup-hash-" + tt.name
+				acc := mustCreateAccount(t, ctx, s, "oauth-dup-"+tt.Name+"@example.com")
+				hash := "oauth-dup-hash-" + tt.Name
 				p := store.CreateOAuthTokenParams{
 					ID:        nextID("oauth-dup1"),
 					AccountID: acc.ID,
@@ -201,8 +201,8 @@ func TestErrUniqueViolationAllDialects(t *testing.T) {
 			})
 
 			t.Run("AddOrgMember_duplicate", func(t *testing.T) {
-				org := mustCreateOrg(t, ctx, s, "dup-org-mem-"+tt.name)
-				acc := mustCreateAccount(t, ctx, s, "dup-mem-"+tt.name+"@example.com")
+				org := mustCreateOrg(t, ctx, s, "dup-org-mem-"+tt.Name)
+				acc := mustCreateAccount(t, ctx, s, "dup-mem-"+tt.Name+"@example.com")
 				mustAddOrgMember(t, ctx, s, org.ID, acc.ID, "creator")
 
 				// Second add of the same (org, account) pair must fail.
