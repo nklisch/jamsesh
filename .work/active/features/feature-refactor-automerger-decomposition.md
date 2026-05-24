@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-automerger-decomposition
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -66,3 +66,83 @@ considered acceptable in their current shape; this feature is about
 
 Behavior-preserving — no merge-strategy changes, no new outcomes, no
 event-payload changes. This is purely structural.
+
+## Refactor Overview
+
+Four extractions, all in `internal/portal/automerger/merge.go`. Each
+extraction is mechanical and load-bearing for a specific readability
+or testability win:
+
+1. Two near-identical diff-walking loops in `computeMergeDiff` collapse
+   into one `buildSideChanges` helper (~30 LoC saved, removes the most
+   obvious duplication).
+2. The "both modified" branch in `applyChangesPerPath` (~65 LoC,
+   nesting depth 4) extracts to `mergeBothModifiedPath`, dropping the
+   caller to a clean 4-arm switch with nesting depth 2.
+3. `mergeFileContent` splits along its subprocess/parsing boundary into
+   `runMergeFileTool` + `interpretMergeFileExit` + thin orchestrator.
+4. `flattenTreeInto`'s submodule branch extracts to `flattenSubmodule`
+   if the inline body exceeds 5 LoC (verify before extracting; tiny
+   inline submodule case may be a no-op).
+
+All four touch the same file, so the child stories chain via
+`depends_on` to avoid concurrent textual edits. The orchestrator will
+run them as 4 sequential single-agent waves.
+
+## Refactor Steps
+
+### Step 1: Extract buildSideChanges
+**Priority**: High  **Risk**: Low
+**Files**: `internal/portal/automerger/merge.go`
+**Story**: `story-refactor-automerger-decomposition-side-changes-helper`
+
+The two `for _, ch := range baseTo{Ours,Theirs}` loops in
+`computeMergeDiff` (lines ~160-202) are identical apart from the map
+they populate and the error-string prefix. Collapse to a single helper
+parameterised on side name.
+
+### Step 2: Extract mergeBothModifiedPath
+**Priority**: High  **Risk**: Medium
+**Files**: `internal/portal/automerger/merge.go`
+**Story**: `story-refactor-automerger-decomposition-both-modified-helper`
+**Depends on**: Step 1
+
+The longest and most complex branch of `applyChangesPerPath` (~65 LoC)
+extracts to `mergeBothModifiedPath`, with an optional second helper
+`runThreeWayMerge` if the function is still > 30 LoC after the first
+extraction.
+
+### Step 3: Split mergeFileContent
+**Priority**: Medium  **Risk**: Low
+**Files**: `internal/portal/automerger/merge.go`
+**Story**: `story-refactor-automerger-decomposition-merge-file-split`
+**Depends on**: Step 2
+
+Separate the subprocess invocation (`runMergeFileTool`) from the
+exit-code interpretation (`interpretMergeFileExit`). `mergeFileContent`
+becomes a 10-line composition. Verify no overlap with the existing
+`ParseConflictRanges` helper.
+
+### Step 4: Extract flattenSubmodule (conditional)
+**Priority**: Low  **Risk**: Low
+**Files**: `internal/portal/automerger/merge.go`
+**Story**: `story-refactor-automerger-decomposition-flatten-submodule-extract`
+**Depends on**: Step 3
+
+Submodule branch in `flattenTreeInto` extracts only if the inline body
+exceeds 5 LoC. Story includes an explicit no-op escape that closes the
+story without code changes if the extraction isn't worth it.
+
+## Implementation Order
+
+Serial chain: Step 1 → Step 2 → Step 3 → Step 4. All steps touch the
+same file (`merge.go`) so concurrent edits would collide. Each step
+lands as its own commit so individual rollback is possible.
+
+## Out of scope
+
+- `automerger/heuristics.go` (382 lines) — not touched. Heuristic-based
+  conflict resolution is its own concern.
+- `automerger/outcomes.go` (363 lines) — not touched.
+- The behaviour-preservation invariant: no merge-strategy changes, no new
+  outcomes, no event-payload changes. Pure structural decomposition.
