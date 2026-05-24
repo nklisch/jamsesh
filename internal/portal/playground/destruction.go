@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/lease"
 	"jamsesh/internal/portal/storage"
 )
 
@@ -35,14 +36,49 @@ type Destruction struct {
 	Storage      storage.Service
 	Clock        Clock
 	Logger       *slog.Logger
-	TombstoneTTL time.Duration // default 30 days
+	TombstoneTTL time.Duration  // default 30 days
+	Leases       lease.Manager  // optional; nil → NoopManager (single-instance)
+}
+
+// leases returns the effective lease manager: the configured one or a NoopManager
+// when none is set.
+func (d *Destruction) leases() lease.Manager {
+	if d.Leases != nil {
+		return d.Leases
+	}
+	return lease.NoopManager{}
 }
 
 // Destroy runs the full destruction cascade for a playground session.
 // It logs per-step errors but returns only hard failures (e.g. DB connection
 // lost). Partial completion is safe because each step is idempotent; the next
 // sweep tick will complete the remaining steps.
+//
+// Under clustered mode, the cascade is wrapped in a per-session advisory lock
+// acquired via the LeaseManager (defaults to NoopManager in single-instance
+// mode). If another pod already holds the lock, Destroy returns nil immediately
+// — the other pod owns this destruction, and this pod will retry on the next
+// sweep tick.
 func (d *Destruction) Destroy(ctx context.Context, sess store.Session, reason string) error {
+	// Acquire per-session advisory lock to prevent duplicate cascade runs in
+	// clustered mode. Under NoopManager (single-instance default) this is a
+	// no-op that always succeeds. Under the PG-backed manager it uses
+	// pg_try_advisory_lock — non-blocking; returns ErrAlreadyHeld if another
+	// pod owns this session's destruction right now.
+	handle, err := d.leases().Acquire(ctx, sess.ID)
+	if err != nil {
+		if errors.Is(err, lease.ErrAlreadyHeld) {
+			// Another pod owns this destruction. Return nil so the sweep loop
+			// continues to the next session; this pod will retry on the next tick
+			// if the session row is still present.
+			return nil
+		}
+		// Unexpected acquisition error. Log and return so the sweep loop can
+		// retry next tick rather than proceeding without the lock.
+		return fmt.Errorf("destroy: acquire session lock: %w", err)
+	}
+	defer handle.Release() //nolint:errcheck
+
 	now := d.Clock.Now().UTC()
 	if d.TombstoneTTL == 0 {
 		d.TombstoneTTL = 30 * 24 * time.Hour

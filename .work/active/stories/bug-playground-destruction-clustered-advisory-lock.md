@@ -1,14 +1,14 @@
 ---
 id: bug-playground-destruction-clustered-advisory-lock
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground, clustered, bug]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Playground destruction worker: missing PG advisory lock for clustered mode
@@ -58,16 +58,16 @@ correctness bugs without the lock.
 
 ## Acceptance criteria
 
-- [ ] `Destruction.Destroy` wraps the cascade in a per-session advisory
+- [x] `Destruction.Destroy` wraps the cascade in a per-session advisory
       lock acquired via the existing `LeaseManager` interface.
-- [ ] Lock key is deterministic from the session ID (e.g. hash of the
+- [x] Lock key is deterministic from the session ID (e.g. hash of the
       session ID into a Postgres int8 for pg_advisory_lock).
-- [ ] Under NoopManager (single-instance default) the lock is a no-op and
+- [x] Under NoopManager (single-instance default) the lock is a no-op and
       the cascade runs as today.
-- [ ] If the lock cannot be acquired (another pod holds it), `Destroy`
+- [x] If the lock cannot be acquired (another pod holds it), `Destroy`
       returns nil immediately — the other pod owns this destruction; this
       pod will retry on the next sweep.
-- [ ] Test: stub a LeaseManager that fails the second acquire; verify the
+- [x] Test: stub a LeaseManager that fails the second acquire; verify the
       second concurrent Destroy is a no-op.
 
 ## Notes
@@ -78,3 +78,36 @@ correctness bugs without the lock.
 - Low priority because single-instance is the default deploy mode; no
   production user is at risk today. Bump if/when a clustered deployment
   is provisioned.
+
+## Implementation notes
+
+**LeaseManager API used:** `lease.Manager.Acquire(ctx, sessionID)`. The
+existing `Manager` interface already exposes a non-blocking try-acquire:
+`Acquire` returns `lease.ErrAlreadyHeld` immediately when another pod holds
+the lock (backed by `pg_try_advisory_lock` in `PostgresManager`). No
+interface extension was needed — the API fit exactly.
+
+**Lock key / session ID hashing:** The `Destroy` method passes `sess.ID`
+(the plain string session identifier) directly as the `sessionID` argument
+to `Acquire`. In the `PostgresManager` this becomes the argument to
+`hashtext($1)`, mapping the session ID string to a Postgres int32 advisory
+lock key. In `NoopManager` the string key is used in an in-process map. No
+additional hashing is performed in the `playground` package — the
+`LeaseManager` owns that concern.
+
+**Wiring change in main.go:** The `playground.Worker` struct gained a
+`Leases lease.Manager` field. `Worker.Run()` passes `w.Leases` through to
+the `Destruction` it constructs, which in turn calls `d.leases()` (a helper
+that falls back to `lease.NoopManager{}` when the field is nil). In
+`cmd/portal/main.go`, the already-constructed `leaseMgr` is now set on the
+`destructionWorker` struct literal (one-line change).
+
+**Contention test shape:** `TestDestruction_AdvisoryLock_SecondDestroyIsNoOp`
+uses `stubLeaseManager` — a mutex-backed in-process implementation of
+`lease.Manager` that enforces single-holder semantics (first `Acquire`
+succeeds, second returns `ErrAlreadyHeld` while first is held, succeeds
+again after `Release`). The test pre-acquires the lock to simulate the
+winner pod, calls `loser.Destroy` while the lock is held (asserting nil
+return and that the session row still exists), then releases the lock and
+confirms the winner's `Destroy` runs the full cascade (session gone, tombstone
+present).

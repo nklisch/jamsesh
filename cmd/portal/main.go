@@ -676,6 +676,7 @@ func main() {
 			Clock:    playgroundClock,
 			Interval: time.Duration(cfg.PlaygroundDestructionSweepIntervalS) * time.Second,
 			Logger:   slog.Default(),
+			Leases:   leaseMgr,
 		}
 		go func() {
 			if err := destructionWorker.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {

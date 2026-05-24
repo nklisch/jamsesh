@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/lease"
 	"jamsesh/internal/portal/storage"
 )
 
@@ -33,6 +34,7 @@ type Worker struct {
 	Clock    Clock
 	Interval time.Duration // default 60s when zero
 	Logger   *slog.Logger
+	Leases   lease.Manager // optional; nil → NoopManager (single-instance)
 
 	// destruction is wired after construction so tests can inject a stub.
 	// If nil, Run() initialises a real Destruction using the same Store/Storage.
@@ -56,6 +58,7 @@ func (w *Worker) Run(ctx context.Context) error {
 			Clock:        w.Clock,
 			Logger:       w.Logger,
 			TombstoneTTL: 30 * 24 * time.Hour, // 30-day default
+			Leases:       w.Leases,             // nil → NoopManager inside Destruction
 		}
 	}
 

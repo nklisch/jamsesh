@@ -9,10 +9,61 @@ import (
 	"time"
 
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/lease"
 	"jamsesh/internal/portal/playground"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
+
+// ---------------------------------------------------------------------------
+// stubLeaseManager — single-acquisition stub for contention tests
+// ---------------------------------------------------------------------------
+
+// stubLeaseManager is a lease.Manager that allows only one concurrent holder
+// per session ID. The first Acquire succeeds; subsequent concurrent Acquires
+// (while the first handle is still held) return lease.ErrAlreadyHeld. This
+// models pg_try_advisory_lock behaviour in the test environment.
+type stubLeaseManager struct {
+	mu   sync.Mutex
+	held map[string]bool // session IDs currently acquired
+}
+
+func newStubLeaseManager() *stubLeaseManager {
+	return &stubLeaseManager{held: make(map[string]bool)}
+}
+
+func (m *stubLeaseManager) Acquire(ctx context.Context, sessionID string) (lease.Handle, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.held[sessionID] {
+		return nil, lease.ErrAlreadyHeld
+	}
+	m.held[sessionID] = true
+	return &stubLeaseHandle{mgr: m, sessionID: sessionID, lost: make(chan struct{})}, nil
+}
+
+type stubLeaseHandle struct {
+	mgr       *stubLeaseManager
+	sessionID string
+	lost      chan struct{}
+	once      sync.Once
+}
+
+func (h *stubLeaseHandle) SessionID() string        { return h.sessionID }
+func (h *stubLeaseHandle) FencingToken() int64      { return 0 }
+func (h *stubLeaseHandle) Lost() <-chan struct{}    { return h.lost }
+func (h *stubLeaseHandle) Release() error {
+	h.once.Do(func() {
+		h.mgr.mu.Lock()
+		delete(h.mgr.held, h.sessionID)
+		h.mgr.mu.Unlock()
+		close(h.lost)
+	})
+	return nil
+}
 
 // ---------------------------------------------------------------------------
 // Helpers — build a session with anon member for destruction tests
@@ -551,5 +602,88 @@ func TestDestruction_ConcurrentDestroyCallsForSameSession_NoCorruption(t *testin
 	exists, _ := safe.RepoExists(playground.ReservedOrgID, sess.ID)
 	if exists {
 		t.Error("expected bare repo deleted after concurrent destruction")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDestruction_AdvisoryLock_SecondDestroyIsNoOp
+// ---------------------------------------------------------------------------
+
+// TestDestruction_AdvisoryLock_SecondDestroyIsNoOp verifies that when two
+// Destruction instances race to destroy the same session and only one can
+// acquire the per-session lock (stubLeaseManager enforces mutual exclusion),
+// exactly one completes the cascade and the other returns nil immediately
+// without touching the database.
+//
+// The user-visible assertion is: after both calls return, the session is gone
+// and exactly one tombstone exists. The "losing" pod is identified by its
+// lock being blocked — we hold the lock on the first instance while the second
+// tries to acquire it, confirming the second returns nil (no error, no cascade).
+func TestDestruction_AdvisoryLock_SecondDestroyIsNoOp(t *testing.T) {
+	ctx := context.Background()
+	env := newTestEnvSQLite(t, defaultCfg())
+
+	sess, _ := setupDestructionSession(t, ctx, env)
+
+	leaseMgr := newStubLeaseManager()
+
+	// Build the "winner" Destruction — acquires the lock and holds it.
+	winner := &playground.Destruction{
+		Store:        env.s,
+		Storage:      env.stor,
+		Clock:        env.clock,
+		Logger:       noopLogger(),
+		TombstoneTTL: 30 * 24 * time.Hour,
+		Leases:       leaseMgr,
+	}
+
+	// Build the "loser" Destruction — identical configuration; same lock manager.
+	loser := &playground.Destruction{
+		Store:        env.s,
+		Storage:      env.stor,
+		Clock:        env.clock,
+		Logger:       noopLogger(),
+		TombstoneTTL: 30 * 24 * time.Hour,
+		Leases:       leaseMgr,
+	}
+
+	// Manually acquire the lock for the session before the loser tries —
+	// this simulates the winner pod having already grabbed the advisory lock.
+	winnerHandle, err := leaseMgr.Acquire(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("pre-acquire (winner setup): %v", err)
+	}
+
+	// The loser calls Destroy while the winner holds the lock.
+	// It must return nil immediately (no-op) without touching the DB.
+	if err := loser.Destroy(ctx, sess, "hard_cap"); err != nil {
+		t.Fatalf("loser Destroy: expected nil (lock held by winner), got %v", err)
+	}
+
+	// Confirm: session still exists — the loser didn't run the cascade.
+	_, err = env.s.GetSession(ctx, playground.ReservedOrgID, sess.ID)
+	if err != nil {
+		t.Errorf("session should still exist after loser no-op; got err=%v", err)
+	}
+
+	// Release the winner's lock and run its cascade.
+	winnerHandle.Release() //nolint:errcheck
+	if err := winner.Destroy(ctx, sess, "hard_cap"); err != nil {
+		t.Fatalf("winner Destroy: %v", err)
+	}
+
+	// Now the session must be gone.
+	_, err = env.s.GetSession(ctx, playground.ReservedOrgID, sess.ID)
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected session deleted after winner cascade; got err=%v", err)
+	}
+
+	// Exactly one tombstone must exist.
+	tomb, err := env.s.GetTombstone(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetTombstone: %v", err)
+	}
+	if tomb.EndReason != "hard_cap" {
+		t.Errorf("tombstone end_reason: want hard_cap, got %s", tomb.EndReason)
 	}
 }
