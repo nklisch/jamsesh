@@ -1,7 +1,7 @@
 ---
 id: feature-anon-bearer-test-integrity
 kind: feature
-stage: review
+stage: done
 tags: [testing, tokens, migrations]
 parent: null
 depends_on: []
@@ -516,3 +516,41 @@ different invariants — no inter-dependency) and are at stage:review.
   no-DB-calls invariant, `_EmptySessionID_Rejected` exercises the error
   surface (three distinct invariants, three distinct tests). The
   migration test's body matches its name (Up → Down → Up).
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `openStoreAndSQLWithSession` near-duplicates `openStoreWithSession`'s
+  org+session seeding (different IDs only). Already flagged in the
+  transactional-rollback story's nits — keeping test helpers test-local
+  is consistent with the parent feature's locked-in choice. Promote if
+  a third caller appears.
+
+**Notes**:
+- Capability delivered as briefed: every test name in the affected
+  packages now describes what its body actually asserts. Both children
+  approved individually (`story-anon-bearer-test-integrity-migration-updownup`,
+  `story-anon-bearer-test-integrity-transactional-rollback`).
+- Cross-cutting verification: `go test ./internal/db/... ./internal/portal/tokens/...`
+  → all green; full repo run on each child stayed clean.
+- No foundation-doc drift: this is test-quality work; production surfaces
+  (`store.Store`, `MigrateUp`, `service_impl.IssueAnonymousSessionBearer`)
+  are unchanged. No assertions in `docs/SPEC.md`, `docs/ARCHITECTURE.md`,
+  or `docs/SECURITY.md` touched by the changes.
+- No breaking changes: only test files modified — `internal/db/migrate_test.go`,
+  `internal/portal/tokens/anon_bearer_test.go`. No public API shift, no
+  new exported symbols. `migrateDown` confirmed unexported and
+  test-binary-only via `grep migrateDown internal/db/*.go`.
+- Test-integrity discipline (`CLAUDE.md`) satisfied — the feature's
+  acceptance rollup checks all hold: both children done with approve,
+  no test name in the package lies about its body, real rollback test
+  exists via embedded-store pattern, real Up→Down→Up cycle exists in
+  the migration test, `migrateDown` helper available for future
+  migration tests.
+- Goose-semantics correction (DownTo(N) leaves DB at N, not N-1) is
+  well captured in both the helper doc comment and the migration story's
+  notes — exactly where a future caller will see it.
