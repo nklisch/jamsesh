@@ -568,14 +568,129 @@ func isNotFound(err error) bool {
 // ---------------------------------------------------------------------------
 
 // purgeCountStore wraps a real store and counts calls to PurgeExpiredTombstones.
+//
+// Implements workerStore (destructionStore + PlaygroundSessionStore =
+// SessionStore + SessionMemberStore + PlaygroundSessionStore + TombstoneStore +
+// OAuthTokenStore), delegating all methods except PurgeExpiredTombstones.
 type purgeCountStore struct {
-	store.Store
-	count int
+	realStore store.Store
+	count     int
 }
 
+// SessionStore delegation
+func (s *purgeCountStore) CreateSession(ctx context.Context, p store.CreateSessionParams) (store.Session, error) {
+	return s.realStore.CreateSession(ctx, p)
+}
+func (s *purgeCountStore) GetSession(ctx context.Context, orgID, id string) (store.Session, error) {
+	return s.realStore.GetSession(ctx, orgID, id)
+}
+func (s *purgeCountStore) GetSessionByID(ctx context.Context, id string) (store.Session, error) {
+	return s.realStore.GetSessionByID(ctx, id)
+}
+func (s *purgeCountStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]store.Session, error) {
+	return s.realStore.ListSessionsForOrg(ctx, orgID)
+}
+func (s *purgeCountStore) ListSessionsForOrgWithCursor(ctx context.Context, p store.ListSessionsForOrgWithCursorParams) ([]store.Session, error) {
+	return s.realStore.ListSessionsForOrgWithCursor(ctx, p)
+}
+func (s *purgeCountStore) UpdateSessionStatus(ctx context.Context, p store.UpdateSessionStatusParams) error {
+	return s.realStore.UpdateSessionStatus(ctx, p)
+}
+func (s *purgeCountStore) UpdateSessionGoalScopeMode(ctx context.Context, p store.UpdateSessionGoalScopeModeParams) error {
+	return s.realStore.UpdateSessionGoalScopeMode(ctx, p)
+}
+func (s *purgeCountStore) SetSessionBaseSHA(ctx context.Context, p store.SetSessionBaseSHAParams) error {
+	return s.realStore.SetSessionBaseSHA(ctx, p)
+}
+func (s *purgeCountStore) SetSessionEndReason(ctx context.Context, p store.SetSessionEndReasonParams) error {
+	return s.realStore.SetSessionEndReason(ctx, p)
+}
+func (s *purgeCountStore) SetFinalizeLock(ctx context.Context, p store.SetFinalizeLockParams) error {
+	return s.realStore.SetFinalizeLock(ctx, p)
+}
+func (s *purgeCountStore) ClearFinalizeLock(ctx context.Context, p store.ClearFinalizeLockParams) error {
+	return s.realStore.ClearFinalizeLock(ctx, p)
+}
+func (s *purgeCountStore) DeleteSession(ctx context.Context, p store.DeleteSessionParams) error {
+	return s.realStore.DeleteSession(ctx, p)
+}
+
+// SessionMemberStore delegation
+func (s *purgeCountStore) AddSessionMember(ctx context.Context, p store.AddSessionMemberParams) error {
+	return s.realStore.AddSessionMember(ctx, p)
+}
+func (s *purgeCountStore) GetSessionMember(ctx context.Context, p store.GetSessionMemberParams) (store.SessionMember, error) {
+	return s.realStore.GetSessionMember(ctx, p)
+}
+func (s *purgeCountStore) ListSessionMembers(ctx context.Context, p store.ListSessionMembersParams) ([]store.SessionMember, error) {
+	return s.realStore.ListSessionMembers(ctx, p)
+}
+func (s *purgeCountStore) RemoveSessionMember(ctx context.Context, p store.RemoveSessionMemberParams) error {
+	return s.realStore.RemoveSessionMember(ctx, p)
+}
+func (s *purgeCountStore) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]store.SessionMembership, error) {
+	return s.realStore.ListSessionMembershipsForAccount(ctx, accountID)
+}
+func (s *purgeCountStore) NicknameTakenInSession(ctx context.Context, p store.NicknameTakenInSessionParams) (bool, error) {
+	return s.realStore.NicknameTakenInSession(ctx, p)
+}
+func (s *purgeCountStore) CountSessionMembers(ctx context.Context, p store.CountSessionMembersParams) (int64, error) {
+	return s.realStore.CountSessionMembers(ctx, p)
+}
+
+// PlaygroundSessionStore delegation (PurgeExpiredTombstones overridden below)
+func (s *purgeCountStore) ResetSessionIdleTimer(ctx context.Context, p store.ResetSessionIdleTimerParams) error {
+	return s.realStore.ResetSessionIdleTimer(ctx, p)
+}
+func (s *purgeCountStore) ListExpiredPlaygroundSessions(ctx context.Context, p store.ListExpiredPlaygroundSessionsParams) ([]store.Session, error) {
+	return s.realStore.ListExpiredPlaygroundSessions(ctx, p)
+}
 func (s *purgeCountStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
 	s.count++
-	return s.Store.PurgeExpiredTombstones(ctx, before)
+	return s.realStore.PurgeExpiredTombstones(ctx, before)
+}
+func (s *purgeCountStore) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessID string) ([]string, error) {
+	return s.realStore.ListAnonymousSessionMemberIDs(ctx, orgID, sessID)
+}
+func (s *purgeCountStore) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return s.realStore.DeleteAccountsByIDs(ctx, ids)
+}
+func (s *purgeCountStore) CountSessionEventsByType(ctx context.Context, orgID, eventType string) (int64, error) {
+	return s.realStore.CountSessionEventsByType(ctx, orgID, eventType)
+}
+
+// TombstoneStore delegation
+func (s *purgeCountStore) GetTombstone(ctx context.Context, sessionID string) (store.Tombstone, error) {
+	return s.realStore.GetTombstone(ctx, sessionID)
+}
+func (s *purgeCountStore) RecordTombstone(ctx context.Context, p store.RecordTombstoneParams) error {
+	return s.realStore.RecordTombstone(ctx, p)
+}
+
+// OAuthTokenStore delegation
+func (s *purgeCountStore) CreateOAuthToken(ctx context.Context, p store.CreateOAuthTokenParams) (store.OAuthToken, error) {
+	return s.realStore.CreateOAuthToken(ctx, p)
+}
+func (s *purgeCountStore) CreateAnonymousBearer(ctx context.Context, p store.CreateAnonymousBearerParams) (store.OAuthToken, error) {
+	return s.realStore.CreateAnonymousBearer(ctx, p)
+}
+func (s *purgeCountStore) RevokeBearersForSession(ctx context.Context, p store.RevokeBearersForSessionParams) error {
+	return s.realStore.RevokeBearersForSession(ctx, p)
+}
+func (s *purgeCountStore) GetOAuthTokenByHash(ctx context.Context, h string) (store.OAuthToken, error) {
+	return s.realStore.GetOAuthTokenByHash(ctx, h)
+}
+func (s *purgeCountStore) TouchOAuthTokenLastUsed(ctx context.Context, p store.TouchOAuthTokenLastUsedParams) error {
+	return s.realStore.TouchOAuthTokenLastUsed(ctx, p)
+}
+func (s *purgeCountStore) RevokeOAuthToken(ctx context.Context, p store.RevokeOAuthTokenParams) error {
+	return s.realStore.RevokeOAuthToken(ctx, p)
+}
+func (s *purgeCountStore) RevokeAllOAuthTokensForAccount(ctx context.Context, p store.RevokeAllOAuthTokensForAccountParams) error {
+	return s.realStore.RevokeAllOAuthTokensForAccount(ctx, p)
+}
+func (s *purgeCountStore) ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]store.OAuthToken, error) {
+	return s.realStore.ListOAuthTokensForAccount(ctx, accountID)
 }
 
 // TestWorker_PurgeCadence_IsTickBound_Not_WallClockBound documents that tombstone
@@ -594,7 +709,7 @@ func TestWorker_PurgeCadence_IsTickBound_Not_WallClockBound(t *testing.T) {
 	t.Run("no purge before 60 ticks regardless of elapsed time", func(t *testing.T) {
 		env, _, clk := newWorkerEnv(t)
 
-		counted := &purgeCountStore{Store: env.s}
+		counted := &purgeCountStore{realStore: env.s}
 		worker := &playground.Worker{
 			Store:    counted,
 			Storage:  env.stor,
@@ -620,7 +735,7 @@ func TestWorker_PurgeCadence_IsTickBound_Not_WallClockBound(t *testing.T) {
 	t.Run("purge fires at least once after >=60 ticks", func(t *testing.T) {
 		env, _, clk := newWorkerEnv(t)
 
-		counted := &purgeCountStore{Store: env.s}
+		counted := &purgeCountStore{realStore: env.s}
 		worker := &playground.Worker{
 			Store:    counted,
 			Storage:  env.stor,

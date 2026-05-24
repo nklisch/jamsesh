@@ -613,27 +613,138 @@ func TestDestruction_ConcurrentDestroyCallsForSameSession_NoCorruption(t *testin
 // TestDestruction_BearerRevokedBeforeSessionDelete
 // ---------------------------------------------------------------------------
 
-// orderCapturingStore wraps a store.Store and records the sequence of
+// orderCapturingStore wraps a real store and records the sequence of
 // RevokeBearersForSession and DeleteSession calls so that the ordering
 // invariant (step 4 before step 6) can be asserted.
+//
+// Implements destructionStore (SessionStore + SessionMemberStore +
+// PlaygroundSessionStore + TombstoneStore + OAuthTokenStore), delegating
+// all methods except RevokeBearersForSession and DeleteSession to the real store.
 type orderCapturingStore struct {
-	store.Store
-	mu  sync.Mutex
-	seq []string // "revoke" or "delete" appended on each call
+	realStore store.Store
+	mu        sync.Mutex
+	seq       []string // "revoke" or "delete" appended on each call
 }
 
-func (s *orderCapturingStore) RevokeBearersForSession(ctx context.Context, p store.RevokeBearersForSessionParams) error {
-	s.mu.Lock()
-	s.seq = append(s.seq, "revoke")
-	s.mu.Unlock()
-	return s.Store.RevokeBearersForSession(ctx, p)
+// SessionStore delegation (DeleteSession overridden below)
+func (s *orderCapturingStore) CreateSession(ctx context.Context, p store.CreateSessionParams) (store.Session, error) {
+	return s.realStore.CreateSession(ctx, p)
 }
-
+func (s *orderCapturingStore) GetSession(ctx context.Context, orgID, id string) (store.Session, error) {
+	return s.realStore.GetSession(ctx, orgID, id)
+}
+func (s *orderCapturingStore) GetSessionByID(ctx context.Context, id string) (store.Session, error) {
+	return s.realStore.GetSessionByID(ctx, id)
+}
+func (s *orderCapturingStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]store.Session, error) {
+	return s.realStore.ListSessionsForOrg(ctx, orgID)
+}
+func (s *orderCapturingStore) ListSessionsForOrgWithCursor(ctx context.Context, p store.ListSessionsForOrgWithCursorParams) ([]store.Session, error) {
+	return s.realStore.ListSessionsForOrgWithCursor(ctx, p)
+}
+func (s *orderCapturingStore) UpdateSessionStatus(ctx context.Context, p store.UpdateSessionStatusParams) error {
+	return s.realStore.UpdateSessionStatus(ctx, p)
+}
+func (s *orderCapturingStore) UpdateSessionGoalScopeMode(ctx context.Context, p store.UpdateSessionGoalScopeModeParams) error {
+	return s.realStore.UpdateSessionGoalScopeMode(ctx, p)
+}
+func (s *orderCapturingStore) SetSessionBaseSHA(ctx context.Context, p store.SetSessionBaseSHAParams) error {
+	return s.realStore.SetSessionBaseSHA(ctx, p)
+}
+func (s *orderCapturingStore) SetSessionEndReason(ctx context.Context, p store.SetSessionEndReasonParams) error {
+	return s.realStore.SetSessionEndReason(ctx, p)
+}
+func (s *orderCapturingStore) SetFinalizeLock(ctx context.Context, p store.SetFinalizeLockParams) error {
+	return s.realStore.SetFinalizeLock(ctx, p)
+}
+func (s *orderCapturingStore) ClearFinalizeLock(ctx context.Context, p store.ClearFinalizeLockParams) error {
+	return s.realStore.ClearFinalizeLock(ctx, p)
+}
 func (s *orderCapturingStore) DeleteSession(ctx context.Context, p store.DeleteSessionParams) error {
 	s.mu.Lock()
 	s.seq = append(s.seq, "delete")
 	s.mu.Unlock()
-	return s.Store.DeleteSession(ctx, p)
+	return s.realStore.DeleteSession(ctx, p)
+}
+
+// SessionMemberStore delegation
+func (s *orderCapturingStore) AddSessionMember(ctx context.Context, p store.AddSessionMemberParams) error {
+	return s.realStore.AddSessionMember(ctx, p)
+}
+func (s *orderCapturingStore) GetSessionMember(ctx context.Context, p store.GetSessionMemberParams) (store.SessionMember, error) {
+	return s.realStore.GetSessionMember(ctx, p)
+}
+func (s *orderCapturingStore) ListSessionMembers(ctx context.Context, p store.ListSessionMembersParams) ([]store.SessionMember, error) {
+	return s.realStore.ListSessionMembers(ctx, p)
+}
+func (s *orderCapturingStore) RemoveSessionMember(ctx context.Context, p store.RemoveSessionMemberParams) error {
+	return s.realStore.RemoveSessionMember(ctx, p)
+}
+func (s *orderCapturingStore) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]store.SessionMembership, error) {
+	return s.realStore.ListSessionMembershipsForAccount(ctx, accountID)
+}
+func (s *orderCapturingStore) NicknameTakenInSession(ctx context.Context, p store.NicknameTakenInSessionParams) (bool, error) {
+	return s.realStore.NicknameTakenInSession(ctx, p)
+}
+func (s *orderCapturingStore) CountSessionMembers(ctx context.Context, p store.CountSessionMembersParams) (int64, error) {
+	return s.realStore.CountSessionMembers(ctx, p)
+}
+
+// PlaygroundSessionStore delegation
+func (s *orderCapturingStore) ResetSessionIdleTimer(ctx context.Context, p store.ResetSessionIdleTimerParams) error {
+	return s.realStore.ResetSessionIdleTimer(ctx, p)
+}
+func (s *orderCapturingStore) ListExpiredPlaygroundSessions(ctx context.Context, p store.ListExpiredPlaygroundSessionsParams) ([]store.Session, error) {
+	return s.realStore.ListExpiredPlaygroundSessions(ctx, p)
+}
+func (s *orderCapturingStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	return s.realStore.PurgeExpiredTombstones(ctx, before)
+}
+func (s *orderCapturingStore) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessID string) ([]string, error) {
+	return s.realStore.ListAnonymousSessionMemberIDs(ctx, orgID, sessID)
+}
+func (s *orderCapturingStore) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return s.realStore.DeleteAccountsByIDs(ctx, ids)
+}
+func (s *orderCapturingStore) CountSessionEventsByType(ctx context.Context, orgID, eventType string) (int64, error) {
+	return s.realStore.CountSessionEventsByType(ctx, orgID, eventType)
+}
+
+// TombstoneStore delegation
+func (s *orderCapturingStore) GetTombstone(ctx context.Context, sessionID string) (store.Tombstone, error) {
+	return s.realStore.GetTombstone(ctx, sessionID)
+}
+func (s *orderCapturingStore) RecordTombstone(ctx context.Context, p store.RecordTombstoneParams) error {
+	return s.realStore.RecordTombstone(ctx, p)
+}
+
+// OAuthTokenStore delegation (RevokeBearersForSession overridden below)
+func (s *orderCapturingStore) CreateOAuthToken(ctx context.Context, p store.CreateOAuthTokenParams) (store.OAuthToken, error) {
+	return s.realStore.CreateOAuthToken(ctx, p)
+}
+func (s *orderCapturingStore) CreateAnonymousBearer(ctx context.Context, p store.CreateAnonymousBearerParams) (store.OAuthToken, error) {
+	return s.realStore.CreateAnonymousBearer(ctx, p)
+}
+func (s *orderCapturingStore) RevokeBearersForSession(ctx context.Context, p store.RevokeBearersForSessionParams) error {
+	s.mu.Lock()
+	s.seq = append(s.seq, "revoke")
+	s.mu.Unlock()
+	return s.realStore.RevokeBearersForSession(ctx, p)
+}
+func (s *orderCapturingStore) GetOAuthTokenByHash(ctx context.Context, h string) (store.OAuthToken, error) {
+	return s.realStore.GetOAuthTokenByHash(ctx, h)
+}
+func (s *orderCapturingStore) TouchOAuthTokenLastUsed(ctx context.Context, p store.TouchOAuthTokenLastUsedParams) error {
+	return s.realStore.TouchOAuthTokenLastUsed(ctx, p)
+}
+func (s *orderCapturingStore) RevokeOAuthToken(ctx context.Context, p store.RevokeOAuthTokenParams) error {
+	return s.realStore.RevokeOAuthToken(ctx, p)
+}
+func (s *orderCapturingStore) RevokeAllOAuthTokensForAccount(ctx context.Context, p store.RevokeAllOAuthTokensForAccountParams) error {
+	return s.realStore.RevokeAllOAuthTokensForAccount(ctx, p)
+}
+func (s *orderCapturingStore) ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]store.OAuthToken, error) {
+	return s.realStore.ListOAuthTokensForAccount(ctx, accountID)
 }
 
 // TestDestruction_BearerRevokedBeforeSessionDelete verifies the defense-in-depth
@@ -650,7 +761,7 @@ func TestDestruction_BearerRevokedBeforeSessionDelete(t *testing.T) {
 
 	sess, _ := setupDestructionSession(t, ctx, env)
 
-	capturing := &orderCapturingStore{Store: env.s}
+	capturing := &orderCapturingStore{realStore: env.s}
 	d := &playground.Destruction{
 		Store:        capturing,
 		Storage:      env.stor,
