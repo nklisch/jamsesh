@@ -1,7 +1,7 @@
 ---
 id: gate-docs-spec-playground-sweep-env-var-name-drift
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,9 @@ The env var is `JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S` (matches `docs/
 
 ## Required edit
 Replace `JAMSESH_PLAYGROUND_SWEEP_INTERVAL_S` with `JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S`. Add a row to the limits table at lines 264-270 for the sweep interval (`60s` default, env var `JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S`).
+
+## Implementation notes
+
+Replaced `JAMSESH_PLAYGROUND_SWEEP_INTERVAL_S` with `JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S` in the prose at `docs/SPEC.md:260-262`. Added a `Destruction sweep interval` row to the limits table (`60s` default, env var name matches the live config).
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

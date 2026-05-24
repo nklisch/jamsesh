@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-openapi-fetch-middleware-stale-anchors
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,9 @@ Bundle's frontend god-component decomposition (`feature-refactor-frontend-god-co
 
 ## Required edit
 Re-grep for `client.GET|client.POST|client.PATCH|client.DELETE` across the current `frontend/src/lib/` tree and replace the stale `:NNN` anchors with present line numbers (or, more durable, swap line-number anchors for symbol-based pointers like "`Home.svelte` createOrg call" so the pattern survives future refactors).
+
+## Implementation notes
+
+Re-anchored `.claude/skills/patterns/openapi-fetch-middleware-client.md` examples from line numbers to symbol-based pointers (named handlers, named `client.GET`/`POST` calls). Added an explicit note at the top of the Examples section that anchors are intentionally symbol-based given the v0.4.0 god-component decomposition. Bumped the call-site count from 13+ to 20+ to reflect the extracted hooks.
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

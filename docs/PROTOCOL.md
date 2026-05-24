@@ -145,6 +145,16 @@ WebSocket.
 - `DELETE /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}` — release the finalize lock
 - `POST /api/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token` — obtain an HTTPS fetch token for pulling the session repo during finalize
 
+### Playground
+
+Anonymous-friendly endpoints for the ephemeral playground org. Schemas live
+in `docs/openapi.yaml` under `/api/playground/sessions*`.
+
+- `POST /api/playground/sessions` — create a new ephemeral session in the reserved playground org; mints the creator's anonymous bearer in the response (no auth required; rate-limited per source IP)
+- `POST /api/playground/sessions/{id}/join` — join an existing playground session; mints a fresh anonymous bearer scoped to that session; 409 `playground.session_full` if at `MaxParticipants` cap (response includes `retry_after_seconds`); 410 `playground.session_ended` if past `hard_cap_at`
+- `GET /api/playground/sessions/{id}` — fetch playground session metadata (countdown timestamps, participant nicknames); requires a valid anonymous bearer for this session
+- `GET /api/playground/sessions/{id}/tombstone` — fetch the post-destruction tombstone view (reason, ended_at); no auth required
+
 ### Git smart-HTTP (separate path tree)
 
 - `POST /git/<org_id>/<session_id>.git/git-receive-pack` (push)
@@ -388,6 +398,8 @@ All events share a common envelope:
 - `session.finalizing` — payload: `{by_user_id}` (schema: [SessionFinalizingPayload](./openapi.yaml#/components/schemas/SessionFinalizingPayload))
 - `session.ended` — payload: `{reason: "finalize" | "abandon" | "timeout"}` (schema: [SessionEndedPayload](./openapi.yaml#/components/schemas/SessionEndedPayload))
 - `playground.destruction_warning` — payload: `{reason: "idle_timeout" | "hard_cap", ends_at, remaining_seconds, session_id}` (schema: [PlaygroundDestructionWarningPayload](./openapi.yaml#/components/schemas/PlaygroundDestructionWarningPayload))
+- `auto-merger.backpressure` — payload: `{session_id, dropped_ref}` (schema: [AutoMergerBackpressurePayload](./openapi.yaml#/components/schemas/AutoMergerBackpressurePayload))
+- `session.created` — payload: full session created event (schema: [SessionCreatedPayload](./openapi.yaml#/components/schemas/SessionCreatedPayload))
 
 ## Local state schema (`${CLAUDE_PLUGIN_DATA}/`)
 
@@ -395,16 +407,20 @@ The local binary's state on disk.
 
 ```
 ${CLAUDE_PLUGIN_DATA}/
-├── token                 user OAuth token (mode 0600, plaintext or system keychain reference)
+├── token                 root-level account OAuth token (mode 0600);
+│                         a `MIGRATED_TO_PER_SESSION` stub for accounts
+│                         whose per-session tokens have superseded it
 ├── refresh_token         OAuth refresh token (mode 0600)
 ├── portal_url            configured portal URL (one line)
 └── sessions/
     └── <session-id>/
-        ├── ref           the (user/branch) this CC instance is bound to
+        ├── token         per-session bearer (mode 0600) — durable session
+        │                 bearer or playground anonymous bearer
         ├── instance_id   the CC session_id this binding belongs to
-        ├── last_seen_seq portal event log cursor
-        └── refs/
-            └── <peer>    last seen SHA for each peer ref (cursor for digest git-log diffs)
+        ├── ref           the (user/branch) this CC instance is bound to
+        ├── org_id        org the session belongs to
+        ├── account_id    account on whose behalf this binding acts
+        └── last_seen_seq portal event log cursor
 ```
 
 ## HTTP error contract

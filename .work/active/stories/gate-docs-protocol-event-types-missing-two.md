@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-event-types-missing-two
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,9 @@ foundation-doc-assertion
 
 ## Required edit
 Append two bullets to the event-type list in `docs/PROTOCOL.md` in alphabetical position: `auto-merger.backpressure` (payload: `AutoMergerBackpressurePayload`) and `session.created` (payload: `SessionCreatedPayload`).
+
+## Implementation notes
+
+Added `auto-merger.backpressure` and `session.created` to the event-type bullet list at `docs/PROTOCOL.md:391-393` with payload schema citations.
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

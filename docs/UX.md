@@ -87,12 +87,43 @@ Session created: jam-1748000000 (sess-...)
   ...
 ```
 
-### Forward reference
+## Flow: spinning up a playground
 
-`jamsesh new --playground` (non-durable, anonymous-bearer sessions) is
-shipped in the `session-lifecycle` sibling feature (wave 2 of this epic).
-The flag and all durable-session mechanics are identical; the difference
-is the org binding and the session lifetime indicator shown in the output.
+Anyone — signed in or not — can start an ephemeral collaboration sandbox
+from `/playground` without provisioning an org. The session lives in the
+reserved playground org for a hard-capped wall-clock window (default 24h)
+or until idle-timeout (default 30 min of no substantive activity), whichever
+fires first.
+
+1. From the SPA, the visitor opens `/playground` and submits the create
+   form (optional name + goal + nickname). The portal returns the new
+   session id and an anonymous bearer scoped to that session.
+2. The SPA stores the bearer + nickname in the `auth` rune store's
+   in-memory `playgroundContext` field (no localStorage — a tab reload
+   intentionally drops the identity), navigates to
+   `/playground/s/{id}`, and presents the standard session view with a
+   `CountdownBadge` showing remaining session time and a
+   `DestructionWarningBanner` that fires inside the warning window.
+3. The same flow is available from the CLI as
+   `jamsesh new --playground`; the flag binds the new session to the
+   playground org and writes the anonymous bearer into the per-session
+   token file at `${CLAUDE_PLUGIN_DATA}/sessions/<id>/token`.
+
+## Flow: joining a playground
+
+A collaborator received a `/playground/s/{id}/join` URL.
+
+1. They open the URL. The SPA renders the `JoinerPicker` screen with
+   `JoinerForm` (nickname input, suggested handle pre-filled from the
+   wordlist) and submits to `POST /api/playground/sessions/{id}/join`.
+2. The portal mints a fresh anonymous bearer scoped to this session and
+   returns it; the SPA stores it in the same in-memory
+   `playgroundContext` and navigates to `/playground/s/{id}`.
+3. If the session hit `MaxParticipants` (default 5), the portal returns
+   `409 playground.session_full` and the picker surfaces a "session full"
+   message. If past `hard_cap_at`, the portal returns
+   `410 playground.session_ended` and the SPA redirects to
+   `/playground/s/{id}/ended` for the post-destruction tombstone view.
 
 ## Flow: joining a session
 
@@ -308,6 +339,31 @@ The portal UI has these primary surfaces. (Concrete designs land in
   finalize/abandon controls (creator only).
 - **Admin** — org-level: members, invitations, billing (hosted),
   configuration (self-host).
+- **Playground landing (`/playground`)** — public, no auth required;
+  inline create-session form (optional name + goal + nickname). On
+  submit, navigates to the new session view with an anonymous bearer in
+  the in-memory `playgroundContext`. Component:
+  `frontend/src/lib/screens/PlaygroundLanding.svelte`.
+- **Joiner picker (`/playground/s/{id}/join`)** — open-join page;
+  `JoinerForm` collects a nickname (pre-filled from the wordlist) and
+  POSTs to the join endpoint; `JoinerOutcome` renders the post-join
+  state (success → navigate to session; 409 full / 410 ended → branch).
+  Components: `frontend/src/lib/screens/JoinerPicker.svelte`,
+  `frontend/src/lib/components/{JoinerForm,JoinerOutcome}.svelte`.
+- **Session tombstone (`/playground/s/{id}/ended`)** — post-destruction
+  view for ended playground sessions; shows reason (`idle_timeout` /
+  `hard_cap` / `manual`) and ended-at timestamp. Component:
+  `frontend/src/lib/screens/SessionTombstone.svelte`.
+
+Session-view chrome present when a session has playground identity:
+
+- **`CountdownBadge`** — persistent badge in the session header showing
+  whichever of `idle_timeout_at` or `hard_cap_at` is closer.
+- **`DestructionWarningBanner`** — banner that surfaces in the last
+  5 min before a destruction deadline (idle or hard-cap), with a
+  reason-aware message.
+- **`PlaygroundChip`** — marker on session-list rows so playground
+  sessions are visually distinct from durable ones.
 
 ## Notification surfaces
 

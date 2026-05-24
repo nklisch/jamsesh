@@ -1,7 +1,7 @@
 ---
 id: gate-docs-readme-stale-slash-command-list
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,9 @@ The skill-consolidation feature deleted `plugins/jamsesh/skills/{status,fork,mod
 
 ## Required edit
 Replace the sentence with: "The jamsesh plugin runs inside Claude Code and gives each agent the `/jamsesh:jam` intent-driven entry point (covers create, join, status, fork, mode) and `/jamsesh:finalize`, plus auto-loading session context so agents know how to participate in a jam."
+
+## Implementation notes
+
+Replaced the `join`/`status`/`fork`/`mode` slash-command sentence in `README.md:79-81` with the post-consolidation `/jamsesh:jam` (intent-driven entry covering create/join/status/fork/mode) + `/jamsesh:finalize` form.
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

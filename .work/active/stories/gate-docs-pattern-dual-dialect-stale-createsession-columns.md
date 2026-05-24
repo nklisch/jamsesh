@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-dual-dialect-stale-createsession-columns
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -33,3 +33,9 @@ The bundle's playground-session migrations (00018) added three columns to `sessi
 
 ## Required edit
 Update both example SQL blocks at lines 26-39 to match the current 13-column form (`id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at, last_substantive_activity_at, hard_cap_at, idle_timeout_at`), with 13 placeholders.
+
+## Implementation notes
+
+Updated both example SQL blocks in `.claude/skills/patterns/dual-dialect-mirror-queries.md:26-39` to the current 13-column `CreateSession` shape (added `last_substantive_activity_at`, `hard_cap_at`, `idle_timeout_at`).
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

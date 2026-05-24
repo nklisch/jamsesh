@@ -24,9 +24,16 @@ component-specific logic uses the per-call `{ error }` destructure.
 
 ## Examples
 
+References below are pinned to symbols (the `createClient`/`client.use`
+calls, the named `client.GET`/`POST`/`PATCH` invocations, the named
+event handlers) rather than line numbers, since the call-site files are
+under active refactor. Find with
+`grep -rn 'client\.\(GET\|POST\|PATCH\|DELETE\)' frontend/src/lib/`.
+
 ### Example 1: client definition
 
-**File**: `frontend/src/lib/api/client.ts:39`
+**File**: `frontend/src/lib/api/client.ts` (the `lateFetch` /
+`createClient` / `client.use(...)` block near the top of the file)
 
 ```ts
 const lateFetch: typeof fetch = (...args) => globalThis.fetch(...args);
@@ -37,7 +44,9 @@ client.use(unauthorizedMiddleware);
 
 ### Example 2: typed call site
 
-**File**: `frontend/src/lib/components/TreeDag.svelte:61`
+**File**: `frontend/src/lib/components/TreeDag.svelte` (the
+`client.GET('/api/orgs/{orgID}/sessions/{sessionID}/refs', ...)` call in
+the refs-loading effect)
 
 ```ts
 const { data } = await client.GET('/api/orgs/{orgID}/sessions/{sessionID}/refs', {
@@ -47,15 +56,24 @@ const { data } = await client.GET('/api/orgs/{orgID}/sessions/{sessionID}/refs',
 
 ### Example 3: response destructure pattern is uniform
 
-**Files**: `frontend/src/lib/screens/FinalizeView.svelte:107`,
-`frontend/src/lib/components/CommentsTab.svelte:25`,
-`frontend/src/lib/components/NewSessionDrawer.svelte:41`,
-`frontend/src/lib/screens/Home.svelte:41` — callers destructure
-`{ data, error }` from the awaited `client.{GET,POST,PATCH}(...)` (or
-`{ data }` alone when the error path is handled by middleware + an outer
-try/catch, as in `frontend/src/lib/auth.svelte.ts:76`).
+Pin to the named handlers / symbols rather than line numbers — the
+v0.4.0 god-component decomposition refactor moved most of these:
 
-13+ call sites across screens and components.
+- `frontend/src/lib/screens/Home.svelte` — `createOrg` handler.
+- `frontend/src/lib/screens/FinalizeView.svelte` — the fetch-token /
+  finalize-attempt calls inside `useFinalizeExecution.svelte.ts`.
+- `frontend/src/lib/components/CommentsTab.svelte` — the comments-list
+  load + post-comment handlers.
+- `frontend/src/lib/components/NewSessionDrawer.svelte` — the
+  `createSession` handler inside `useNewSessionForm.svelte.ts`.
+- `frontend/src/lib/auth.svelte.ts` — `loadCurrentUser`, `loadOrgs`,
+  and `signOut`.
+
+Callers destructure `{ data, error }` from the awaited
+`client.{GET,POST,PATCH,DELETE}(...)` (or `{ data }` alone when the
+error path is handled by middleware + an outer try/catch).
+
+20+ call sites across screens, components, and rune-store hooks.
 
 ## When to Use
 

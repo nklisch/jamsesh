@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-rest-route-catalog-missing-playground
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,9 @@ Four playground REST routes exist and are documented in `docs/openapi.yaml`: `PO
 
 ## Required edit
 Add a new "Playground" subsection in `docs/PROTOCOL.md` between "Finalize machinery" and "Git smart-HTTP" listing the four playground routes with one-line descriptions (auth requirement, purpose). Cross-reference the openapi.yaml fragment for full schemas.
+
+## Implementation notes
+
+Added a `### Playground` subsection to `docs/PROTOCOL.md` between Finalize machinery and Git smart-HTTP, listing the four playground REST routes (create, join, get, tombstone) with auth + status-code semantics.
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

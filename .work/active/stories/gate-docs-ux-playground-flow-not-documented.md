@@ -1,7 +1,7 @@
 ---
 id: gate-docs-ux-playground-flow-not-documented
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -30,3 +30,9 @@ The playground epic shipped in v0.4.0 with a full anonymous-entry UX flow: publi
 
 ## Required edit
 Replace the "Forward reference" subsection with new "Flow: spinning up a playground" (creation from landing page, anonymous-bearer exchange, share URL) and "Flow: joining a playground" (URL → joiner picker → nickname-and-bearer flow → playground session view). Add three playground entries to "Portal UI surfaces" (lines 281-310): playground landing, joiner picker, session tombstone. Document `CountdownBadge`, `DestructionWarningBanner`, and `PlaygroundChip` as session-view chrome components when a session has playground identity.
+
+## Implementation notes
+
+Replaced the stale `### Forward reference` subsection in `docs/UX.md:90-95` with two new flows (`Flow: spinning up a playground` and `Flow: joining a playground`) that document the SPA + CLI paths. Added five entries to `Portal UI surfaces` (PlaygroundLanding, JoinerPicker, SessionTombstone, plus CountdownBadge / DestructionWarningBanner / PlaygroundChip as session-view chrome).
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

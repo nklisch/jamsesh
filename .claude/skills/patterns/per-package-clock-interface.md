@@ -21,7 +21,7 @@ typing carries the 'advance once, move everywhere' property".
 
 ### Example 1: comments package
 
-**File**: `internal/portal/comments/service.go:27`
+**File**: `internal/portal/comments/service.go:33`
 
 ```go
 // Clock is an injectable time source. Mirrors auth.Clock and tokens.Clock so a
@@ -57,14 +57,20 @@ func (realClock) Now() time.Time { return time.Now().UTC() }
 `NewWithClock(rootDir, store, clock)` constructor for tests in addition
 to the default `New(...)` which calls `NewWithClock(..., realClock{})`.
 
-Replicated identically in `internal/portal/{auth, tokens, events,
-automerger, accounts, mcpendpoint, finalize}` — 10 packages total.
+Replicated identically across 14 packages total:
+`internal/portal/{accounts, auth, automerger, comments, events, finalize,
+mcpendpoint, playground, ratelimit, sessions, storage,
+storage/objectstore, tokens, wsgateway}`. The `auth/magic_link.go` and
+`wsgateway/clock.go` packages had this shape from inception; the
+`playground`, `ratelimit`, and `storage/objectstore` packages were brought
+onto the pattern by `feature-refactor-per-package-clock-compliance` in
+v0.4.0.
 
 ## When to Use
 
 - A portal-internal package needs the current UTC time inside a method
   that should be deterministic in tests.
-- The package is one of the existing 10 that already exports a Clock —
+- The package is one of the existing 14 that already exports a Clock —
   extend that local interface.
 
 ## When NOT to Use

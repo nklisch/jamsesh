@@ -224,7 +224,7 @@ user creates.
 - **Creation:** any authenticated account in an org creates a session, supplies
   required fields, pushes HEAD as base.
 - **Join:** invite-only — emails or one-time-use join links. Recipients
-  authenticate to the portal, accept the invite, run `/jamsesh:join <session>`.
+  authenticate to the portal, accept the invite, run `/jamsesh:jam join <session>`.
 - **Active:** humans and agents push, comment, fork, switch modes.
 - **End:** explicit finalize, explicit abandon, or auto-timeout after 30 days
   of inactivity. After end, all refs become read-only.
@@ -258,11 +258,12 @@ durable. Open-join via the session URL alone (no invite, no portal account).
 #### Playground session limits and defaults
 
 The destruction sweep runs every 60 seconds (configurable via
-`JAMSESH_PLAYGROUND_SWEEP_INTERVAL_S`). The following defaults apply unless
-overridden by env var:
+`JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S`). The following defaults
+apply unless overridden by env var:
 
 | Limit | Default | Env var |
 |---|---|---|
+| Destruction sweep interval | 60 s | `JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S` |
 | Idle timeout | 30 min (1800 s) | `JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S` |
 | Hard cap | 24 h (86400 s) | `JAMSESH_PLAYGROUND_HARD_CAP_S` |
 | Max participants per session | 5 | `JAMSESH_PLAYGROUND_MAX_PARTICIPANTS` |

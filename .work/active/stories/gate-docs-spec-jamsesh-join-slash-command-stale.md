@@ -1,7 +1,7 @@
 ---
 id: gate-docs-spec-jamsesh-join-slash-command-stale
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,9 @@ foundation-doc-assertion
 
 ## Required edit
 Replace `/jamsesh:join <session>` with `/jamsesh:jam join <session>`.
+
+## Implementation notes
+
+Replaced `/jamsesh:join <session>` with `/jamsesh:jam join <session>` at `docs/SPEC.md:227`.
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

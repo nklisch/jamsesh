@@ -76,9 +76,10 @@ curl http://localhost:8443/healthz
 
 ## Install the Claude Code plugin
 
-The jamsesh plugin runs inside Claude Code and gives each agent the `join`,
-`status`, `fork`, and `mode` slash commands, plus auto-loading session context
-so agents know how to participate in a jam.
+The jamsesh plugin runs inside Claude Code and gives each agent the
+`/jamsesh:jam` intent-driven entry point (covers create, join, status,
+fork, mode) and `/jamsesh:finalize`, plus auto-loading session context so
+agents know how to participate in a jam.
 
 Install in two steps from any Claude Code session:
 

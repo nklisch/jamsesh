@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-local-state-schema-block-stale
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -40,3 +40,9 @@ foundation-doc-assertion
 
 ## Required edit
 Replace the tree block at `docs/PROTOCOL.md:396-408` with the layout already canonical in `docs/ARCHITECTURE.md:162-177` (per-session `token`, `instance_id`, `ref`, `org_id`, `account_id`, `last_seen_seq`; clarify root `token` as the account-wide token / migration stub; drop the obsolete `refs/<peer>` subtree).
+
+## Implementation notes
+
+Replaced the `${CLAUDE_PLUGIN_DATA}/` tree block at `docs/PROTOCOL.md:396-410` with the canonical layout from `docs/ARCHITECTURE.md:162-177`: per-session `token`, `instance_id`, `ref`, `org_id`, `account_id`, `last_seen_seq`; root `token` annotated as the account-wide token / `MIGRATED_TO_PER_SESSION` stub; dropped the obsolete `refs/<peer>` subtree.
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-per-package-clock-package-count-undercount
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,9 @@ Bundle's `feature-refactor-per-package-clock-compliance` brought four more packa
 
 ## Required edit
 Update the package list to the 14 above and the count to "14 packages total" in line 61. Update the `comments/service.go:27` reference at line 24 to `comments/service.go:33`.
+
+## Implementation notes
+
+Updated `.claude/skills/patterns/per-package-clock-interface.md`: package count corrected from 10 to 14, listed all 14 packages (`accounts, auth, automerger, comments, events, finalize, mcpendpoint, playground, ratelimit, sessions, storage, storage/objectstore, tokens, wsgateway`), and re-anchored the `comments/service.go` example reference from `:27` to `:33`.
+
+Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).

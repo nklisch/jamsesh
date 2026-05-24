@@ -260,7 +260,7 @@ except auth initiation).
 When playground sessions are enabled (`JAMSESH_PLAYGROUND_ENABLED=true`),
 participants are issued **anonymous session-scoped bearers**: a new
 `accounts` row marked `is_anonymous: true` (with a synthetic
-`anon-<random>@playground.local` email) and an `oauth_tokens` row with
+`anon_<random>@playground.local` email) and an `oauth_tokens` row with
 `kind=anonymous_session_bearer` and a `session_id` FK pinning the bearer
 to one session.
 
