@@ -1,7 +1,7 @@
 ---
 id: story-cli-invite-dedupe-parseinviteemails-test
 kind: story
-stage: review
+stage: done
 tags: [cleanup, test-debt]
 parent: null
 depends_on: []
@@ -57,3 +57,13 @@ Canonical test lives in `cmd/jamsesh/sessioncmd/invite_test.go` alongside
   inviteAction produces; it was retained as-is.
 - `go build ./...`, `go test ./...`, and `go vet ./cmd/jamsesh/...` all
   pass cleanly.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design; verification passes (Go: `go build` + `go test ./...` clean; frontend: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean). Implementation notes accurately document what landed, including any agent decisions or land-mode confirmations.

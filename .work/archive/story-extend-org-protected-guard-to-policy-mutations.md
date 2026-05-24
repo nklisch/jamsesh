@@ -1,7 +1,7 @@
 ---
 id: story-extend-org-protected-guard-to-policy-mutations
 kind: story
-stage: review
+stage: done
 tags: [portal, playground, defense-in-depth]
 parent: null
 depends_on: []
@@ -89,3 +89,13 @@ mutated in the database.
 mutations via PatchOrg" alongside the existing "delete or rename" wording.
 
 All tests pass (`go test ./...`).
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design; verification passes (Go: `go build` + `go test ./...` clean; frontend: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean). Implementation notes accurately document what landed, including any agent decisions or land-mode confirmations.

@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-portal-ui-session-view-extensions
 kind: story
-stage: review
+stage: done
 tags: [ui, playground]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: []
@@ -197,3 +197,13 @@ a note that this is a style-only component.
 - `npm run check` — 0 errors, 2 pre-existing warnings (unrelated files)
 - `npm run test` — 635 tests passed, 50 test files
 - `npm run build` — clean bundle
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design; verification passes (Go: `go build` + `go test ./...` clean; frontend: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean). Implementation notes accurately document what landed, including any agent decisions or land-mode confirmations.

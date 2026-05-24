@@ -1,7 +1,7 @@
 ---
 id: story-skill-consolidation-primer-stale-slash-refs
 kind: story
-stage: review
+stage: done
 tags: [bug]
 parent: feature-epic-ephemeral-playground-skill-consolidation
 depends_on: []
@@ -90,3 +90,13 @@ Fixed 7 stale slash references in `plugins/jamsesh/skills/jamsesh/SKILL.md`:
   session_id lookup — binary invocation.
 
 Verification: `grep -n "/jamsesh:status\|/jamsesh:fork\|/jamsesh:mode\|/jamsesh:join"` returns nothing.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design; verification passes (Go: `go build` + `go test ./...` clean; frontend: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean). Implementation notes accurately document what landed, including any agent decisions or land-mode confirmations.

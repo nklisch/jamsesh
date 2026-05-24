@@ -1,7 +1,7 @@
 ---
 id: story-comments-service-use-slog-not-stdlib-log
 kind: story
-stage: review
+stage: done
 tags: [portal, cleanup, logging]
 parent: null
 depends_on: []
@@ -74,3 +74,13 @@ Comment text updated from "the push itself succeeded" to "the comment itself
 succeeded" — the stale wording was copy-pasted from `receive_pack.go`.
 
 `go build ./...` and `go test ./...` green with no stale fixtures.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design; verification passes (Go: `go build` + `go test ./...` clean; frontend: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean). Implementation notes accurately document what landed, including any agent decisions or land-mode confirmations.

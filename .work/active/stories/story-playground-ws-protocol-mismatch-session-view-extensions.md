@@ -1,7 +1,7 @@
 ---
 id: story-playground-ws-protocol-mismatch-session-view-extensions
 kind: story
-stage: review
+stage: done
 tags: [bug, playground, portal, ws, protocol]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: []
@@ -174,3 +174,13 @@ playground.destruction_warning fires with reason=idle_timeout".
 - `npm run check` — 0 errors, 2 pre-existing warnings (unrelated).
 - `npm run test` — 635/635 tests pass (50 test files).
 - `npm run build` — clean build.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design; verification passes (Go: `go build` + `go test ./...` clean; frontend: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean). Implementation notes accurately document what landed, including any agent decisions or land-mode confirmations.

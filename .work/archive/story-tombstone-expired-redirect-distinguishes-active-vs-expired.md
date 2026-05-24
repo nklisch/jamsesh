@@ -1,7 +1,7 @@
 ---
 id: story-tombstone-expired-redirect-distinguishes-active-vs-expired
 kind: story
-stage: review
+stage: done
 tags: [ui, playground, ux]
 parent: null
 depends_on: []
@@ -85,3 +85,13 @@ after a session ends).
   404-redirect test into three cases (probe 200 → redirect, probe 404 →
   expired page, probe network error → expired page) and added a CTA navigation
   test for the expired page. 22 tests total, all passing.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design; verification passes (Go: `go build` + `go test ./...` clean; frontend: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean). Implementation notes accurately document what landed, including any agent decisions or land-mode confirmations.

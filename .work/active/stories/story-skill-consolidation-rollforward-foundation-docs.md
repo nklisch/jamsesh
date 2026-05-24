@@ -1,7 +1,7 @@
 ---
 id: story-skill-consolidation-rollforward-foundation-docs
 kind: story
-stage: review
+stage: done
 tags: [bug, documentation]
 parent: feature-epic-ephemeral-playground-skill-consolidation
 depends_on: []
@@ -111,3 +111,13 @@ self-contained.
 6. § Status awareness: replaced `/jamsesh:status` bullet with `/jamsesh:jam (status)` dispatch pattern.
 
 **SKILL.md files** — no changes needed; `jamsesh/SKILL.md`, `jam/SKILL.md`, and `finalize/SKILL.md` already accurately describe the consolidated surface (updated by earlier sibling story).
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design; verification passes (Go: `go build` + `go test ./...` clean; frontend: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean). Implementation notes accurately document what landed, including any agent decisions or land-mode confirmations.

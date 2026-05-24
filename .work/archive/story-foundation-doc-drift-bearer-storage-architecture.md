@@ -1,7 +1,7 @@
 ---
 id: story-foundation-doc-drift-bearer-storage-architecture
 kind: story
-stage: review
+stage: done
 tags: [documentation, plugin]
 parent: null
 depends_on: []
@@ -99,3 +99,13 @@ Three sections of `docs/ARCHITECTURE.md` were corrected:
    and `sessions/<jamsesh-session-id>/token` as the binding mechanism.
 
 All changes describe the system as it is now. No legacy-note language added.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches the design; verification passes (Go: `go build` + `go test ./...` clean; frontend: `npm run check` 0 errors, `npm run test` 635/635, `npm run build` clean). Implementation notes accurately document what landed, including any agent decisions or land-mode confirmations.
