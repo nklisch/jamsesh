@@ -1,7 +1,7 @@
 ---
 id: bug-csp-report-endpoint-not-wired
 kind: story
-stage: implementing
+stage: drafting
 tags: [security, portal, csp]
 parent: null
 depends_on: []
