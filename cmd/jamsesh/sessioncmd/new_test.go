@@ -836,7 +836,10 @@ func TestPlaygroundAction_pushFailureLeavesSessionLiveWithRetry(t *testing.T) {
 	}
 
 	// Must include a ready-to-run retry command.
-	expectedRemoteURL := strings.TrimRight(srv.URL, "/") + "/git/" + sessionID + ".git"
+	// The portal's git smart-HTTP route is /git/{orgID}/{sessionID}.git/...
+	// (see internal/portal/githttp/handler.go:90); playground sessions live
+	// under the reserved "org_playground" org.
+	expectedRemoteURL := strings.TrimRight(srv.URL, "/") + "/git/org_playground/" + sessionID + ".git"
 	expectedRefspec := "refs/heads/jam/" + sessionID + "/base"
 	if !strings.Contains(err.Error(), "git push") {
 		t.Errorf("error should include a git push retry command, got: %v", err)

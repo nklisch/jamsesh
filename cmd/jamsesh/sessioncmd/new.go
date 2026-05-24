@@ -387,7 +387,11 @@ func newPlaygroundAction(ctx context.Context, cmd *cli.Command) error {
 		Scope: cmd.String("scope"),
 	}
 	// scope defaults to "**" via the flag Default; normalise it.
-	if req.Scope != "" && req.Scope != "**" {
+	// The default "**" must be normalised the same as any user-supplied value
+	// because the portal validates scope as a JSON array via
+	// prereceive.ValidateWritableScope — a raw "**" string is rejected with
+	// session.invalid_writable_scope.
+	if req.Scope != "" {
 		normalized, err := normalizeScope(req.Scope)
 		if err != nil {
 			return fmt.Errorf("invalid --scope: %w", err)
@@ -441,7 +445,10 @@ func pushBaseRefWithBearer(ctx context.Context, baseURL, sessionID, bearer strin
 	headSHA = strings.TrimSpace(headSHA)
 	_ = headSHA // validated; actual push uses HEAD refspec
 
-	remoteURL := strings.TrimRight(baseURL, "/") + "/git/" + sessionID + ".git"
+	// The portal's git smart-HTTP route is /git/{orgID}/{sessionID}.git/...
+	// (see internal/portal/githttp/handler.go:90). Playground sessions live
+	// under the reserved "org_playground" org.
+	remoteURL := strings.TrimRight(baseURL, "/") + "/git/org_playground/" + sessionID + ".git"
 	// HTTP Basic: username is arbitrary ("jamsesh"), password is the bearer token.
 	basicHeader := "Authorization: Basic " + base64.StdEncoding.EncodeToString(
 		[]byte("jamsesh:"+bearer))
@@ -489,7 +496,7 @@ func writePlaygroundSessionState(session openapi.PlaygroundSessionSummary) error
 // wrapPlaygroundPushError wraps a push failure for the playground path,
 // including the explicit retry command. Session stays live per locked decision.
 func wrapPlaygroundPushError(pushErr error, session openapi.PlaygroundSessionSummary, baseURL string) error {
-	remoteURL := strings.TrimRight(baseURL, "/") + "/git/" + session.Id + ".git"
+	remoteURL := strings.TrimRight(baseURL, "/") + "/git/org_playground/" + session.Id + ".git"
 	retryCmd := fmt.Sprintf("git push %s HEAD:refs/heads/jam/%s/base", remoteURL, session.Id)
 	return fmt.Errorf(
 		"push failed (playground session %s is live with base_sha: null): %w\n"+
@@ -517,6 +524,11 @@ func printPlaygroundSummary(resp openapi.PlaygroundSessionCreated, baseURL strin
 // wrapPushError wraps a push failure with context including the explicit retry
 // command. The session is left live (not abandoned) per the locked design decision.
 func wrapPushError(pushErr error, session openapi.Session, baseURL string) error {
+	// Pre-existing bug: this retry hint URL is missing the org_id segment that
+	// the portal's git route actually expects (/git/{orgID}/{sessionID}.git).
+	// See bug-playground-git-receive-pack-fails-with-200-hangup.md — the
+	// durable-session variant of the same wiring issue. Not fixed here to keep
+	// the playground autopilot scope narrow; track separately.
 	remoteURL := strings.TrimRight(baseURL, "/") + "/git/" + session.Id + ".git"
 	retryCmd := fmt.Sprintf("git push %s HEAD:refs/heads/jam/%s/base", remoteURL, session.Id)
 	return fmt.Errorf(
