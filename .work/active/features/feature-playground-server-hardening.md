@@ -64,11 +64,19 @@ refactor (`openStore(t)` → `stores(t)`) — feature-design should
 sequence it after the validation story so the new tests for
 validation use the dialect-aware harness from the start.
 
+## Design decisions
+
+- **Home of extracted `validateWritableScope`**: extend `internal/portal/prereceive/` — that package already owns `CompileScope` (exported) and a private `parseWritableScope` (parse-only, no glob). Consolidating all scope-related primitives there avoids a new single-function package, accepts a mild responsibility blur (prereceive becomes both push-time validator and write-time validation provider), and gives sessions + playground a single import edge.
+- **`stores(t)` test helper**: consolidate into a shared test-helper package — canonical `stores(t)` (currently in `internal/db/store/helpers_test.go` with truncateAll cleanup) moves to a shared location (e.g. `internal/db/store/testharness/` or a test-tagged file in the store package), so the existing duplicate in `internal/portal/playground/provision_test.go` and the new 3rd usage in `playground/handler_test.go` import one source. The drift risk (one version has cleanup, the other doesn't) gets fixed in the same pass.
+- **Implementation order**: stores(t) refactor first → writable-scope-validation → wordlist-dedup (parallel-safe). The handler-test-coverage story delivers the shared `stores(t)` helper as part of its work; the validation story's new tests then use the dialect-aware harness from the start and get Postgres coverage for free. This reverses the literal reading of the original feature body — feature-design confirms the intent was "harness first" so downstream tests inherit it.
+
 ## Acceptance (rollup)
 
 - All three child stories at stage:done with verdicts ≥ approve-with-comments
-- `validateWritableScope` lives in a shared package and is imported
+- `validateWritableScope` lives in `internal/portal/prereceive/` and is imported
   by both `internal/portal/sessions/` and `internal/portal/playground/`
+- `stores(t)` is consolidated into one location and consumed by sessions tests,
+  playground provision tests, and playground handler tests
 - `go test ./internal/portal/playground/...` passes against both
   SQLite and Postgres
 - `sort internal/portal/playground/wordlist/adjectives.txt | uniq -c | awk '$1>1'`
