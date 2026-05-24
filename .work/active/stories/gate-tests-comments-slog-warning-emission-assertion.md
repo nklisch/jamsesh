@@ -1,7 +1,7 @@
 ---
 id: gate-tests-comments-slog-warning-emission-assertion
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, logging]
 parent: null
 depends_on: []
@@ -36,3 +36,21 @@ func TestServiceCreate_ActivityResetFailure_EmitsSlogWarning(t *testing.T) {
 
 ## Test location (suggested)
 `internal/portal/comments/service_test.go`
+
+## Implementation notes
+
+Added `TestServiceCreate_ActivityResetFailure_EmitsSlogWarning` in
+`internal/portal/comments/service_test.go`.
+
+Approach:
+- Added `failingResetIdleTimerStore` — a minimal store wrapper that
+  returns a fixed error from `ResetSessionIdleTimer` and delegates
+  everything else to the real store.
+- Seeds a playground org + session in the real store; wraps it with the
+  failing store for the `Service` under test.
+- Installs a `slog.NewJSONHandler(&buf, ...)` as `slog.Default()` before
+  the `Create` call, restoring the original default via `t.Cleanup`.
+- Asserts: Create returns a valid comment (best-effort path, no error
+  propagation), exactly one WARN record is captured, the message contains
+  `"reset idle timer failed"`, and the record carries attrs `org`, `session`,
+  and `err` matching the values passed in `service.go` line 224.

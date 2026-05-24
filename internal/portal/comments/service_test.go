@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -977,6 +979,160 @@ func TestServiceCreate_PlaygroundSession_ResetsIdleTimer(t *testing.T) {
 				idleTimeoutAt0, sess.IdleTimeoutAt)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Story: gate-tests-comments-slog-warning-emission-assertion
+//
+// The comments service emits a slog.Warn when ResetSessionIdleTimer fails
+// (best-effort idle-timer reset on playground sessions). This was migrated
+// from stdlib log to slog. The test below installs a capturing JSON handler
+// as the global slog default, triggers the failure path, and asserts:
+//   - exactly one Warn record is emitted
+//   - the message key contains "reset idle timer failed"
+//   - the record carries attrs: org, session, err
+// ---------------------------------------------------------------------------
+
+// failingResetIdleTimerStore wraps a real store and returns an error from
+// ResetSessionIdleTimer, simulating a transient DB failure on the idle-reset
+// best-effort path.
+type failingResetIdleTimerStore struct {
+	store.Store
+	resetErr error
+}
+
+func (f *failingResetIdleTimerStore) ResetSessionIdleTimer(_ context.Context, _ store.ResetSessionIdleTimerParams) error {
+	return f.resetErr
+}
+
+// TestServiceCreate_ActivityResetFailure_EmitsSlogWarning verifies that when
+// ResetSessionIdleTimer fails, Service.Create emits exactly one slog.Warn
+// record with the structured fields "org", "session", and "err".
+//
+// The comment creation itself must still succeed (the reset is best-effort).
+func TestServiceCreate_ActivityResetFailure_EmitsSlogWarning(t *testing.T) {
+	const pgOrgID = "org_playground"
+	const idleTimeout = 30 * time.Minute
+	ctx := context.Background()
+
+	// Open a real store for fixture seeding and the primary comment path.
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Seed org, account, and a playground session.
+	now := time.Date(2030, 6, 1, 10, 0, 0, 0, time.UTC)
+	accID := ulid.Make().String()
+	sessID := ulid.Make().String()
+	hardCap := now.Add(2 * time.Hour)
+	idleAt := now.Add(idleTimeout)
+
+	if _, err := s.CreateOrg(ctx, store.CreateOrgParams{
+		ID: pgOrgID, Name: "pg-warn-org", Slug: pgOrgID, CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+	if _, err := s.CreateAccount(ctx, store.CreateAccountParams{
+		ID: accID, Email: fmt.Sprintf("%s@test.pg", accID[:8]), DisplayName: "pg-warn-user", CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	if err := s.AddOrgMember(ctx, store.AddOrgMemberParams{
+		OrgID: pgOrgID, AccountID: accID, Role: "member", CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("AddOrgMember: %v", err)
+	}
+	if _, err := s.CreateSession(ctx, store.CreateSessionParams{
+		ID: sessID, OrgID: pgOrgID, Name: "pg-warn-sess", Goal: "",
+		WritableScope: `["**"]`, DefaultMode: "sync", Status: "active", CreatedAt: now,
+		LastSubstantiveActivityAt: &now,
+		HardCapAt:                 &hardCap,
+		IdleTimeoutAt:             &idleAt,
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := s.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID: pgOrgID, SessionID: sessID, AccountID: accID, Role: "creator", JoinedAt: now,
+	}); err != nil {
+		t.Fatalf("AddSessionMember: %v", err)
+	}
+
+	// Wrap the store so ResetSessionIdleTimer always fails.
+	resetErr := errors.New("simulated timer reset failure")
+	failing := &failingResetIdleTimerStore{Store: s, resetErr: resetErr}
+
+	// Install a capturing JSON slog handler as the global default.
+	// Restore the original default when the test finishes.
+	var buf bytes.Buffer
+	capHandler := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	origDefault := slog.Default()
+	slog.SetDefault(slog.New(capHandler))
+	t.Cleanup(func() { slog.SetDefault(origDefault) })
+
+	svc := &comments.Service{
+		Store:                 failing,
+		Log:                   events.New(s),
+		Clock:                 &fakeClock{t: now},
+		PlaygroundIdleTimeout: idleTimeout,
+	}
+
+	// Create should succeed — the idle-reset failure is best-effort.
+	comment, err := svc.Create(ctx, comments.CreateParams{
+		OrgID:           pgOrgID,
+		SessionID:       sessID,
+		AuthorAccountID: accID,
+		AuthorKind:      "human",
+		AnchorCommitSHA: "deadbeef",
+		Body:            "warn test comment",
+		Kind:            "fyi",
+	})
+	if err != nil {
+		t.Fatalf("Create should succeed despite reset failure, got: %v", err)
+	}
+	if comment.ID == "" {
+		t.Error("expected non-empty comment ID")
+	}
+
+	// Parse captured log lines and find Warn records.
+	var warnRecords []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		if entry["level"] == "WARN" {
+			warnRecords = append(warnRecords, entry)
+		}
+	}
+
+	// Exactly one Warn must have been emitted.
+	if len(warnRecords) != 1 {
+		t.Fatalf("expected exactly 1 WARN log record, got %d\nlog output:\n%s", len(warnRecords), buf.String())
+	}
+	rec := warnRecords[0]
+
+	// The message must mention the failed operation.
+	msg, _ := rec["msg"].(string)
+	if !strings.Contains(msg, "reset idle timer failed") {
+		t.Errorf("WARN msg %q should contain %q", msg, "reset idle timer failed")
+	}
+
+	// The record must carry the structured attrs: org, session, err.
+	if rec["org"] != pgOrgID {
+		t.Errorf("WARN record attr org: want %q, got %v", pgOrgID, rec["org"])
+	}
+	if rec["session"] != sessID {
+		t.Errorf("WARN record attr session: want %q, got %v", sessID, rec["session"])
+	}
+	errVal, _ := rec["err"].(string)
+	if !strings.Contains(errVal, resetErr.Error()) {
+		t.Errorf("WARN record attr err: want it to contain %q, got %q", resetErr.Error(), errVal)
+	}
 }
 
 func TestHandlerListComments_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
