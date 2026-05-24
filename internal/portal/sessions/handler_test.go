@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -759,4 +760,181 @@ func TestAbandonSession_NonCreatorForbidden(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", resp.StatusCode)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Playground activity-reset integration tests
+// ---------------------------------------------------------------------------
+
+// sessionsFakeClock is a controllable time source for sessions handler tests.
+// Local copy per test package — avoids cross-package import coupling (the
+// per-package-clock-interface pattern).
+type sessionsFakeClock struct{ t time.Time }
+
+func (c *sessionsFakeClock) Now() time.Time          { return c.t }
+func (c *sessionsFakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
+
+// seedPlaygroundSession inserts an org (with ID playgroundOrgID), a member
+// account, and a playground session row with timer fields pre-populated.
+// Returns the seeded account and session.
+func seedPlaygroundSession(
+	t *testing.T,
+	s store.Store,
+	orgID string,
+	T0 time.Time,
+	idleTimeout time.Duration,
+) (acc store.Account, sess openapi.Session) {
+	t.Helper()
+	ctx := context.Background()
+
+	acc = seedAccount(t, s, fmt.Sprintf("pg-%s@example.com", orgID[:6]))
+
+	if _, err := s.CreateOrg(ctx, store.CreateOrgParams{
+		ID:        orgID,
+		Name:      "pg-org",
+		Slug:      orgID,
+		CreatedAt: T0,
+	}); err != nil {
+		t.Fatalf("seedPlaygroundSession CreateOrg: %v", err)
+	}
+	seedOrgMember(t, s, orgID, acc.ID, "creator")
+
+	sessID := uuid.New().String()
+	hardCap := T0.Add(2 * time.Hour)
+	ito := T0.Add(idleTimeout)
+	if _, err := s.CreateSession(ctx, store.CreateSessionParams{
+		ID:            sessID,
+		OrgID:         orgID,
+		Name:          "pg-session",
+		Goal:          "playground test",
+		WritableScope: `["**"]`,
+		DefaultMode:   "sync",
+		Status:        "active",
+		CreatedAt:     T0,
+		LastSubstantiveActivityAt: &T0,
+		HardCapAt:                 &hardCap,
+		IdleTimeoutAt:             &ito,
+	}); err != nil {
+		t.Fatalf("seedPlaygroundSession CreateSession: %v", err)
+	}
+	if err := s.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID:     orgID,
+		SessionID: sessID,
+		AccountID: acc.ID,
+		Role:      "creator",
+		JoinedAt:  T0,
+	}); err != nil {
+		t.Fatalf("seedPlaygroundSession AddSessionMember: %v", err)
+	}
+
+	return acc, openapi.Session{Id: sessID}
+}
+
+// newTestEnvWithClock builds a sessions testEnv that uses an injected clock
+// and playground idle-timeout, for activity-reset integration tests.
+func newTestEnvWithClock(t *testing.T, clk sessions.Clock, playgroundIdleTimeout time.Duration) *testEnv {
+	t.Helper()
+	s := openStore(t)
+	svc := tokens.New(s)
+	stor := newStubStorage()
+	log := events.New(s)
+	sender := &stubSender{}
+	h := sessions.NewWithClock(s, stor, log, sender, "http://localhost:8443", clk).
+		WithPlaygroundIdleTimeout(playgroundIdleTimeout)
+
+	strictAPI := openapi.NewStrictHandlerWithOptions(&sessionsOnlyStrict{h}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
+	apiWrapper := &openapi.ServerInterfaceWrapper{
+		Handler:          strictAPI,
+		ErrorHandlerFunc: httperr.WriteBadRequest,
+	}
+
+	r := chi.NewRouter()
+	r.Group(func(r chi.Router) {
+		r.Use(tokens.BearerMiddleware(svc))
+		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/finalize", apiWrapper.FinalizeSession)
+	})
+
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	return &testEnv{srv: srv, svc: svc, s: s, stor: stor, sender: sender, eventLog: log}
+}
+
+// TestFinalizeSession_PlaygroundSession_ResetsIdleTimer verifies that
+// FinalizeSession calls store.ResetSessionIdleTimer for a playground session,
+// advancing both last_substantive_activity_at and idle_timeout_at.
+//
+// Negative control: same flow on a durable session must leave the timer
+// fields UNCHANGED.
+func TestFinalizeSession_PlaygroundSession_ResetsIdleTimer(t *testing.T) {
+	const playgroundOrgID = "org_playground"
+	const idleTimeout = 30 * time.Minute
+
+	// T0 is the anchor; the fake clock starts at T0+25m (within the 30m window).
+	T0 := time.Date(2030, 6, 1, 9, 0, 0, 0, time.UTC)
+	idleTimeoutAt0 := T0.Add(idleTimeout)
+
+	t.Run("playground session resets idle timer", func(t *testing.T) {
+		clk := &sessionsFakeClock{t: T0.Add(25 * time.Minute)}
+		env := newTestEnvWithClock(t, clk, idleTimeout)
+
+		acc, sess := seedPlaygroundSession(t, env.s, playgroundOrgID, T0, idleTimeout)
+		token := env.bearerToken(t, acc.ID)
+
+		resp := postJSON(t, env.srv, "/api/orgs/"+playgroundOrgID+"/sessions/"+sess.Id+"/finalize", token, nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+
+		// SELECT the session row and assert both timer fields moved forward.
+		row, err := env.s.GetSession(context.Background(), playgroundOrgID, sess.Id)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if row.LastSubstantiveActivityAt == nil {
+			t.Fatal("last_substantive_activity_at is nil after finalize")
+		}
+		if !row.LastSubstantiveActivityAt.After(T0) {
+			t.Errorf("last_substantive_activity_at should have advanced past T0 (%v), got %v",
+				T0, *row.LastSubstantiveActivityAt)
+		}
+		if row.IdleTimeoutAt == nil {
+			t.Fatal("idle_timeout_at is nil after finalize")
+		}
+		if !row.IdleTimeoutAt.After(idleTimeoutAt0) {
+			t.Errorf("idle_timeout_at should have advanced past T0+30m (%v), got %v",
+				idleTimeoutAt0, *row.IdleTimeoutAt)
+		}
+	})
+
+	t.Run("durable session idle timer unchanged", func(t *testing.T) {
+		durableOrgID := uuid.New().String()
+		clk := &sessionsFakeClock{t: T0.Add(25 * time.Minute)}
+		env := newTestEnvWithClock(t, clk, idleTimeout)
+
+		acc, sess := seedPlaygroundSession(t, env.s, durableOrgID, T0, idleTimeout)
+		token := env.bearerToken(t, acc.ID)
+
+		resp := postJSON(t, env.srv, "/api/orgs/"+durableOrgID+"/sessions/"+sess.Id+"/finalize", token, nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+
+		// Timer fields on durable sessions must remain unchanged.
+		row, err := env.s.GetSession(context.Background(), durableOrgID, sess.Id)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if row.LastSubstantiveActivityAt == nil || !row.LastSubstantiveActivityAt.Equal(T0) {
+			t.Errorf("durable session: last_substantive_activity_at should be unchanged at T0 (%v), got %v",
+				T0, row.LastSubstantiveActivityAt)
+		}
+		if row.IdleTimeoutAt == nil || !row.IdleTimeoutAt.Equal(idleTimeoutAt0) {
+			t.Errorf("durable session: idle_timeout_at should be unchanged at T0+30m (%v), got %v",
+				idleTimeoutAt0, row.IdleTimeoutAt)
+		}
+	})
 }

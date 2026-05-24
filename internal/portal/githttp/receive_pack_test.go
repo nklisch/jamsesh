@@ -996,6 +996,216 @@ func TestPostReceive_NonBaseRefDoesNotReStamp(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Playground activity-reset integration tests
+// ---------------------------------------------------------------------------
+
+// mustCreatePlaygroundSession creates an org row with the given orgID (which
+// must be "org_playground" to trigger the idle-timer reset), then inserts a
+// session with last_substantive_activity_at = T0 and idle_timeout_at = T0 +
+// idleTimeout. The account is added as a session member so git auth passes.
+func (e *pushEnv) mustCreatePlaygroundSession(
+	t *testing.T,
+	acc store.Account,
+	orgID string,
+	T0 time.Time,
+	idleTimeout time.Duration,
+) (sessionID string) {
+	t.Helper()
+	ctx := context.Background()
+
+	if _, err := e.store.CreateOrg(ctx, store.CreateOrgParams{
+		ID:        orgID,
+		Name:      "playground-org",
+		Slug:      orgID,
+		CreatedAt: T0,
+	}); err != nil {
+		t.Fatalf("mustCreatePlaygroundSession CreateOrg: %v", err)
+	}
+
+	sessionID = nextID("pg-sess")
+	hardCap := T0.Add(2 * time.Hour)
+	ito := T0.Add(idleTimeout)
+	if _, err := e.store.CreateSession(ctx, store.CreateSessionParams{
+		ID:            sessionID,
+		OrgID:         orgID,
+		Name:          "playground-session",
+		Goal:          "playground test",
+		WritableScope: `["**"]`,
+		DefaultMode:   "sync",
+		Status:        "active",
+		CreatedAt:     T0,
+		LastSubstantiveActivityAt: &T0,
+		HardCapAt:                 &hardCap,
+		IdleTimeoutAt:             &ito,
+	}); err != nil {
+		t.Fatalf("mustCreatePlaygroundSession CreateSession: %v", err)
+	}
+	if err := e.store.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID:     orgID,
+		SessionID: sessionID,
+		AccountID: acc.ID,
+		Role:      "member",
+		JoinedAt:  T0,
+	}); err != nil {
+		t.Fatalf("mustCreatePlaygroundSession AddSessionMember: %v", err)
+	}
+	return sessionID
+}
+
+// TestPostReceive_PlaygroundActivityResetsIdleTimer verifies end-to-end that
+// a successful git push to a playground session (orgID == "org_playground" and
+// PlaygroundIdleTimeout > 0) calls store.ResetSessionIdleTimer, advancing both
+// last_substantive_activity_at and idle_timeout_at.
+//
+// Negative control: same flow on a durable (non-playground) session must leave
+// the timer fields UNCHANGED.
+func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
+	const playgroundOrgID = "org_playground"
+	const idleTimeout = 30 * time.Minute
+
+	// T0 is a fixed time well in the past. The session is seeded with timer
+	// fields anchored at T0; after a successful push the handler calls
+	// time.Now().UTC() (real wall clock), advancing both fields past T0.
+	// We assert > T0 rather than an exact value to stay independent of speed.
+	T0 := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	idleTimeoutAt0 := T0.Add(idleTimeout)
+
+	// newPlaygroundPushEnv builds a githttp pushEnv with PlaygroundIdleTimeout set.
+	newPlaygroundPushEnv := func(t *testing.T) *pushEnv {
+		t.Helper()
+		ctx := context.Background()
+		storageRoot := t.TempDir()
+
+		s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+		if err != nil {
+			t.Fatalf("open sqlite: %v", err)
+		}
+		t.Cleanup(func() { _ = s.Close() })
+
+		tokenSvc := tokens.New(s)
+		storageSvc := storage.New(storageRoot, s)
+		eventLog := events.New(s)
+
+		h := &githttp.Handler{
+			Store:                 s,
+			Tokens:                tokenSvc,
+			Storage:               storageSvc,
+			Validator:             &prereceive.Validator{MaxPackBytes: 50 * 1024 * 1024},
+			Emitter:               &postreceive.Emitter{Log: eventLog},
+			PlaygroundIdleTimeout: idleTimeout,
+		}
+
+		r := chi.NewRouter()
+		h.Mount(r)
+
+		srv := httptest.NewServer(r)
+		t.Cleanup(srv.Close)
+
+		return &pushEnv{
+			store:       s,
+			tokenSvc:    tokenSvc,
+			storageSvc:  storageSvc,
+			storageRoot: storageRoot,
+			eventLog:    eventLog,
+			server:      srv,
+		}
+	}
+
+	t.Run("playground session resets idle timer", func(t *testing.T) {
+		env := newPlaygroundPushEnv(t)
+		acc, token := env.mustIssueToken(t, "pg-push@example.com")
+
+		sessionID := env.mustCreatePlaygroundSession(t, acc, playgroundOrgID, T0, idleTimeout)
+
+		// Initialise the bare repo and a working clone.
+		bareDir := filepath.Join(env.storageRoot, "orgs", playgroundOrgID, "sessions", sessionID+".git")
+		workDir := initBareRepo(t, bareDir)
+
+		makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "src/hello.go", "package main")
+
+		// Record time just before the push so we can assert the reset moved
+		// the fields forward past the pre-push wall clock.
+		beforePush := time.Now().UTC()
+
+		refName := fmt.Sprintf("refs/heads/jam/%s/%s/main", sessionID, acc.ID)
+		pushURLStr := env.pushURL(token, playgroundOrgID, sessionID)
+		pushCmd := exec.Command("git", "push", pushURLStr, fmt.Sprintf("HEAD:%s", refName))
+		pushCmd.Dir = workDir
+		pushCmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+		out, err := pushCmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git push to playground session failed: %v\n%s", err, out)
+		}
+
+		// SELECT and assert both timer fields moved forward.
+		ctx := context.Background()
+		sess, err := env.store.GetSession(ctx, playgroundOrgID, sessionID)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if sess.LastSubstantiveActivityAt == nil {
+			t.Fatal("last_substantive_activity_at is nil after playground push")
+		}
+		// The reset sets the timestamp to time.Now() inside the handler, so it
+		// must be at or after beforePush and strictly after T0.
+		if !sess.LastSubstantiveActivityAt.After(T0) {
+			t.Errorf("last_substantive_activity_at should have advanced past T0 (%v), got %v",
+				T0, *sess.LastSubstantiveActivityAt)
+		}
+		if sess.LastSubstantiveActivityAt.Before(beforePush) {
+			t.Errorf("last_substantive_activity_at (%v) is before pre-push wall time (%v)",
+				*sess.LastSubstantiveActivityAt, beforePush)
+		}
+		if sess.IdleTimeoutAt == nil {
+			t.Fatal("idle_timeout_at is nil after playground push")
+		}
+		if !sess.IdleTimeoutAt.After(idleTimeoutAt0) {
+			t.Errorf("idle_timeout_at should have advanced past original T0+30m (%v), got %v",
+				idleTimeoutAt0, *sess.IdleTimeoutAt)
+		}
+	})
+
+	t.Run("durable session idle timer unchanged", func(t *testing.T) {
+		env := newPlaygroundPushEnv(t)
+		acc, token := env.mustIssueToken(t, "durable-push@example.com")
+
+		// Use a distinct orgID that is NOT "org_playground".
+		durableOrgID := nextID("durable-org")
+		sessionID := env.mustCreatePlaygroundSession(t, acc, durableOrgID, T0, idleTimeout)
+
+		bareDir := filepath.Join(env.storageRoot, "orgs", durableOrgID, "sessions", sessionID+".git")
+		workDir := initBareRepo(t, bareDir)
+
+		makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "src/hello.go", "package main")
+
+		refName := fmt.Sprintf("refs/heads/jam/%s/%s/main", sessionID, acc.ID)
+		pushURLStr := env.pushURL(token, durableOrgID, sessionID)
+		pushCmd := exec.Command("git", "push", pushURLStr, fmt.Sprintf("HEAD:%s", refName))
+		pushCmd.Dir = workDir
+		pushCmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+		out, err := pushCmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git push to durable session failed: %v\n%s", err, out)
+		}
+
+		// Timer fields on durable sessions must remain unchanged.
+		ctx := context.Background()
+		sess, err := env.store.GetSession(ctx, durableOrgID, sessionID)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if sess.LastSubstantiveActivityAt == nil || !sess.LastSubstantiveActivityAt.Equal(T0) {
+			t.Errorf("durable: last_substantive_activity_at should be unchanged at T0 (%v), got %v",
+				T0, sess.LastSubstantiveActivityAt)
+		}
+		if sess.IdleTimeoutAt == nil || !sess.IdleTimeoutAt.Equal(idleTimeoutAt0) {
+			t.Errorf("durable: idle_timeout_at should be unchanged at T0+30m (%v), got %v",
+				idleTimeoutAt0, sess.IdleTimeoutAt)
+		}
+	})
+}
+
 // TestPostReceive_SetBaseSHAFailureIsNonFatal verifies the non-fatal
 // degradation path: when SetSessionBaseSHA returns an error (e.g. transient DB
 // failure), the push still completes successfully from the git client's

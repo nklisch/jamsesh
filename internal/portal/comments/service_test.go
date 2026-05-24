@@ -812,6 +812,173 @@ func (f *failingListCommentsStore) ListCommentsForSession(_ context.Context, _ s
 	return nil, errors.New("conn refused")
 }
 
+// ---------------------------------------------------------------------------
+// Playground activity-reset integration tests
+// ---------------------------------------------------------------------------
+
+// TestServiceCreate_PlaygroundSession_ResetsIdleTimer verifies that
+// Service.Create calls store.ResetSessionIdleTimer after a successful comment
+// on a playground session, advancing both last_substantive_activity_at and
+// idle_timeout_at.
+//
+// The test also runs a negative control: the same flow on a durable (non-
+// playground) session must leave the timer fields UNCHANGED.
+func TestServiceCreate_PlaygroundSession_ResetsIdleTimer(t *testing.T) {
+	const playgroundOrgID = "org_playground"
+	const idleTimeout = 30 * time.Minute
+
+	// T0 is a fixed anchor time. The fake clock starts here and is advanced
+	// to T0+25m to simulate a session that is within its idle window.
+	T0 := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
+	idleTimeoutAt0 := T0.Add(idleTimeout)
+
+	ctx := context.Background()
+
+	// Open a fresh store for each sub-test so fixture data is isolated.
+	openSQLite := func(t *testing.T) store.Store {
+		t.Helper()
+		s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+		if err != nil {
+			t.Fatalf("open store: %v", err)
+		}
+		t.Cleanup(func() { _ = s.Close() })
+		return s
+	}
+
+	// seedPlaygroundSession inserts an org, account, and playground session
+	// into s, returning the session member's accountID and session ID.
+	seedPlaygroundSession := func(t *testing.T, s store.Store, orgID string) (accID, sessID string) {
+		t.Helper()
+		accID = ulid.Make().String()
+		sessID = ulid.Make().String()
+
+		if _, err := s.CreateOrg(ctx, store.CreateOrgParams{
+			ID: orgID, Name: "pg-org", Slug: orgID, CreatedAt: T0,
+		}); err != nil {
+			t.Fatalf("CreateOrg: %v", err)
+		}
+		if _, err := s.CreateAccount(ctx, store.CreateAccountParams{
+			ID: accID, Email: fmt.Sprintf("%s@pg.test", accID[:8]), DisplayName: "pg-user", CreatedAt: T0,
+		}); err != nil {
+			t.Fatalf("CreateAccount: %v", err)
+		}
+		if err := s.AddOrgMember(ctx, store.AddOrgMemberParams{
+			OrgID: orgID, AccountID: accID, Role: "member", CreatedAt: T0,
+		}); err != nil {
+			t.Fatalf("AddOrgMember: %v", err)
+		}
+		ito := idleTimeoutAt0
+		hardCap := T0.Add(2 * time.Hour)
+		if _, err := s.CreateSession(ctx, store.CreateSessionParams{
+			ID: sessID, OrgID: orgID, Name: "pg-sess", Goal: "playground test",
+			WritableScope: `["**"]`, DefaultMode: "sync", Status: "active", CreatedAt: T0,
+			LastSubstantiveActivityAt: &T0,
+			HardCapAt:                 &hardCap,
+			IdleTimeoutAt:             &ito,
+		}); err != nil {
+			t.Fatalf("CreateSession: %v", err)
+		}
+		if err := s.AddSessionMember(ctx, store.AddSessionMemberParams{
+			OrgID: orgID, SessionID: sessID, AccountID: accID, Role: "creator", JoinedAt: T0,
+		}); err != nil {
+			t.Fatalf("AddSessionMember: %v", err)
+		}
+		return accID, sessID
+	}
+
+	t.Run("playground session resets idle timer", func(t *testing.T) {
+		s := openSQLite(t)
+		accID, sessID := seedPlaygroundSession(t, s, playgroundOrgID)
+
+		// Set clock to T0+25m (within the 30m idle window).
+		clk := &fakeClock{t: T0.Add(25 * time.Minute)}
+
+		log := events.New(s)
+		svc := &comments.Service{
+			Store:                 s,
+			Log:                   log,
+			Clock:                 clk,
+			PlaygroundIdleTimeout: idleTimeout,
+		}
+
+		_, err := svc.Create(ctx, comments.CreateParams{
+			OrgID:           playgroundOrgID,
+			SessionID:       sessID,
+			AuthorAccountID: accID,
+			AuthorKind:      "human",
+			AnchorCommitSHA: "deadbeef",
+			Body:            "substantive comment",
+			Kind:            "fyi",
+		})
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		// SELECT the session row and assert both timer fields moved forward.
+		sess, err := s.GetSession(ctx, playgroundOrgID, sessID)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if sess.LastSubstantiveActivityAt == nil {
+			t.Fatal("last_substantive_activity_at is nil after comment create")
+		}
+		if !sess.LastSubstantiveActivityAt.After(T0) {
+			t.Errorf("last_substantive_activity_at should have advanced past T0 (%v), got %v",
+				T0, *sess.LastSubstantiveActivityAt)
+		}
+		if sess.IdleTimeoutAt == nil {
+			t.Fatal("idle_timeout_at is nil after comment create")
+		}
+		if !sess.IdleTimeoutAt.After(idleTimeoutAt0) {
+			t.Errorf("idle_timeout_at should have advanced past T0+30m (%v), got %v",
+				idleTimeoutAt0, *sess.IdleTimeoutAt)
+		}
+	})
+
+	t.Run("durable session idle timer unchanged", func(t *testing.T) {
+		s := openSQLite(t)
+		durableOrgID := ulid.Make().String()
+		accID, sessID := seedPlaygroundSession(t, s, durableOrgID)
+
+		clk2 := &fakeClock{t: T0.Add(25 * time.Minute)}
+
+		log := events.New(s)
+		svc := &comments.Service{
+			Store:                 s,
+			Log:                   log,
+			Clock:                 clk2,
+			PlaygroundIdleTimeout: idleTimeout,
+		}
+
+		_, err := svc.Create(ctx, comments.CreateParams{
+			OrgID:           durableOrgID,
+			SessionID:       sessID,
+			AuthorAccountID: accID,
+			AuthorKind:      "human",
+			AnchorCommitSHA: "deadbeef",
+			Body:            "substantive comment on durable session",
+			Kind:            "fyi",
+		})
+		if err != nil {
+			t.Fatalf("Create on durable session: %v", err)
+		}
+
+		// Timer fields on durable sessions must remain unchanged.
+		sess, err := s.GetSession(ctx, durableOrgID, sessID)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if sess.LastSubstantiveActivityAt == nil || !sess.LastSubstantiveActivityAt.Equal(T0) {
+			t.Errorf("durable session: last_substantive_activity_at should be unchanged at T0 (%v), got %v",
+				T0, sess.LastSubstantiveActivityAt)
+		}
+		if sess.IdleTimeoutAt == nil || !sess.IdleTimeoutAt.Equal(idleTimeoutAt0) {
+			t.Errorf("durable session: idle_timeout_at should be unchanged at T0+30m (%v), got %v",
+				idleTimeoutAt0, sess.IdleTimeoutAt)
+		}
+	})
+}
+
 func TestHandlerListComments_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
 	s, _, err := db.Open(context.Background(), "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
