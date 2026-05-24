@@ -266,12 +266,9 @@ func pushBaseRef(ctx context.Context, pc *portalclient.Client, sessionID string)
 	if err := runGit("rev-parse", "--git-dir"); err != nil {
 		return fmt.Errorf("not a git checkout: %w", err)
 	}
-	headSHA, err := runGitOutput("rev-parse", "HEAD")
-	if err != nil {
+	if _, err := runGitOutput("rev-parse", "HEAD"); err != nil {
 		return fmt.Errorf("repo has no commits yet (nothing to push as base): %w", err)
 	}
-	headSHA = strings.TrimSpace(headSHA)
-	_ = headSHA // used for validation; actual push uses HEAD refspec
 
 	// Read the current token for Basic auth injection.
 	// We use -c http.extraHeader rather than embedding the token in the URL because:
@@ -438,12 +435,9 @@ func pushBaseRefWithBearer(ctx context.Context, baseURL, sessionID, bearer strin
 	if err := runGit("rev-parse", "--git-dir"); err != nil {
 		return fmt.Errorf("not a git checkout: %w", err)
 	}
-	headSHA, err := runGitOutput("rev-parse", "HEAD")
-	if err != nil {
+	if _, err := runGitOutput("rev-parse", "HEAD"); err != nil {
 		return fmt.Errorf("repo has no commits yet (nothing to push as base): %w", err)
 	}
-	headSHA = strings.TrimSpace(headSHA)
-	_ = headSHA // validated; actual push uses HEAD refspec
 
 	// The portal's git smart-HTTP route is /git/{orgID}/{sessionID}.git/...
 	// (see internal/portal/githttp/handler.go:90). Playground sessions live
