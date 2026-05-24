@@ -38,7 +38,10 @@ CREATE TABLE sessions (
     created_at TIMESTAMPTZ NOT NULL,
     ended_at TIMESTAMPTZ,
     end_reason TEXT,
-    finalize_locked_by_account_id TEXT REFERENCES accounts(id)
+    finalize_locked_by_account_id TEXT REFERENCES accounts(id),
+    last_substantive_activity_at TIMESTAMPTZ,  -- NOT NULL for new rows; nullable only for pre-migration rows
+    hard_cap_at TIMESTAMPTZ,                   -- nullable; set only for playground sessions
+    idle_timeout_at TIMESTAMPTZ                -- nullable; set only for playground sessions
 );
 CREATE INDEX sessions_org_idx ON sessions(org_id);
 
@@ -270,3 +273,20 @@ CREATE TABLE leases (
 );
 
 CREATE INDEX leases_released_at_idx ON leases(released_at) WHERE released_at IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- tombstones table (00018_playground_sessions migration)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE tombstones (
+    session_id         TEXT PRIMARY KEY,
+    org_id             TEXT NOT NULL,
+    members_count      INTEGER NOT NULL,
+    commits_count      INTEGER NOT NULL,
+    auto_merges_count  INTEGER NOT NULL,
+    duration_seconds   INTEGER NOT NULL,
+    end_reason         TEXT NOT NULL,
+    ended_at           TIMESTAMPTZ NOT NULL,
+    expires_at         TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX tombstones_expires_idx ON tombstones(expires_at);

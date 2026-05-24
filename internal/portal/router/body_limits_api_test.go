@@ -157,6 +157,18 @@ func (stubStrict) ListSessionRefs(_ context.Context, _ openapi.ListSessionRefsRe
 func (stubStrict) IssueWsTicket(_ context.Context, _ openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
 	return nil, nil
 }
+func (stubStrict) CreatePlaygroundSession(_ context.Context, _ openapi.CreatePlaygroundSessionRequestObject) (openapi.CreatePlaygroundSessionResponseObject, error) {
+	return nil, nil
+}
+func (stubStrict) JoinPlaygroundSession(_ context.Context, _ openapi.JoinPlaygroundSessionRequestObject) (openapi.JoinPlaygroundSessionResponseObject, error) {
+	return nil, nil
+}
+func (stubStrict) GetPlaygroundSession(_ context.Context, _ openapi.GetPlaygroundSessionRequestObject) (openapi.GetPlaygroundSessionResponseObject, error) {
+	return nil, nil
+}
+func (stubStrict) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Helper: build a test router wired with the real strict handler pipeline.

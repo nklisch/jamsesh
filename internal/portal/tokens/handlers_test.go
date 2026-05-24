@@ -143,6 +143,18 @@ func (t *tokensOnlyHandler) GetOrg(_ context.Context, _ openapi.GetOrgRequestObj
 func (t *tokensOnlyHandler) IssueWsTicket(_ context.Context, _ openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
 	panic("IssueWsTicket: not implemented in token handler tests")
 }
+func (t *tokensOnlyHandler) CreatePlaygroundSession(_ context.Context, _ openapi.CreatePlaygroundSessionRequestObject) (openapi.CreatePlaygroundSessionResponseObject, error) {
+	panic("not wired")
+}
+func (t *tokensOnlyHandler) JoinPlaygroundSession(_ context.Context, _ openapi.JoinPlaygroundSessionRequestObject) (openapi.JoinPlaygroundSessionResponseObject, error) {
+	panic("not wired")
+}
+func (t *tokensOnlyHandler) GetPlaygroundSession(_ context.Context, _ openapi.GetPlaygroundSessionRequestObject) (openapi.GetPlaygroundSessionResponseObject, error) {
+	panic("not wired")
+}
+func (t *tokensOnlyHandler) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

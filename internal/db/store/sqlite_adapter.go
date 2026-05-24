@@ -159,6 +159,9 @@ func sqliteSession(row sqlitestore.Session) Session {
 		EndedAt:                   row.EndedAt,
 		EndReason:                 nullStringToPtr(row.EndReason),
 		FinalizeLockedByAccountID: nullStringToPtr(row.FinalizeLockedByAccountID),
+		LastSubstantiveActivityAt: nullTimeToPtr(row.LastSubstantiveActivityAt),
+		HardCapAt:                 nullTimeToPtr(row.HardCapAt),
+		IdleTimeoutAt:             nullTimeToPtr(row.IdleTimeoutAt),
 	}
 }
 
@@ -420,16 +423,19 @@ func (a *sqliteAdapter) RemoveOrgMember(ctx context.Context, p RemoveOrgMemberPa
 
 func (a *sqliteAdapter) CreateSession(ctx context.Context, p CreateSessionParams) (Session, error) {
 	row, err := a.q.CreateSession(ctx, sqlitestore.CreateSessionParams{
-		ID:            p.ID,
-		OrgID:         p.OrgID,
-		Name:          p.Name,
-		Goal:          p.Goal,
-		WritableScope: p.WritableScope,
-		DefaultMode:   p.DefaultMode,
-		BaseSha:       p.BaseSHA,
-		Status:        p.Status,
-		CreatedAt:     p.CreatedAt,
-		EndedAt:       p.EndedAt,
+		ID:                        p.ID,
+		OrgID:                     p.OrgID,
+		Name:                      p.Name,
+		Goal:                      p.Goal,
+		WritableScope:             p.WritableScope,
+		DefaultMode:               p.DefaultMode,
+		BaseSha:                   p.BaseSHA,
+		Status:                    p.Status,
+		CreatedAt:                 p.CreatedAt,
+		EndedAt:                   p.EndedAt,
+		LastSubstantiveActivityAt: ptrToNullTime(p.LastSubstantiveActivityAt),
+		HardCapAt:                 ptrToNullTime(p.HardCapAt),
+		IdleTimeoutAt:             ptrToNullTime(p.IdleTimeoutAt),
 	})
 	if err != nil {
 		return Session{}, mapSQLiteErr(err)
@@ -603,6 +609,80 @@ func (a *sqliteAdapter) ListSessionMembershipsForAccount(ctx context.Context, ac
 		memberships[i] = sqliteSessionMembership(r)
 	}
 	return memberships, nil
+}
+
+func (a *sqliteAdapter) NicknameTakenInSession(ctx context.Context, p NicknameTakenInSessionParams) (bool, error) {
+	taken, err := a.q.NicknameTakenInSession(ctx, sqlitestore.NicknameTakenInSessionParams{
+		OrgID:       p.OrgID,
+		SessionID:   p.SessionID,
+		DisplayName: p.DisplayName,
+	})
+	return taken, mapSQLiteErr(err)
+}
+
+func (a *sqliteAdapter) CountSessionMembers(ctx context.Context, p CountSessionMembersParams) (int64, error) {
+	count, err := a.q.CountSessionMembers(ctx, sqlitestore.CountSessionMembersParams{
+		OrgID:     p.OrgID,
+		SessionID: p.SessionID,
+	})
+	return count, mapSQLiteErr(err)
+}
+
+// ---------------------------------------------------------------------------
+// TombstoneStore
+// ---------------------------------------------------------------------------
+
+func sqliteTombstone(row sqlitestore.Tombstone) Tombstone {
+	endedAt := time.Time{}
+	if row.EndedAt != nil {
+		endedAt = *row.EndedAt
+	}
+	return Tombstone{
+		SessionID:       row.SessionID,
+		OrgID:           row.OrgID,
+		MembersCount:    row.MembersCount,
+		CommitsCount:    row.CommitsCount,
+		AutoMergesCount: row.AutoMergesCount,
+		DurationSeconds: row.DurationSeconds,
+		EndReason:       row.EndReason,
+		EndedAt:         endedAt,
+		ExpiresAt:       row.ExpiresAt,
+	}
+}
+
+func (a *sqliteAdapter) GetTombstone(ctx context.Context, sessionID string) (Tombstone, error) {
+	row, err := a.q.GetTombstone(ctx, sessionID)
+	if err != nil {
+		return Tombstone{}, mapSQLiteErr(err)
+	}
+	return sqliteTombstone(row), nil
+}
+
+func (a *sqliteAdapter) RecordTombstone(ctx context.Context, p RecordTombstoneParams) error {
+	return mapSQLiteErr(a.q.RecordTombstone(ctx, sqlitestore.RecordTombstoneParams{
+		SessionID:       p.SessionID,
+		OrgID:           p.OrgID,
+		MembersCount:    p.MembersCount,
+		CommitsCount:    p.CommitsCount,
+		AutoMergesCount: p.AutoMergesCount,
+		DurationSeconds: p.DurationSeconds,
+		EndReason:       p.EndReason,
+		EndedAt:         &p.EndedAt,
+		ExpiresAt:       p.ExpiresAt,
+	}))
+}
+
+// ---------------------------------------------------------------------------
+// PlaygroundSessionStore
+// ---------------------------------------------------------------------------
+
+func (a *sqliteAdapter) ResetSessionIdleTimer(ctx context.Context, p ResetSessionIdleTimerParams) error {
+	return mapSQLiteErr(a.q.ResetSessionIdleTimer(ctx, sqlitestore.ResetSessionIdleTimerParams{
+		LastSubstantiveActivityAt: sql.NullTime{Time: p.LastSubstantiveActivityAt, Valid: true},
+		IdleTimeoutAt:             sql.NullTime{Time: p.IdleTimeoutAt, Valid: true},
+		OrgID:                     p.OrgID,
+		ID:                        p.SessionID,
+	}))
 }
 
 // ---------------------------------------------------------------------------
@@ -1251,7 +1331,14 @@ func (s *sqliteTxStore) RemoveOrgMember(ctx context.Context, p RemoveOrgMemberPa
 
 // SessionStore
 func (s *sqliteTxStore) CreateSession(ctx context.Context, p CreateSessionParams) (Session, error) {
-	row, err := s.q.CreateSession(ctx, sqlitestore.CreateSessionParams{ID: p.ID, OrgID: p.OrgID, Name: p.Name, Goal: p.Goal, WritableScope: p.WritableScope, DefaultMode: p.DefaultMode, BaseSha: p.BaseSHA, Status: p.Status, CreatedAt: p.CreatedAt, EndedAt: p.EndedAt})
+	row, err := s.q.CreateSession(ctx, sqlitestore.CreateSessionParams{
+		ID: p.ID, OrgID: p.OrgID, Name: p.Name, Goal: p.Goal, WritableScope: p.WritableScope,
+		DefaultMode: p.DefaultMode, BaseSha: p.BaseSHA, Status: p.Status, CreatedAt: p.CreatedAt,
+		EndedAt:                   p.EndedAt,
+		LastSubstantiveActivityAt: ptrToNullTime(p.LastSubstantiveActivityAt),
+		HardCapAt:                 ptrToNullTime(p.HardCapAt),
+		IdleTimeoutAt:             ptrToNullTime(p.IdleTimeoutAt),
+	})
 	if err != nil {
 		return Session{}, mapSQLiteErr(err)
 	}
@@ -1350,6 +1437,49 @@ func (s *sqliteTxStore) ListSessionMembershipsForAccount(ctx context.Context, ac
 		memberships[i] = sqliteSessionMembership(r)
 	}
 	return memberships, nil
+}
+
+func (s *sqliteTxStore) NicknameTakenInSession(ctx context.Context, p NicknameTakenInSessionParams) (bool, error) {
+	taken, err := s.q.NicknameTakenInSession(ctx, sqlitestore.NicknameTakenInSessionParams{
+		OrgID:       p.OrgID,
+		SessionID:   p.SessionID,
+		DisplayName: p.DisplayName,
+	})
+	return taken, mapSQLiteErr(err)
+}
+
+func (s *sqliteTxStore) CountSessionMembers(ctx context.Context, p CountSessionMembersParams) (int64, error) {
+	count, err := s.q.CountSessionMembers(ctx, sqlitestore.CountSessionMembersParams{OrgID: p.OrgID, SessionID: p.SessionID})
+	return count, mapSQLiteErr(err)
+}
+
+// TombstoneStore
+func (s *sqliteTxStore) GetTombstone(ctx context.Context, sessionID string) (Tombstone, error) {
+	row, err := s.q.GetTombstone(ctx, sessionID)
+	if err != nil {
+		return Tombstone{}, mapSQLiteErr(err)
+	}
+	return sqliteTombstone(row), nil
+}
+
+func (s *sqliteTxStore) RecordTombstone(ctx context.Context, p RecordTombstoneParams) error {
+	return mapSQLiteErr(s.q.RecordTombstone(ctx, sqlitestore.RecordTombstoneParams{
+		SessionID: p.SessionID, OrgID: p.OrgID, MembersCount: p.MembersCount,
+		CommitsCount: p.CommitsCount, AutoMergesCount: p.AutoMergesCount,
+		DurationSeconds: p.DurationSeconds, EndReason: p.EndReason,
+		EndedAt:   &p.EndedAt,
+		ExpiresAt: p.ExpiresAt,
+	}))
+}
+
+// PlaygroundSessionStore
+func (s *sqliteTxStore) ResetSessionIdleTimer(ctx context.Context, p ResetSessionIdleTimerParams) error {
+	return mapSQLiteErr(s.q.ResetSessionIdleTimer(ctx, sqlitestore.ResetSessionIdleTimerParams{
+		LastSubstantiveActivityAt: sql.NullTime{Time: p.LastSubstantiveActivityAt, Valid: true},
+		IdleTimeoutAt:             sql.NullTime{Time: p.IdleTimeoutAt, Valid: true},
+		OrgID:                     p.OrgID,
+		ID:                        p.SessionID,
+	}))
 }
 
 // OAuthTokenStore

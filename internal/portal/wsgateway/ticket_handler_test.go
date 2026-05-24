@@ -146,6 +146,18 @@ func (h *wsTicketOnlyHandler) ListSessionRefs(_ context.Context, _ openapi.ListS
 func (h *wsTicketOnlyHandler) UpsertRefMode(_ context.Context, _ openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
 	panic("not implemented")
 }
+func (h *wsTicketOnlyHandler) CreatePlaygroundSession(_ context.Context, _ openapi.CreatePlaygroundSessionRequestObject) (openapi.CreatePlaygroundSessionResponseObject, error) {
+	panic("not wired")
+}
+func (h *wsTicketOnlyHandler) JoinPlaygroundSession(_ context.Context, _ openapi.JoinPlaygroundSessionRequestObject) (openapi.JoinPlaygroundSessionResponseObject, error) {
+	panic("not wired")
+}
+func (h *wsTicketOnlyHandler) GetPlaygroundSession(_ context.Context, _ openapi.GetPlaygroundSessionRequestObject) (openapi.GetPlaygroundSessionResponseObject, error) {
+	panic("not wired")
+}
+func (h *wsTicketOnlyHandler) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
+	panic("not wired")
+}
 
 // Ensure wsTicketOnlyHandler satisfies the interface at compile time.
 var _ openapi.StrictServerInterface = (*wsTicketOnlyHandler)(nil)

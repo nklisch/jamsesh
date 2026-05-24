@@ -159,6 +159,9 @@ func pgSession(row pgstore.Session) Session {
 		EndedAt:                   row.EndedAt,
 		EndReason:                 pgTextToPtr(row.EndReason),
 		FinalizeLockedByAccountID: pgTextToPtr(row.FinalizeLockedByAccountID),
+		LastSubstantiveActivityAt: pgTimestamptzToPtr(row.LastSubstantiveActivityAt),
+		HardCapAt:                 pgTimestamptzToPtr(row.HardCapAt),
+		IdleTimeoutAt:             pgTimestamptzToPtr(row.IdleTimeoutAt),
 	}
 }
 
@@ -423,16 +426,19 @@ func (a *postgresAdapter) RemoveOrgMember(ctx context.Context, p RemoveOrgMember
 
 func (a *postgresAdapter) CreateSession(ctx context.Context, p CreateSessionParams) (Session, error) {
 	row, err := a.q.CreateSession(ctx, pgstore.CreateSessionParams{
-		ID:            p.ID,
-		OrgID:         p.OrgID,
-		Name:          p.Name,
-		Goal:          p.Goal,
-		WritableScope: p.WritableScope,
-		DefaultMode:   p.DefaultMode,
-		BaseSha:       p.BaseSHA,
-		Status:        p.Status,
-		CreatedAt:     p.CreatedAt,
-		EndedAt:       p.EndedAt,
+		ID:                        p.ID,
+		OrgID:                     p.OrgID,
+		Name:                      p.Name,
+		Goal:                      p.Goal,
+		WritableScope:             p.WritableScope,
+		DefaultMode:               p.DefaultMode,
+		BaseSha:                   p.BaseSHA,
+		Status:                    p.Status,
+		CreatedAt:                 p.CreatedAt,
+		EndedAt:                   p.EndedAt,
+		LastSubstantiveActivityAt: ptrToPgTimestamptz(p.LastSubstantiveActivityAt),
+		HardCapAt:                 ptrToPgTimestamptz(p.HardCapAt),
+		IdleTimeoutAt:             ptrToPgTimestamptz(p.IdleTimeoutAt),
 	})
 	if err != nil {
 		return Session{}, mapPostgresErr(err)
@@ -606,6 +612,77 @@ func (a *postgresAdapter) ListSessionMembershipsForAccount(ctx context.Context, 
 		memberships[i] = pgSessionMembership(r)
 	}
 	return memberships, nil
+}
+
+func (a *postgresAdapter) NicknameTakenInSession(ctx context.Context, p NicknameTakenInSessionParams) (bool, error) {
+	taken, err := a.q.NicknameTakenInSession(ctx, pgstore.NicknameTakenInSessionParams{
+		OrgID:       p.OrgID,
+		SessionID:   p.SessionID,
+		DisplayName: p.DisplayName,
+	})
+	return taken, mapPostgresErr(err)
+}
+
+func (a *postgresAdapter) CountSessionMembers(ctx context.Context, p CountSessionMembersParams) (int64, error) {
+	count, err := a.q.CountSessionMembers(ctx, pgstore.CountSessionMembersParams{OrgID: p.OrgID, SessionID: p.SessionID})
+	return count, mapPostgresErr(err)
+}
+
+// ---------------------------------------------------------------------------
+// TombstoneStore
+// ---------------------------------------------------------------------------
+
+func pgTombstone(row pgstore.Tombstone) Tombstone {
+	endedAt := time.Time{}
+	if row.EndedAt != nil {
+		endedAt = *row.EndedAt
+	}
+	return Tombstone{
+		SessionID:       row.SessionID,
+		OrgID:           row.OrgID,
+		MembersCount:    int64(row.MembersCount),
+		CommitsCount:    int64(row.CommitsCount),
+		AutoMergesCount: int64(row.AutoMergesCount),
+		DurationSeconds: int64(row.DurationSeconds),
+		EndReason:       row.EndReason,
+		EndedAt:         endedAt,
+		ExpiresAt:       row.ExpiresAt,
+	}
+}
+
+func (a *postgresAdapter) GetTombstone(ctx context.Context, sessionID string) (Tombstone, error) {
+	row, err := a.q.GetTombstone(ctx, sessionID)
+	if err != nil {
+		return Tombstone{}, mapPostgresErr(err)
+	}
+	return pgTombstone(row), nil
+}
+
+func (a *postgresAdapter) RecordTombstone(ctx context.Context, p RecordTombstoneParams) error {
+	return mapPostgresErr(a.q.RecordTombstone(ctx, pgstore.RecordTombstoneParams{
+		SessionID:       p.SessionID,
+		OrgID:           p.OrgID,
+		MembersCount:    int32(p.MembersCount),
+		CommitsCount:    int32(p.CommitsCount),
+		AutoMergesCount: int32(p.AutoMergesCount),
+		DurationSeconds: int32(p.DurationSeconds),
+		EndReason:       p.EndReason,
+		EndedAt:         &p.EndedAt,
+		ExpiresAt:       p.ExpiresAt,
+	}))
+}
+
+// ---------------------------------------------------------------------------
+// PlaygroundSessionStore
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) ResetSessionIdleTimer(ctx context.Context, p ResetSessionIdleTimerParams) error {
+	return mapPostgresErr(a.q.ResetSessionIdleTimer(ctx, pgstore.ResetSessionIdleTimerParams{
+		LastSubstantiveActivityAt: pgtype.Timestamptz{Time: p.LastSubstantiveActivityAt, Valid: true},
+		IdleTimeoutAt:             pgtype.Timestamptz{Time: p.IdleTimeoutAt, Valid: true},
+		OrgID:                     p.OrgID,
+		ID:                        p.SessionID,
+	}))
 }
 
 // ---------------------------------------------------------------------------
@@ -1254,7 +1331,14 @@ func (s *postgresTxStore) RemoveOrgMember(ctx context.Context, p RemoveOrgMember
 
 // SessionStore
 func (s *postgresTxStore) CreateSession(ctx context.Context, p CreateSessionParams) (Session, error) {
-	row, err := s.q.CreateSession(ctx, pgstore.CreateSessionParams{ID: p.ID, OrgID: p.OrgID, Name: p.Name, Goal: p.Goal, WritableScope: p.WritableScope, DefaultMode: p.DefaultMode, BaseSha: p.BaseSHA, Status: p.Status, CreatedAt: p.CreatedAt, EndedAt: p.EndedAt})
+	row, err := s.q.CreateSession(ctx, pgstore.CreateSessionParams{
+		ID: p.ID, OrgID: p.OrgID, Name: p.Name, Goal: p.Goal, WritableScope: p.WritableScope,
+		DefaultMode: p.DefaultMode, BaseSha: p.BaseSHA, Status: p.Status, CreatedAt: p.CreatedAt,
+		EndedAt:                   p.EndedAt,
+		LastSubstantiveActivityAt: ptrToPgTimestamptz(p.LastSubstantiveActivityAt),
+		HardCapAt:                 ptrToPgTimestamptz(p.HardCapAt),
+		IdleTimeoutAt:             ptrToPgTimestamptz(p.IdleTimeoutAt),
+	})
 	if err != nil {
 		return Session{}, mapPostgresErr(err)
 	}
@@ -1353,6 +1437,49 @@ func (s *postgresTxStore) ListSessionMembershipsForAccount(ctx context.Context, 
 		memberships[i] = pgSessionMembership(r)
 	}
 	return memberships, nil
+}
+
+func (s *postgresTxStore) NicknameTakenInSession(ctx context.Context, p NicknameTakenInSessionParams) (bool, error) {
+	taken, err := s.q.NicknameTakenInSession(ctx, pgstore.NicknameTakenInSessionParams{
+		OrgID:       p.OrgID,
+		SessionID:   p.SessionID,
+		DisplayName: p.DisplayName,
+	})
+	return taken, mapPostgresErr(err)
+}
+
+func (s *postgresTxStore) CountSessionMembers(ctx context.Context, p CountSessionMembersParams) (int64, error) {
+	count, err := s.q.CountSessionMembers(ctx, pgstore.CountSessionMembersParams{OrgID: p.OrgID, SessionID: p.SessionID})
+	return count, mapPostgresErr(err)
+}
+
+// TombstoneStore
+func (s *postgresTxStore) GetTombstone(ctx context.Context, sessionID string) (Tombstone, error) {
+	row, err := s.q.GetTombstone(ctx, sessionID)
+	if err != nil {
+		return Tombstone{}, mapPostgresErr(err)
+	}
+	return pgTombstone(row), nil
+}
+
+func (s *postgresTxStore) RecordTombstone(ctx context.Context, p RecordTombstoneParams) error {
+	return mapPostgresErr(s.q.RecordTombstone(ctx, pgstore.RecordTombstoneParams{
+		SessionID: p.SessionID, OrgID: p.OrgID, MembersCount: int32(p.MembersCount),
+		CommitsCount: int32(p.CommitsCount), AutoMergesCount: int32(p.AutoMergesCount),
+		DurationSeconds: int32(p.DurationSeconds), EndReason: p.EndReason,
+		EndedAt:   &p.EndedAt,
+		ExpiresAt: p.ExpiresAt,
+	}))
+}
+
+// PlaygroundSessionStore
+func (s *postgresTxStore) ResetSessionIdleTimer(ctx context.Context, p ResetSessionIdleTimerParams) error {
+	return mapPostgresErr(s.q.ResetSessionIdleTimer(ctx, pgstore.ResetSessionIdleTimerParams{
+		LastSubstantiveActivityAt: pgtype.Timestamptz{Time: p.LastSubstantiveActivityAt, Valid: true},
+		IdleTimeoutAt:             pgtype.Timestamptz{Time: p.IdleTimeoutAt, Valid: true},
+		OrgID:                     p.OrgID,
+		ID:                        p.SessionID,
+	}))
 }
 
 // OAuthTokenStore

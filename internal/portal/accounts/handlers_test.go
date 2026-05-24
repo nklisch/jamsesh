@@ -181,6 +181,18 @@ func (a *accountsOnlyStrict) GetOrg(ctx context.Context, req openapi.GetOrgReque
 func (a *accountsOnlyStrict) IssueWsTicket(_ context.Context, _ openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
 	panic("IssueWsTicket: not implemented in accounts handler tests")
 }
+func (a *accountsOnlyStrict) CreatePlaygroundSession(_ context.Context, _ openapi.CreatePlaygroundSessionRequestObject) (openapi.CreatePlaygroundSessionResponseObject, error) {
+	panic("not wired")
+}
+func (a *accountsOnlyStrict) JoinPlaygroundSession(_ context.Context, _ openapi.JoinPlaygroundSessionRequestObject) (openapi.JoinPlaygroundSessionResponseObject, error) {
+	panic("not wired")
+}
+func (a *accountsOnlyStrict) GetPlaygroundSession(_ context.Context, _ openapi.GetPlaygroundSessionRequestObject) (openapi.GetPlaygroundSessionResponseObject, error) {
+	panic("not wired")
+}
+func (a *accountsOnlyStrict) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*accountsOnlyStrict)(nil)
 

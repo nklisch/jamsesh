@@ -40,6 +40,8 @@ type TxStore interface {
 	CommentStore
 	FinalizeLockStore
 	LeaseStore
+	TombstoneStore
+	PlaygroundSessionStore
 }
 
 // Store is the unified data-access interface for the portal. All handler and
@@ -64,6 +66,8 @@ type Store interface {
 	CommentStore
 	FinalizeLockStore
 	LeaseStore
+	TombstoneStore
+	PlaygroundSessionStore
 
 	// WithTx opens a dialect-appropriate transaction, calls fn with a TxStore
 	// backed by that transaction, and commits on success or rolls back on any
@@ -132,18 +136,37 @@ type OrgMemberWithAccount struct {
 
 // Session is a collaborative coding session.
 type Session struct {
-	ID                       string
-	OrgID                    string
-	Name                     string
-	Goal                     string
-	WritableScope            string     // JSON array, stored verbatim
-	DefaultMode              string     // "sync" | "isolated"
-	BaseSHA                  *string    // nullable until first push
-	Status                   string     // "active" | "finalizing" | "ended" | "archived"
-	CreatedAt                time.Time
-	EndedAt                  *time.Time
-	EndReason                *string // nullable; "abandoned" | "finalized" | "timeout"
-	FinalizeLockedByAccountID *string // nullable; set while finalize-flow is in progress
+	ID                        string
+	OrgID                     string
+	Name                      string
+	Goal                      string
+	WritableScope             string     // JSON array, stored verbatim
+	DefaultMode               string     // "sync" | "isolated"
+	BaseSHA                   *string    // nullable until first push
+	Status                    string     // "active" | "finalizing" | "ended" | "archived"
+	CreatedAt                 time.Time
+	EndedAt                   *time.Time
+	EndReason                 *string    // nullable; "abandoned" | "finalized" | "timeout"
+	FinalizeLockedByAccountID *string    // nullable; set while finalize-flow is in progress
+	// Playground-specific fields — nil for durable org sessions.
+	LastSubstantiveActivityAt *time.Time // updated by push/comment/finalize-attempt
+	HardCapAt                 *time.Time // nullable; session destroyed when now > HardCapAt
+	IdleTimeoutAt             *time.Time // nullable; session destroyed when now > IdleTimeoutAt
+}
+
+// Tombstone records the destruction summary for a destroyed playground session.
+// The session row is deleted at destruction time; the tombstone is the only
+// record of what happened. Expires after TombstoneTTL (default 30 days).
+type Tombstone struct {
+	SessionID       string
+	OrgID           string
+	MembersCount    int64
+	CommitsCount    int64
+	AutoMergesCount int64
+	DurationSeconds int64
+	EndReason       string     // "idle" | "hard_cap" | "manual"
+	EndedAt         time.Time
+	ExpiresAt       time.Time
 }
 
 // RefMode is a per-ref mode override for a session.
@@ -288,6 +311,10 @@ type CreateSessionParams struct {
 	Status        string
 	CreatedAt     time.Time
 	EndedAt       *time.Time
+	// Playground-specific; nil for durable org sessions.
+	LastSubstantiveActivityAt *time.Time
+	HardCapAt                 *time.Time
+	IdleTimeoutAt             *time.Time
 }
 
 type GetSessionParams struct {
@@ -545,6 +572,32 @@ type SessionMemberStore interface {
 	// account across all orgs. This is the intentional cross-org exception —
 	// the caller receives org_id on each row for further scoped queries.
 	ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]SessionMembership, error)
+	// NicknameTakenInSession reports whether any member within this session
+	// has the given display_name. Used by the playground join handler's
+	// collision-retry loop.
+	NicknameTakenInSession(ctx context.Context, p NicknameTakenInSessionParams) (bool, error)
+	// CountSessionMembers returns the number of current members in a session.
+	// Used by the playground join handler to enforce MaxParticipants cap.
+	CountSessionMembers(ctx context.Context, p CountSessionMembersParams) (int64, error)
+}
+
+// TombstoneStore covers the tombstones table used to record destroyed
+// playground session summaries.
+type TombstoneStore interface {
+	// GetTombstone returns the tombstone for a destroyed session, or ErrNotFound
+	// when the session is still active or the tombstone TTL has elapsed.
+	GetTombstone(ctx context.Context, sessionID string) (Tombstone, error)
+	// RecordTombstone inserts a tombstone row. Idempotent: ON CONFLICT DO NOTHING.
+	RecordTombstone(ctx context.Context, p RecordTombstoneParams) error
+}
+
+// PlaygroundSessionStore covers playground-specific session queries.
+type PlaygroundSessionStore interface {
+	// ResetSessionIdleTimer updates last_substantive_activity_at and
+	// idle_timeout_at on a session. Called by push/comment/finalize-attempt
+	// handlers to prevent the destruction worker from treating the session
+	// as idle.
+	ResetSessionIdleTimer(ctx context.Context, p ResetSessionIdleTimerParams) error
 }
 
 // ArchivedSessionStore covers archived-session reads and writes.
@@ -631,6 +684,40 @@ type ListSessionsForOrgWithCursorParams struct {
 	OrgID     string
 	Before    time.Time // exclusive upper bound on created_at
 	Limit     int64
+}
+
+// NicknameTakenInSessionParams are the parameters for NicknameTakenInSession.
+type NicknameTakenInSessionParams struct {
+	OrgID       string
+	SessionID   string
+	DisplayName string
+}
+
+// CountSessionMembersParams are the parameters for CountSessionMembers.
+type CountSessionMembersParams struct {
+	OrgID     string
+	SessionID string
+}
+
+// RecordTombstoneParams are the parameters for RecordTombstone.
+type RecordTombstoneParams struct {
+	SessionID       string
+	OrgID           string
+	MembersCount    int64
+	CommitsCount    int64
+	AutoMergesCount int64
+	DurationSeconds int64
+	EndReason       string
+	EndedAt         time.Time
+	ExpiresAt       time.Time
+}
+
+// ResetSessionIdleTimerParams are the parameters for ResetSessionIdleTimer.
+type ResetSessionIdleTimerParams struct {
+	OrgID                     string
+	SessionID                 string
+	LastSubstantiveActivityAt time.Time
+	IdleTimeoutAt             time.Time
 }
 
 // UpsertPresenceParams are the parameters for UpsertPresence.

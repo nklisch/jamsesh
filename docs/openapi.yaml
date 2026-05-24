@@ -1440,6 +1440,183 @@ components:
             The branch name the plugin pushed the squash commit to. Optional;
             when omitted, the event payload omits it too.
 
+    # ---------------------------------------------------------------------------
+    # Playground session schemas
+    # ---------------------------------------------------------------------------
+
+    CreatePlaygroundSessionRequest:
+      type: object
+      description: |
+        Optional body for POST /api/playground/sessions. All fields are optional;
+        the server supplies defaults for any omitted field. No auth required.
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Display name for the session. Defaults to "playground-<short-id>" when omitted.
+          example: "demo"
+        goal:
+          type: string
+          maxLength: 4096
+          description: Free-text objective for the session. Defaults to empty string.
+          example: "Explore the new auth refactor"
+        scope:
+          type: string
+          description: |
+            JSON array of path globs defining the writable scope.
+            Defaults to "**" (allow all paths) when omitted.
+          example: '["**"]'
+
+    JoinPlaygroundSessionRequest:
+      type: object
+      description: |
+        Body for POST /api/playground/sessions/{id}/join. The nickname field is
+        optional; if absent the server picks a handle using the wordlist generator.
+        If the suggested nickname is already taken in the session, the server retries
+        with a fresh wordlist pick (up to 10 attempts) before falling back to a
+        random-suffix handle.
+      properties:
+        nickname:
+          type: string
+          maxLength: 64
+          description: |
+            Requested display handle (e.g. "amber-otter"). Optional; server picks
+            one if absent. Server retries on collision with a fresh wordlist pick.
+          example: "quiet-fox"
+
+    PlaygroundSessionCreated:
+      type: object
+      required: [session, bearer, nickname, expires_at]
+      description: |
+        Response body for POST /api/playground/sessions (201 Created).
+        Contains the session summary, the anonymous bearer token for git and
+        REST calls, the server-assigned handle, and the token expiry timestamp.
+      properties:
+        session:
+          $ref: '#/components/schemas/PlaygroundSessionSummary'
+        bearer:
+          type: string
+          description: |
+            Raw anonymous-session bearer token. Must be stored by the client
+            and passed as HTTP Basic password for git and as Authorization
+            Bearer for REST calls. Valid until expires_at.
+          example: "jamsesh_anon_01abcdef..."
+        nickname:
+          type: string
+          description: Server-assigned pronounceable handle (adjective-animal form).
+          example: "amber-otter"
+        expires_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the bearer (and hard-cap) expires.
+
+    PlaygroundJoinResult:
+      type: object
+      required: [session, bearer, nickname, expires_at]
+      description: |
+        Response body for POST /api/playground/sessions/{id}/join (200 OK).
+      properties:
+        session:
+          $ref: '#/components/schemas/PlaygroundSessionSummary'
+        bearer:
+          type: string
+          description: Raw anonymous-session bearer token for the joining participant.
+          example: "jamsesh_anon_01xyz..."
+        nickname:
+          type: string
+          description: Confirmed handle for this participant (may differ from requested if collision).
+          example: "quiet-fox"
+        expires_at:
+          type: string
+          format: date-time
+          description: |
+            ISO-8601 timestamp when this bearer expires (synced to the session
+            hard-cap deadline, minus elapsed time).
+
+    PlaygroundSessionSummary:
+      type: object
+      required: [id, org_id, name, goal, scope, status, created_at, hard_cap_at, idle_timeout_at, members_count]
+      description: Compact session descriptor returned by playground endpoints.
+      properties:
+        id:
+          type: string
+          description: Session ID
+          example: "sess_01abcdef012345"
+        org_id:
+          type: string
+          description: Reserved playground org ID ("org_playground")
+          example: "org_playground"
+        name:
+          type: string
+          description: Display name
+          example: "playground-01ab"
+        goal:
+          type: string
+          description: Session objective (may be empty)
+        scope:
+          type: string
+          description: JSON array of writable-scope globs
+          example: '["**"]'
+        status:
+          type: string
+          enum: [active, ended]
+          description: Session lifecycle status
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 creation timestamp
+        hard_cap_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the session is hard-terminated
+        idle_timeout_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the session is idle-terminated (last activity + IdleTimeout)
+        members_count:
+          type: integer
+          description: Current number of participants
+
+    PlaygroundTombstone:
+      type: object
+      required: [session_id, org_id, members_count, commits_count, auto_merges_count, duration_seconds, end_reason, ended_at, expires_at]
+      description: |
+        Destruction summary for a playground session that has ended. Returned by
+        GET /api/playground/sessions/{id}/tombstone. The tombstone is retained for
+        TombstoneTTL (default 30 days) after destruction, after which both the
+        tombstone and the GET endpoint return 404.
+      properties:
+        session_id:
+          type: string
+          description: ID of the destroyed session
+        org_id:
+          type: string
+          description: Org ID (always "org_playground")
+        members_count:
+          type: integer
+          description: Total participants at time of destruction
+        commits_count:
+          type: integer
+          description: Total commits pushed to the session
+        auto_merges_count:
+          type: integer
+          description: Total auto-merges that succeeded during the session
+        duration_seconds:
+          type: integer
+          description: Session lifetime in seconds (ended_at minus created_at)
+        end_reason:
+          type: string
+          enum: [idle, hard_cap, manual]
+          description: Why the session was destroyed
+        ended_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the session was destroyed
+        expires_at:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when this tombstone itself expires (default 30 days after ended_at)
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -2925,3 +3102,163 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/playground/sessions:
+    post:
+      summary: Create an ephemeral anonymous playground session
+      description: |
+        Creates a new playground session in the reserved playground org. No
+        authentication is required. The server mints an anonymous account +
+        bearer for the creator and returns them in the response body. The
+        bearer is used for all subsequent REST calls and git-over-HTTPS
+        operations within this session.
+
+        Returns 503 when JAMSESH_PLAYGROUND_ENABLED=false.
+      operationId: createPlaygroundSession
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlaygroundSessionRequest'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaygroundSessionCreated'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Playground feature is disabled on this deployment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/playground/sessions/{id}/join:
+    post:
+      summary: Join an existing playground session
+      description: |
+        Joins an existing playground session as a new anonymous participant.
+        The server mints an anonymous account + bearer for the joiner.
+
+        Returns 409 playground.session_full when the session is at the
+        MaxParticipants cap (default 5). The response body includes
+        retry_after_seconds and a link to start a fresh session.
+
+        Returns 410 playground.session_ended when the session's hard_cap_at
+        has elapsed (the session is still in the DB but effectively over —
+        the destruction worker hasn't cleaned it up yet).
+
+        Returns 404 when the session does not exist (never created, or already
+        destroyed and tombstone-expired).
+
+        Returns 503 when JAMSESH_PLAYGROUND_ENABLED=false.
+      operationId: joinPlaygroundSession
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Playground session ID
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinPlaygroundSessionRequest'
+      responses:
+        '200':
+          description: Joined successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaygroundJoinResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Session full. Error code: playground.session_full.
+            Body includes retry_after_seconds and an alternative URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '410':
+          description: "Session has ended. Error code: playground.session_ended."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Playground feature is disabled on this deployment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/playground/sessions/{id}:
+    get:
+      summary: Get playground session metadata
+      description: |
+        Returns a summary of the playground session including remaining time.
+        Requires a valid anonymous session bearer issued for this session.
+        Returns 401 for missing/invalid bearer and 403 for a valid bearer
+        that does not belong to a member of this session.
+      operationId: getPlaygroundSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Playground session ID
+      responses:
+        '200':
+          description: Session summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaygroundSessionSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/playground/sessions/{id}/tombstone:
+    get:
+      summary: Get the destruction summary for an ended playground session
+      description: |
+        Returns the tombstone record for a destroyed playground session.
+        Returns 404 when the session is still active OR when the tombstone
+        TTL (default 30 days) has elapsed. This endpoint is what the
+        portal-UI post-destruction page reads from.
+      operationId: getPlaygroundTombstone
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Playground session ID
+      responses:
+        '200':
+          description: Tombstone record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaygroundTombstone'
+        '404':
+          $ref: '#/components/responses/NotFound'

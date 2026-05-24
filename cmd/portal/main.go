@@ -66,11 +66,12 @@ type combinedHandler struct {
 	*tokens.Handler
 	*auth.MagicLinkHandler
 	*auth.OAuthHandler
-	AccountsHandler  *accounts.Handler
-	SessionsHandler  *sessions.Handler
-	CommentsHandler  *comments.Handler
-	FinalizeHandler  *finalize.Handler
-	WsTicketHandler  *wsgateway.WsTicketHandler
+	AccountsHandler   *accounts.Handler
+	SessionsHandler   *sessions.Handler
+	CommentsHandler   *comments.Handler
+	FinalizeHandler   *finalize.Handler
+	WsTicketHandler   *wsgateway.WsTicketHandler
+	PlaygroundHandler *playground.Handler
 }
 
 // GetMe delegates to the accounts handler.
@@ -226,6 +227,26 @@ func (c *combinedHandler) MarkSessionShipped(ctx context.Context, req openapi.Ma
 // IssueWsTicket delegates to the ws-ticket handler.
 func (c *combinedHandler) IssueWsTicket(ctx context.Context, req openapi.IssueWsTicketRequestObject) (openapi.IssueWsTicketResponseObject, error) {
 	return c.WsTicketHandler.IssueWsTicket(ctx, req)
+}
+
+// CreatePlaygroundSession delegates to the playground handler.
+func (c *combinedHandler) CreatePlaygroundSession(ctx context.Context, req openapi.CreatePlaygroundSessionRequestObject) (openapi.CreatePlaygroundSessionResponseObject, error) {
+	return c.PlaygroundHandler.CreatePlaygroundSession(ctx, req)
+}
+
+// JoinPlaygroundSession delegates to the playground handler.
+func (c *combinedHandler) JoinPlaygroundSession(ctx context.Context, req openapi.JoinPlaygroundSessionRequestObject) (openapi.JoinPlaygroundSessionResponseObject, error) {
+	return c.PlaygroundHandler.JoinPlaygroundSession(ctx, req)
+}
+
+// GetPlaygroundSession delegates to the playground handler.
+func (c *combinedHandler) GetPlaygroundSession(ctx context.Context, req openapi.GetPlaygroundSessionRequestObject) (openapi.GetPlaygroundSessionResponseObject, error) {
+	return c.PlaygroundHandler.GetPlaygroundSession(ctx, req)
+}
+
+// GetPlaygroundTombstone delegates to the playground handler.
+func (c *combinedHandler) GetPlaygroundTombstone(ctx context.Context, req openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
+	return c.PlaygroundHandler.GetPlaygroundTombstone(ctx, req)
 }
 
 // compile-time assertion that combinedHandler satisfies the full interface.
@@ -568,6 +589,23 @@ func main() {
 		sessionsHandler = sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
 	}
 
+	// Build the playground handler. The handler is always constructed (even
+	// when PlaygroundEnabled=false) because the routes are registered
+	// unconditionally — the handler returns 503 for all calls when disabled.
+	playgroundHandler := &playground.Handler{
+		Store:   dbStore,
+		Tokens:  tokenSvc,
+		Storage: storageSvc,
+		Cfg: playground.Config{
+			Enabled:         cfg.PlaygroundEnabled,
+			IdleTimeout:     time.Duration(cfg.PlaygroundIdleTimeoutS) * time.Second,
+			HardCap:         time.Duration(cfg.PlaygroundHardCapS) * time.Second,
+			MaxParticipants: cfg.PlaygroundMaxParticipants,
+		},
+		Clock:  playground.RealClock(),
+		Logger: slog.Default(),
+	}
+
 	// Build the comments service and handler. In e2etest builds, the
 	// Clock field is set to the advanceable clock via the struct-literal;
 	// in production builds commentsClock() returns nil and the now()
@@ -660,14 +698,15 @@ func main() {
 	//   - RequestErrorHandlerFunc: emits a "request.malformed" 400 envelope
 	//     instead of the default plain-text response.
 	strictAPI := openapi.NewStrictHandlerWithOptions(&combinedHandler{
-		Handler:          tokenHandler,
-		MagicLinkHandler: magicLinkHandler,
-		OAuthHandler:     oauthHandler,
-		AccountsHandler:  accountsHandler,
-		SessionsHandler:  sessionsHandler,
-		CommentsHandler:  commentsHandler,
-		FinalizeHandler:  finalizeHandler,
-		WsTicketHandler:  &wsgateway.WsTicketHandler{Tickets: wsTicketStore},
+		Handler:           tokenHandler,
+		MagicLinkHandler:  magicLinkHandler,
+		OAuthHandler:      oauthHandler,
+		AccountsHandler:   accountsHandler,
+		SessionsHandler:   sessionsHandler,
+		CommentsHandler:   commentsHandler,
+		FinalizeHandler:   finalizeHandler,
+		WsTicketHandler:   &wsgateway.WsTicketHandler{Tickets: wsTicketStore},
+		PlaygroundHandler: playgroundHandler,
 	}, nil, openapi.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  httperr.WriteBadRequest,
 		ResponseErrorHandlerFunc: httperr.WriteFromError,
@@ -849,6 +888,18 @@ func main() {
 				// handler validates lock_id binding and transitions the
 				// session to shipped.
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/mark-shipped", apiWrapper.MarkSessionShipped)
+
+				// Playground — GET session requires a valid anonymous bearer
+				// (issued at create/join time). The handler validates membership.
+				r.Get("/playground/sessions/{id}", apiWrapper.GetPlaygroundSession)
+			})
+
+			// Playground — unauthenticated: create and join issue fresh bearers,
+			// tombstone is public (no credential needed to read destruction summary).
+			r.Group(func(r chi.Router) {
+				r.Post("/playground/sessions", apiWrapper.CreatePlaygroundSession)
+				r.Post("/playground/sessions/{id}/join", apiWrapper.JoinPlaygroundSession)
+				r.Get("/playground/sessions/{id}/tombstone", apiWrapper.GetPlaygroundTombstone)
 			})
 		},
 	})

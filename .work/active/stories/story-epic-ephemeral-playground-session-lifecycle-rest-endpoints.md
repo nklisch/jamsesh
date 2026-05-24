@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-rest-endpoints
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: []
@@ -67,3 +67,38 @@ active sessions and the summary after destruction, OpenAPI
   consumes the wave-1 anon-bearer feature primitive.
 - Reserved org via `playground.ReservedOrgID = "org_playground"` constant
   — consumes the wave-1 reserved-org feature primitive.
+
+## Implementation notes
+
+### Design deviation: bearer issuance outside the session TX
+
+The feature design sketch placed `IssueAnonymousSessionBearer` inside
+`store.WithTx`. In practice this causes a SQLite deadlock in tests: the
+outer TX holds the WAL write lock, and `IssueAnonymousSessionBearer` opens
+its own TX on the same pool (it is wired against the top-level store, not
+the TxStore). The fix is to split the create path into three sequential
+steps: (1) session row in TX, (2) bearer + anon-account issuance outside
+TX, (3) member row inserted directly. Partial failure at step 2 or 3 leaves
+an orphaned session row; the destruction sweep (Story 2) cleans this up.
+The same pattern is used for join (bearer issued outside, member row added
+after).
+
+### Router wiring
+
+Playground routes are mounted inside the existing `MountAPI` closure in
+`cmd/portal/main.go`:
+
+- `GET /playground/sessions/{id}` inside the bearer-middleware group (the
+  handler validates session membership of the caller's anon account).
+- `POST /playground/sessions`, `POST /playground/sessions/{id}/join`, and
+  `GET /playground/sessions/{id}/tombstone` in a sibling unauthenticated
+  group (no bearer middleware; the handler returns 503 when `Enabled=false`).
+
+### Files delivered (actual)
+
+All files listed in the Scope section are present. The `router.go` file
+was NOT modified — wiring went into `cmd/portal/main.go` directly (the
+router uses a `MountAPI` hook pattern and does not have a separate
+playground-handler field). The `playground.Handler` was added to
+`combinedHandler` in `cmd/portal/main.go` and 4 delegate methods were
+added to satisfy `StrictServerInterface`.

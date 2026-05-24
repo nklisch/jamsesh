@@ -357,6 +357,30 @@ func (s *stubStore) Ping(_ context.Context) error { panic("not implemented") }
 func (s *stubStore) Close() error                  { return nil }
 func (s *stubStore) Dialect() string               { return "stub" }
 
+// --- SessionMemberStore (playground additions) ---
+
+func (s *stubStore) NicknameTakenInSession(_ context.Context, _ store.NicknameTakenInSessionParams) (bool, error) {
+	panic("not implemented")
+}
+func (s *stubStore) CountSessionMembers(_ context.Context, _ store.CountSessionMembersParams) (int64, error) {
+	panic("not implemented")
+}
+
+// --- TombstoneStore ---
+
+func (s *stubStore) GetTombstone(_ context.Context, _ string) (store.Tombstone, error) {
+	panic("not implemented")
+}
+func (s *stubStore) RecordTombstone(_ context.Context, _ store.RecordTombstoneParams) error {
+	panic("not implemented")
+}
+
+// --- PlaygroundSessionStore ---
+
+func (s *stubStore) ResetSessionIdleTimer(_ context.Context, _ store.ResetSessionIdleTimerParams) error {
+	panic("not implemented")
+}
+
 // Compile-time interface check.
 var _ store.Store = (*stubStore)(nil)
 
