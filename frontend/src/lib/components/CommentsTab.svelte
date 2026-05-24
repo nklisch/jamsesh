@@ -16,12 +16,19 @@
   } = $props();
 
   let comments = $state<Comment[]>([]);
-  let isLoading = $state(true);
-  let loadError = $state<string | null>(null);
+
+  // ── Load state machine ────────────────────────────────────────────────────
+  //
+  //  loading → ready   (GET 200, items stored)
+  //  loading → error   (GET non-200 or network failure)
+  //  ready   → loading (re-fetch on WS event)
+  //  error   → loading (re-fetch on WS event)
+  type LoadState = 'loading' | 'ready' | 'error';
+  let loadState = $state<LoadState>('loading');
+  let loadError = $state('');
 
   async function fetchComments() {
-    isLoading = true;
-    loadError = null;
+    loadState = 'loading';
     const { data, error } = await client.GET(
       '/api/orgs/{orgID}/sessions/{sessionID}/comments',
       {
@@ -30,10 +37,11 @@
     );
     if (error) {
       loadError = 'Failed to load comments.';
+      loadState = 'error';
     } else if (data) {
       comments = data.items;
+      loadState = 'ready';
     }
-    isLoading = false;
   }
 
   $effect(() => {
@@ -87,9 +95,9 @@
 </script>
 
 <div class="comments-tab" aria-label="Comments">
-  {#if isLoading}
+  {#if loadState === 'loading'}
     <p class="status-msg">Loading comments…</p>
-  {:else if loadError}
+  {:else if loadState === 'error'}
     <p class="status-msg error" role="alert">{loadError}</p>
   {:else if comments.length === 0}
     <p class="status-msg">No comments yet.</p>

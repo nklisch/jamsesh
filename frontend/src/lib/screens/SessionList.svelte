@@ -17,10 +17,16 @@
   // Props — orgId comes from route params; caller passes it in.
   let { orgId }: { orgId: string } = $props();
 
+  // ── Load state machine ────────────────────────────────────────────────────
+  //
+  //  loading → ready  (GET 200, session list stored)
+  //  loading → error  (GET non-200 or network failure)
+  type LoadState = 'loading' | 'ready' | 'error';
+
   // State
   let sessions = $state<Session[]>([]);
-  let isLoading = $state(true);
-  let loadError = $state<string | null>(null);
+  let loadState = $state<LoadState>('loading');
+  let loadError = $state('');
   let activeFilter = $state<FilterType>('all');
   let drawerOpen = $state(false);
 
@@ -40,17 +46,17 @@
   });
 
   async function loadSessions() {
-    isLoading = true;
-    loadError = null;
+    loadState = 'loading';
     const { data, error } = await client.GET('/api/orgs/{orgID}/sessions', {
       params: { path: { orgID: orgId } },
     });
     if (error) {
       loadError = 'Failed to load sessions.';
+      loadState = 'error';
     } else if (data) {
       sessions = data.items;
+      loadState = 'ready';
     }
-    isLoading = false;
   }
 
   function updateSession(updated: Partial<Session> & { id: string }) {
@@ -161,9 +167,9 @@
         {/each}
       </div>
 
-      {#if isLoading}
+      {#if loadState === 'loading'}
         <p class="loading-msg">Loading sessions…</p>
-      {:else if loadError}
+      {:else if loadState === 'error'}
         <p class="error-msg">{loadError}</p>
       {:else if filteredSessions.length === 0}
         <p class="empty-msg">No {activeFilter === 'all' ? '' : activeFilter} sessions.</p>

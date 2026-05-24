@@ -1,7 +1,7 @@
 ---
 id: story-refactor-view-state-union-comments-and-session-list
 kind: story
-stage: implementing
+stage: review
 tags: [ui, refactor]
 parent: null
 depends_on: []
@@ -102,3 +102,30 @@ Apply the same shape to `SessionList.svelte`.
 Behavior-preserving — same UI states, same transitions, just a
 typed-union representation. Pattern reference:
 `.claude/skills/patterns/view-state-union-machine.md`.
+
+## Implementation notes
+
+**Union form chosen:** String-literal union (`type LoadState = 'loading' | 'ready' | 'error'`)
+with a sibling `let loadError = $state('')` rune — matching the canonical pattern file
+form. The tagged-object form from the story body was not needed; the pattern explicitly
+prefers the simpler string-literal shape when the error case needs only a single string
+payload that can live in a sibling rune.
+
+**CommentsTab.svelte**
+- Replaced `isLoading: $state(true)` + `loadError: $state<string | null>(null)` with
+  `loadState: $state<LoadState>('loading')` + `loadError: $state('')`.
+- `fetchComments()` transitions: sets `loadState = 'loading'` at start, then either
+  `loadState = 'error'` (with `loadError = '...'`) or `loadState = 'ready'`.
+- Template: `{#if loadState === 'loading'} ... {:else if loadState === 'error'} ...`
+- No reactive `$derived` read `isLoading`/`loadError` in isolation — no flaw discovered.
+
+**SessionList.svelte**
+- Same shape: `loadState: $state<LoadState>('loading')` + `loadError: $state('')`.
+- `loadSessions()` transitions mirror CommentsTab.
+- Template at line ~171: same `loadState === 'loading'` / `loadState === 'error'` branch.
+
+**Verification**
+- `npm run check`: 0 errors, 2 pre-existing warnings (unrelated).
+- `npm run test`: 624/624 passed (50 test files), no test modifications needed — tests
+  assert rendered text / DOM state, not internal rune names.
+- `npm run build`: clean production build, 829ms.
