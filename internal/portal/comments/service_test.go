@@ -172,17 +172,26 @@ func newTestEnv(t *testing.T) *testEnv {
 	return newTestEnvWithStore(t, s, s)
 }
 
+// testCommentsStore mirrors the unexported commentsStore interface in the
+// comments package so test helpers can accept narrow mock types without
+// requiring them to implement the full store.Store umbrella.
+type testCommentsStore interface {
+	store.CommentStore
+	store.SessionStore
+	store.SessionMemberStore
+	store.PlaygroundSessionStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
+}
+
 // newTestEnvWithStore builds a comments testEnv that wires the handler against
 // handlerStore (which may wrap a real store to inject DB failures), while
 // keeping baseStore for fixture seeding and token issuance. The strict-handler
 // translator is wired so deperr-wrapped errors surface as typed envelopes.
-func newTestEnvWithStore(t *testing.T, handlerStore, baseStore store.Store) *testEnv {
+func newTestEnvWithStore(t *testing.T, handlerStore testCommentsStore, baseStore store.Store) *testEnv {
 	t.Helper()
 
-	s := handlerStore
-
 	log := events.New(baseStore)
-	svc := &comments.Service{Store: s, Log: log}
+	svc := &comments.Service{Store: handlerStore, Log: log}
 	handler := comments.NewHandler(svc)
 
 	tokenSvc := tokens.New(baseStore)
@@ -253,7 +262,7 @@ func newTestEnvWithStore(t *testing.T, handlerStore, baseStore store.Store) *tes
 	t.Cleanup(srv.Close)
 
 	return &testEnv{
-		s:       s,
+		s:       baseStore,
 		svc:     svc,
 		handler: handler,
 		srv:     srv,
@@ -806,12 +815,112 @@ func TestHandlerCreateComment_CommitLevelAnchor(t *testing.T) {
 // failingListCommentsStore wraps a real store and returns a transient error
 // from ListCommentsForSession (the inner call made by Service.List),
 // simulating a DB connection failure.
+//
+// Implements testCommentsStore (CommentStore + SessionStore + SessionMemberStore
+// + PlaygroundSessionStore + WithTx), delegating everything except
+// ListCommentsForSession to the real store.
 type failingListCommentsStore struct {
-	store.Store
+	realStore store.Store
 }
 
+// CommentStore delegation (ListCommentsForSession overridden below)
+func (f *failingListCommentsStore) InsertComment(ctx context.Context, p store.InsertCommentParams) error {
+	return f.realStore.InsertComment(ctx, p)
+}
+func (f *failingListCommentsStore) GetCommentByID(ctx context.Context, id string) (store.Comment, error) {
+	return f.realStore.GetCommentByID(ctx, id)
+}
+func (f *failingListCommentsStore) ResolveComment(ctx context.Context, p store.ResolveCommentParams) error {
+	return f.realStore.ResolveComment(ctx, p)
+}
 func (f *failingListCommentsStore) ListCommentsForSession(_ context.Context, _ store.ListCommentsForSessionParams) ([]store.Comment, error) {
 	return nil, errors.New("conn refused")
+}
+
+// SessionStore delegation
+func (f *failingListCommentsStore) CreateSession(ctx context.Context, p store.CreateSessionParams) (store.Session, error) {
+	return f.realStore.CreateSession(ctx, p)
+}
+func (f *failingListCommentsStore) GetSession(ctx context.Context, orgID, id string) (store.Session, error) {
+	return f.realStore.GetSession(ctx, orgID, id)
+}
+func (f *failingListCommentsStore) GetSessionByID(ctx context.Context, id string) (store.Session, error) {
+	return f.realStore.GetSessionByID(ctx, id)
+}
+func (f *failingListCommentsStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]store.Session, error) {
+	return f.realStore.ListSessionsForOrg(ctx, orgID)
+}
+func (f *failingListCommentsStore) ListSessionsForOrgWithCursor(ctx context.Context, p store.ListSessionsForOrgWithCursorParams) ([]store.Session, error) {
+	return f.realStore.ListSessionsForOrgWithCursor(ctx, p)
+}
+func (f *failingListCommentsStore) UpdateSessionStatus(ctx context.Context, p store.UpdateSessionStatusParams) error {
+	return f.realStore.UpdateSessionStatus(ctx, p)
+}
+func (f *failingListCommentsStore) UpdateSessionGoalScopeMode(ctx context.Context, p store.UpdateSessionGoalScopeModeParams) error {
+	return f.realStore.UpdateSessionGoalScopeMode(ctx, p)
+}
+func (f *failingListCommentsStore) SetSessionBaseSHA(ctx context.Context, p store.SetSessionBaseSHAParams) error {
+	return f.realStore.SetSessionBaseSHA(ctx, p)
+}
+func (f *failingListCommentsStore) SetSessionEndReason(ctx context.Context, p store.SetSessionEndReasonParams) error {
+	return f.realStore.SetSessionEndReason(ctx, p)
+}
+func (f *failingListCommentsStore) SetFinalizeLock(ctx context.Context, p store.SetFinalizeLockParams) error {
+	return f.realStore.SetFinalizeLock(ctx, p)
+}
+func (f *failingListCommentsStore) ClearFinalizeLock(ctx context.Context, p store.ClearFinalizeLockParams) error {
+	return f.realStore.ClearFinalizeLock(ctx, p)
+}
+func (f *failingListCommentsStore) DeleteSession(ctx context.Context, p store.DeleteSessionParams) error {
+	return f.realStore.DeleteSession(ctx, p)
+}
+
+// SessionMemberStore delegation
+func (f *failingListCommentsStore) AddSessionMember(ctx context.Context, p store.AddSessionMemberParams) error {
+	return f.realStore.AddSessionMember(ctx, p)
+}
+func (f *failingListCommentsStore) GetSessionMember(ctx context.Context, p store.GetSessionMemberParams) (store.SessionMember, error) {
+	return f.realStore.GetSessionMember(ctx, p)
+}
+func (f *failingListCommentsStore) ListSessionMembers(ctx context.Context, p store.ListSessionMembersParams) ([]store.SessionMember, error) {
+	return f.realStore.ListSessionMembers(ctx, p)
+}
+func (f *failingListCommentsStore) RemoveSessionMember(ctx context.Context, p store.RemoveSessionMemberParams) error {
+	return f.realStore.RemoveSessionMember(ctx, p)
+}
+func (f *failingListCommentsStore) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]store.SessionMembership, error) {
+	return f.realStore.ListSessionMembershipsForAccount(ctx, accountID)
+}
+func (f *failingListCommentsStore) NicknameTakenInSession(ctx context.Context, p store.NicknameTakenInSessionParams) (bool, error) {
+	return f.realStore.NicknameTakenInSession(ctx, p)
+}
+func (f *failingListCommentsStore) CountSessionMembers(ctx context.Context, p store.CountSessionMembersParams) (int64, error) {
+	return f.realStore.CountSessionMembers(ctx, p)
+}
+
+// PlaygroundSessionStore delegation
+func (f *failingListCommentsStore) ResetSessionIdleTimer(ctx context.Context, p store.ResetSessionIdleTimerParams) error {
+	return f.realStore.ResetSessionIdleTimer(ctx, p)
+}
+func (f *failingListCommentsStore) ListExpiredPlaygroundSessions(ctx context.Context, p store.ListExpiredPlaygroundSessionsParams) ([]store.Session, error) {
+	return f.realStore.ListExpiredPlaygroundSessions(ctx, p)
+}
+func (f *failingListCommentsStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	return f.realStore.PurgeExpiredTombstones(ctx, before)
+}
+func (f *failingListCommentsStore) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessionID string) ([]string, error) {
+	return f.realStore.ListAnonymousSessionMemberIDs(ctx, orgID, sessionID)
+}
+func (f *failingListCommentsStore) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return f.realStore.DeleteAccountsByIDs(ctx, ids)
+}
+func (f *failingListCommentsStore) CountSessionEventsByType(ctx context.Context, orgID, eventType string) (int64, error) {
+	return f.realStore.CountSessionEventsByType(ctx, orgID, eventType)
+}
+
+// WithTx delegation
+func (f *failingListCommentsStore) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	return f.realStore.WithTx(ctx, fn)
 }
 
 // ---------------------------------------------------------------------------
@@ -996,13 +1105,113 @@ func TestServiceCreate_PlaygroundSession_ResetsIdleTimer(t *testing.T) {
 // failingResetIdleTimerStore wraps a real store and returns an error from
 // ResetSessionIdleTimer, simulating a transient DB failure on the idle-reset
 // best-effort path.
+//
+// Implements testCommentsStore (CommentStore + SessionStore + SessionMemberStore
+// + PlaygroundSessionStore + WithTx), delegating everything except
+// ResetSessionIdleTimer to the real store.
 type failingResetIdleTimerStore struct {
-	store.Store
-	resetErr error
+	realStore store.Store
+	resetErr  error
 }
 
+// CommentStore delegation
+func (f *failingResetIdleTimerStore) InsertComment(ctx context.Context, p store.InsertCommentParams) error {
+	return f.realStore.InsertComment(ctx, p)
+}
+func (f *failingResetIdleTimerStore) GetCommentByID(ctx context.Context, id string) (store.Comment, error) {
+	return f.realStore.GetCommentByID(ctx, id)
+}
+func (f *failingResetIdleTimerStore) ResolveComment(ctx context.Context, p store.ResolveCommentParams) error {
+	return f.realStore.ResolveComment(ctx, p)
+}
+func (f *failingResetIdleTimerStore) ListCommentsForSession(ctx context.Context, p store.ListCommentsForSessionParams) ([]store.Comment, error) {
+	return f.realStore.ListCommentsForSession(ctx, p)
+}
+
+// SessionStore delegation
+func (f *failingResetIdleTimerStore) CreateSession(ctx context.Context, p store.CreateSessionParams) (store.Session, error) {
+	return f.realStore.CreateSession(ctx, p)
+}
+func (f *failingResetIdleTimerStore) GetSession(ctx context.Context, orgID, id string) (store.Session, error) {
+	return f.realStore.GetSession(ctx, orgID, id)
+}
+func (f *failingResetIdleTimerStore) GetSessionByID(ctx context.Context, id string) (store.Session, error) {
+	return f.realStore.GetSessionByID(ctx, id)
+}
+func (f *failingResetIdleTimerStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]store.Session, error) {
+	return f.realStore.ListSessionsForOrg(ctx, orgID)
+}
+func (f *failingResetIdleTimerStore) ListSessionsForOrgWithCursor(ctx context.Context, p store.ListSessionsForOrgWithCursorParams) ([]store.Session, error) {
+	return f.realStore.ListSessionsForOrgWithCursor(ctx, p)
+}
+func (f *failingResetIdleTimerStore) UpdateSessionStatus(ctx context.Context, p store.UpdateSessionStatusParams) error {
+	return f.realStore.UpdateSessionStatus(ctx, p)
+}
+func (f *failingResetIdleTimerStore) UpdateSessionGoalScopeMode(ctx context.Context, p store.UpdateSessionGoalScopeModeParams) error {
+	return f.realStore.UpdateSessionGoalScopeMode(ctx, p)
+}
+func (f *failingResetIdleTimerStore) SetSessionBaseSHA(ctx context.Context, p store.SetSessionBaseSHAParams) error {
+	return f.realStore.SetSessionBaseSHA(ctx, p)
+}
+func (f *failingResetIdleTimerStore) SetSessionEndReason(ctx context.Context, p store.SetSessionEndReasonParams) error {
+	return f.realStore.SetSessionEndReason(ctx, p)
+}
+func (f *failingResetIdleTimerStore) SetFinalizeLock(ctx context.Context, p store.SetFinalizeLockParams) error {
+	return f.realStore.SetFinalizeLock(ctx, p)
+}
+func (f *failingResetIdleTimerStore) ClearFinalizeLock(ctx context.Context, p store.ClearFinalizeLockParams) error {
+	return f.realStore.ClearFinalizeLock(ctx, p)
+}
+func (f *failingResetIdleTimerStore) DeleteSession(ctx context.Context, p store.DeleteSessionParams) error {
+	return f.realStore.DeleteSession(ctx, p)
+}
+
+// SessionMemberStore delegation
+func (f *failingResetIdleTimerStore) AddSessionMember(ctx context.Context, p store.AddSessionMemberParams) error {
+	return f.realStore.AddSessionMember(ctx, p)
+}
+func (f *failingResetIdleTimerStore) GetSessionMember(ctx context.Context, p store.GetSessionMemberParams) (store.SessionMember, error) {
+	return f.realStore.GetSessionMember(ctx, p)
+}
+func (f *failingResetIdleTimerStore) ListSessionMembers(ctx context.Context, p store.ListSessionMembersParams) ([]store.SessionMember, error) {
+	return f.realStore.ListSessionMembers(ctx, p)
+}
+func (f *failingResetIdleTimerStore) RemoveSessionMember(ctx context.Context, p store.RemoveSessionMemberParams) error {
+	return f.realStore.RemoveSessionMember(ctx, p)
+}
+func (f *failingResetIdleTimerStore) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]store.SessionMembership, error) {
+	return f.realStore.ListSessionMembershipsForAccount(ctx, accountID)
+}
+func (f *failingResetIdleTimerStore) NicknameTakenInSession(ctx context.Context, p store.NicknameTakenInSessionParams) (bool, error) {
+	return f.realStore.NicknameTakenInSession(ctx, p)
+}
+func (f *failingResetIdleTimerStore) CountSessionMembers(ctx context.Context, p store.CountSessionMembersParams) (int64, error) {
+	return f.realStore.CountSessionMembers(ctx, p)
+}
+
+// PlaygroundSessionStore delegation (ResetSessionIdleTimer overridden below)
 func (f *failingResetIdleTimerStore) ResetSessionIdleTimer(_ context.Context, _ store.ResetSessionIdleTimerParams) error {
 	return f.resetErr
+}
+func (f *failingResetIdleTimerStore) ListExpiredPlaygroundSessions(ctx context.Context, p store.ListExpiredPlaygroundSessionsParams) ([]store.Session, error) {
+	return f.realStore.ListExpiredPlaygroundSessions(ctx, p)
+}
+func (f *failingResetIdleTimerStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	return f.realStore.PurgeExpiredTombstones(ctx, before)
+}
+func (f *failingResetIdleTimerStore) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessionID string) ([]string, error) {
+	return f.realStore.ListAnonymousSessionMemberIDs(ctx, orgID, sessionID)
+}
+func (f *failingResetIdleTimerStore) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return f.realStore.DeleteAccountsByIDs(ctx, ids)
+}
+func (f *failingResetIdleTimerStore) CountSessionEventsByType(ctx context.Context, orgID, eventType string) (int64, error) {
+	return f.realStore.CountSessionEventsByType(ctx, orgID, eventType)
+}
+
+// WithTx delegation
+func (f *failingResetIdleTimerStore) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	return f.realStore.WithTx(ctx, fn)
 }
 
 // TestServiceCreate_ActivityResetFailure_EmitsSlogWarning verifies that when
@@ -1061,7 +1270,7 @@ func TestServiceCreate_ActivityResetFailure_EmitsSlogWarning(t *testing.T) {
 
 	// Wrap the store so ResetSessionIdleTimer always fails.
 	resetErr := errors.New("simulated timer reset failure")
-	failing := &failingResetIdleTimerStore{Store: s, resetErr: resetErr}
+	failing := &failingResetIdleTimerStore{realStore: s, resetErr: resetErr}
 
 	// Install a capturing JSON slog handler as the global default.
 	// Restore the original default when the test finishes.
@@ -1142,7 +1351,7 @@ func TestHandlerListComments_DBUnavailable_Returns503DepDBUnavailable(t *testing
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
-	failing := &failingListCommentsStore{Store: s}
+	failing := &failingListCommentsStore{realStore: s}
 	env := newTestEnvWithStore(t, failing, s)
 
 	path := fmt.Sprintf("/api/orgs/%s/sessions/%s/comments", env.orgID, env.sessID)
