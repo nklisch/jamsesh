@@ -52,3 +52,19 @@ test will still pass — the threshold is 900/1000 distinct).
 
 - `sort adjectives.txt | uniq -c | awk '$1>1'` returns no rows.
 - `wordlist_test.go` continues to pass.
+
+## Design
+
+Full spec is in the parent feature body under `## Implementation Units`
+→ Unit 4 (wordlist dedup). Highlights:
+
+- **Pure data change** on
+  `internal/portal/playground/wordlist/adjectives.txt`. Mechanical fix:
+  `sort -u adjectives.txt > new && mv new adjectives.txt` drops to
+  177 unique entries.
+- **Optional padding**: bring back up to ~256 unique entries with
+  curated calm/positive adjectives (e.g. "balmy", "luminous",
+  "polished") — alphabetically interleaved so the diff stays
+  reviewable. Implementer's discretion.
+- **No `depends_on`** — parallel-safe with the other two stories; no
+  shared files or APIs. Sequenced last only for PR-shape cleanliness.

@@ -62,3 +62,27 @@ delivered `handler_test.go` does not cover them:
 - All three test cases land and pass under both dialects.
 - `go test ./internal/portal/playground/...` exercises both Postgres
   and SQLite per-test.
+
+## Design
+
+Full spec is in the parent feature body under `## Implementation Units`
+→ Unit 1 (shared test harness package) and Unit 3 (playground handler
+test coverage). Highlights:
+
+- **New package**: `internal/db/store/storetest/storetest.go` exporting
+  `Stores(*testing.T) []DialectHarness` (verbatim port of the
+  truncate-on-cleanup version currently in
+  `internal/db/store/helpers_test.go:33-108`).
+- **Call-site sweep**: this story lifts `openStore(t)` out of *both*
+  `internal/portal/playground/handler_test.go:205` AND
+  `internal/portal/sessions/handler_test.go:219` — the design-time
+  discovery that sessions has the same drift makes it cheap to fix
+  in the same pass. Every existing test in both files becomes a
+  per-dialect `t.Run` loop.
+- **New test functions** in `playground/handler_test.go`:
+  `TestJoinPlaygroundSession_HardCapElapsed_Returns410` (outer + inner
+  branch via stepClock) and
+  `TestCreatePlaygroundSession_RepoCreateFails_ReturnsError` (sets
+  `stor.createError`, asserts session + creator member rows persist).
+- **No `depends_on`** — this is the foundational refactor that unblocks
+  `story-playground-server-hardening-writable-scope-validation`.
