@@ -32,13 +32,18 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now().UTC() }
 
+// applierStore is the minimal store interface consumed by Applier.
+type applierStore interface {
+	store.ConflictEventStore
+}
+
 // Applier is the side-effecting counterpart to the pure merge engine. It
 // takes a [MergeResult] and either creates a merge commit + advances the draft
 // ref, or inserts a conflict_events row and emits the appropriate events.
 //
 // Construct once per worker lifetime via [NewApplier] and share it.
 type Applier struct {
-	Store store.Store
+	Store applierStore
 	Log   *events.Log
 	Clock Clock
 	// Metrics is optional; when non-nil, auto-merger outcomes increment
@@ -48,14 +53,14 @@ type Applier struct {
 
 // NewApplier returns an Applier backed by the given store and event log,
 // using the real system clock.
-func NewApplier(s store.Store, log *events.Log) *Applier {
+func NewApplier(s applierStore, log *events.Log) *Applier {
 	return NewApplierWithClock(s, log, realClock{})
 }
 
 // NewApplierWithClock returns an Applier backed by the given store and event
 // log, using the supplied clock. Used by unit tests (fakeClock) and the
 // e2etest-tagged binary (testclock.AdvanceableClock).
-func NewApplierWithClock(s store.Store, log *events.Log, clock Clock) *Applier {
+func NewApplierWithClock(s applierStore, log *events.Log, clock Clock) *Applier {
 	return &Applier{Store: s, Log: log, Clock: clock}
 }
 

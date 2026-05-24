@@ -19,6 +19,12 @@ import (
 	"jamsesh/internal/portal/storage"
 )
 
+// workerStore is the minimal store interface consumed by Worker.
+type workerStore interface {
+	store.SessionStore
+	store.RefModeStore
+}
+
 // Worker is the auto-merger orchestration layer. It subscribes to commit.arrived
 // events from events.Log and, for each sync-mode ref, runs the merge + apply
 // pipeline in a per-session goroutine backed by a bounded queue.
@@ -26,7 +32,7 @@ import (
 // Construct with all fields populated and call Start(ctx) at portal startup.
 // Call Stop(ctx) during shutdown to drain in-flight work.
 type Worker struct {
-	Store       store.Store
+	Store       workerStore
 	Storage     storage.Service
 	Log         *events.Log
 	Applier     *Applier
