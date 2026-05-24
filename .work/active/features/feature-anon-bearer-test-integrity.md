@@ -1,7 +1,7 @@
 ---
 id: feature-anon-bearer-test-integrity
 kind: feature
-stage: implementing
+stage: review
 tags: [testing, tokens, migrations]
 parent: null
 depends_on: []
@@ -472,3 +472,47 @@ No UI surface — pure test-suite work.
 - `TestMigrate00016_AnonymousBearers_UpDownUp` actually runs Up -> Down -> Up
 - `migrateDown` test helper available in `internal/db/migrate_test.go`
   for future migration tests
+
+## Implementation summary (2026-05-23)
+
+Both child stories landed in parallel (different packages, different files,
+different invariants — no inter-dependency) and are at stage:review.
+
+1. `story-anon-bearer-test-integrity-migration-updownup` (Units 1+2) —
+   added unexported `migrateDown(testing.TB, ctx, *sql.DB, dialect, version)`
+   helper to `internal/db/migrate_test.go`; extended
+   `TestMigrate00016_AnonymousBearers_UpDownUp` body with the real Down +
+   re-Up cycle. **Goose semantics correction:** design said `DownTo(16)`
+   would leave the DB at version 15, but goose v3.27.1's `DownTo(N)`
+   rolls back versions strictly > N, leaving the DB at N. Resolved by
+   calling `migrateDown(t, ctx, db, "sqlite", 15)` and updating the
+   helper's doc comment so future callers don't trip on the same
+   misconception. This also cleanly rolls back 17 and 18 (org_protected,
+   playground_sessions) along with 16 — intentional because 00018's
+   oauth_tokens.session_id FK depends on the column 00016 introduces.
+
+2. `story-anon-bearer-test-integrity-transactional-rollback` (Unit 3) —
+   renamed `TestIssueAnonymousSessionBearer_TransactionalRollback` (body
+   intact) to `_EmptySessionID_NoDBCalls` so the test name matches what
+   it actually asserts; added the embedded-store override types
+   (`txStoreOverride` + `storeOverride`); added the real
+   `TestIssueAnonymousSessionBearer_TransactionalRollback` test that
+   injects a bearer-insert error via the override and asserts both
+   `errors.Is` propagation AND zero account rows with the test's
+   display_name. The post-rollback assertion uses a raw `SELECT
+   COUNT(*)` via the underlying `*sql.DB` (which `db.Open` already
+   returns alongside the store) — no need to add a domain-level query
+   to the production interface.
+
+### Verification
+
+- `go test ./internal/db/... ./internal/portal/tokens/...` → all green
+- `go test ./...` → all green across the whole repo
+- `migrateDown` is test-only and unavailable to production:
+  `grep -n migrateDown internal/db/*.go` only returns matches in
+  `migrate_test.go`.
+- No mis-named tests remain in either package: `TestIssueAnonymousSessionBearer_TransactionalRollback`
+  exercises real rollback, `_EmptySessionID_NoDBCalls` exercises the
+  no-DB-calls invariant, `_EmptySessionID_Rejected` exercises the error
+  surface (three distinct invariants, three distinct tests). The
+  migration test's body matches its name (Up → Down → Up).
