@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-docs
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, playground]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: []
@@ -65,3 +65,27 @@ session-lifecycle stories.
   implementer chooses different values after looking at real-world
   patterns), update SPEC.md and SECURITY.md to match. The docs are the
   source of truth for the rolling-foundation; runtime values must match.
+
+## Implementation notes
+
+`docs/SPEC.md` — replaced the placeholder "End:" bullet in the Ephemeral
+playground sessions section with concrete destruction-trigger semantics
+(whichever of idle/hard-cap fires first, both timers visible as a countdown
+badge). Added a new `#### Playground session limits and defaults` subsection
+with a table of all five limits and their env vars, followed by a prose
+paragraph for each (idle timeout, hard cap, participant cap, per-IP rate limit,
+content-size cap). No remaining "TBD" or "exact policy decided later" text.
+
+`docs/SECURITY.md` — added a new `## Abuse model for playground sessions`
+section (four sub-headings) immediately before `## Audit trail`:
+1. Per-IP rate limit rationale — 3/hour balance, token-bucket via
+   `internal/portal/ratelimit`, join requests deliberately excluded.
+2. Content-size cap — dual purpose (abuse prevention + storage-cost guard),
+   enforced at pre-receive by `CheckPlaygroundCaps`.
+3. Joiner overflow as DoS prevention — 5-cap rationale, hard error semantics,
+   TOCTOU note.
+4. Cross-reference to the existing "Anonymous session-scoped bearers" section
+   by anchor link (no duplication of that section's content).
+
+Story 3 (abuse-caps) was checked: still at `stage: implementing`, no value
+changes were applied. All defaults match the feature design exactly.

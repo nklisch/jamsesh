@@ -234,13 +234,58 @@ durable. Open-join via the session URL alone (no invite, no portal account).
 - **Active:** identical to durable sessions — refs, comments, conflicts,
   draft, modes all work the same. Identities are anonymous but addressable
   for the session lifetime.
-- **End:** triggered when the session window closes (the exact trigger —
-  finalize-driven, idle timeout, hard wall-clock cap, or some combination —
-  is fixed in the epic's design phase). At end, the session and all its data
-  are destroyed; there is no retention period.
+- **End:** triggered by whichever limit fires first — the idle timeout or the
+  hard-cap wall clock. Both timers are visible to participants as a countdown
+  badge in the portal chrome. At end, the session and all its data are
+  destroyed; there is no retention period. A tombstone record is retained for
+  30 days to serve the post-destruction summary page.
 - **Abuse posture:** hosted instances ship with sane per-IP session-create
   caps and per-session content/push throughput caps on by default;
   self-hosters opt the playground on and tune their own limits.
+
+#### Playground session limits and defaults
+
+The destruction sweep runs every 60 seconds (configurable via
+`JAMSESH_PLAYGROUND_SWEEP_INTERVAL_S`). The following defaults apply unless
+overridden by env var:
+
+| Limit | Default | Env var |
+|---|---|---|
+| Idle timeout | 30 min (1800 s) | `JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S` |
+| Hard cap | 24 h (86400 s) | `JAMSESH_PLAYGROUND_HARD_CAP_S` |
+| Max participants per session | 5 | `JAMSESH_PLAYGROUND_MAX_PARTICIPANTS` |
+| Per-IP session-create rate limit | 3 / hour | `JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR` |
+| Max content size per session | 50 MiB (52428800 bytes) | `JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES` |
+
+**Idle timeout** (`JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S`, default 1800): the
+session ends if no substantive activity occurs within this window. Substantive
+activity is defined as: any `git push` that lands a commit, any `POST
+/comments`, or any `POST /finalize-attempt`. Presence WebSocket pings, page
+loads, and other UI interactions do not reset the timer. The destruction worker
+reads `last_substantive_activity_at` on the `sessions` row, which is updated
+atomically by each substantive event path.
+
+**Hard cap** (`JAMSESH_PLAYGROUND_HARD_CAP_S`, default 86400): the session
+ends unconditionally when this wall-clock duration from creation elapses,
+regardless of activity. Anonymous bearers are issued with a TTL synced to the
+session's hard-cap deadline, so the bearer expires at the same moment the
+session does.
+
+**Participant cap** (`JAMSESH_PLAYGROUND_MAX_PARTICIPANTS`, default 5): when a
+session is at capacity, `POST /api/playground/sessions/{id}/join` returns
+`409 playground.session_full` with `{ retry_after_seconds, alternative:
+"/playground" }`. There is no spectator role and no waitlist.
+
+**Per-IP create rate limit** (`JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR`, default
+3): `POST /api/playground/sessions` enforces a per-IP token-bucket at 3
+requests per hour via the `internal/portal/ratelimit` infrastructure. Requests
+that exceed the limit receive `429 Too Many Requests` with a `Retry-After`
+header.
+
+**Content-size cap** (`JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES`, default
+52428800): pushes are rejected at `pre-receive` when the session's accumulated
+object storage would exceed this threshold. The rejection code is
+`playground.size_exceeded`.
 
 ## Deployment shape
 

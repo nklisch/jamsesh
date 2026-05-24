@@ -286,6 +286,81 @@ identity); they never appear in `org_members`; they cannot be promoted
 to durable accounts (the "claim-to-durable" path is explicitly deferred
 per SPEC.md's deferred-features list).
 
+## Abuse model for playground sessions
+
+Playground sessions are open to anyone who can reach the portal. The abuse
+surface is different from durable sessions (which require portal accounts and
+invite-based membership). The mitigations below are independent layers; each
+addresses a distinct vector.
+
+### Per-IP rate limit rationale
+
+`POST /api/playground/sessions` is the only unauthenticated session-creation
+surface. Without a rate limit, a single actor can spin up sessions at whatever
+speed the portal allows, exhausting database rows, bare-repo storage, and
+destruction-worker capacity.
+
+The default cap of **3 sessions per hour per source IP** is chosen to balance:
+- **Spam prevention**: a burst of 3 is sufficient for a developer to quickly
+  evaluate the playground (create, share, tear down, retry) without hitting
+  the limit in normal use.
+- **Abuse cost**: exceeding 3/hour requires rotating IPs; the attacker's cost
+  scales faster than the operator's mitigation cost.
+
+The limit is enforced by a per-IP token bucket in the existing
+`internal/portal/ratelimit` infrastructure, mounted as middleware on the
+playground create route only. Join requests are not rate-limited — they require
+a valid session ID (not guessable at scale) and are bounded by the participant
+cap.
+
+Operators tune this with `JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR`.
+
+### Content-size cap
+
+Each playground session enforces a maximum accumulated content size (default
+**50 MiB**, `JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES`). The cap serves two
+independent goals:
+
+1. **Abuse prevention**: without a cap, a single session can push large
+   packfiles and consume disproportionate portal storage, affecting other
+   sessions and the destruction worker's cleanup time.
+2. **Storage-cost guard**: operators running hosted playground surfaces need
+   predictable per-session storage bounds to cost-model the feature. 50 MiB
+   covers realistic evaluation workloads (a full source tree with history)
+   while keeping worst-case storage at a tractable per-session ceiling.
+
+The cap is enforced at `pre-receive` by `CheckPlaygroundCaps`, which fires
+after all other validation succeeds. Pushes that would cause the session's
+total object storage to exceed the threshold are rejected with
+`remote: ERROR: playground.size_exceeded`. The check compares the incoming
+packfile's object count against the current session storage total reported by
+the storage backend — no rolling-window accounting required.
+
+### Joiner overflow as DoS prevention
+
+The **5-participant cap** (`JAMSESH_PLAYGROUND_MAX_PARTICIPANTS`) prevents a
+single playground session from consuming unbounded server resources through
+join flood. Each participant gets a database row, a session-members row, a
+bearer token, and a presence WebSocket connection. Without a cap, a publicly
+shared join URL becomes a resource-exhaustion vector.
+
+When the cap is reached, `POST /api/playground/sessions/{id}/join` returns
+`409 playground.session_full`. This is a hard error with a retry hint and a
+CTA to start a fresh session — no waitlist, no spectator tier, no partial
+admission. The simplicity is intentional: low-ceremony design means fewer
+states that can be abused.
+
+The participant cap is checked inside the join transaction, not as a pre-check,
+to avoid TOCTOU races at the boundary.
+
+### Cross-reference: anonymous bearer blast radius
+
+The threat model for a leaked or hijacked anonymous session bearer — blast
+radius, lifetime, and reuse-after-destruction protections — is covered in the
+[Anonymous session-scoped bearers](#anonymous-session-scoped-bearers) section
+above. That section is owned by the anon-bearer feature's documentation pass;
+this section does not duplicate it.
+
 ## Audit trail
 
 Everything is auditable:
