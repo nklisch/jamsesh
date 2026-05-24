@@ -200,6 +200,33 @@ commit-trailer conventions, how to read the digest, how to use the four MCP
 tools, conflict resolution patterns. The skill loads automatically when the
 plugin is enabled.
 
+### Portal frontend (SPA)
+
+A Svelte 5 single-page application served by the portal binary. The SPA's
+`auth` rune store (`frontend/src/lib/auth.svelte.ts`) maintains two
+orthogonal identity states that can coexist in the same tab:
+
+**Durable authenticated-user state** — `token` and `refresh` are persisted
+to `localStorage` under `jamsesh.token` / `jamsesh.refresh`. `currentUser`
+and `orgs` are in-memory caches loaded from `/api/me` on first use. This is
+the standard OAuth session; it survives page reloads.
+
+**Ephemeral playground context** — `_playgroundContext = $state<PlaygroundContext | null>(null)`
+holds the anonymous-mode identity `{sessionId, bearer, nickname}` for a
+playground session. It is **in-memory only** — never written to localStorage.
+A tab reload drops the playground identity, which is intentional: the
+server-side bearer is destroyed when the playground session ends (or when
+the destruction sweep revokes it), so retaining a stale bearer across
+reloads would be misleading. The store exposes this state via
+`auth.playgroundContext` (read) and `auth.setPlaygroundContext(ctx | null)`
+(write). `auth.isAuthenticated` reflects only the OAuth token; a tab in
+playground-only mode has `isAuthenticated === false` and a non-null
+`playgroundContext`.
+
+The `auth` export follows the **wrapper-object rune store** pattern (private
+`$state` vars, `export const auth = { get ... }` facade) required by Svelte
+5's prohibition on exporting raw rune values from a module.
+
 ## Data flow: a turn
 
 A single turn from one human-agent pair's perspective.
