@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-plugin-skills
 kind: feature
-stage: implementing
+stage: review
 tags: [plugin, playground]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-cli-first-creation, feature-epic-ephemeral-playground-session-lifecycle]
@@ -10,6 +10,21 @@ gate_origin: null
 created: 2026-05-23
 updated: 2026-05-23
 ---
+
+## Implementation summary (autopilot)
+
+All 4 child stories advanced to `stage: review`:
+
+- `story-...-plugin-skills-jam-consolidation` — new `/jamsesh:jam` SKILL.md (intent vocabulary) + new `cmd/jamsesh/jamcmd/jam.go` dispatcher (sub-subcommands new + join via fresh factory calls to avoid urfave/cli v3 parent-pointer aliasing); deleted obsolete `plugins/jamsesh/skills/join/SKILL.md`
+- `story-...-plugin-skills-bearer-storage` — `state.ReadSessionToken` / `WriteSessionToken` / `ListSessions` helpers + `MigrateToPerSessionTokens` one-shot idempotent migration + refresh-flow callsite update writing to per-session paths
+- `story-...-plugin-skills-status-enumeration` — `jamsesh status` enumerates per-session tokens (no account-wide OAuth required); output groups durable + playground sessions separately; new `portalclient.GetJSONWithBearer` generic for per-session calls
+- `story-...-plugin-skills-destruction-warning` — UserPromptSubmit hook surfaces `playground.destruction_warning` events in the urgent section; auto-loaded SKILL.md "Playground sessions" section appended; OpenAPI schema extended with `urgent_events` + `PlaygroundDestructionWarningPayload`
+
+**Cross-cutting deviations**:
+- jam-consolidation discovered urfave/cli v3 parent-pointer aliasing issue (subCmd.parent gets overwritten when one *cli.Command instance is registered under two parents); resolution: call factory functions fresh in `JamCommand()` to obtain pointer-distinct instances
+- destruction-warning fixed several pre-existing bugs in-session per test-integrity rule: missing `time` import in receive_pack.go (from sibling story), `mcpheaders` integration with per-session bearer storage, zero-sessions guard in migration to prevent legacy-token destruction
+
+**Verification status**: `go build ./cmd/jamsesh/...` clean, `go test ./cmd/jamsesh/...` passes, `go vet ./...` clean.
 
 # CC plugin skills + playground-aware join flow
 

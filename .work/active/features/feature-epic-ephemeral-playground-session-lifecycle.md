@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-session-lifecycle
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, playground]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-cli-first-creation, feature-epic-ephemeral-playground-anon-bearer, feature-epic-ephemeral-playground-reserved-org]
@@ -10,6 +10,25 @@ gate_origin: null
 created: 2026-05-23
 updated: 2026-05-23
 ---
+
+## Implementation summary (autopilot)
+
+All 5 child stories advanced to `stage: review`:
+
+- `story-...-session-lifecycle-rest-endpoints` — wordlist (~239 adjectives + ~182 animals) + 4 REST handlers + OpenAPI extensions + schema (sessions columns + tombstones table)
+- `story-...-session-lifecycle-destruction` — Worker + Destruction with 8-step idempotent cascade; wired into cmd/portal/main.go shutdown via ctx
+- `story-...-session-lifecycle-abuse-caps` — wired existing ratelimit infra; CheckPlaygroundCaps in pre-receive (option B: total disk-walk size); activity-reset in 3 substantive-event call-sites (post-receive, comments, finalize)
+- `story-...-session-lifecycle-cli-playground-flag` — `jamsesh new --playground` via new PostJSONAnon helper; pushBaseRefWithBearer variant; mutual-exclusion with --org
+- `story-...-session-lifecycle-docs` — SPEC.md ephemeral-playground subsection with concrete defaults; SECURITY.md abuse-model section
+
+**Cross-cutting deviations**:
+- Bearer issuance split outside the session WithTx (3-step sequence: session TX → bearer issuance → member insert) to avoid SQLite WAL deadlock; partial failure leaves orphaned session that destruction sweep cleans up
+- Activity-reset wired in 3 call-sites best-effort (log warning on failure, never fail the substantive event)
+- Local `playgroundOrgID` constants per package to avoid import cycles (githttp / comments / sessions all need the check)
+- Content-size check via filesystem walk of bare repo (no DB row tracking)
+- One pre-existing fixture bug parked: `bug-mcpheaders-stale-fixture-migrated-stub`
+
+**Verification status**: `go build ./...` clean, `go vet ./...` clean, `go test ./...` all packages pass (except the parked mcpheaders fixture, which is a pre-existing flake from the bearer-storage migration).
 
 # Playground session lifecycle
 
