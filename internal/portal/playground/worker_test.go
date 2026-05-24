@@ -557,3 +557,155 @@ func isNotFound(err error) bool {
 	}
 	return err == store.ErrNotFound
 }
+
+// ---------------------------------------------------------------------------
+// Story: gate-tests-tombstone-purge-cadence-tick-bound-vs-wallclock
+//
+// purgeEvery = 60 is a tick-count constant, not a wall-clock interval.
+// These tests document that fact so a future refactor cannot silently
+// change the semantics (e.g. from tick-count to elapsed-time comparison)
+// without breaking a test.
+// ---------------------------------------------------------------------------
+
+// purgeCountStore wraps a real store and counts calls to PurgeExpiredTombstones.
+type purgeCountStore struct {
+	store.Store
+	count int
+}
+
+func (s *purgeCountStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	s.count++
+	return s.Store.PurgeExpiredTombstones(ctx, before)
+}
+
+// TestWorker_PurgeCadence_IsTickBound_Not_WallClockBound documents that tombstone
+// purge fires every 60 ticks regardless of how much wall-clock time has elapsed.
+//
+// Tick-bound semantics: purge fires when tick%60==0 — only once every 60 sweep
+// cycles. At the default 60-second sweep interval that is ~once per hour; at a
+// shortened test interval (1ms) it is still once per 60 ticks.
+//
+// The two sub-tests pin the contract from both sides:
+//   - After <60 ticks the purge must NOT have fired (count == 0).
+//   - After >=60 ticks the purge MUST have fired (count >= 1).
+func TestWorker_PurgeCadence_IsTickBound_Not_WallClockBound(t *testing.T) {
+	const purgeEvery = 60 // must match the private const in worker.go
+
+	t.Run("no purge before 60 ticks regardless of elapsed time", func(t *testing.T) {
+		env, _, clk := newWorkerEnv(t)
+
+		counted := &purgeCountStore{Store: env.s}
+		worker := &playground.Worker{
+			Store:    counted,
+			Storage:  env.stor,
+			Cfg:      defaultCfg(),
+			Clock:    clk,
+			Interval: 1 * time.Millisecond,
+			Logger:   noopLogger(),
+		}
+
+		// Run for at most (purgeEvery-1) = 59 ticks. Use a tight context that
+		// allows well under 60 ticks (30ms at 1ms interval → ~30 ticks max).
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+		defer cancel()
+		_ = worker.Run(ctx)
+
+		// At fewer than purgeEvery ticks, PurgeExpiredTombstones must never fire.
+		// This proves the cadence is tick-gated, not triggered by elapsed time.
+		if counted.count != 0 {
+			t.Errorf("purge fired %d time(s) in <60 ticks; expected 0 (tick-bound gate not respected)", counted.count)
+		}
+	})
+
+	t.Run("purge fires at least once after >=60 ticks", func(t *testing.T) {
+		env, _, clk := newWorkerEnv(t)
+
+		counted := &purgeCountStore{Store: env.s}
+		worker := &playground.Worker{
+			Store:    counted,
+			Storage:  env.stor,
+			Cfg:      defaultCfg(),
+			Clock:    clk,
+			Interval: 1 * time.Millisecond,
+			Logger:   noopLogger(),
+		}
+
+		// Run for long enough to accumulate >=60 ticks at 1ms/tick.
+		// 200ms gives ~200 ticks — generously above the 60-tick threshold and
+		// avoids flakiness on slow CI machines.
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+		_ = worker.Run(ctx)
+
+		if counted.count < 1 {
+			t.Errorf("purge never fired after >=60 ticks; expected count >= 1 (tick-bound gate not triggering)")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Story: gate-tests-tombstone-purge-via-worker-not-store-tautology
+//
+// TestWorker_PurgesTombstones_OnPurgeEveryTickInterval replaces the existing
+// TestWorker_PurgesTombstonesAfterTTL which calls the store layer directly
+// (tautological: always proves the store works, never proves the worker fires
+// the purge on cadence).
+//
+// This test drives the full worker.Run() path: it seeds an expired tombstone,
+// lets the worker run for >=60 ticks (the purgeEvery threshold), and then
+// verifies the tombstone is gone — proving that the worker actually invokes
+// PurgeExpiredTombstones on the configured tick cadence.
+// ---------------------------------------------------------------------------
+
+func TestWorker_PurgesTombstones_OnPurgeEveryTickInterval(t *testing.T) {
+	ctx := context.Background()
+	env, _, clk := newWorkerEnv(t)
+
+	now := clk.Now()
+
+	// Seed an expired tombstone: expires_at is already in the past.
+	err := env.s.RecordTombstone(ctx, store.RecordTombstoneParams{
+		SessionID:       "sess-worker-purge-001",
+		OrgID:           playground.ReservedOrgID,
+		MembersCount:    1,
+		CommitsCount:    0,
+		AutoMergesCount: 0,
+		DurationSeconds: 60,
+		EndReason:       "manual",
+		EndedAt:         now.Add(-48 * time.Hour),
+		ExpiresAt:       now.Add(-24 * time.Hour), // already expired
+	})
+	if err != nil {
+		t.Fatalf("RecordTombstone: %v", err)
+	}
+
+	// Verify the tombstone is present before the worker runs.
+	if _, err := env.s.GetTombstone(ctx, "sess-worker-purge-001"); err != nil {
+		t.Fatalf("tombstone should exist before worker run: %v", err)
+	}
+
+	// Wire a worker against the same store. Run for 200ms at 1ms/tick —
+	// this guarantees >60 ticks (the purgeEvery threshold) even on slow CI.
+	worker := &playground.Worker{
+		Store:    env.s,
+		Storage:  env.stor,
+		Cfg:      defaultCfg(),
+		Clock:    clk,
+		Interval: 1 * time.Millisecond,
+		Logger:   noopLogger(),
+	}
+
+	runCtx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_ = worker.Run(runCtx)
+
+	// The worker must have called PurgeExpiredTombstones via its internal
+	// purgeTombstones() method. The expired tombstone should be gone.
+	_, err = env.s.GetTombstone(ctx, "sess-worker-purge-001")
+	if err == nil {
+		t.Error("expected tombstone to be purged by worker after >=60 ticks, but GetTombstone succeeded")
+	}
+	if !isNotFound(err) {
+		t.Errorf("expected ErrNotFound after worker purge, got: %v", err)
+	}
+}
