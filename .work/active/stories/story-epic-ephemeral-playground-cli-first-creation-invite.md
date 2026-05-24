@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-cli-first-creation-invite
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: feature-epic-ephemeral-playground-cli-first-creation
 depends_on: []
@@ -82,3 +82,31 @@ find the actual invite endpoint:
   parallel-implemented; if Story `-new`'s author lands first, they may
   inline the helpers temporarily — Story `-invite`'s author then moves
   them to `invite.go` and updates the call site. Either order works.
+
+## Implementation notes
+
+The wave-1 `cli-first-creation-new` commit had already stubbed
+`parseInviteEmails` and `sendInvitesIfRequested` inline in `new.go` with the
+correct org-scoped endpoint (`POST /api/orgs/{orgID}/sessions/{sessionID}/invites`).
+This story moved both helpers to `invite.go` (same `sessioncmd` package) and
+deleted them from `new.go`; the callsite in `newAction` required no change
+beyond the file relocation.
+
+**Endpoint confirmed**: `POST /api/orgs/{orgID}/sessions/{sessionID}/invites`.
+OrgID resolution: `--org` flag overrides; falls back to
+`${CLAUDE_PLUGIN_DATA}/sessions/<id>/org_id` state file written by `jamsesh new`.
+
+**Files delivered**:
+- `cmd/jamsesh/sessioncmd/invite.go` — new; `InviteCommand()`, `inviteAction()`,
+  `parseInviteEmails()`, `sendInvitesIfRequested()`
+- `cmd/jamsesh/sessioncmd/invite_test.go` — new; 7 test functions covering
+  happy path, space/comma args, partial failure, usage errors, state-file
+  org resolution, missing-org error
+- `cmd/jamsesh/sessioncmd/new.go` — helpers removed (moved to invite.go)
+- `cmd/jamsesh/sessioncmd/testhelpers_test.go` — `InviteCommand()` added to
+  `buildCLIApp()`
+- `cmd/jamsesh/main.go` — `sessioncmd.InviteCommand()` registered next to
+  `NewCommand()`
+
+**Verification**: `go build ./cmd/jamsesh/...` clean; all 48 tests in
+`sessioncmd` pass; `go vet ./...` clean.

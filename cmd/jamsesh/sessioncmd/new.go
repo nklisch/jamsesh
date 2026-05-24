@@ -511,48 +511,6 @@ func printPlaygroundSummary(resp openapi.PlaygroundSessionCreated, baseURL strin
 	fmt.Printf("Base ref pushed. Others can join at:\n  %s\n", shareURL)
 }
 
-// parseInviteEmails splits a comma-separated email string, trimming whitespace
-// and discarding empty entries.
-func parseInviteEmails(raw string) []string {
-	parts := strings.Split(raw, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// sendInvitesIfRequested sends portal invites to the given email addresses.
-// It is best-effort: all emails are attempted regardless of individual failures.
-// The caller is responsible for deciding whether partial failures are fatal.
-func sendInvitesIfRequested(ctx context.Context, pc *portalclient.Client, orgID, sessionID string, emails []string) error {
-	var firstErr error
-	var failedCount int
-	for _, email := range emails {
-		path := fmt.Sprintf("/api/orgs/%s/sessions/%s/invites",
-			url.PathEscape(orgID), url.PathEscape(sessionID))
-		// InviteRequest.Email is openapi_types.Email which is just a string alias.
-		body := map[string]string{"email": email}
-		_, err := portalclient.PostJSON[map[string]any](ctx, pc, path, body)
-		if err != nil {
-			failedCount++
-			if firstErr == nil {
-				firstErr = err
-			}
-			fmt.Fprintf(os.Stderr, "  invite %s: FAILED — %v\n", email, err)
-			continue
-		}
-		fmt.Fprintf(os.Stdout, "  invite %s: sent\n", email)
-	}
-	if firstErr != nil {
-		return fmt.Errorf("%d of %d invites failed (first error: %w)", failedCount, len(emails), firstErr)
-	}
-	return nil
-}
-
 // wrapPushError wraps a push failure with context including the explicit retry
 // command. The session is left live (not abandoned) per the locked design decision.
 func wrapPushError(pushErr error, session openapi.Session, baseURL string) error {

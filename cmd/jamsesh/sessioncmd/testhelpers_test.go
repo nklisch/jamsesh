@@ -14,6 +14,7 @@ func buildCLIApp() *cli.Command {
 		Commands: []*cli.Command{
 			JoinCommand(),
 			NewCommand(),
+			InviteCommand(),
 			StatusCommand(),
 			ForkCommand(),
 			ModeCommand(),

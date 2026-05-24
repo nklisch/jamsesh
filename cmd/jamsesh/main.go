@@ -48,6 +48,7 @@ func main() {
 			mcpheaders.Command(),
 			hookCommand(),
 			sessioncmd.NewCommand(),
+			sessioncmd.InviteCommand(),
 			sessioncmd.JoinCommand(),
 			sessioncmd.StatusCommand(),
 			sessioncmd.ForkCommand(),
