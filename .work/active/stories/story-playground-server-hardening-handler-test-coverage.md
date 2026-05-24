@@ -1,9 +1,9 @@
 ---
-id: bug-playground-handler-missing-test-coverage
+id: story-playground-server-hardening-handler-test-coverage
 kind: story
 stage: implementing
 tags: [portal, playground, testing]
-parent: null
+parent: feature-playground-server-hardening
 depends_on: []
 release_binding: null
 gate_origin: null

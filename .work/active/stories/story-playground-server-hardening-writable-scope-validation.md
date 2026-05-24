@@ -1,9 +1,9 @@
 ---
-id: bug-playground-create-skips-writable-scope-validation
+id: story-playground-server-hardening-writable-scope-validation
 kind: story
 stage: implementing
 tags: [portal, playground, validation]
-parent: null
+parent: feature-playground-server-hardening
 depends_on: []
 release_binding: null
 gate_origin: null

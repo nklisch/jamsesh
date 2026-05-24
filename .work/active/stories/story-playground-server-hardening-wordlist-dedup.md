@@ -1,9 +1,9 @@
 ---
-id: bug-playground-wordlist-duplicate-adjectives
+id: story-playground-server-hardening-wordlist-dedup
 kind: story
 stage: implementing
 tags: [portal, playground, polish]
-parent: null
+parent: feature-playground-server-hardening
 depends_on: []
 release_binding: null
 gate_origin: null
