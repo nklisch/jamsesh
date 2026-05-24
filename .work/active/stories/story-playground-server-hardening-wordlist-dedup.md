@@ -1,7 +1,7 @@
 ---
 id: story-playground-server-hardening-wordlist-dedup
 kind: story
-stage: review
+stage: done
 tags: [portal, playground, polish]
 parent: feature-playground-server-hardening
 depends_on: []
@@ -83,3 +83,25 @@ the trailing newline. Verified:
 Did not pad back up to 256 entries — the diversity test passes and the parent
 feature acceptance only requires "no duplicates". Padding can land later as
 a follow-up if/when wordspace breadth becomes a concern.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: `wordlist_test.go:25` comment still references "~239 adj × ~182 animals
+= ~43k+ combinations" — actual joint space is now 177 × 182 ≈ 32k. The 900/1000
+diversity threshold still clears comfortably, so the test logic is unaffected;
+only the prose number is stale. Not worth a substrate item.
+
+**Notes**: Pure data-only change. Verified:
+- `wc -l adjectives.txt` = 177 (matches acceptance).
+- `sort adjectives.txt | uniq -c | awk '$1>1' | wc -l` = 0 (no duplicates).
+- File is sorted (`sort -c` passes); diff cleanly interleaves previously-duplicated
+  entries into their alphabetical positions, keeping the file's existing ordering
+  convention.
+- `go test ./internal/portal/playground/wordlist/...` → ok.
+- Trailing newline preserved; embed contract unchanged.
+- Implementer's decision not to pad to 256 entries is within the design's
+  explicit "optional / implementer's discretion" envelope.
