@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-docs
 kind: story
-stage: review
+stage: done
 tags: [documentation, playground]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: []
@@ -89,3 +89,28 @@ section (four sub-headings) immediately before `## Audit trail`:
 
 Story 3 (abuse-caps) was checked: still at `stage: implementing`, no value
 changes were applied. All defaults match the feature design exactly.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `docs/SPEC.md` "Content-size cap" prose says the check "compares the incoming
+  packfile's object count against the current session storage total reported by
+  the storage backend" — "object count" vs "storage total (bytes)" mixes units.
+  `docs/SECURITY.md`'s "Content-size cap" section phrases it cleanly. Editorial
+  polish only; not blocking.
+
+**Notes**: Docs-only story. All four acceptance criteria satisfied: SPEC
+limits-and-defaults table + per-limit prose has every value pinned with no
+remaining "TBD" wording; SECURITY's "Abuse model for playground sessions"
+section has the four required sub-headings; prose is present-tense with no
+version-stamped framing; cross-reference uses an anchor link
+(`#anonymous-session-scoped-bearers`, which resolves to an existing heading at
+SECURITY.md:258). All env var names and error codes
+(`playground.session_full`, `playground.size_exceeded`) are consistent with the
+parent feature design and sibling stories. Tombstone semantics (30-day TTL,
+summary page) align with SPEC.md:217 and the REST-endpoints story's tombstones
+table TTL. Advancing review → done.
