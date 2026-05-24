@@ -1,7 +1,7 @@
 ---
 id: epic-e2e-playground-coverage
 kind: epic
-stage: drafting
+stage: implementing
 tags: [testing, e2e-test, playground, portal, plugin]
 parent: null
 depends_on: []
@@ -118,10 +118,43 @@ Audit findings filed at commit `89df77c` via
 their `e2e-audit-*` slug prefix to preserve provenance — these came
 from an audit, not from feature-design.
 
+## Decomposition (pre-existed — confirmed by epic-design Phase 1.5 short-circuit)
+
+The 4 child features were materialized at scope time (commit `cb9b10b`)
+because the audit's taxonomy clustering pre-decomposed the work:
+golden / failure / chaos / fuzz map 1:1 to the existing
+`tests/e2e/{golden,failure,chaos,fuzz}/` directory layout, and the 11
+audit stories already partitioned cleanly into those buckets. Per the
+epic-design skill's Phase 1.5 short-circuit, the decomposition is
+accepted as-is (verified for coherence: 4 features, all at `drafting`,
+all parented to this epic, no obvious capability gaps relative to the
+brief), the epic advances to `implementing`, and Phases 2-7 are
+skipped.
+
+UI alignment (Phase 4.6): not applicable — this epic adds Go e2e tests
+against the v0.4.0 playground subsystem that was already UI-designed
+and shipped. Zero net-new UI surfaces.
+
+### Child features (realized)
+
+- `feature-e2e-playground-coverage-golden` — 5 happy-path journeys end-to-end — depends on: `[]`
+- `feature-e2e-playground-coverage-failure` — 4 failure-mode tests — depends on: `[feature-e2e-playground-coverage-golden]`
+- `feature-e2e-playground-coverage-chaos` — 1 chaos test (destruction during in-flight push) — depends on: `[feature-e2e-playground-coverage-golden]`
+- `feature-e2e-playground-coverage-fuzz` — 1 fuzz harness (nickname input) — depends on: `[feature-e2e-playground-coverage-golden]`
+
+Dependency rationale: golden establishes the playground e2e patterns
+(fixture composition, `dockerExec` assertion shape, `/test/clock-advance`
+usage, real-bare-repo path checks); failure / chaos / fuzz inherit those
+patterns rather than re-deriving them. Per the e2e-test-design skill,
+"chaos verifies graceful degradation of already-tested paths."
+
 ## Next
 
-`/agile-workflow:epic-design epic-e2e-playground-coverage` to refine
-the decomposition (or skip directly to
-`/agile-workflow:e2e-test-design feature-e2e-playground-coverage-golden`
-to start designing the golden feature, since the decomposition is
-already pre-clustered by the audit).
+Each child feature is at `stage: drafting`. The design family picks them
+up via `/agile-workflow:e2e-test-design <feature-id>` (the right design
+member for `[e2e-test]`-tagged features), starting with
+`feature-e2e-playground-coverage-golden` since failure / chaos / fuzz
+depend on it. Or run `/agile-workflow:autopilot epic-e2e-playground-coverage`
+to drive the program end-to-end (autopilot will route each drafting
+feature to e2e-test-design, then to implement-orchestrator once
+designs land).
