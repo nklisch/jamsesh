@@ -1,14 +1,14 @@
 ---
 id: story-epic-ephemeral-playground-plugin-skills-bearer-storage
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: feature-epic-ephemeral-playground-plugin-skills
 depends_on: [story-foundation-doc-drift-bearer-storage-architecture]
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Unified per-session bearer storage + migration
@@ -135,3 +135,19 @@ better design than the originally-spec'd "always write stub" behavior.
 Worth flagging in the parent feature's review notes so future
 unified-storage work follows the same "preserve legacy when no session
 context exists" intuition.
+
+## Land-mode confirmation (2026-05-24)
+
+All deliverables verified in place prior to this stage transition:
+
+- `cmd/jamsesh/state/state.go` — `ReadSessionToken`, `WriteSessionToken`,
+  `ListSessions` present and correct.
+- `cmd/jamsesh/state/migrate.go` — `MigrateToPerSessionTokens` with
+  idempotent stub-check, zero-sessions guard, and partial-failure resilience.
+- `cmd/jamsesh/state/state_test.go` — per-session round-trip, dir-creation,
+  and not-exist tests present.
+- `cmd/jamsesh/state/migrate_test.go` — 7 branches covering all edge cases.
+- `cmd/jamsesh/main.go` — startup call via inline `stderrLogger`.
+- `cmd/jamsesh/portalclient/refresh.go` — `doRefresh` writes per-session
+  path when session bound; falls back to legacy for unbound invocations.
+- `go build ./...` clean; full test suite green (all packages cached ok).
