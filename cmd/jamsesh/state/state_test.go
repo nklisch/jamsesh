@@ -384,6 +384,190 @@ func TestReadCurrentBearer_PostMigrationStub_PassesThrough(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Per-session token isolation: ReadCurrentBearer call-site contract
+// ---------------------------------------------------------------------------
+//
+// feature-state-readtoken-per-session-sweep extended ReadCurrentBearer so that
+// every call-site that has a bound session ID reads the per-session file at
+// sessions/<id>/token rather than the legacy account-wide token file.
+//
+// The tests below verify the isolation contract:
+//   - Tokens written for session-A are NOT visible when session-B is requested.
+//   - The legacy fallback is only taken when the per-session file is absent.
+//   - An empty sessionID always bypasses per-session lookup entirely.
+//
+// The naming convention mirrors the callsites swept in the feature:
+//   - "status" callsite: ReadSessionToken(sessID)  — direct per-session read
+//   - "fork / new (bound)" callsite: ReadCurrentBearer(sessID) — per-session preferred
+//   - "join / new (pre-binding)" callsite: ReadCurrentBearer("") — legacy only
+
+// TestReadCurrentBearer_SessionIsolation verifies that tokens written for
+// session-A are NOT returned when ReadCurrentBearer is called with session-B's ID.
+// This is the core isolation invariant: per-session tokens must be scoped.
+func TestReadCurrentBearer_SessionIsolation(t *testing.T) {
+	dir := t.TempDir()
+	withPluginData(t, dir)
+
+	const (
+		sessA  = "sess-isolation-a"
+		sessB  = "sess-isolation-b"
+		tokA   = "bearer-for-session-a"
+		tokB   = "bearer-for-session-b"
+	)
+
+	// Write distinct per-session tokens for both sessions.
+	if err := WriteSessionToken(sessA, []byte(tokA)); err != nil {
+		t.Fatalf("WriteSessionToken(A): %v", err)
+	}
+	if err := WriteSessionToken(sessB, []byte(tokB)); err != nil {
+		t.Fatalf("WriteSessionToken(B): %v", err)
+	}
+
+	// Session-A lookup must return tokA, not tokB.
+	gotA, err := ReadCurrentBearer(sessA)
+	if err != nil {
+		t.Fatalf("ReadCurrentBearer(A): %v", err)
+	}
+	if gotA != tokA {
+		t.Errorf("session-A: got %q, want %q", gotA, tokA)
+	}
+
+	// Session-B lookup must return tokB, not tokA.
+	gotB, err := ReadCurrentBearer(sessB)
+	if err != nil {
+		t.Fatalf("ReadCurrentBearer(B): %v", err)
+	}
+	if gotB != tokB {
+		t.Errorf("session-B: got %q, want %q", gotB, tokB)
+	}
+
+	// Cross-check: neither session leaks the other's token.
+	if gotA == gotB {
+		t.Errorf("isolation failure: session-A and session-B returned the same token %q", gotA)
+	}
+}
+
+// TestReadCurrentBearer_BoundCallsite_PrefersPerSession models the "fork/new
+// bound-session" callsite pattern: state.ReadCurrentBearer(sessionID) where
+// sessionID is non-empty. The per-session file must win over the legacy file.
+func TestReadCurrentBearer_BoundCallsite_PrefersPerSession(t *testing.T) {
+	dir := t.TempDir()
+	withPluginData(t, dir)
+
+	const sessID = "sess-bound-callsite"
+
+	// Write a legacy token (simulates a pre-migration install).
+	if err := WriteToken("legacy-account-token"); err != nil {
+		t.Fatalf("WriteToken: %v", err)
+	}
+	// Write a per-session token for sessID (simulates post-migration state).
+	if err := WriteSessionToken(sessID, []byte("per-session-token")); err != nil {
+		t.Fatalf("WriteSessionToken: %v", err)
+	}
+
+	got, err := ReadCurrentBearer(sessID)
+	if err != nil {
+		t.Fatalf("ReadCurrentBearer: %v", err)
+	}
+	// The per-session token must shadow the legacy one.
+	if got != "per-session-token" {
+		t.Errorf("bound callsite: got %q, want per-session-token", got)
+	}
+}
+
+// TestReadCurrentBearer_PreBindingCallsite_UsesLegacy models the "join/new
+// pre-binding" callsite pattern: state.ReadCurrentBearer("") where no session
+// is bound yet. Must fall back to the legacy token.
+func TestReadCurrentBearer_PreBindingCallsite_UsesLegacy(t *testing.T) {
+	dir := t.TempDir()
+	withPluginData(t, dir)
+
+	// Legacy token present; no session-specific tokens exist.
+	if err := WriteToken("pre-binding-bearer"); err != nil {
+		t.Fatalf("WriteToken: %v", err)
+	}
+
+	got, err := ReadCurrentBearer("")
+	if err != nil {
+		t.Fatalf("ReadCurrentBearer: %v", err)
+	}
+	if got != "pre-binding-bearer" {
+		t.Errorf("pre-binding callsite: got %q, want pre-binding-bearer", got)
+	}
+}
+
+// TestReadSessionToken_StatusCallsite_PerSessionDirect models the "status"
+// callsite: state.ReadSessionToken(sessID) is called directly (not via
+// ReadCurrentBearer). Verifies the per-session contract: token is isolated
+// per session and missing returns fs.ErrNotExist.
+func TestReadSessionToken_StatusCallsite_PerSessionDirect(t *testing.T) {
+	dir := t.TempDir()
+	withPluginData(t, dir)
+
+	const (
+		sessID  = "sess-status-callsite"
+		payload = "status-bearer-token"
+	)
+
+	// Pre-condition: token absent.
+	_, err := ReadSessionToken(sessID)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("before write: want fs.ErrNotExist, got %v", err)
+	}
+
+	// Write per-session token.
+	if err := WriteSessionToken(sessID, []byte(payload)); err != nil {
+		t.Fatalf("WriteSessionToken: %v", err)
+	}
+
+	// Direct per-session read must return the written payload.
+	got, err := ReadSessionToken(sessID)
+	if err != nil {
+		t.Fatalf("ReadSessionToken: %v", err)
+	}
+	if string(got) != payload {
+		t.Errorf("ReadSessionToken() = %q, want %q", got, payload)
+	}
+}
+
+// TestReadCurrentBearer_MultiSession_EachIsolated runs a table of sessions and
+// verifies that ReadCurrentBearer returns the correct per-session token for
+// each, with no cross-contamination. This exercises the sweep across multiple
+// concurrent bindings — the scenario the feature-state-readtoken-per-session-sweep
+// was designed for.
+func TestReadCurrentBearer_MultiSession_EachIsolated(t *testing.T) {
+	dir := t.TempDir()
+	withPluginData(t, dir)
+
+	sessions := []struct {
+		id    string
+		token string
+	}{
+		{"sess-multi-alpha", "tok-alpha"},
+		{"sess-multi-beta", "tok-beta"},
+		{"sess-multi-gamma", "tok-gamma"},
+	}
+
+	// Write distinct per-session tokens.
+	for _, s := range sessions {
+		if err := WriteSessionToken(s.id, []byte(s.token)); err != nil {
+			t.Fatalf("WriteSessionToken(%s): %v", s.id, err)
+		}
+	}
+
+	// Verify each session returns only its own token.
+	for _, s := range sessions {
+		got, err := ReadCurrentBearer(s.id)
+		if err != nil {
+			t.Fatalf("ReadCurrentBearer(%s): %v", s.id, err)
+		}
+		if got != s.token {
+			t.Errorf("session %s: got %q, want %q", s.id, got, s.token)
+		}
+	}
+}
+
 // TestListSessions_returnsSubdirs verifies ListSessions enumerates session
 // subdirectory names and ignores non-directory entries.
 func TestListSessions_returnsSubdirs(t *testing.T) {

@@ -1,7 +1,7 @@
 ---
 id: gate-tests-state-readtoken-per-session-sweep-callsite-coverage
 kind: story
-stage: implementing
+stage: review
 tags: [testing, plugin, refactor]
 parent: null
 depends_on: []
@@ -30,3 +30,26 @@ helper is invoked.
 
 ## Test location (suggested)
 `cmd/jamsesh/state/`, `cmd/jamsesh/sessioncmd/`
+
+## Implementation notes
+
+Added five tests to `cmd/jamsesh/state/state_test.go` covering the per-session
+token isolation contract established by `feature-state-readtoken-per-session-sweep`:
+
+- `TestReadCurrentBearer_SessionIsolation` — core invariant: token written for
+  session-A is not returned when session-B is requested.
+- `TestReadCurrentBearer_BoundCallsite_PrefersPerSession` — models the fork/new
+  bound-session callsite pattern (`ReadCurrentBearer(sessID)`): per-session file
+  shadows the legacy token.
+- `TestReadCurrentBearer_PreBindingCallsite_UsesLegacy` — models the join/new
+  pre-binding callsite pattern (`ReadCurrentBearer("")`): always reads legacy token.
+- `TestReadSessionToken_StatusCallsite_PerSessionDirect` — models the status
+  callsite (`ReadSessionToken(sessID)`): absent before write, present after.
+- `TestReadCurrentBearer_MultiSession_EachIsolated` — table-driven sweep over
+  three concurrent sessions, verifying no cross-contamination.
+
+All tests are in the same `package state` as the code-under-test, using the
+existing `withPluginData(t, dir)` helper. No new test infrastructure was needed.
+The session-level callsites in `sessioncmd/` are integration-tested via
+`status_test.go` (which already asserts per-session token reads); the unit tests
+here directly target the helper function that was swept across those callsites.
