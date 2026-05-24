@@ -26,7 +26,9 @@ func TestE2EBuild_TestEndpointMounted(t *testing.T) {
 	}
 
 	handler := router.New(router.Deps{
-		MountTest: provider.mountTestEndpointsHook(),
+		Mounts: router.Mounts{
+			Test: provider.mountTestEndpointsHook(),
+		},
 	})
 
 	t.Run("happy_path", func(t *testing.T) {

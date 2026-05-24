@@ -82,13 +82,15 @@ func TestAPIBodyLimitApplied(t *testing.T) {
 	overLimit := strings.Repeat("x", (1<<20)+1)
 
 	h := router.New(router.Deps{
-		MountAPI: func(r chi.Router) {
-			r.Post("/probe", func(w http.ResponseWriter, r *http.Request) {
-				if !readAllOrReject(w, r) {
-					return
-				}
-				w.WriteHeader(http.StatusOK)
-			})
+		Mounts: router.Mounts{
+			API: func(r chi.Router) {
+				r.Post("/probe", func(w http.ResponseWriter, r *http.Request) {
+					if !readAllOrReject(w, r) {
+						return
+					}
+					w.WriteHeader(http.StatusOK)
+				})
+			},
 		},
 	})
 

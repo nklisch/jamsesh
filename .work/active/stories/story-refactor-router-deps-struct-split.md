@@ -1,7 +1,7 @@
 ---
 id: story-refactor-router-deps-struct-split
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -89,3 +89,27 @@ paths but the wiring shape is unchanged.
 ## Notes
 
 Behavior-preserving — pure naming + nesting change, no logic moves.
+
+## Implementation notes
+
+Partitioned `Deps` into four role-scoped sub-structs as specified:
+
+- `Security` — `TLSMode`, `TrustProxyHeaders`
+- `Mounts` — `API`, `MCP`, `Git`, `WS`, `UI`, `Test` (renamed from `Mount*` prefix; parent struct name conveys "mount")
+- `Probes` — `Ready` (renamed from `ReadyzChecks`)
+- `Metrics` — `Handler`, `Token`, `Registry` (renamed from `MetricsHandler`, `MetricsToken`, `MetricsRegistry`)
+- `APIBodyLimitBytes` stays at top-level `Deps` — no natural group
+
+Callers updated:
+- `internal/portal/router/router.go` — struct definitions + `New()` body
+- `internal/portal/router/router_test.go`
+- `internal/portal/router/security_headers_test.go`
+- `internal/portal/router/metrics_auth_test.go`
+- `internal/portal/router/body_limits_test.go`
+- `internal/portal/router/body_limits_api_test.go`
+- `internal/portal/server/server_test.go` — extra caller beyond listed; uses `TrustProxyHeaders`
+- `cmd/portal/main.go`
+- `cmd/portal/test_clock_advance_e2e_test.go`
+- `cmd/portal/test_clock_advance_prod_test.go`
+
+`go build ./...` clean. `go test ./...` — all 57 packages pass.

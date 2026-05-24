@@ -107,11 +107,13 @@ func TestNilMountHooks404(t *testing.T) {
 func TestMountAPIHookReached(t *testing.T) {
 	var called bool
 	h := router.New(router.Deps{
-		MountAPI: func(r chi.Router) {
-			r.Get("/sessions", func(w http.ResponseWriter, r *http.Request) {
-				called = true
-				w.WriteHeader(http.StatusOK)
-			})
+		Mounts: router.Mounts{
+			API: func(r chi.Router) {
+				r.Get("/sessions", func(w http.ResponseWriter, r *http.Request) {
+					called = true
+					w.WriteHeader(http.StatusOK)
+				})
+			},
 		},
 	})
 
@@ -130,11 +132,13 @@ func TestMountAPIHookReached(t *testing.T) {
 func TestMountGitHookReached(t *testing.T) {
 	var called bool
 	h := router.New(router.Deps{
-		MountGit: func(r chi.Router) {
-			r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-				called = true
-				w.WriteHeader(http.StatusOK)
-			})
+		Mounts: router.Mounts{
+			Git: func(r chi.Router) {
+				r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+					called = true
+					w.WriteHeader(http.StatusOK)
+				})
+			},
 		},
 	})
 
@@ -154,7 +158,7 @@ func TestMountMCPHookReached(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	h := router.New(router.Deps{MountMCP: mcpHandler})
+	h := router.New(router.Deps{Mounts: router.Mounts{MCP: mcpHandler}})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
@@ -168,9 +172,11 @@ func TestMountMCPHookReached(t *testing.T) {
 func TestMountWSHookReached(t *testing.T) {
 	var called bool
 	h := router.New(router.Deps{
-		MountWS: func(w http.ResponseWriter, r *http.Request) {
-			called = true
-			w.WriteHeader(http.StatusSwitchingProtocols)
+		Mounts: router.Mounts{
+			WS: func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusSwitchingProtocols)
+			},
 		},
 	})
 
@@ -185,10 +191,12 @@ func TestMountWSHookReached(t *testing.T) {
 
 func TestPanicInHandler(t *testing.T) {
 	h := router.New(router.Deps{
-		MountAPI: func(r chi.Router) {
-			r.Get("/panic", func(w http.ResponseWriter, r *http.Request) {
-				panic("deliberate panic for test")
-			})
+		Mounts: router.Mounts{
+			API: func(r chi.Router) {
+				r.Get("/panic", func(w http.ResponseWriter, r *http.Request) {
+					panic("deliberate panic for test")
+				})
+			},
 		},
 	})
 
@@ -207,7 +215,7 @@ func TestPanicInHandler(t *testing.T) {
 
 func TestTrustProxyHeadersOff(t *testing.T) {
 	// Without TrustProxyHeaders, the router should still function normally.
-	h := router.New(router.Deps{TrustProxyHeaders: false})
+	h := router.New(router.Deps{Security: router.Security{TrustProxyHeaders: false}})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/healthz", nil)

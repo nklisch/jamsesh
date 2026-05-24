@@ -190,14 +190,16 @@ func newStrictAPIRouter(apiBodyLimitBytes int64) http.Handler {
 
 	return router.New(router.Deps{
 		APIBodyLimitBytes: apiBodyLimitBytes,
-		MountAPI: func(r chi.Router) {
-			// Register only the POST endpoints under test. Path segments are
-			// relative to the /api group that router.New already creates.
-			r.Post("/auth/magic-link/request", wrapper.RequestMagicLink)
-			r.Post("/orgs/{orgID}/sessions", wrapper.CreateSession)
-			r.Post("/orgs/{orgID}/sessions/{sessionID}/comments", wrapper.CreateComment)
-			r.Post("/orgs/{orgID}/invites", wrapper.CreateOrgInvite)
-			r.Patch("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", wrapper.PatchFinalizeLock)
+		Mounts: router.Mounts{
+			API: func(r chi.Router) {
+				// Register only the POST endpoints under test. Path segments are
+				// relative to the /api group that router.New already creates.
+				r.Post("/auth/magic-link/request", wrapper.RequestMagicLink)
+				r.Post("/orgs/{orgID}/sessions", wrapper.CreateSession)
+				r.Post("/orgs/{orgID}/sessions/{sessionID}/comments", wrapper.CreateComment)
+				r.Post("/orgs/{orgID}/invites", wrapper.CreateOrgInvite)
+				r.Patch("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", wrapper.PatchFinalizeLock)
+			},
 		},
 	})
 }
@@ -338,21 +340,23 @@ func TestREST_BodySizeCap_GitSmartHTTPUnaffected(t *testing.T) {
 	var gitHandlerCalled bool
 
 	h := router.New(router.Deps{
-		MountGit: func(r chi.Router) {
-			r.Post("/{org}/{repo}.git/git-receive-pack", func(w http.ResponseWriter, r *http.Request) {
-				// Drain body to simulate git-receive-pack reading pack data.
-				buf := make([]byte, 32*1024)
-				total := 0
-				for {
-					n, err := r.Body.Read(buf)
-					total += n
-					if err != nil {
-						break
+		Mounts: router.Mounts{
+			Git: func(r chi.Router) {
+				r.Post("/{org}/{repo}.git/git-receive-pack", func(w http.ResponseWriter, r *http.Request) {
+					// Drain body to simulate git-receive-pack reading pack data.
+					buf := make([]byte, 32*1024)
+					total := 0
+					for {
+						n, err := r.Body.Read(buf)
+						total += n
+						if err != nil {
+							break
+						}
 					}
-				}
-				gitHandlerCalled = true
-				w.WriteHeader(http.StatusOK)
-			})
+					gitHandlerCalled = true
+					w.WriteHeader(http.StatusOK)
+				})
+			},
 		},
 	})
 

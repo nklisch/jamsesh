@@ -809,31 +809,38 @@ func main() {
 	//                          /auth/magic-link/exchange
 	//   - Bearer: /auth/revoke (and future authenticated endpoints)
 	handler := router.New(router.Deps{
-		TLSMode:           cfg.TLS.Mode,
-		TrustProxyHeaders: cfg.TLS.Mode == "behind_proxy",
-		MountUI:           uiHandler,
-		MountGit:          gitHandler.Mount,
-		MountMCP:          mcpEndpoint.Handler(),
-		MountWS:           wsGateway.Handler(),
-		MountTest:         testClk.mountTestEndpointsHook(),
-		MetricsHandler:    metricsReg.Handler(),
-		MetricsToken:      cfg.MetricsToken,
-		MetricsRegistry:   metricsReg,
-		APIBodyLimitBytes: cfg.APIBodyLimitBytes,
-		ReadyzChecks: []probes.Check{
-			{
-				Name: "db",
-				Fn:   dbStore.Ping,
-			},
-			{
-				Name: "storage",
-				Fn: func(ctx context.Context) error {
-					_, err := os.Stat(cfg.Storage)
-					return err
+		Security: router.Security{
+			TLSMode:           cfg.TLS.Mode,
+			TrustProxyHeaders: cfg.TLS.Mode == "behind_proxy",
+		},
+		Metrics: router.Metrics{
+			Handler:  metricsReg.Handler(),
+			Token:    cfg.MetricsToken,
+			Registry: metricsReg,
+		},
+		Probes: router.Probes{
+			Ready: []probes.Check{
+				{
+					Name: "db",
+					Fn:   dbStore.Ping,
+				},
+				{
+					Name: "storage",
+					Fn: func(ctx context.Context) error {
+						_, err := os.Stat(cfg.Storage)
+						return err
+					},
 				},
 			},
 		},
-		MountAPI: func(r chi.Router) {
+		APIBodyLimitBytes: cfg.APIBodyLimitBytes,
+		Mounts: router.Mounts{
+			UI:   uiHandler,
+			Git:  gitHandler.Mount,
+			MCP:  mcpEndpoint.Handler(),
+			WS:   wsGateway.Handler(),
+			Test: testClk.mountTestEndpointsHook(),
+			API: func(r chi.Router) {
 			// Per-IP rate limiters for each unauthenticated auth endpoint.
 			// Limits: magic-link/request 3/min 10/hr; oauth/start 5/min 20/hr;
 			// exchange/callback 10/min; refresh 20/min.
@@ -949,6 +956,7 @@ func main() {
 				r.Post("/playground/sessions/{id}/join", apiWrapper.JoinPlaygroundSession)
 				r.Get("/playground/sessions/{id}/tombstone", apiWrapper.GetPlaygroundTombstone)
 			})
+		},
 		},
 	})
 

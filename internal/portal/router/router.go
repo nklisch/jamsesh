@@ -19,11 +19,8 @@ import (
 	"jamsesh/internal/portal/probes"
 )
 
-// Deps is the dependency surface for the portal router. Concrete handler
-// interfaces (TokenStore, MCP handler, etc.) land here as sibling features
-// ship. All mount hooks are nilable so this package does not hard-depend on
-// features that haven't landed yet.
-type Deps struct {
+// Security groups TLS posture and proxy-trust settings.
+type Security struct {
 	// TLSMode mirrors config.TLSConfig.Mode ("native" | "behind_proxy").
 	// Used by the security-headers middleware to decide whether to emit HSTS:
 	// "native" means the portal itself terminates TLS, so HSTS is safe;
@@ -35,17 +32,69 @@ type Deps struct {
 	// X-Forwarded-For and X-Real-IP. Set only when running behind a
 	// trusted reverse proxy; direct-listen mode must not trust these headers.
 	TrustProxyHeaders bool
+}
 
-	// Mount hooks — left as nilable so http-skeleton can ship before its
-	// dependents. Missing hooks 404 through the envelope.
-	MountAPI func(chi.Router) // owned by tokens + auth-flows + accounts
-	MountGit func(chi.Router) // owned by epic-portal-git
-	MountMCP http.Handler     // owned by epic-portal-api
-	MountWS  http.HandlerFunc // owned by epic-portal-api
-	// MountUI serves the embedded Svelte SPA at / as a catch-all after all
+// Mounts groups the nilable mount hooks for each subsystem. Missing hooks
+// 404 through the standard JSON envelope.
+type Mounts struct {
+	// API is owned by tokens + auth-flows + accounts.
+	API func(chi.Router)
+	// MCP is the MCP SDK handler, owned by epic-portal-api.
+	MCP http.Handler
+	// Git is owned by epic-portal-git.
+	Git func(chi.Router)
+	// WS is the WebSocket upgrade handler, owned by epic-portal-api.
+	WS http.HandlerFunc
+	// UI serves the embedded Svelte SPA at / as a catch-all after all
 	// other routes. Owned by epic-portal-ui-foundation (assets package).
 	// Must be registered last so API/git/mcp/ws routes take precedence.
-	MountUI http.Handler // owned by epic-portal-ui-foundation
+	UI http.Handler
+	// Test is a nilable hook for test-only routes under /test/*.
+	// Populated only by the e2etest-tagged binary (see
+	// cmd/portal/test_clock_advance.go); production builds leave it nil
+	// and the /test subtree is never registered. The build-tag gate in
+	// cmd/portal is the trust boundary for this hook.
+	Test func(chi.Router)
+}
+
+// Probes groups readiness probe configuration.
+type Probes struct {
+	// Ready is the list of readiness probes mounted at /readyz.
+	// When nil or empty, the /readyz route is not registered and the path
+	// falls through to the 404 handler. Populated in main.go with DB ping
+	// and storage stat checks.
+	Ready []probes.Check
+}
+
+// Metrics groups the metrics endpoint configuration.
+type Metrics struct {
+	// Handler serves GET /metrics in Prometheus text exposition format.
+	// When nil or when Token is empty, the /metrics route is not
+	// registered. Access is gated behind Token bearer authentication.
+	Handler http.Handler
+
+	// Token is the static bearer token required to access /metrics.
+	// When empty (the default), /metrics is not mounted at all — operators
+	// must explicitly opt in via JAMSESH_METRICS_TOKEN. When set, the handler
+	// is wrapped with a constant-time bearer check; missing or mismatched
+	// tokens receive 401.
+	Token string
+
+	// Registry is threaded into the Access logging middleware so that
+	// per-request counters and histograms are recorded. When nil, the Access
+	// middleware logs normally but skips metric recording.
+	Registry *metrics.Registry
+}
+
+// Deps is the dependency surface for the portal router. Concrete handler
+// interfaces (TokenStore, MCP handler, etc.) land here as sibling features
+// ship. All mount hooks are nilable so this package does not hard-depend on
+// features that haven't landed yet.
+type Deps struct {
+	Security Security
+	Mounts   Mounts
+	Probes   Probes
+	Metrics  Metrics
 
 	// APIBodyLimitBytes is the maximum number of bytes the server will read
 	// from any request body on /api/* routes. Requests whose bodies exceed
@@ -56,36 +105,6 @@ type Deps struct {
 	// Git smart-HTTP routes (/git/*) are NOT affected — they manage their
 	// own per-route limits.
 	APIBodyLimitBytes int64
-
-	// MountTest is a nilable hook for test-only routes under /test/*.
-	// Populated only by the e2etest-tagged binary (see
-	// cmd/portal/test_clock_advance.go); production builds leave it nil
-	// and the /test subtree is never registered. The build-tag gate in
-	// cmd/portal is the trust boundary for this hook.
-	MountTest func(chi.Router)
-
-	// ReadyzChecks is the list of readiness probes mounted at /readyz.
-	// When nil or empty, the /readyz route is not registered and the path
-	// falls through to the 404 handler. Populated in main.go with DB ping
-	// and storage stat checks.
-	ReadyzChecks []probes.Check
-
-	// MetricsHandler serves GET /metrics in Prometheus text exposition format.
-	// When nil or when MetricsToken is empty, the /metrics route is not
-	// registered. Access is gated behind MetricsToken bearer authentication.
-	MetricsHandler http.Handler
-
-	// MetricsToken is the static bearer token required to access /metrics.
-	// When empty (the default), /metrics is not mounted at all — operators
-	// must explicitly opt in via JAMSESH_METRICS_TOKEN. When set, the handler
-	// is wrapped with a constant-time bearer check; missing or mismatched
-	// tokens receive 401.
-	MetricsToken string
-
-	// MetricsRegistry is threaded into the Access logging middleware so that
-	// per-request counters and histograms are recorded. When nil, the Access
-	// middleware logs normally but skips metric recording.
-	MetricsRegistry *metrics.Registry
 }
 
 // New returns the root http.Handler for the portal. Middleware order is
@@ -93,7 +112,7 @@ type Deps struct {
 //
 //  1. SecurityHeaders — CSP, X-Frame-Options, HSTS (when HTTPS), etc.
 //  2. RequestID       — every downstream log line carries the request ID
-//  3. RealIP          — gated on TrustProxyHeaders (see Deps)
+//  3. RealIP          — gated on Security.TrustProxyHeaders (see Deps)
 //  4. Access          — logs after the full response is written
 //  5. Recoverer       — converts panics to the JSON envelope
 //
@@ -112,7 +131,7 @@ func New(d Deps) http.Handler {
 	//   - "native": the portal terminates TLS itself.
 	//   - "behind_proxy" + TrustProxyHeaders: operator asserts the upstream
 	//     proxy terminates HTTPS. (TrustProxyHeaders is the operator signal.)
-	enableHSTS := d.TLSMode == "native" || (d.TLSMode == "behind_proxy" && d.TrustProxyHeaders)
+	enableHSTS := d.Security.TLSMode == "native" || (d.Security.TLSMode == "behind_proxy" && d.Security.TrustProxyHeaders)
 
 	// Global middleware stack — order matters.
 	// SecurityHeaders is first so every response — including error responses
@@ -121,26 +140,26 @@ func New(d Deps) http.Handler {
 	// /api route group (see gate-security-rate-limit-auth-endpoints story).
 	r.Use(SecurityHeaders(SecurityHeadersOptions{EnableHSTS: enableHSTS}))
 	r.Use(chimw.RequestID)
-	if d.TrustProxyHeaders {
+	if d.Security.TrustProxyHeaders {
 		r.Use(chimw.RealIP)
 	}
-	r.Use(logging.Access(d.MetricsRegistry))
+	r.Use(logging.Access(d.Metrics.Registry))
 	r.Use(httperr.Recoverer)
 
 	// Public liveness probe — no auth.
 	r.Get("/healthz", healthz)
 
 	// Public readiness probe — only registered when checks are configured.
-	if len(d.ReadyzChecks) > 0 {
-		r.Get("/readyz", probes.Handler(d.ReadyzChecks).ServeHTTP)
+	if len(d.Probes.Ready) > 0 {
+		r.Get("/readyz", probes.Handler(d.Probes.Ready).ServeHTTP)
 	}
 
 	// Metrics endpoint — only mounted when a token is configured (opt-in).
 	// Access is gated behind a static bearer-token check using constant-time
 	// comparison to prevent timing attacks. Operators set JAMSESH_METRICS_TOKEN;
 	// unset means /metrics is not registered and the path falls through to 404.
-	if d.MetricsHandler != nil && len(d.MetricsToken) > 0 {
-		r.Mount("/metrics", metricsTokenMiddleware(d.MetricsToken, d.MetricsHandler))
+	if d.Metrics.Handler != nil && len(d.Metrics.Token) > 0 {
+		r.Mount("/metrics", metricsTokenMiddleware(d.Metrics.Token, d.Metrics.Handler))
 	}
 
 	// /api — REST API, Bearer auth. Hook is responsible for attaching
@@ -154,39 +173,39 @@ func New(d Deps) http.Handler {
 	}
 	r.Route("/api", func(r chi.Router) {
 		r.Use(BodyLimit(apiBodyLimit))
-		if d.MountAPI != nil {
-			d.MountAPI(r)
+		if d.Mounts.API != nil {
+			d.Mounts.API(r)
 		}
 	})
 
 	// /git — smart-HTTP, HTTP Basic auth.
-	if d.MountGit != nil {
-		r.Route("/git", d.MountGit)
+	if d.Mounts.Git != nil {
+		r.Route("/git", d.Mounts.Git)
 	}
 
 	// /mcp — MCP SDK handler, bearer auth per-request inside the SDK.
-	if d.MountMCP != nil {
-		r.Mount("/mcp", d.MountMCP)
+	if d.Mounts.MCP != nil {
+		r.Mount("/mcp", d.Mounts.MCP)
 	}
 
 	// /test — test-only mutators (e.g. POST /test/clock-advance) registered
 	// exclusively by the e2etest-tagged portal binary. Mounted BEFORE the
 	// SPA catch-all so the /test/* paths take precedence; production builds
 	// pass nil and the subtree is never registered.
-	if d.MountTest != nil {
-		r.Route("/test", d.MountTest)
+	if d.Mounts.Test != nil {
+		r.Route("/test", d.Mounts.Test)
 	}
 
 	// /ws — WebSocket upgrade; auth happens at upgrade time inside the handler.
-	if d.MountWS != nil {
-		r.Get("/ws/sessions/{sessionID}", d.MountWS)
+	if d.Mounts.WS != nil {
+		r.Get("/ws/sessions/{sessionID}", d.Mounts.WS)
 	}
 
 	// / — SPA catch-all. Must be last so all named routes above take precedence.
 	// Serves the embedded Svelte bundle; falls back to index.html for History-API
-	// deep links. When MountUI is nil, the chi NotFound handler applies.
-	if d.MountUI != nil {
-		r.Mount("/", d.MountUI)
+	// deep links. When Mounts.UI is nil, the chi NotFound handler applies.
+	if d.Mounts.UI != nil {
+		r.Mount("/", d.Mounts.UI)
 	}
 
 	return r

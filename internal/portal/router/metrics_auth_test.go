@@ -23,8 +23,10 @@ var metricsHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Reques
 // This is the JAMSESH_METRICS_TOKEN unset case — the endpoint must not exist at all.
 func TestMetricsUnmounted(t *testing.T) {
 	h := router.New(router.Deps{
-		MetricsHandler: metricsHandler,
-		MetricsToken:   "", // empty → route not mounted
+		Metrics: router.Metrics{
+			Handler: metricsHandler,
+			Token:   "", // empty → route not mounted
+		},
 	})
 
 	w := httptest.NewRecorder()
@@ -44,8 +46,10 @@ func TestMetricsUnmounted(t *testing.T) {
 // /metrics is also not registered regardless of MetricsToken.
 func TestMetricsUnmountedNilHandler(t *testing.T) {
 	h := router.New(router.Deps{
-		MetricsHandler: nil,
-		MetricsToken:   "secret",
+		Metrics: router.Metrics{
+			Handler: nil,
+			Token:   "secret",
+		},
 	})
 
 	w := httptest.NewRecorder()
@@ -64,8 +68,10 @@ func TestMetricsUnmountedNilHandler(t *testing.T) {
 func TestMetricsBearerAuth(t *testing.T) {
 	const token = "test-secret"
 	h := router.New(router.Deps{
-		MetricsHandler: metricsHandler,
-		MetricsToken:   token,
+		Metrics: router.Metrics{
+			Handler: metricsHandler,
+			Token:   token,
+		},
 	})
 
 	t.Run("no_auth_header", func(t *testing.T) {
@@ -117,8 +123,10 @@ func TestMetricsBearerAuth(t *testing.T) {
 // case-sensitive: "Secret" must not pass when the configured token is "secret".
 func TestMetricsBearerCaseSensitive(t *testing.T) {
 	h := router.New(router.Deps{
-		MetricsHandler: metricsHandler,
-		MetricsToken:   "secret",
+		Metrics: router.Metrics{
+			Handler: metricsHandler,
+			Token:   "secret",
+		},
 	})
 
 	w := httptest.NewRecorder()

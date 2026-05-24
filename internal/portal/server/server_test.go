@@ -37,7 +37,7 @@ func TestGracefulShutdown(t *testing.T) {
 	}
 
 	handler := router.New(router.Deps{
-		TrustProxyHeaders: true, // behind_proxy mode
+		Security: router.Security{TrustProxyHeaders: true}, // behind_proxy mode
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -147,18 +147,18 @@ func TestSecurityHeaders_RouterIntegration(t *testing.T) {
 	}
 
 	t.Run("TLSMode empty no HSTS", func(t *testing.T) {
-		assertHasSecurity(t, router.Deps{TLSMode: ""}, false)
+		assertHasSecurity(t, router.Deps{Security: router.Security{TLSMode: ""}}, false)
 	})
 
 	t.Run("TLSMode native enables HSTS", func(t *testing.T) {
-		assertHasSecurity(t, router.Deps{TLSMode: "native"}, true)
+		assertHasSecurity(t, router.Deps{Security: router.Security{TLSMode: "native"}}, true)
 	})
 
 	t.Run("TLSMode behind_proxy with TrustProxyHeaders enables HSTS", func(t *testing.T) {
-		assertHasSecurity(t, router.Deps{TLSMode: "behind_proxy", TrustProxyHeaders: true}, true)
+		assertHasSecurity(t, router.Deps{Security: router.Security{TLSMode: "behind_proxy", TrustProxyHeaders: true}}, true)
 	})
 
 	t.Run("TLSMode behind_proxy without TrustProxyHeaders no HSTS", func(t *testing.T) {
-		assertHasSecurity(t, router.Deps{TLSMode: "behind_proxy", TrustProxyHeaders: false}, false)
+		assertHasSecurity(t, router.Deps{Security: router.Security{TLSMode: "behind_proxy", TrustProxyHeaders: false}}, false)
 	})
 }

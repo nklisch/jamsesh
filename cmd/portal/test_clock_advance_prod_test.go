@@ -32,7 +32,9 @@ func TestProductionBuild_HasNoTestEndpoint(t *testing.T) {
 	}
 
 	handler := router.New(router.Deps{
-		MountTest: provider.mountTestEndpointsHook(),
+		Mounts: router.Mounts{
+			Test: provider.mountTestEndpointsHook(),
+		},
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/test/clock-advance",
