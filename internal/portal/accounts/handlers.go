@@ -29,10 +29,18 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now().UTC() }
 
+// accountsStore is the minimal store interface consumed by Handler.
+type accountsStore interface {
+	store.OrgStore
+	store.OrgMemberStore
+	store.OrgInviteStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
+}
+
 // Handler implements the openapi.StrictServerInterface methods for the
 // accounts endpoints: GET /api/me, POST /api/orgs, GET/POST /api/orgs/{orgID}/...
 type Handler struct {
-	store     store.Store
+	store     accountsStore
 	sender    senders.Sender
 	portalURL string
 	clock     Clock
@@ -40,14 +48,14 @@ type Handler struct {
 
 // New returns a Handler backed by s with the real system clock.
 // sender and portalURL are required for CreateOrgInvite to send invite emails.
-func New(s store.Store, sender senders.Sender, portalURL string) *Handler {
+func New(s accountsStore, sender senders.Sender, portalURL string) *Handler {
 	return NewWithClock(s, sender, portalURL, realClock{})
 }
 
 // NewWithClock returns a Handler backed by s with the supplied clock.
 // Used by unit tests (fakeClock) and the e2etest-tagged binary
 // (testclock.AdvanceableClock).
-func NewWithClock(s store.Store, sender senders.Sender, portalURL string, clock Clock) *Handler {
+func NewWithClock(s accountsStore, sender senders.Sender, portalURL string, clock Clock) *Handler {
 	return &Handler{store: s, sender: sender, portalURL: portalURL, clock: clock}
 }
 
