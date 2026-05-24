@@ -1,14 +1,14 @@
 ---
 id: story-tombstone-expired-redirect-distinguishes-active-vs-expired
 kind: story
-stage: implementing
+stage: review
 tags: [ui, playground, ux]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Tombstone 404 should distinguish "session still active" vs "tombstone expired"
@@ -56,3 +56,32 @@ owner.
 Low — only affects users visiting a 30+ day old tombstone URL. The
 playground itself is ephemeral, so most users will never hit this.
 File now so it's not lost.
+
+## Implementation discovery
+
+**Design decision: client-side probe over server-side discriminator.**
+
+The story offered two options. The server-side discriminator (adding a typed
+error code to the 404 envelope) is the cleaner long-term approach and aligns
+with the project's `deperr-translate-pipeline` pattern, but it requires
+touching `docs/openapi.yaml` and coordinating with concurrent in-flight spec
+work. Choosing it here would create merge conflicts and widen the blast radius
+of a low-priority story.
+
+The client-side probe is frontend-only and fully atomic: when the tombstone
+endpoint returns 404, fire `HEAD /api/playground/sessions/{id}`. A 2xx response
+means the session is still active and we redirect as before; anything else
+(404, 401, or network error) means the record is gone and we render a terminal
+"session summary has expired" page with a "Try another playground" CTA. The
+probe is cheap because stale tombstone URLs are rare (only visited 30+ days
+after a session ends).
+
+**Files changed:**
+
+- `frontend/src/lib/screens/SessionTombstone.svelte` — added `'expired'`
+  ViewState, client-side HEAD probe on 404, and the terminal expired page UI
+  with matching CSS.
+- `frontend/src/lib/screens/SessionTombstone.test.ts` — split the existing
+  404-redirect test into three cases (probe 200 → redirect, probe 404 →
+  expired page, probe network error → expired page) and added a CTA navigation
+  test for the expired page. 22 tests total, all passing.

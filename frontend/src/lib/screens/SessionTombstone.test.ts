@@ -1,5 +1,5 @@
 // SessionTombstone.test.ts
-// Tests: loading state, 200 tombstone render, 404 redirect to live session, error state.
+// Tests: loading state, 200 tombstone render, 404 active redirect, 404 expired terminal page, error state.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/svelte';
@@ -22,6 +22,23 @@ vi.mock('$lib/router.svelte', () => ({
   navigate: (...args: unknown[]) => mockNavigate(...args),
   current: { name: 'playground-ended', params: { sessionId: 'sess-pg-1' }, requiresAuth: false },
 }));
+
+// ── fetch stub helpers ────────────────────────────────────────────────────────
+//
+// The client-side probe uses native fetch (HEAD /api/playground/sessions/{id}).
+// We stub globalThis.fetch per-test so each scenario controls the probe result.
+
+function stubFetchOk() {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+}
+
+function stubFetchNotFound() {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+}
+
+function stubFetchNetworkError() {
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+}
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -48,10 +65,12 @@ const DEFAULT_PROPS = { sessionId: 'sess-pg-1' };
 describe('SessionTombstone', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   // ── Loading state ─────────────────────────────────────────────────────────
@@ -171,18 +190,75 @@ describe('SessionTombstone', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/');
   });
 
-  // ── 404: session still active (redirect) ──────────────────────────────────
+  // ── 404: two distinct branches ────────────────────────────────────────────
+  //
+  // When the tombstone endpoint returns 404, the component fires a HEAD probe
+  // against /api/playground/sessions/{id} to decide which branch to take.
 
-  it('on 404: redirects to the live session view (session still active)', async () => {
+  it('on 404 + probe 200: redirects to the live session view (session still active)', async () => {
     mockGET.mockResolvedValue({
       data: undefined,
       error: { error: 'not_found', message: 'not found' },
       response: { status: 404 },
     });
+    stubFetchOk();
     render(SessionTombstone, { props: DEFAULT_PROPS });
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/orgs/org_playground/sessions/sess-pg-1');
     });
+    // Probe was fired at the correct URL with HEAD method.
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledWith(
+      '/api/playground/sessions/sess-pg-1',
+      { method: 'HEAD' },
+    );
+  });
+
+  it('on 404 + probe 404: renders terminal expired page (tombstone TTL elapsed)', async () => {
+    mockGET.mockResolvedValue({
+      data: undefined,
+      error: { error: 'not_found', message: 'not found' },
+      response: { status: 404 },
+    });
+    stubFetchNotFound();
+    render(SessionTombstone, { props: DEFAULT_PROPS });
+    await waitFor(() => {
+      expect(screen.getByTestId('tombstone-expired')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/This session summary has expired/i)).toBeInTheDocument();
+    expect(screen.getByText(/Try another playground/i)).toBeInTheDocument();
+    // Must NOT redirect to the dead live-session URL.
+    expect(mockNavigate).not.toHaveBeenCalledWith(
+      '/orgs/org_playground/sessions/sess-pg-1',
+    );
+  });
+
+  it('on 404 + probe network error: renders terminal expired page (cannot reach live session)', async () => {
+    mockGET.mockResolvedValue({
+      data: undefined,
+      error: { error: 'not_found', message: 'not found' },
+      response: { status: 404 },
+    });
+    stubFetchNetworkError();
+    render(SessionTombstone, { props: DEFAULT_PROPS });
+    await waitFor(() => {
+      expect(screen.getByTestId('tombstone-expired')).toBeInTheDocument();
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('"Try another playground" on expired page navigates to /playground', async () => {
+    mockGET.mockResolvedValue({
+      data: undefined,
+      error: { error: 'not_found', message: 'not found' },
+      response: { status: 404 },
+    });
+    stubFetchNotFound();
+    render(SessionTombstone, { props: DEFAULT_PROPS });
+    await waitFor(() => {
+      expect(screen.getByTestId('tombstone-expired')).toBeInTheDocument();
+    });
+    await fireEvent.click(screen.getByText(/Try another playground/i));
+    expect(mockNavigate).toHaveBeenCalledWith('/playground');
   });
 
   // ── Error state ───────────────────────────────────────────────────────────

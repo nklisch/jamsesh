@@ -12,11 +12,12 @@
 
   // ── State machine ─────────────────────────────────────────────────────────
   //
-  //  loading → done (GET 200, tombstone found)
-  //  loading → live (GET 404, session still active → redirect to live session)
-  //  loading → error (network / unexpected status)
+  //  loading → done     (tombstone GET 200, tombstone found)
+  //  loading → live     (tombstone GET 404 + session GET 2xx → still active → redirect)
+  //  loading → expired  (tombstone GET 404 + session GET 404 → tombstone TTL elapsed)
+  //  loading → error    (network / unexpected status)
 
-  type ViewState = 'loading' | 'done' | 'error';
+  type ViewState = 'loading' | 'done' | 'expired' | 'error';
 
   let viewState = $state<ViewState>('loading');
   let tombstone = $state<PlaygroundTombstone | null>(null);
@@ -65,9 +66,31 @@
     }
 
     if (response?.status === 404) {
-      // 404 means the session is still active (tombstone doesn't exist yet).
-      // Redirect to the live session view.
-      navigate(`/orgs/org_playground/sessions/${sessionId}`);
+      // 404 has two distinct meanings for this endpoint:
+      //   1. Session still active — no tombstone written yet.
+      //   2. Tombstone TTL elapsed (30 days) — the summary record is gone.
+      //
+      // Discriminate with a client-side probe: HEAD the session endpoint.
+      //   • 2xx  → session alive  → redirect to live session view (case 1)
+      //   • 404  → session gone   → render terminal expired page (case 2)
+      //
+      // The probe is cheap; tombstone URLs are only visited on stale links.
+      let probeResponse: Response | undefined;
+      try {
+        probeResponse = await fetch(`/api/playground/sessions/${sessionId}`, { method: 'HEAD' });
+      } catch {
+        // Network failure during probe — fall through to expired state; the
+        // user cannot reach the live session anyway.
+      }
+
+      if (probeResponse && probeResponse.ok) {
+        // Session is still active — redirect.
+        navigate(`/orgs/org_playground/sessions/${sessionId}`);
+        return;
+      }
+
+      // Session is gone (404 / 401 / network error) — tombstone expired.
+      viewState = 'expired';
       return;
     }
 
@@ -154,6 +177,42 @@
             Sign in or create an org
           </a>
           — durable sessions don't expire and live inside your team's tenant.
+        </p>
+      </div>
+
+    {:else if viewState === 'expired'}
+      <div class="expired-page" data-testid="tombstone-expired">
+        <div class="expired-emoji" aria-hidden="true">🕰</div>
+        <h1>This session summary has expired.</h1>
+        <p class="lede">
+          Playground session summaries are kept for 30 days after a session ends.
+          The link you followed is older than that — the record is gone.
+        </p>
+        <div class="expired-ctas">
+          <a
+            class="cta-btn primary"
+            href="/playground"
+            onclick={(e) => { e.preventDefault(); navigate('/playground'); }}
+          >
+            Try another playground →
+          </a>
+          <a
+            class="cta-btn secondary"
+            href="/"
+            onclick={(e) => { e.preventDefault(); navigate('/'); }}
+          >
+            Sign up for a durable account
+          </a>
+        </div>
+        <p class="expired-foot">
+          Want session summaries that don't expire?
+          <a
+            href="/"
+            onclick={(e) => { e.preventDefault(); navigate('/'); }}
+          >
+            Sign in or create an org
+          </a>
+          — durable sessions live inside your team's tenant with no TTL.
         </p>
       </div>
 
@@ -368,6 +427,45 @@
   }
 
   .destroyed-foot a:hover {
+    text-decoration: underline;
+  }
+
+  /* ── Expired state ───────────────────────────────────────────────────── */
+
+  .expired-page {
+    padding: 64px 24px 56px;
+    text-align: center;
+    max-width: 640px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .expired-emoji {
+    font-size: 40px;
+    margin-bottom: 16px;
+    filter: grayscale(0.6);
+  }
+
+  .expired-ctas {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 0;
+  }
+
+  .expired-foot {
+    margin-top: 36px;
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-sm);
+  }
+
+  .expired-foot a {
+    color: var(--color-text-link);
+    text-decoration: none;
+  }
+
+  .expired-foot a:hover {
     text-decoration: underline;
   }
 
