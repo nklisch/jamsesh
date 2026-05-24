@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-cli-playground-flag
 kind: story
-stage: review
+stage: done
 tags: [plugin, playground]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: [story-epic-ephemeral-playground-session-lifecycle-rest-endpoints]
@@ -117,3 +117,65 @@ state, prints share URL + nickname + ends_at; mutually exclusive with
 - `portalclient.Client.Do` always calls `attachBearer` (reads state OAuth token), making it unsuitable for anonymous playground calls. Added `PostJSONAnon` as a bare `net/http` call with no auth header, following the existing `GetJSONWithBearer` pattern.
 - `buildPlaygroundClient()` returns `(string, *http.Client, error)` rather than `*portalclient.Client` to keep the anonymous path clearly separate from the authenticated client — no risk of accidentally wiring token refresh on playground calls.
 - `net/http` import added to `new.go` (was not previously imported; only `net/url` was present).
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `cmd/jamsesh/sessioncmd/new.go` (`printPlaygroundSummary`): design spec
+  for the summary line was "Ends: in <hard-cap-remaining> (or after
+  <idle-remaining> idle)". Implementation prints "Ends: in <hard-cap>
+  (hard cap) or after idle timeout" — the hard-cap remaining is shown
+  but the per-session idle-remaining number is not (despite
+  `IdleTimeoutAt` being available on the response). Both pieces of
+  information are conveyed semantically; the numeric value for idle is
+  the only thing missing. Tiny copy/visual nit, not worth a follow-up
+  unless the design wants the literal idle minutes surfaced.
+- `pushBaseRefWithBearer` (and the wave-1 `pushBaseRef` it mirrors)
+  capture `headSHA` into a discarded local — the `_ = headSHA` line
+  documents that this is "validation, not consumption". Fine as-is;
+  any future refactor could drop the variable entirely since
+  `runGitOutput("rev-parse", "HEAD")` already serves as a validation
+  call.
+
+**Notes**:
+- All 5 AC items from the parent feature's Story 4 verified:
+  1. Creates via `/api/playground/sessions` with no Authorization
+     header — `TestPlaygroundAction_happyPath` asserts both calls and
+     the absence of the auth header.
+  2. `--name "demo"` propagates to the request body —
+     `TestPlaygroundAction_namePassthrough`.
+  3. `--playground` without `--org` does not prompt — implicit in the
+     happy-path test (no prompt machinery touched).
+  4. Mutually-exclusive guard fires before any network call —
+     `TestPlaygroundAction_mutuallyExclusiveWithOrg`; error string
+     contains "mutually exclusive".
+  5. Push uses the received anon bearer via `-c http.extraHeader=`,
+     not URL-embedded credentials, not the OAuth token —
+     `TestPlaygroundAction_pushUsesBearerNotOAuthToken` asserts the
+     bearer's Base64 form is present and any OAuth token is absent.
+- Build clean (`go build ./...`), vet clean (`go vet
+  ./cmd/jamsesh/sessioncmd/ ./cmd/jamsesh/portalclient/`),
+  sessioncmd/portalclient/state package tests pass.
+- Design deviation `PostJSONAnon` vs design's `portalclient.PostJSON`
+  is principled: keeping the anonymous path off the
+  `portalclient.Client.Do` codepath eliminates accidental wiring of
+  `attachBearer` / future token-refresh logic onto playground calls.
+  Documented under "Design discoveries".
+- Design deviation `buildPlaygroundClient` returns `(baseURL,
+  *http.Client, err)` rather than a `*portalclient.Client` — same
+  rationale; keeps the anonymous surface explicitly distinct from the
+  authenticated one. Also documented.
+- Push-failure behavior matches the locked decision: the session
+  stays live with `base_sha: null` and the user gets a retry command
+  pointing at the same remote URL (`wrapPlaygroundPushError`).
+- Per-session state files written (`token`, `org_id`, `ref`,
+  `last_seen_seq`) match the per-session storage layout already
+  established by the wave-3 plugin-skills bearer-storage migration
+  (`WriteSessionToken` was reused, not redefined).
+- Foundation docs (`docs/UX.md:93`, `docs/SPEC.md`, `docs/SECURITY.md`,
+  `docs/openapi.yaml`) already cover `jamsesh new --playground` and
+  `POST /api/playground/sessions`; no doc roll-forward needed.
