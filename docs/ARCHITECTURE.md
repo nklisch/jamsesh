@@ -26,8 +26,9 @@ How jamsesh is organized.
 │  • Local git operations  │   │    (per-session bare     │
 │  • OAuth + token storage │◄──┤     repos on disk)       │
 │    in CLAUDE_PLUGIN_DATA │   │  • Auto-merger workers   │
-│  • Talks portal API + git│   │  • WS gateway (UI)       │
-└──────────────────────────┘   │  • SQLite | Postgres     │
+│  • Talks portal API + git│   │  • Playground destroyer  │
+└──────────────────────────┘   │  • WS gateway (UI)       │
+                               │  • SQLite | Postgres     │
                                └──────────────────────────┘
                                             ▲
                                             │
@@ -74,6 +75,16 @@ trailers.
 events. Use `go-git` in-process to attempt three-way merges of incoming
 sync-mode commits into the session's `draft` ref. Emit `merge.succeeded` or
 `conflict.detected` events accordingly.
+
+**Playground destruction worker** — single background goroutine (started
+when `JAMSESH_PLAYGROUND_ENABLED=true`) that sweeps active playground
+sessions on a configurable interval (`JAMSESH_PLAYGROUND_SWEEP_INTERVAL_S`,
+default 60s). For each session past its idle or hard-cap deadline, runs the
+destruction cascade — record tombstone, revoke bearers, delete session rows
+(FK cascades members + events + presence + bearers), delete anonymous
+accounts, remove the bare repo from disk. Idempotent across steps;
+partial-failure resumption on the next tick. Periodic tombstone-TTL purge
+runs every 60th tick.
 
 **WebSocket gateway** — pushes events (commits, comments, conflicts, presence
 changes, mode changes) to connected portal UI clients. Per-session

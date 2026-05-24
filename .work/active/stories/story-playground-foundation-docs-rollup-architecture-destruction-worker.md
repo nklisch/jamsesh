@@ -1,7 +1,7 @@
 ---
 id: story-playground-foundation-docs-rollup-architecture-destruction-worker
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, playground]
 parent: feature-playground-foundation-docs-rollup
 depends_on: []
@@ -108,3 +108,31 @@ Insert a new bold-prefixed paragraph between the existing
   `internal/portal/playground/worker.go` and the cascade at
   `internal/portal/playground/destruction.go`. Boot wiring is in
   `cmd/portal/main.go` near the auto-merger wiring.
+
+## Implementation notes (2026-05-23)
+
+Both edits applied to `docs/ARCHITECTURE.md`:
+
+1. **System overview ASCII diagram (lines 7-38)** — added
+   `• Playground destroyer` bullet on line 29 of the portal block. Used the
+   short label "destroyer" rather than the full "destruction worker" to keep
+   the bullet under the existing 24-char interior width without wrapping —
+   matches the same compact register as "Auto-merger workers" / "WS gateway".
+   All five portal-block lines maintain the 59-char total line width and
+   trailing-pipe alignment (verified by `awk '{print NR" ("length($0)")"}'`).
+
+2. **Components → Portal section** — added the **Playground destruction worker**
+   paragraph between **Auto-merger workers** and **WebSocket gateway** (line 79).
+   Covers the five required points: goroutine topology, interval config knob
+   (`JAMSESH_PLAYGROUND_SWEEP_INTERVAL_S`, default 60s), destruction cascade
+   summary, idempotency stance, periodic tombstone-TTL purge cadence.
+
+Verification:
+- `grep -n "destruction worker\|Playground destroyer" docs/ARCHITECTURE.md` →
+  hits in both the diagram (line 29 as "Playground destroyer") and Components
+  (line 79 as "Playground destruction worker").
+- `grep -niE "previously|newly added|note: in|used to be" docs/ARCHITECTURE.md` →
+  no hits in the edited regions (one pre-existing "previously" still present
+  unrelated to this story, not introduced here).
+- Present-tense framing throughout — the worker IS, the cascade IS, the
+  purge runs every 60th tick.
