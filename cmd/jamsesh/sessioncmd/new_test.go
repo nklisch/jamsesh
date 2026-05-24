@@ -768,6 +768,121 @@ func TestPlaygroundAction_mutuallyExclusiveWithOrg(t *testing.T) {
 	}
 }
 
+// TestPlaygroundAction_pushFailureLeavesSessionLiveWithRetry verifies the
+// push-failure contract for the playground path:
+//   - The returned error is the typed wrapPlaygroundPushError (not a generic
+//     error), identified by the sentinel phrase "playground session … is live
+//     with base_sha: null".
+//   - The error message includes a full retry command with the remote URL and
+//     the session-specific refspec so the user can push manually.
+//   - No abandon/delete API call is made — the portal session stays live.
+//   - The per-session bearer token file is written before the push attempt, so
+//     the user can authenticate the manual retry.
+//
+// Note: org_id and ref state files are written by writePlaygroundSessionState,
+// which is only reached on a successful push. They are therefore absent after a
+// push failure — the token alone is sufficient to authenticate the retry push.
+func TestPlaygroundAction_pushFailureLeavesSessionLiveWithRetry(t *testing.T) {
+	const (
+		sessionID  = "sess-pg-push-fail-001"
+		anonBearer = "anon-bearer-retry-test"
+	)
+
+	var abandonCalled bool
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "want POST", http.StatusMethodNotAllowed)
+			return
+		}
+		resp := samplePlaygroundResp(sessionID)
+		resp.Bearer = anonBearer
+		writePlaygroundJSON(w, resp)
+	})
+	// Catch-all: detect any attempt to abandon/delete the session on push failure.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete || strings.Contains(r.URL.Path, "abandon") {
+			abandonCalled = true
+		}
+		http.NotFound(w, r)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dir := setupPlaygroundEnv(t, srv.URL)
+
+	// Inject a simulated push failure; all other git ops succeed.
+	stubGitForNew(t, fmt.Errorf("simulated push failure: connection reset"))
+
+	app := buildCLIApp()
+	err := app.Run(context.Background(), []string{"jamsesh", "new", "--playground"})
+	if err == nil {
+		t.Fatal("expected error on playground push failure, got nil")
+	}
+
+	// --- Error shape assertions ---
+
+	// Must carry the playground-specific sentinel phrase from wrapPlaygroundPushError.
+	if !strings.Contains(err.Error(), "playground session") {
+		t.Errorf("error should identify a playground session, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "base_sha: null") {
+		t.Errorf("error should mention base_sha: null to describe the live session state, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), sessionID) {
+		t.Errorf("error should include sessionID %q, got: %v", sessionID, err)
+	}
+
+	// Must include a ready-to-run retry command.
+	expectedRemoteURL := strings.TrimRight(srv.URL, "/") + "/git/" + sessionID + ".git"
+	expectedRefspec := "refs/heads/jam/" + sessionID + "/base"
+	if !strings.Contains(err.Error(), "git push") {
+		t.Errorf("error should include a git push retry command, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), expectedRemoteURL) {
+		t.Errorf("retry command should include remote URL %q, got: %v", expectedRemoteURL, err)
+	}
+	if !strings.Contains(err.Error(), expectedRefspec) {
+		t.Errorf("retry command should include refspec %q, got: %v", expectedRefspec, err)
+	}
+
+	// --- Session-stays-live assertion ---
+
+	if abandonCalled {
+		t.Error("session must NOT be abandoned on push failure (stays live per locked decision)")
+	}
+
+	// --- Per-session state assertions ---
+
+	// The bearer token is written before the push attempt and must survive the failure,
+	// so the user can authenticate their manual retry without re-creating the session.
+	tokenPath := filepath.Join(dir, "sessions", sessionID, "token")
+	tokenData, err := os.ReadFile(tokenPath)
+	if err != nil {
+		t.Fatalf("session token must be written before push (for retry auth), but reading %q failed: %v", tokenPath, err)
+	}
+	if string(tokenData) != anonBearer {
+		t.Errorf("session token = %q, want %q", string(tokenData), anonBearer)
+	}
+
+	// org_id and ref are written by writePlaygroundSessionState, which is only
+	// reached after a successful push.  They are absent after a push failure —
+	// this is intentional: the retry push does not require them, and they will
+	// be written if the user retries successfully via a follow-up jamsesh
+	// command.  Asserting their absence here makes the behaviour explicit and
+	// will catch any accidental reordering that silently writes them early.
+	orgIDPath := filepath.Join(dir, "sessions", sessionID, "org_id")
+	if _, statErr := os.Stat(orgIDPath); statErr == nil {
+		t.Errorf("org_id state file should NOT be written on push failure (writePlaygroundSessionState not reached); found at %q", orgIDPath)
+	}
+	refPath := filepath.Join(dir, "sessions", sessionID, "ref")
+	if _, statErr := os.Stat(refPath); statErr == nil {
+		t.Errorf("ref state file should NOT be written on push failure (writePlaygroundSessionState not reached); found at %q", refPath)
+	}
+}
+
 // TestPlaygroundAction_pushUsesBearerNotOAuthToken verifies that the push
 // injects the just-received bearer (not the account-wide OAuth token) via
 // the -c http.extraHeader argument. The bearer is Base64-encoded inside

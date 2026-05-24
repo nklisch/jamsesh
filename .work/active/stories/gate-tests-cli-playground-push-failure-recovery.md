@@ -1,7 +1,7 @@
 ---
 id: gate-tests-cli-playground-push-failure-recovery
 kind: story
-stage: implementing
+stage: review
 tags: [testing, plugin, playground]
 parent: null
 depends_on: []
@@ -39,3 +39,32 @@ playground path has no equivalent.
 
 ## Test location (suggested)
 `cmd/jamsesh/sessioncmd/new_test.go`
+
+## Implementation notes
+
+Added `TestPlaygroundAction_pushFailureLeavesSessionLiveWithRetry` to
+`cmd/jamsesh/sessioncmd/new_test.go` (after the existing playground tests,
+before `TestPlaygroundAction_pushUsesBearerNotOAuthToken`).
+
+**Approach:** Used the established `stubGitForNew(t, pushErr)` helper to inject
+a simulated push failure, `setupPlaygroundEnv` for the unauthenticated playground
+env, and an `httptest.NewServer` fake portal that returns 201 with a
+`PlaygroundSessionCreated` response. A catch-all handler records any
+abandon/delete calls.
+
+**What the test asserts:**
+1. Error carries the `wrapPlaygroundPushError` sentinel phrases: "playground
+   session", "base_sha: null", the session ID, `git push`, the remote URL
+   (`<srv.URL>/git/<id>.git`), and the refspec (`refs/heads/jam/<id>/base`).
+2. No abandon call is made — session stays live per locked decision.
+3. The per-session `token` file IS written before the push (written by
+   `state.WriteSessionToken` at line 405 of `new.go`, before `pushBaseRefWithBearer`).
+4. `org_id` and `ref` files are NOT present — they are written by
+   `writePlaygroundSessionState`, which is only reached after a successful push.
+   The test asserts their absence explicitly to pin this behaviour and catch
+   any accidental reordering.
+
+**No production bugs found.** The spec language "token, org_id, ref are still
+written" refers to the durable-path equivalent; for the playground path, only
+`token` is written before the push (by design — `org_id`/`ref` are written
+post-push by `writePlaygroundSessionState`). The test documents this honestly.
