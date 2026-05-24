@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-session-lifecycle
 kind: feature
-stage: review
+stage: done
 tags: [portal, playground]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-cli-first-creation, feature-epic-ephemeral-playground-anon-bearer, feature-epic-ephemeral-playground-reserved-org]
@@ -952,3 +952,67 @@ So implementing this feature is 2 sub-waves, 3 + 2 agents.
 - **Activity-reset under clustered**: same story — the
   `ResetSessionIdleTimer` UPDATE is a single SQL statement, naturally
   atomic. No special handling needed.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments
+
+**Scope of this review**: feature-level acceptance only — does the combined
+work of the 5 child stories realize the feature's brief and design intent?
+Per-line correctness, tests, and naming were already exercised at story-level
+review when each child advanced to `done`. Cross-cutting concerns only
+visible when the stories are viewed together are the focus here.
+
+**Blockers**: none
+
+**Important**:
+- `docs/ARCHITECTURE.md` Components-list omission — the feature design's
+  Foundation references section explicitly committed to adding a destruction-
+  worker entry to the Components list (parallel to the existing "Auto-merger
+  workers" subsystem). Story 5's docs roll-forward scoped itself to SPEC.md
+  + SECURITY.md per its own design; the ARCHITECTURE.md Components edit
+  fell between stories. The drift is a gap rather than a contradiction
+  (ARCHITECTURE.md isn't asserting anything false) — would have been a
+  blocker if it were misleading; filing as Important since the system as
+  described still works, just incompletely.
+  → Filed: `.work/backlog/idea-architecture-md-add-playground-destruction-worker.md`
+
+**Nits** (not filed; carried forward from per-story reviews as a recap):
+- Open per-story bugs already in backlog from earlier review passes:
+  - `bug-playground-wordlist-duplicate-adjectives` (Story 1 review)
+  - `bug-playground-handler-missing-test-coverage` (Story 1 review — 3 ACs lacking tests)
+  - `bug-playground-create-skips-writable-scope-validation` (Story 1 review)
+  - `bug-playground-destruction-clustered-advisory-lock` (Story 2 review)
+  - `idea-playground-abuse-caps-activity-reset-integration-test` (Story 3 review)
+  - `idea-comments-service-use-slog-not-stdlib-log` (Story 3 review)
+  All triaged to backlog with appropriate priorities; not blocking this
+  feature's advance.
+
+**Notes**:
+- **Capability end-to-end**: the feature delivers what the brief promised.
+  `POST /api/playground/sessions` exists (unauthenticated), issues an anon
+  bearer + pronounceable nickname; `POST .../{id}/join` enforces participant
+  cap and post-hard-cap rejection; `GET .../{id}` and tombstone surface are
+  in place; destruction worker reaps idle + hard-capped sessions on a 60s
+  sweep; abuse caps (per-IP create rate, content-size, max participants)
+  are wired; CLI `jamsesh new --playground` extension is functional and
+  mutually-exclusive with `--org`.
+- **Build / vet**: `go build ./...` clean; `go vet
+  ./internal/portal/playground/... ./internal/portal/prereceive/...
+  ./cmd/jamsesh/sessioncmd/...` clean.
+- **Downstream-feature wiring confirmed**: `frontend/src/lib/api/types.gen.ts`
+  and `internal/api/openapi/server.gen.go` both contain the playground
+  routes, so the wave-3 `portal-ui` feature (which depends on these
+  endpoints existing) has the contract it needs.
+- **Foundation docs (SPEC.md, SECURITY.md)** correctly roll forward: defaults
+  pinned with concrete numbers, abuse model section added, no remaining "TBD"
+  prose, present-tense throughout. (ARCHITECTURE.md is the gap captured above.)
+- **Cross-cutting deviations from design** (already noted in the
+  Implementation summary) — bearer issuance split outside the session
+  WithTx for SQLite WAL safety, local `playgroundOrgID` constants per
+  package to avoid import cycles, disk-walk for content-size measurement
+  rather than a DB column — all principled trade-offs documented in the
+  per-story implementation notes.
+- **All 5 child stories at `stage: done`** at review time; verified via
+  `work-view --parent feature-epic-ephemeral-playground-session-lifecycle`.
+  Advancing parent → done.
