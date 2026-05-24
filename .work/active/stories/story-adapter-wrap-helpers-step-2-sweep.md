@@ -1,7 +1,7 @@
 ---
 id: story-adapter-wrap-helpers-step-2-sweep
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: feature-refactor-adapter-generic-wrap-helpers
 depends_on: [story-adapter-wrap-helpers-step-1-define]
@@ -124,3 +124,26 @@ chunked). The helpers from step 1 stay in place as additive surface.
 
 `depends_on: [story-adapter-wrap-helpers-step-1-define]` — needs the
 helpers defined before the sweep.
+
+## Implementation notes
+
+**Go multi-value spreading constraint:** The story spec showed aspirational
+single-expression calls like `wrap1(a.q.X(ctx, ...), mapErr, convert)`. Go
+does not allow spreading a multi-value function return when there are
+additional trailing arguments. Every `wrap1` / `wrapList` call requires two
+lines: explicit `row, err := a.q.X(...)` then `return wrap1(row, err, ...)`.
+This still saves 3 LoC per scalar method and 5+ LoC per list method.
+
+**Methods left unchanged (skipped):**
+- `ListOrgMembers` (both adapters) — `pgOrgMemberWithAccount` takes two
+  arguments `(orgID, r)`; not a plain converter function.
+- `ConsumeOAuthState` (both adapters) — no named converter; builds `OAuthState`
+  inline from field assignments.
+- `ListEventsSince`, `ListEventsSinceForDigest` (both adapters) — `int32→int64`
+  Seq conversion inside the loop; no named converter.
+- `ListPresenceForSession` (both adapters) — `pgtype.Timestamptz` unwrapping
+  inline; no named converter.
+
+**Outcome:** Both adapter files reduced by ~230 combined LoC. All 48
+`go test ./...` packages pass. Build clean. Dual-dialect mirror invariant
+intact.

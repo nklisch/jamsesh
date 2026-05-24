@@ -227,10 +227,7 @@ func (a *postgresAdapter) CreateOrg(ctx context.Context, p CreateOrgParams) (Org
 		Slug:      p.Slug,
 		CreatedAt: p.CreatedAt,
 	})
-	if err != nil {
-		return Org{}, mapPostgresErr(err)
-	}
-	return pgOrg(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrg)
 }
 
 func (a *postgresAdapter) CreateProtectedOrg(ctx context.Context, p CreateProtectedOrgParams) (Org, error) {
@@ -240,26 +237,17 @@ func (a *postgresAdapter) CreateProtectedOrg(ctx context.Context, p CreateProtec
 		Slug:      p.Slug,
 		CreatedAt: p.CreatedAt,
 	})
-	if err != nil {
-		return Org{}, mapPostgresErr(err)
-	}
-	return pgOrg(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrg)
 }
 
 func (a *postgresAdapter) GetOrgByID(ctx context.Context, id string) (Org, error) {
 	row, err := a.q.GetOrgByID(ctx, id)
-	if err != nil {
-		return Org{}, mapPostgresErr(err)
-	}
-	return pgOrg(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrg)
 }
 
 func (a *postgresAdapter) GetOrgBySlug(ctx context.Context, slug string) (Org, error) {
 	row, err := a.q.GetOrgBySlug(ctx, slug)
-	if err != nil {
-		return Org{}, mapPostgresErr(err)
-	}
-	return pgOrg(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrg)
 }
 
 func (a *postgresAdapter) UpdateOrgSessionInvitePolicy(ctx context.Context, p UpdateOrgSessionInvitePolicyParams) error {
@@ -281,10 +269,7 @@ func (a *postgresAdapter) CreateAccount(ctx context.Context, p CreateAccountPara
 		GithubUserID: ptrToPgText(p.GithubUserID),
 		CreatedAt:    p.CreatedAt,
 	})
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 
 func (a *postgresAdapter) CreateAnonymousAccount(ctx context.Context, p CreateAnonymousAccountParams) (Account, error) {
@@ -294,34 +279,22 @@ func (a *postgresAdapter) CreateAnonymousAccount(ctx context.Context, p CreateAn
 		DisplayName: p.DisplayName,
 		CreatedAt:   p.CreatedAt,
 	})
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 
 func (a *postgresAdapter) GetAccountByID(ctx context.Context, id string) (Account, error) {
 	row, err := a.q.GetAccountByID(ctx, id)
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 
 func (a *postgresAdapter) GetAccountByEmail(ctx context.Context, email string) (Account, error) {
 	row, err := a.q.GetAccountByEmail(ctx, email)
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 
 func (a *postgresAdapter) GetAccountByGitHubUserID(ctx context.Context, githubUserID *string) (Account, error) {
 	row, err := a.q.GetAccountByGitHubUserID(ctx, ptrToPgText(githubUserID))
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 
 func (a *postgresAdapter) UpdateAccountDisplayName(ctx context.Context, p UpdateAccountDisplayNameParams) error {
@@ -349,22 +322,12 @@ func (a *postgresAdapter) GetOrgMember(ctx context.Context, p GetOrgMemberParams
 		OrgID:     p.OrgID,
 		AccountID: p.AccountID,
 	})
-	if err != nil {
-		return OrgMember{}, mapPostgresErr(err)
-	}
-	return pgOrgMember(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrgMember)
 }
 
 func (a *postgresAdapter) ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error) {
 	rows, err := a.q.ListOrgsForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	orgs := make([]Org, len(rows))
-	for i, r := range rows {
-		orgs[i] = pgOrg(r)
-	}
-	return orgs, nil
+	return wrapList(rows, err, mapPostgresErr, pgOrg)
 }
 
 func (a *postgresAdapter) ListOrgMembers(ctx context.Context, orgID string) ([]OrgMemberWithAccount, error) {
@@ -406,21 +369,12 @@ func (a *postgresAdapter) CreateSession(ctx context.Context, p CreateSessionPara
 		HardCapAt:                 ptrToPgTimestamptz(p.HardCapAt),
 		IdleTimeoutAt:             ptrToPgTimestamptz(p.IdleTimeoutAt),
 	})
-	if err != nil {
-		return Session{}, mapPostgresErr(err)
-	}
-	return pgSession(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSession)
 }
 
 func (a *postgresAdapter) GetSession(ctx context.Context, orgID, id string) (Session, error) {
-	row, err := a.q.GetSession(ctx, pgstore.GetSessionParams{
-		OrgID: orgID,
-		ID:    id,
-	})
-	if err != nil {
-		return Session{}, mapPostgresErr(err)
-	}
-	return pgSession(row), nil
+	row, err := a.q.GetSession(ctx, pgstore.GetSessionParams{OrgID: orgID, ID: id})
+	return wrap1(row, err, mapPostgresErr, pgSession)
 }
 
 // GetSessionByID looks up a session by its primary key without org scoping.
@@ -428,22 +382,12 @@ func (a *postgresAdapter) GetSession(ctx context.Context, orgID, id string) (Ses
 // by the LifecycleManager to route subsequent org-scoped operations.
 func (a *postgresAdapter) GetSessionByID(ctx context.Context, id string) (Session, error) {
 	row, err := a.q.GetSessionByID(ctx, id)
-	if err != nil {
-		return Session{}, mapPostgresErr(err)
-	}
-	return pgSession(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSession)
 }
 
 func (a *postgresAdapter) ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error) {
 	rows, err := a.q.ListSessionsForOrg(ctx, orgID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = pgSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapPostgresErr, pgSession)
 }
 
 func (a *postgresAdapter) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
@@ -452,14 +396,7 @@ func (a *postgresAdapter) ListSessionsForOrgWithCursor(ctx context.Context, p Li
 		CreatedAt: p.Before,
 		Limit:     int32(p.Limit),
 	})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = pgSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapPostgresErr, pgSession)
 }
 
 func (a *postgresAdapter) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
@@ -539,10 +476,7 @@ func (a *postgresAdapter) GetSessionMember(ctx context.Context, p GetSessionMemb
 		SessionID: p.SessionID,
 		AccountID: p.AccountID,
 	})
-	if err != nil {
-		return SessionMember{}, mapPostgresErr(err)
-	}
-	return pgSessionMember(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSessionMember)
 }
 
 func (a *postgresAdapter) ListSessionMembers(ctx context.Context, p ListSessionMembersParams) ([]SessionMember, error) {
@@ -550,14 +484,7 @@ func (a *postgresAdapter) ListSessionMembers(ctx context.Context, p ListSessionM
 		OrgID:     p.OrgID,
 		SessionID: p.SessionID,
 	})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	members := make([]SessionMember, len(rows))
-	for i, r := range rows {
-		members[i] = pgSessionMember(r)
-	}
-	return members, nil
+	return wrapList(rows, err, mapPostgresErr, pgSessionMember)
 }
 
 func (a *postgresAdapter) RemoveSessionMember(ctx context.Context, p RemoveSessionMemberParams) error {
@@ -570,14 +497,7 @@ func (a *postgresAdapter) RemoveSessionMember(ctx context.Context, p RemoveSessi
 
 func (a *postgresAdapter) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]SessionMembership, error) {
 	rows, err := a.q.ListSessionMembershipsForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	memberships := make([]SessionMembership, len(rows))
-	for i, r := range rows {
-		memberships[i] = pgSessionMembership(r)
-	}
-	return memberships, nil
+	return wrapList(rows, err, mapPostgresErr, pgSessionMembership)
 }
 
 func (a *postgresAdapter) NicknameTakenInSession(ctx context.Context, p NicknameTakenInSessionParams) (bool, error) {
@@ -618,10 +538,7 @@ func pgTombstone(row pgstore.Tombstone) Tombstone {
 
 func (a *postgresAdapter) GetTombstone(ctx context.Context, sessionID string) (Tombstone, error) {
 	row, err := a.q.GetTombstone(ctx, sessionID)
-	if err != nil {
-		return Tombstone{}, mapPostgresErr(err)
-	}
-	return pgTombstone(row), nil
+	return wrap1(row, err, mapPostgresErr, pgTombstone)
 }
 
 func (a *postgresAdapter) RecordTombstone(ctx context.Context, p RecordTombstoneParams) error {
@@ -656,14 +573,7 @@ func (a *postgresAdapter) ListExpiredPlaygroundSessions(ctx context.Context, p L
 		OrgID:     p.OrgID,
 		HardCapAt: pgtype.Timestamptz{Time: p.Now, Valid: true},
 	})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = pgSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapPostgresErr, pgSession)
 }
 
 func (a *postgresAdapter) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
@@ -699,10 +609,7 @@ func (a *postgresAdapter) CreateOAuthToken(ctx context.Context, p CreateOAuthTok
 		LastUsedAt: p.LastUsedAt,
 		RevokedAt:  p.RevokedAt,
 	})
-	if err != nil {
-		return OAuthToken{}, mapPostgresErr(err)
-	}
-	return pgOAuthToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOAuthToken)
 }
 
 func (a *postgresAdapter) CreateAnonymousBearer(ctx context.Context, p CreateAnonymousBearerParams) (OAuthToken, error) {
@@ -714,10 +621,7 @@ func (a *postgresAdapter) CreateAnonymousBearer(ctx context.Context, p CreateAno
 		IssuedAt:  p.IssuedAt,
 		ExpiresAt: p.ExpiresAt,
 	})
-	if err != nil {
-		return OAuthToken{}, mapPostgresErr(err)
-	}
-	return pgOAuthToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOAuthToken)
 }
 
 func (a *postgresAdapter) RevokeBearersForSession(ctx context.Context, p RevokeBearersForSessionParams) error {
@@ -729,10 +633,7 @@ func (a *postgresAdapter) RevokeBearersForSession(ctx context.Context, p RevokeB
 
 func (a *postgresAdapter) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error) {
 	row, err := a.q.GetOAuthTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return OAuthToken{}, mapPostgresErr(err)
-	}
-	return pgOAuthToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOAuthToken)
 }
 
 func (a *postgresAdapter) TouchOAuthTokenLastUsed(ctx context.Context, p TouchOAuthTokenLastUsedParams) error {
@@ -758,14 +659,7 @@ func (a *postgresAdapter) RevokeAllOAuthTokensForAccount(ctx context.Context, p 
 
 func (a *postgresAdapter) ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OAuthToken, error) {
 	rows, err := a.q.ListOAuthTokensForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	tokens := make([]OAuthToken, len(rows))
-	for i, r := range rows {
-		tokens[i] = pgOAuthToken(r)
-	}
-	return tokens, nil
+	return wrapList(rows, err, mapPostgresErr, pgOAuthToken)
 }
 
 // ---------------------------------------------------------------------------
@@ -781,18 +675,12 @@ func (a *postgresAdapter) CreateMagicLinkToken(ctx context.Context, p CreateMagi
 		ExpiresAt: p.ExpiresAt,
 		UsedAt:    p.UsedAt,
 	})
-	if err != nil {
-		return MagicLinkToken{}, mapPostgresErr(err)
-	}
-	return pgMagicLinkToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgMagicLinkToken)
 }
 
 func (a *postgresAdapter) GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error) {
 	row, err := a.q.GetMagicLinkTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return MagicLinkToken{}, mapPostgresErr(err)
-	}
-	return pgMagicLinkToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgMagicLinkToken)
 }
 
 func (a *postgresAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) error {
@@ -826,10 +714,7 @@ func (a *postgresAdapter) GetArchivedSession(ctx context.Context, p GetArchivedS
 		OrgID:     p.OrgID,
 		SessionID: p.SessionID,
 	})
-	if err != nil {
-		return ArchivedSession{}, mapPostgresErr(err)
-	}
-	return pgArchivedSession(row), nil
+	return wrap1(row, err, mapPostgresErr, pgArchivedSession)
 }
 
 // ---------------------------------------------------------------------------
@@ -1000,22 +885,12 @@ func (a *postgresAdapter) GetRefMode(ctx context.Context, p GetRefModeParams) (R
 		SessionID: p.SessionID,
 		Ref:       p.Ref,
 	})
-	if err != nil {
-		return RefMode{}, mapPostgresErr(err)
-	}
-	return pgRefMode(row), nil
+	return wrap1(row, err, mapPostgresErr, pgRefMode)
 }
 
 func (a *postgresAdapter) ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error) {
 	rows, err := a.q.ListRefModesForSession(ctx, sessionID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	out := make([]RefMode, len(rows))
-	for i, r := range rows {
-		out[i] = pgRefMode(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapPostgresErr, pgRefMode)
 }
 
 // ---------------------------------------------------------------------------
@@ -1077,26 +952,17 @@ func (a *postgresAdapter) InsertOrgInvite(ctx context.Context, p InsertOrgInvite
 		AcceptedAt:          p.AcceptedAt,
 		AcceptedByAccountID: ptrToPgText(p.AcceptedByAccountID),
 	})
-	if err != nil {
-		return OrgInvite{}, mapPostgresErr(err)
-	}
-	return pgOrgInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrgInvite)
 }
 
 func (a *postgresAdapter) GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error) {
 	row, err := a.q.GetOrgInviteByID(ctx, id)
-	if err != nil {
-		return OrgInvite{}, mapPostgresErr(err)
-	}
-	return pgOrgInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrgInvite)
 }
 
 func (a *postgresAdapter) GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error) {
 	row, err := a.q.GetOrgInviteByTokenHash(ctx, tokenHash)
-	if err != nil {
-		return OrgInvite{}, mapPostgresErr(err)
-	}
-	return pgOrgInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrgInvite)
 }
 
 func (a *postgresAdapter) MarkOrgInviteAccepted(ctx context.Context, p MarkOrgInviteAcceptedParams) error {
@@ -1112,14 +978,7 @@ func (a *postgresAdapter) ListPendingOrgInvitesForOrg(ctx context.Context, p Lis
 		OrgID:     p.OrgID,
 		ExpiresAt: p.Now,
 	})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	invites := make([]OrgInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = pgOrgInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapPostgresErr, pgOrgInvite)
 }
 
 func (a *postgresAdapter) ListPendingOrgInvitesForEmail(ctx context.Context, p ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error) {
@@ -1127,14 +986,7 @@ func (a *postgresAdapter) ListPendingOrgInvitesForEmail(ctx context.Context, p L
 		RecipientEmail: p.Email,
 		ExpiresAt:      p.Now,
 	})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	invites := make([]OrgInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = pgOrgInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapPostgresErr, pgOrgInvite)
 }
 
 // ---------------------------------------------------------------------------
@@ -1169,26 +1021,17 @@ func (a *postgresAdapter) InsertSessionInvite(ctx context.Context, p InsertSessi
 		AcceptedAt:          p.AcceptedAt,
 		AcceptedByAccountID: ptrToPgText(p.AcceptedByAccountID),
 	})
-	if err != nil {
-		return SessionInvite{}, mapPostgresErr(err)
-	}
-	return pgSessionInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSessionInvite)
 }
 
 func (a *postgresAdapter) GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error) {
 	row, err := a.q.GetSessionInviteByID(ctx, id)
-	if err != nil {
-		return SessionInvite{}, mapPostgresErr(err)
-	}
-	return pgSessionInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSessionInvite)
 }
 
 func (a *postgresAdapter) GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error) {
 	row, err := a.q.GetSessionInviteByTokenHash(ctx, tokenHash)
-	if err != nil {
-		return SessionInvite{}, mapPostgresErr(err)
-	}
-	return pgSessionInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSessionInvite)
 }
 
 func (a *postgresAdapter) MarkSessionInviteAccepted(ctx context.Context, p MarkSessionInviteAcceptedParams) error {
@@ -1204,45 +1047,26 @@ func (a *postgresAdapter) ListPendingSessionInvitesForSession(ctx context.Contex
 		SessionID: p.SessionID,
 		ExpiresAt: p.Now,
 	})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	invites := make([]SessionInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = pgSessionInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapPostgresErr, pgSessionInvite)
 }
 
 // Delegate all TxStore methods to the underlying *pgstore.Queries.
 // OrgStore
 func (s *postgresTxStore) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, error) {
 	row, err := s.q.CreateOrg(ctx, pgstore.CreateOrgParams{ID: p.ID, Name: p.Name, Slug: p.Slug, CreatedAt: p.CreatedAt})
-	if err != nil {
-		return Org{}, mapPostgresErr(err)
-	}
-	return pgOrg(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrg)
 }
 func (s *postgresTxStore) CreateProtectedOrg(ctx context.Context, p CreateProtectedOrgParams) (Org, error) {
 	row, err := s.q.CreateProtectedOrg(ctx, pgstore.CreateProtectedOrgParams{ID: p.ID, Name: p.Name, Slug: p.Slug, CreatedAt: p.CreatedAt})
-	if err != nil {
-		return Org{}, mapPostgresErr(err)
-	}
-	return pgOrg(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrg)
 }
 func (s *postgresTxStore) GetOrgByID(ctx context.Context, id string) (Org, error) {
 	row, err := s.q.GetOrgByID(ctx, id)
-	if err != nil {
-		return Org{}, mapPostgresErr(err)
-	}
-	return pgOrg(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrg)
 }
 func (s *postgresTxStore) GetOrgBySlug(ctx context.Context, slug string) (Org, error) {
 	row, err := s.q.GetOrgBySlug(ctx, slug)
-	if err != nil {
-		return Org{}, mapPostgresErr(err)
-	}
-	return pgOrg(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrg)
 }
 func (s *postgresTxStore) UpdateOrgSessionInvitePolicy(ctx context.Context, p UpdateOrgSessionInvitePolicyParams) error {
 	return mapPostgresErr(s.q.UpdateOrgSessionInvitePolicy(ctx, pgstore.UpdateOrgSessionInvitePolicyParams{
@@ -1254,38 +1078,23 @@ func (s *postgresTxStore) UpdateOrgSessionInvitePolicy(ctx context.Context, p Up
 // AccountStore
 func (s *postgresTxStore) CreateAccount(ctx context.Context, p CreateAccountParams) (Account, error) {
 	row, err := s.q.CreateAccount(ctx, pgstore.CreateAccountParams{ID: p.ID, Email: p.Email, DisplayName: p.DisplayName, GithubUserID: ptrToPgText(p.GithubUserID), CreatedAt: p.CreatedAt})
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 func (s *postgresTxStore) CreateAnonymousAccount(ctx context.Context, p CreateAnonymousAccountParams) (Account, error) {
 	row, err := s.q.CreateAnonymousAccount(ctx, pgstore.CreateAnonymousAccountParams{ID: p.ID, Email: p.Email, DisplayName: p.DisplayName, CreatedAt: p.CreatedAt})
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 func (s *postgresTxStore) GetAccountByID(ctx context.Context, id string) (Account, error) {
 	row, err := s.q.GetAccountByID(ctx, id)
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 func (s *postgresTxStore) GetAccountByEmail(ctx context.Context, email string) (Account, error) {
 	row, err := s.q.GetAccountByEmail(ctx, email)
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 func (s *postgresTxStore) GetAccountByGitHubUserID(ctx context.Context, githubUserID *string) (Account, error) {
 	row, err := s.q.GetAccountByGitHubUserID(ctx, ptrToPgText(githubUserID))
-	if err != nil {
-		return Account{}, mapPostgresErr(err)
-	}
-	return pgAccount(row), nil
+	return wrap1(row, err, mapPostgresErr, pgAccount)
 }
 func (s *postgresTxStore) UpdateAccountDisplayName(ctx context.Context, p UpdateAccountDisplayNameParams) error {
 	return mapPostgresErr(s.q.UpdateAccountDisplayName(ctx, pgstore.UpdateAccountDisplayNameParams{ID: p.ID, DisplayName: p.DisplayName}))
@@ -1297,21 +1106,11 @@ func (s *postgresTxStore) AddOrgMember(ctx context.Context, p AddOrgMemberParams
 }
 func (s *postgresTxStore) GetOrgMember(ctx context.Context, p GetOrgMemberParams) (OrgMember, error) {
 	row, err := s.q.GetOrgMember(ctx, pgstore.GetOrgMemberParams{OrgID: p.OrgID, AccountID: p.AccountID})
-	if err != nil {
-		return OrgMember{}, mapPostgresErr(err)
-	}
-	return pgOrgMember(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrgMember)
 }
 func (s *postgresTxStore) ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error) {
 	rows, err := s.q.ListOrgsForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	orgs := make([]Org, len(rows))
-	for i, r := range rows {
-		orgs[i] = pgOrg(r)
-	}
-	return orgs, nil
+	return wrapList(rows, err, mapPostgresErr, pgOrg)
 }
 func (s *postgresTxStore) ListOrgMembers(ctx context.Context, orgID string) ([]OrgMemberWithAccount, error) {
 	rows, err := s.q.ListOrgMembers(ctx, orgID)
@@ -1338,46 +1137,23 @@ func (s *postgresTxStore) CreateSession(ctx context.Context, p CreateSessionPara
 		HardCapAt:                 ptrToPgTimestamptz(p.HardCapAt),
 		IdleTimeoutAt:             ptrToPgTimestamptz(p.IdleTimeoutAt),
 	})
-	if err != nil {
-		return Session{}, mapPostgresErr(err)
-	}
-	return pgSession(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSession)
 }
 func (s *postgresTxStore) GetSession(ctx context.Context, orgID, id string) (Session, error) {
 	row, err := s.q.GetSession(ctx, pgstore.GetSessionParams{OrgID: orgID, ID: id})
-	if err != nil {
-		return Session{}, mapPostgresErr(err)
-	}
-	return pgSession(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSession)
 }
 func (s *postgresTxStore) GetSessionByID(ctx context.Context, id string) (Session, error) {
 	row, err := s.q.GetSessionByID(ctx, id)
-	if err != nil {
-		return Session{}, mapPostgresErr(err)
-	}
-	return pgSession(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSession)
 }
 func (s *postgresTxStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error) {
 	rows, err := s.q.ListSessionsForOrg(ctx, orgID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = pgSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapPostgresErr, pgSession)
 }
 func (s *postgresTxStore) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
 	rows, err := s.q.ListSessionsForOrgWithCursor(ctx, pgstore.ListSessionsForOrgWithCursorParams{OrgID: p.OrgID, CreatedAt: p.Before, Limit: int32(p.Limit)})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = pgSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapPostgresErr, pgSession)
 }
 func (s *postgresTxStore) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
 	return mapPostgresErr(s.q.UpdateSessionStatus(ctx, pgstore.UpdateSessionStatusParams{OrgID: p.OrgID, ID: p.ID, Status: p.Status}))
@@ -1407,35 +1183,18 @@ func (s *postgresTxStore) AddSessionMember(ctx context.Context, p AddSessionMemb
 }
 func (s *postgresTxStore) GetSessionMember(ctx context.Context, p GetSessionMemberParams) (SessionMember, error) {
 	row, err := s.q.GetSessionMember(ctx, pgstore.GetSessionMemberParams{OrgID: p.OrgID, SessionID: p.SessionID, AccountID: p.AccountID})
-	if err != nil {
-		return SessionMember{}, mapPostgresErr(err)
-	}
-	return pgSessionMember(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSessionMember)
 }
 func (s *postgresTxStore) ListSessionMembers(ctx context.Context, p ListSessionMembersParams) ([]SessionMember, error) {
 	rows, err := s.q.ListSessionMembers(ctx, pgstore.ListSessionMembersParams{OrgID: p.OrgID, SessionID: p.SessionID})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	members := make([]SessionMember, len(rows))
-	for i, r := range rows {
-		members[i] = pgSessionMember(r)
-	}
-	return members, nil
+	return wrapList(rows, err, mapPostgresErr, pgSessionMember)
 }
 func (s *postgresTxStore) RemoveSessionMember(ctx context.Context, p RemoveSessionMemberParams) error {
 	return mapPostgresErr(s.q.RemoveSessionMember(ctx, pgstore.RemoveSessionMemberParams{OrgID: p.OrgID, SessionID: p.SessionID, AccountID: p.AccountID}))
 }
 func (s *postgresTxStore) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]SessionMembership, error) {
 	rows, err := s.q.ListSessionMembershipsForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	memberships := make([]SessionMembership, len(rows))
-	for i, r := range rows {
-		memberships[i] = pgSessionMembership(r)
-	}
-	return memberships, nil
+	return wrapList(rows, err, mapPostgresErr, pgSessionMembership)
 }
 
 func (s *postgresTxStore) NicknameTakenInSession(ctx context.Context, p NicknameTakenInSessionParams) (bool, error) {
@@ -1455,10 +1214,7 @@ func (s *postgresTxStore) CountSessionMembers(ctx context.Context, p CountSessio
 // TombstoneStore
 func (s *postgresTxStore) GetTombstone(ctx context.Context, sessionID string) (Tombstone, error) {
 	row, err := s.q.GetTombstone(ctx, sessionID)
-	if err != nil {
-		return Tombstone{}, mapPostgresErr(err)
-	}
-	return pgTombstone(row), nil
+	return wrap1(row, err, mapPostgresErr, pgTombstone)
 }
 
 func (s *postgresTxStore) RecordTombstone(ctx context.Context, p RecordTombstoneParams) error {
@@ -1486,14 +1242,7 @@ func (s *postgresTxStore) ListExpiredPlaygroundSessions(ctx context.Context, p L
 		OrgID:     p.OrgID,
 		HardCapAt: pgtype.Timestamptz{Time: p.Now, Valid: true},
 	})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = pgSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapPostgresErr, pgSession)
 }
 
 func (s *postgresTxStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
@@ -1517,10 +1266,7 @@ func (s *postgresTxStore) CountSessionEventsByType(ctx context.Context, sessionI
 // OAuthTokenStore
 func (s *postgresTxStore) CreateOAuthToken(ctx context.Context, p CreateOAuthTokenParams) (OAuthToken, error) {
 	row, err := s.q.CreateOAuthToken(ctx, pgstore.CreateOAuthTokenParams{ID: p.ID, AccountID: p.AccountID, TokenHash: p.TokenHash, Kind: p.Kind, IssuedAt: p.IssuedAt, ExpiresAt: p.ExpiresAt, LastUsedAt: p.LastUsedAt, RevokedAt: p.RevokedAt})
-	if err != nil {
-		return OAuthToken{}, mapPostgresErr(err)
-	}
-	return pgOAuthToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOAuthToken)
 }
 func (s *postgresTxStore) CreateAnonymousBearer(ctx context.Context, p CreateAnonymousBearerParams) (OAuthToken, error) {
 	row, err := s.q.CreateAnonymousBearer(ctx, pgstore.CreateAnonymousBearerParams{
@@ -1531,10 +1277,7 @@ func (s *postgresTxStore) CreateAnonymousBearer(ctx context.Context, p CreateAno
 		IssuedAt:  p.IssuedAt,
 		ExpiresAt: p.ExpiresAt,
 	})
-	if err != nil {
-		return OAuthToken{}, mapPostgresErr(err)
-	}
-	return pgOAuthToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOAuthToken)
 }
 func (s *postgresTxStore) RevokeBearersForSession(ctx context.Context, p RevokeBearersForSessionParams) error {
 	return mapPostgresErr(s.q.RevokeBearersForSession(ctx, pgstore.RevokeBearersForSessionParams{
@@ -1544,10 +1287,7 @@ func (s *postgresTxStore) RevokeBearersForSession(ctx context.Context, p RevokeB
 }
 func (s *postgresTxStore) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error) {
 	row, err := s.q.GetOAuthTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return OAuthToken{}, mapPostgresErr(err)
-	}
-	return pgOAuthToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOAuthToken)
 }
 func (s *postgresTxStore) TouchOAuthTokenLastUsed(ctx context.Context, p TouchOAuthTokenLastUsedParams) error {
 	return mapPostgresErr(s.q.TouchOAuthTokenLastUsed(ctx, pgstore.TouchOAuthTokenLastUsedParams{ID: p.ID, LastUsedAt: p.LastUsedAt}))
@@ -1560,30 +1300,17 @@ func (s *postgresTxStore) RevokeAllOAuthTokensForAccount(ctx context.Context, p 
 }
 func (s *postgresTxStore) ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OAuthToken, error) {
 	rows, err := s.q.ListOAuthTokensForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	tokens := make([]OAuthToken, len(rows))
-	for i, r := range rows {
-		tokens[i] = pgOAuthToken(r)
-	}
-	return tokens, nil
+	return wrapList(rows, err, mapPostgresErr, pgOAuthToken)
 }
 
 // MagicLinkTokenStore
 func (s *postgresTxStore) CreateMagicLinkToken(ctx context.Context, p CreateMagicLinkTokenParams) (MagicLinkToken, error) {
 	row, err := s.q.CreateMagicLinkToken(ctx, pgstore.CreateMagicLinkTokenParams{ID: p.ID, TokenHash: p.TokenHash, Email: p.Email, IssuedAt: p.IssuedAt, ExpiresAt: p.ExpiresAt, UsedAt: p.UsedAt})
-	if err != nil {
-		return MagicLinkToken{}, mapPostgresErr(err)
-	}
-	return pgMagicLinkToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgMagicLinkToken)
 }
 func (s *postgresTxStore) GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error) {
 	row, err := s.q.GetMagicLinkTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return MagicLinkToken{}, mapPostgresErr(err)
-	}
-	return pgMagicLinkToken(row), nil
+	return wrap1(row, err, mapPostgresErr, pgMagicLinkToken)
 }
 func (s *postgresTxStore) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) error {
 	return mapPostgresErr(s.q.ConsumeMagicLinkToken(ctx, pgstore.ConsumeMagicLinkTokenParams{ID: p.ID, UsedAt: p.UsedAt}))
@@ -1596,10 +1323,7 @@ func (s *postgresTxStore) InsertArchivedSession(ctx context.Context, p InsertArc
 }
 func (s *postgresTxStore) GetArchivedSession(ctx context.Context, p GetArchivedSessionParams) (ArchivedSession, error) {
 	row, err := s.q.GetArchivedSession(ctx, pgstore.GetArchivedSessionParams{OrgID: p.OrgID, SessionID: p.SessionID})
-	if err != nil {
-		return ArchivedSession{}, mapPostgresErr(err)
-	}
-	return pgArchivedSession(row), nil
+	return wrap1(row, err, mapPostgresErr, pgArchivedSession)
 }
 
 // OAuthStateStore
@@ -1678,49 +1402,26 @@ func (s *postgresTxStore) ListPresenceForSession(ctx context.Context, sessionID 
 // OrgInviteStore
 func (s *postgresTxStore) InsertOrgInvite(ctx context.Context, p InsertOrgInviteParams) (OrgInvite, error) {
 	row, err := s.q.InsertOrgInvite(ctx, pgstore.InsertOrgInviteParams{ID: p.ID, OrgID: p.OrgID, InviterAccountID: p.InviterAccountID, RecipientEmail: p.RecipientEmail, TokenHash: p.TokenHash, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, AcceptedAt: p.AcceptedAt, AcceptedByAccountID: ptrToPgText(p.AcceptedByAccountID)})
-	if err != nil {
-		return OrgInvite{}, mapPostgresErr(err)
-	}
-	return pgOrgInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrgInvite)
 }
 func (s *postgresTxStore) GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error) {
 	row, err := s.q.GetOrgInviteByID(ctx, id)
-	if err != nil {
-		return OrgInvite{}, mapPostgresErr(err)
-	}
-	return pgOrgInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrgInvite)
 }
 func (s *postgresTxStore) GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error) {
 	row, err := s.q.GetOrgInviteByTokenHash(ctx, tokenHash)
-	if err != nil {
-		return OrgInvite{}, mapPostgresErr(err)
-	}
-	return pgOrgInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgOrgInvite)
 }
 func (s *postgresTxStore) MarkOrgInviteAccepted(ctx context.Context, p MarkOrgInviteAcceptedParams) error {
 	return mapPostgresErr(s.q.MarkOrgInviteAccepted(ctx, pgstore.MarkOrgInviteAcceptedParams{ID: p.ID, AcceptedAt: &p.AcceptedAt, AcceptedByAccountID: ptrToPgText(&p.AcceptedByAccountID)}))
 }
 func (s *postgresTxStore) ListPendingOrgInvitesForOrg(ctx context.Context, p ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error) {
 	rows, err := s.q.ListPendingOrgInvitesForOrg(ctx, pgstore.ListPendingOrgInvitesForOrgParams{OrgID: p.OrgID, ExpiresAt: p.Now})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	invites := make([]OrgInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = pgOrgInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapPostgresErr, pgOrgInvite)
 }
 func (s *postgresTxStore) ListPendingOrgInvitesForEmail(ctx context.Context, p ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error) {
 	rows, err := s.q.ListPendingOrgInvitesForEmail(ctx, pgstore.ListPendingOrgInvitesForEmailParams{RecipientEmail: p.Email, ExpiresAt: p.Now})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	invites := make([]OrgInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = pgOrgInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapPostgresErr, pgOrgInvite)
 }
 
 // RefModeStore
@@ -1729,58 +1430,32 @@ func (s *postgresTxStore) UpsertRefMode(ctx context.Context, p UpsertRefModePara
 }
 func (s *postgresTxStore) GetRefMode(ctx context.Context, p GetRefModeParams) (RefMode, error) {
 	row, err := s.q.GetRefMode(ctx, pgstore.GetRefModeParams{SessionID: p.SessionID, Ref: p.Ref})
-	if err != nil {
-		return RefMode{}, mapPostgresErr(err)
-	}
-	return pgRefMode(row), nil
+	return wrap1(row, err, mapPostgresErr, pgRefMode)
 }
 func (s *postgresTxStore) ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error) {
 	rows, err := s.q.ListRefModesForSession(ctx, sessionID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	out := make([]RefMode, len(rows))
-	for i, r := range rows {
-		out[i] = pgRefMode(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapPostgresErr, pgRefMode)
 }
 
 // SessionInviteStore (TxStore)
 func (s *postgresTxStore) InsertSessionInvite(ctx context.Context, p InsertSessionInviteParams) (SessionInvite, error) {
 	row, err := s.q.InsertSessionInvite(ctx, pgstore.InsertSessionInviteParams{ID: p.ID, OrgID: p.OrgID, SessionID: p.SessionID, InviterAccountID: p.InviterAccountID, InviteeEmail: p.InviteeEmail, TokenHash: p.TokenHash, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, AcceptedAt: p.AcceptedAt, AcceptedByAccountID: ptrToPgText(p.AcceptedByAccountID)})
-	if err != nil {
-		return SessionInvite{}, mapPostgresErr(err)
-	}
-	return pgSessionInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSessionInvite)
 }
 func (s *postgresTxStore) GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error) {
 	row, err := s.q.GetSessionInviteByID(ctx, id)
-	if err != nil {
-		return SessionInvite{}, mapPostgresErr(err)
-	}
-	return pgSessionInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSessionInvite)
 }
 func (s *postgresTxStore) GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error) {
 	row, err := s.q.GetSessionInviteByTokenHash(ctx, tokenHash)
-	if err != nil {
-		return SessionInvite{}, mapPostgresErr(err)
-	}
-	return pgSessionInvite(row), nil
+	return wrap1(row, err, mapPostgresErr, pgSessionInvite)
 }
 func (s *postgresTxStore) MarkSessionInviteAccepted(ctx context.Context, p MarkSessionInviteAcceptedParams) error {
 	return mapPostgresErr(s.q.MarkSessionInviteAccepted(ctx, pgstore.MarkSessionInviteAcceptedParams{ID: p.ID, AcceptedAt: &p.AcceptedAt, AcceptedByAccountID: ptrToPgText(&p.AcceptedByAccountID)}))
 }
 func (s *postgresTxStore) ListPendingSessionInvitesForSession(ctx context.Context, p ListPendingSessionInvitesForSessionParams) ([]SessionInvite, error) {
 	rows, err := s.q.ListPendingSessionInvitesForSession(ctx, pgstore.ListPendingSessionInvitesForSessionParams{SessionID: p.SessionID, ExpiresAt: p.Now})
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	invites := make([]SessionInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = pgSessionInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapPostgresErr, pgSessionInvite)
 }
 
 // ---------------------------------------------------------------------------
@@ -1806,10 +1481,7 @@ func (a *postgresAdapter) InsertConflictEvent(ctx context.Context, p InsertConfl
 
 func (a *postgresAdapter) GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error) {
 	row, err := a.q.GetConflictEventByID(ctx, id)
-	if err != nil {
-		return ConflictEvent{}, mapPostgresErr(err)
-	}
-	return pgConflictEvent(row), nil
+	return wrap1(row, err, mapPostgresErr, pgConflictEvent)
 }
 
 func (a *postgresAdapter) MarkConflictEventResolved(ctx context.Context, p MarkConflictEventResolvedParams) error {
@@ -1823,14 +1495,7 @@ func (a *postgresAdapter) MarkConflictEventResolved(ctx context.Context, p MarkC
 
 func (a *postgresAdapter) ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error) {
 	rows, err := a.q.ListOpenConflictEventsForSession(ctx, sessionID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	out := make([]ConflictEvent, len(rows))
-	for i, r := range rows {
-		out[i] = pgConflictEvent(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapPostgresErr, pgConflictEvent)
 }
 
 // ---------------------------------------------------------------------------
@@ -1856,10 +1521,7 @@ func (s *postgresTxStore) InsertConflictEvent(ctx context.Context, p InsertConfl
 
 func (s *postgresTxStore) GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error) {
 	row, err := s.q.GetConflictEventByID(ctx, id)
-	if err != nil {
-		return ConflictEvent{}, mapPostgresErr(err)
-	}
-	return pgConflictEvent(row), nil
+	return wrap1(row, err, mapPostgresErr, pgConflictEvent)
 }
 
 func (s *postgresTxStore) MarkConflictEventResolved(ctx context.Context, p MarkConflictEventResolvedParams) error {
@@ -1873,14 +1535,7 @@ func (s *postgresTxStore) MarkConflictEventResolved(ctx context.Context, p MarkC
 
 func (s *postgresTxStore) ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error) {
 	rows, err := s.q.ListOpenConflictEventsForSession(ctx, sessionID)
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	out := make([]ConflictEvent, len(rows))
-	for i, r := range rows {
-		out[i] = pgConflictEvent(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapPostgresErr, pgConflictEvent)
 }
 
 // pgConflictEvent converts a pgstore.ConflictEvent to domain ConflictEvent.
@@ -1911,10 +1566,7 @@ func (a *postgresAdapter) InsertComment(ctx context.Context, p InsertCommentPara
 
 func (a *postgresAdapter) GetCommentByID(ctx context.Context, id string) (Comment, error) {
 	row, err := a.q.GetCommentByID(ctx, id)
-	if err != nil {
-		return Comment{}, mapPostgresErr(err)
-	}
-	return pgComment(row), nil
+	return wrap1(row, err, mapPostgresErr, pgComment)
 }
 
 func (a *postgresAdapter) ResolveComment(ctx context.Context, p ResolveCommentParams) error {
@@ -1929,14 +1581,7 @@ func (a *postgresAdapter) ResolveComment(ctx context.Context, p ResolveCommentPa
 
 func (a *postgresAdapter) ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error) {
 	rows, err := a.q.ListCommentsForSession(ctx, pgListCommentsParams(p))
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	out := make([]Comment, len(rows))
-	for i, r := range rows {
-		out[i] = pgComment(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapPostgresErr, pgComment)
 }
 
 // ---------------------------------------------------------------------------
@@ -1949,10 +1594,7 @@ func (s *postgresTxStore) InsertComment(ctx context.Context, p InsertCommentPara
 
 func (s *postgresTxStore) GetCommentByID(ctx context.Context, id string) (Comment, error) {
 	row, err := s.q.GetCommentByID(ctx, id)
-	if err != nil {
-		return Comment{}, mapPostgresErr(err)
-	}
-	return pgComment(row), nil
+	return wrap1(row, err, mapPostgresErr, pgComment)
 }
 
 func (s *postgresTxStore) ResolveComment(ctx context.Context, p ResolveCommentParams) error {
@@ -1967,14 +1609,7 @@ func (s *postgresTxStore) ResolveComment(ctx context.Context, p ResolveCommentPa
 
 func (s *postgresTxStore) ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error) {
 	rows, err := s.q.ListCommentsForSession(ctx, pgListCommentsParams(p))
-	if err != nil {
-		return nil, mapPostgresErr(err)
-	}
-	out := make([]Comment, len(rows))
-	for i, r := range rows {
-		out[i] = pgComment(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapPostgresErr, pgComment)
 }
 
 // pgInsertCommentParams converts domain InsertCommentParams to pgstore.InsertCommentParams.
@@ -2071,18 +1706,12 @@ func (a *postgresAdapter) InsertFinalizeLock(ctx context.Context, p InsertFinali
 
 func (a *postgresAdapter) GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error) {
 	row, err := a.q.GetFinalizeLockByID(ctx, id)
-	if err != nil {
-		return FinalizeLock{}, mapPostgresErr(err)
-	}
-	return pgFinalizeLock(row), nil
+	return wrap1(row, err, mapPostgresErr, pgFinalizeLock)
 }
 
 func (a *postgresAdapter) GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error) {
 	row, err := a.q.GetActiveFinalizeLockForSession(ctx, sessionID)
-	if err != nil {
-		return FinalizeLock{}, mapPostgresErr(err)
-	}
-	return pgFinalizeLock(row), nil
+	return wrap1(row, err, mapPostgresErr, pgFinalizeLock)
 }
 
 func (a *postgresAdapter) UpdateFinalizeLockCuration(ctx context.Context, p UpdateFinalizeLockCurationParams) error {
@@ -2129,18 +1758,12 @@ func (s *postgresTxStore) InsertFinalizeLock(ctx context.Context, p InsertFinali
 
 func (s *postgresTxStore) GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error) {
 	row, err := s.q.GetFinalizeLockByID(ctx, id)
-	if err != nil {
-		return FinalizeLock{}, mapPostgresErr(err)
-	}
-	return pgFinalizeLock(row), nil
+	return wrap1(row, err, mapPostgresErr, pgFinalizeLock)
 }
 
 func (s *postgresTxStore) GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error) {
 	row, err := s.q.GetActiveFinalizeLockForSession(ctx, sessionID)
-	if err != nil {
-		return FinalizeLock{}, mapPostgresErr(err)
-	}
-	return pgFinalizeLock(row), nil
+	return wrap1(row, err, mapPostgresErr, pgFinalizeLock)
 }
 
 func (s *postgresTxStore) UpdateFinalizeLockCuration(ctx context.Context, p UpdateFinalizeLockCurationParams) error {
@@ -2235,10 +1858,7 @@ func (a *postgresAdapter) InsertLease(ctx context.Context, p InsertLeaseParams) 
 		PodID:        p.PodID,
 		FencingToken: p.FencingToken,
 	})
-	if err != nil {
-		return Lease{}, mapPostgresErr(err)
-	}
-	return pgLease(row), nil
+	return wrap1(row, err, mapPostgresErr, pgLease)
 }
 
 func (a *postgresAdapter) MarkLeaseReleased(ctx context.Context, sessionID string) error {
@@ -2268,10 +1888,7 @@ func (s *postgresTxStore) InsertLease(ctx context.Context, p InsertLeaseParams) 
 		PodID:        p.PodID,
 		FencingToken: p.FencingToken,
 	})
-	if err != nil {
-		return Lease{}, mapPostgresErr(err)
-	}
-	return pgLease(row), nil
+	return wrap1(row, err, mapPostgresErr, pgLease)
 }
 
 func (s *postgresTxStore) MarkLeaseReleased(ctx context.Context, sessionID string) error {

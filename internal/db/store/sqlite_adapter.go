@@ -223,10 +223,7 @@ func (a *sqliteAdapter) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, 
 		Slug:      p.Slug,
 		CreatedAt: p.CreatedAt,
 	})
-	if err != nil {
-		return Org{}, mapSQLiteErr(err)
-	}
-	return sqliteOrg(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrg)
 }
 
 func (a *sqliteAdapter) CreateProtectedOrg(ctx context.Context, p CreateProtectedOrgParams) (Org, error) {
@@ -236,26 +233,17 @@ func (a *sqliteAdapter) CreateProtectedOrg(ctx context.Context, p CreateProtecte
 		Slug:      p.Slug,
 		CreatedAt: p.CreatedAt,
 	})
-	if err != nil {
-		return Org{}, mapSQLiteErr(err)
-	}
-	return sqliteOrg(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrg)
 }
 
 func (a *sqliteAdapter) GetOrgByID(ctx context.Context, id string) (Org, error) {
 	row, err := a.q.GetOrgByID(ctx, id)
-	if err != nil {
-		return Org{}, mapSQLiteErr(err)
-	}
-	return sqliteOrg(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrg)
 }
 
 func (a *sqliteAdapter) GetOrgBySlug(ctx context.Context, slug string) (Org, error) {
 	row, err := a.q.GetOrgBySlug(ctx, slug)
-	if err != nil {
-		return Org{}, mapSQLiteErr(err)
-	}
-	return sqliteOrg(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrg)
 }
 
 func (a *sqliteAdapter) UpdateOrgSessionInvitePolicy(ctx context.Context, p UpdateOrgSessionInvitePolicyParams) error {
@@ -277,10 +265,7 @@ func (a *sqliteAdapter) CreateAccount(ctx context.Context, p CreateAccountParams
 		GithubUserID: ptrToNullString(p.GithubUserID),
 		CreatedAt:    p.CreatedAt,
 	})
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 
 func (a *sqliteAdapter) CreateAnonymousAccount(ctx context.Context, p CreateAnonymousAccountParams) (Account, error) {
@@ -290,34 +275,22 @@ func (a *sqliteAdapter) CreateAnonymousAccount(ctx context.Context, p CreateAnon
 		DisplayName: p.DisplayName,
 		CreatedAt:   p.CreatedAt,
 	})
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 
 func (a *sqliteAdapter) GetAccountByID(ctx context.Context, id string) (Account, error) {
 	row, err := a.q.GetAccountByID(ctx, id)
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 
 func (a *sqliteAdapter) GetAccountByEmail(ctx context.Context, email string) (Account, error) {
 	row, err := a.q.GetAccountByEmail(ctx, email)
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 
 func (a *sqliteAdapter) GetAccountByGitHubUserID(ctx context.Context, githubUserID *string) (Account, error) {
 	row, err := a.q.GetAccountByGitHubUserID(ctx, ptrToNullString(githubUserID))
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 
 func (a *sqliteAdapter) UpdateAccountDisplayName(ctx context.Context, p UpdateAccountDisplayNameParams) error {
@@ -345,22 +318,12 @@ func (a *sqliteAdapter) GetOrgMember(ctx context.Context, p GetOrgMemberParams) 
 		OrgID:     p.OrgID,
 		AccountID: p.AccountID,
 	})
-	if err != nil {
-		return OrgMember{}, mapSQLiteErr(err)
-	}
-	return sqliteOrgMember(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrgMember)
 }
 
 func (a *sqliteAdapter) ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error) {
 	rows, err := a.q.ListOrgsForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	orgs := make([]Org, len(rows))
-	for i, r := range rows {
-		orgs[i] = sqliteOrg(r)
-	}
-	return orgs, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteOrg)
 }
 
 func (a *sqliteAdapter) ListOrgMembers(ctx context.Context, orgID string) ([]OrgMemberWithAccount, error) {
@@ -403,21 +366,12 @@ func (a *sqliteAdapter) CreateSession(ctx context.Context, p CreateSessionParams
 		HardCapAt:                 ptrToNullTime(p.HardCapAt),
 		IdleTimeoutAt:             ptrToNullTime(p.IdleTimeoutAt),
 	})
-	if err != nil {
-		return Session{}, mapSQLiteErr(err)
-	}
-	return sqliteSession(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSession)
 }
 
 func (a *sqliteAdapter) GetSession(ctx context.Context, orgID, id string) (Session, error) {
-	row, err := a.q.GetSession(ctx, sqlitestore.GetSessionParams{
-		OrgID: orgID,
-		ID:    id,
-	})
-	if err != nil {
-		return Session{}, mapSQLiteErr(err)
-	}
-	return sqliteSession(row), nil
+	row, err := a.q.GetSession(ctx, sqlitestore.GetSessionParams{OrgID: orgID, ID: id})
+	return wrap1(row, err, mapSQLiteErr, sqliteSession)
 }
 
 // GetSessionByID looks up a session by its primary key without org scoping.
@@ -425,22 +379,12 @@ func (a *sqliteAdapter) GetSession(ctx context.Context, orgID, id string) (Sessi
 // by the LifecycleManager to route subsequent org-scoped operations.
 func (a *sqliteAdapter) GetSessionByID(ctx context.Context, id string) (Session, error) {
 	row, err := a.q.GetSessionByID(ctx, id)
-	if err != nil {
-		return Session{}, mapSQLiteErr(err)
-	}
-	return sqliteSession(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSession)
 }
 
 func (a *sqliteAdapter) ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error) {
 	rows, err := a.q.ListSessionsForOrg(ctx, orgID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = sqliteSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSession)
 }
 
 func (a *sqliteAdapter) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
@@ -449,14 +393,7 @@ func (a *sqliteAdapter) ListSessionsForOrgWithCursor(ctx context.Context, p List
 		CreatedAt: p.Before,
 		Limit:     p.Limit,
 	})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = sqliteSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSession)
 }
 
 func (a *sqliteAdapter) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
@@ -536,10 +473,7 @@ func (a *sqliteAdapter) GetSessionMember(ctx context.Context, p GetSessionMember
 		SessionID: p.SessionID,
 		AccountID: p.AccountID,
 	})
-	if err != nil {
-		return SessionMember{}, mapSQLiteErr(err)
-	}
-	return sqliteSessionMember(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSessionMember)
 }
 
 func (a *sqliteAdapter) ListSessionMembers(ctx context.Context, p ListSessionMembersParams) ([]SessionMember, error) {
@@ -547,14 +481,7 @@ func (a *sqliteAdapter) ListSessionMembers(ctx context.Context, p ListSessionMem
 		OrgID:     p.OrgID,
 		SessionID: p.SessionID,
 	})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	members := make([]SessionMember, len(rows))
-	for i, r := range rows {
-		members[i] = sqliteSessionMember(r)
-	}
-	return members, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSessionMember)
 }
 
 func (a *sqliteAdapter) RemoveSessionMember(ctx context.Context, p RemoveSessionMemberParams) error {
@@ -567,14 +494,7 @@ func (a *sqliteAdapter) RemoveSessionMember(ctx context.Context, p RemoveSession
 
 func (a *sqliteAdapter) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]SessionMembership, error) {
 	rows, err := a.q.ListSessionMembershipsForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	memberships := make([]SessionMembership, len(rows))
-	for i, r := range rows {
-		memberships[i] = sqliteSessionMembership(r)
-	}
-	return memberships, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSessionMembership)
 }
 
 func (a *sqliteAdapter) NicknameTakenInSession(ctx context.Context, p NicknameTakenInSessionParams) (bool, error) {
@@ -618,10 +538,7 @@ func sqliteTombstone(row sqlitestore.Tombstone) Tombstone {
 
 func (a *sqliteAdapter) GetTombstone(ctx context.Context, sessionID string) (Tombstone, error) {
 	row, err := a.q.GetTombstone(ctx, sessionID)
-	if err != nil {
-		return Tombstone{}, mapSQLiteErr(err)
-	}
-	return sqliteTombstone(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteTombstone)
 }
 
 func (a *sqliteAdapter) RecordTombstone(ctx context.Context, p RecordTombstoneParams) error {
@@ -658,14 +575,7 @@ func (a *sqliteAdapter) ListExpiredPlaygroundSessions(ctx context.Context, p Lis
 		HardCapAt:     now,
 		IdleTimeoutAt: now,
 	})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = sqliteSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSession)
 }
 
 func (a *sqliteAdapter) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
@@ -701,10 +611,7 @@ func (a *sqliteAdapter) CreateOAuthToken(ctx context.Context, p CreateOAuthToken
 		LastUsedAt: p.LastUsedAt,
 		RevokedAt:  p.RevokedAt,
 	})
-	if err != nil {
-		return OAuthToken{}, mapSQLiteErr(err)
-	}
-	return sqliteOAuthToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOAuthToken)
 }
 
 func (a *sqliteAdapter) CreateAnonymousBearer(ctx context.Context, p CreateAnonymousBearerParams) (OAuthToken, error) {
@@ -716,10 +623,7 @@ func (a *sqliteAdapter) CreateAnonymousBearer(ctx context.Context, p CreateAnony
 		IssuedAt:  p.IssuedAt,
 		ExpiresAt: p.ExpiresAt,
 	})
-	if err != nil {
-		return OAuthToken{}, mapSQLiteErr(err)
-	}
-	return sqliteOAuthToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOAuthToken)
 }
 
 func (a *sqliteAdapter) RevokeBearersForSession(ctx context.Context, p RevokeBearersForSessionParams) error {
@@ -731,10 +635,7 @@ func (a *sqliteAdapter) RevokeBearersForSession(ctx context.Context, p RevokeBea
 
 func (a *sqliteAdapter) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error) {
 	row, err := a.q.GetOAuthTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return OAuthToken{}, mapSQLiteErr(err)
-	}
-	return sqliteOAuthToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOAuthToken)
 }
 
 func (a *sqliteAdapter) TouchOAuthTokenLastUsed(ctx context.Context, p TouchOAuthTokenLastUsedParams) error {
@@ -760,14 +661,7 @@ func (a *sqliteAdapter) RevokeAllOAuthTokensForAccount(ctx context.Context, p Re
 
 func (a *sqliteAdapter) ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OAuthToken, error) {
 	rows, err := a.q.ListOAuthTokensForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	tokens := make([]OAuthToken, len(rows))
-	for i, r := range rows {
-		tokens[i] = sqliteOAuthToken(r)
-	}
-	return tokens, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteOAuthToken)
 }
 
 // ---------------------------------------------------------------------------
@@ -783,18 +677,12 @@ func (a *sqliteAdapter) CreateMagicLinkToken(ctx context.Context, p CreateMagicL
 		ExpiresAt: p.ExpiresAt,
 		UsedAt:    p.UsedAt,
 	})
-	if err != nil {
-		return MagicLinkToken{}, mapSQLiteErr(err)
-	}
-	return sqliteMagicLinkToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteMagicLinkToken)
 }
 
 func (a *sqliteAdapter) GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error) {
 	row, err := a.q.GetMagicLinkTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return MagicLinkToken{}, mapSQLiteErr(err)
-	}
-	return sqliteMagicLinkToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteMagicLinkToken)
 }
 
 func (a *sqliteAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) error {
@@ -828,10 +716,7 @@ func (a *sqliteAdapter) GetArchivedSession(ctx context.Context, p GetArchivedSes
 		OrgID:     p.OrgID,
 		SessionID: p.SessionID,
 	})
-	if err != nil {
-		return ArchivedSession{}, mapSQLiteErr(err)
-	}
-	return sqliteArchivedSession(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteArchivedSession)
 }
 
 // ---------------------------------------------------------------------------
@@ -1011,26 +896,17 @@ func (a *sqliteAdapter) InsertOrgInvite(ctx context.Context, p InsertOrgInvitePa
 		AcceptedAt:          p.AcceptedAt,
 		AcceptedByAccountID: ptrToNullString(p.AcceptedByAccountID),
 	})
-	if err != nil {
-		return OrgInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteOrgInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrgInvite)
 }
 
 func (a *sqliteAdapter) GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error) {
 	row, err := a.q.GetOrgInviteByID(ctx, id)
-	if err != nil {
-		return OrgInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteOrgInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrgInvite)
 }
 
 func (a *sqliteAdapter) GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error) {
 	row, err := a.q.GetOrgInviteByTokenHash(ctx, tokenHash)
-	if err != nil {
-		return OrgInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteOrgInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrgInvite)
 }
 
 func (a *sqliteAdapter) MarkOrgInviteAccepted(ctx context.Context, p MarkOrgInviteAcceptedParams) error {
@@ -1046,14 +922,7 @@ func (a *sqliteAdapter) ListPendingOrgInvitesForOrg(ctx context.Context, p ListP
 		OrgID:     p.OrgID,
 		ExpiresAt: p.Now,
 	})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	invites := make([]OrgInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = sqliteOrgInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteOrgInvite)
 }
 
 func (a *sqliteAdapter) ListPendingOrgInvitesForEmail(ctx context.Context, p ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error) {
@@ -1061,14 +930,7 @@ func (a *sqliteAdapter) ListPendingOrgInvitesForEmail(ctx context.Context, p Lis
 		RecipientEmail: p.Email,
 		ExpiresAt:      p.Now,
 	})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	invites := make([]OrgInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = sqliteOrgInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteOrgInvite)
 }
 
 // ---------------------------------------------------------------------------
@@ -1103,26 +965,17 @@ func (a *sqliteAdapter) InsertSessionInvite(ctx context.Context, p InsertSession
 		AcceptedAt:          p.AcceptedAt,
 		AcceptedByAccountID: ptrToNullString(p.AcceptedByAccountID),
 	})
-	if err != nil {
-		return SessionInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteSessionInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSessionInvite)
 }
 
 func (a *sqliteAdapter) GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error) {
 	row, err := a.q.GetSessionInviteByID(ctx, id)
-	if err != nil {
-		return SessionInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteSessionInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSessionInvite)
 }
 
 func (a *sqliteAdapter) GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error) {
 	row, err := a.q.GetSessionInviteByTokenHash(ctx, tokenHash)
-	if err != nil {
-		return SessionInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteSessionInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSessionInvite)
 }
 
 func (a *sqliteAdapter) MarkSessionInviteAccepted(ctx context.Context, p MarkSessionInviteAcceptedParams) error {
@@ -1138,14 +991,7 @@ func (a *sqliteAdapter) ListPendingSessionInvitesForSession(ctx context.Context,
 		SessionID: p.SessionID,
 		ExpiresAt: p.Now,
 	})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	invites := make([]SessionInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = sqliteSessionInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSessionInvite)
 }
 
 // ---------------------------------------------------------------------------
@@ -1165,22 +1011,12 @@ func (a *sqliteAdapter) GetRefMode(ctx context.Context, p GetRefModeParams) (Ref
 		SessionID: p.SessionID,
 		Ref:       p.Ref,
 	})
-	if err != nil {
-		return RefMode{}, mapSQLiteErr(err)
-	}
-	return sqliteRefMode(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteRefMode)
 }
 
 func (a *sqliteAdapter) ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error) {
 	rows, err := a.q.ListRefModesForSession(ctx, sessionID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	out := make([]RefMode, len(rows))
-	for i, r := range rows {
-		out[i] = sqliteRefMode(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteRefMode)
 }
 
 // ---------------------------------------------------------------------------
@@ -1219,31 +1055,19 @@ func (a *sqliteAdapter) WithTx(ctx context.Context, fn func(TxStore) error) erro
 // OrgStore
 func (s *sqliteTxStore) CreateOrg(ctx context.Context, p CreateOrgParams) (Org, error) {
 	row, err := s.q.CreateOrg(ctx, sqlitestore.CreateOrgParams{ID: p.ID, Name: p.Name, Slug: p.Slug, CreatedAt: p.CreatedAt})
-	if err != nil {
-		return Org{}, mapSQLiteErr(err)
-	}
-	return sqliteOrg(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrg)
 }
 func (s *sqliteTxStore) CreateProtectedOrg(ctx context.Context, p CreateProtectedOrgParams) (Org, error) {
 	row, err := s.q.CreateProtectedOrg(ctx, sqlitestore.CreateProtectedOrgParams{ID: p.ID, Name: p.Name, Slug: p.Slug, CreatedAt: p.CreatedAt})
-	if err != nil {
-		return Org{}, mapSQLiteErr(err)
-	}
-	return sqliteOrg(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrg)
 }
 func (s *sqliteTxStore) GetOrgByID(ctx context.Context, id string) (Org, error) {
 	row, err := s.q.GetOrgByID(ctx, id)
-	if err != nil {
-		return Org{}, mapSQLiteErr(err)
-	}
-	return sqliteOrg(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrg)
 }
 func (s *sqliteTxStore) GetOrgBySlug(ctx context.Context, slug string) (Org, error) {
 	row, err := s.q.GetOrgBySlug(ctx, slug)
-	if err != nil {
-		return Org{}, mapSQLiteErr(err)
-	}
-	return sqliteOrg(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrg)
 }
 func (s *sqliteTxStore) UpdateOrgSessionInvitePolicy(ctx context.Context, p UpdateOrgSessionInvitePolicyParams) error {
 	return mapSQLiteErr(s.q.UpdateOrgSessionInvitePolicy(ctx, sqlitestore.UpdateOrgSessionInvitePolicyParams{
@@ -1255,38 +1079,23 @@ func (s *sqliteTxStore) UpdateOrgSessionInvitePolicy(ctx context.Context, p Upda
 // AccountStore
 func (s *sqliteTxStore) CreateAccount(ctx context.Context, p CreateAccountParams) (Account, error) {
 	row, err := s.q.CreateAccount(ctx, sqlitestore.CreateAccountParams{ID: p.ID, Email: p.Email, DisplayName: p.DisplayName, GithubUserID: ptrToNullString(p.GithubUserID), CreatedAt: p.CreatedAt})
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 func (s *sqliteTxStore) CreateAnonymousAccount(ctx context.Context, p CreateAnonymousAccountParams) (Account, error) {
 	row, err := s.q.CreateAnonymousAccount(ctx, sqlitestore.CreateAnonymousAccountParams{ID: p.ID, Email: p.Email, DisplayName: p.DisplayName, CreatedAt: p.CreatedAt})
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 func (s *sqliteTxStore) GetAccountByID(ctx context.Context, id string) (Account, error) {
 	row, err := s.q.GetAccountByID(ctx, id)
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 func (s *sqliteTxStore) GetAccountByEmail(ctx context.Context, email string) (Account, error) {
 	row, err := s.q.GetAccountByEmail(ctx, email)
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 func (s *sqliteTxStore) GetAccountByGitHubUserID(ctx context.Context, githubUserID *string) (Account, error) {
 	row, err := s.q.GetAccountByGitHubUserID(ctx, ptrToNullString(githubUserID))
-	if err != nil {
-		return Account{}, mapSQLiteErr(err)
-	}
-	return sqliteAccount(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteAccount)
 }
 func (s *sqliteTxStore) UpdateAccountDisplayName(ctx context.Context, p UpdateAccountDisplayNameParams) error {
 	return mapSQLiteErr(s.q.UpdateAccountDisplayName(ctx, sqlitestore.UpdateAccountDisplayNameParams{ID: p.ID, DisplayName: p.DisplayName}))
@@ -1298,21 +1107,11 @@ func (s *sqliteTxStore) AddOrgMember(ctx context.Context, p AddOrgMemberParams) 
 }
 func (s *sqliteTxStore) GetOrgMember(ctx context.Context, p GetOrgMemberParams) (OrgMember, error) {
 	row, err := s.q.GetOrgMember(ctx, sqlitestore.GetOrgMemberParams{OrgID: p.OrgID, AccountID: p.AccountID})
-	if err != nil {
-		return OrgMember{}, mapSQLiteErr(err)
-	}
-	return sqliteOrgMember(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrgMember)
 }
 func (s *sqliteTxStore) ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error) {
 	rows, err := s.q.ListOrgsForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	orgs := make([]Org, len(rows))
-	for i, r := range rows {
-		orgs[i] = sqliteOrg(r)
-	}
-	return orgs, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteOrg)
 }
 func (s *sqliteTxStore) ListOrgMembers(ctx context.Context, orgID string) ([]OrgMemberWithAccount, error) {
 	rows, err := s.q.ListOrgMembers(ctx, orgID)
@@ -1340,46 +1139,23 @@ func (s *sqliteTxStore) CreateSession(ctx context.Context, p CreateSessionParams
 		HardCapAt:                 ptrToNullTime(p.HardCapAt),
 		IdleTimeoutAt:             ptrToNullTime(p.IdleTimeoutAt),
 	})
-	if err != nil {
-		return Session{}, mapSQLiteErr(err)
-	}
-	return sqliteSession(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSession)
 }
 func (s *sqliteTxStore) GetSession(ctx context.Context, orgID, id string) (Session, error) {
 	row, err := s.q.GetSession(ctx, sqlitestore.GetSessionParams{OrgID: orgID, ID: id})
-	if err != nil {
-		return Session{}, mapSQLiteErr(err)
-	}
-	return sqliteSession(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSession)
 }
 func (s *sqliteTxStore) GetSessionByID(ctx context.Context, id string) (Session, error) {
 	row, err := s.q.GetSessionByID(ctx, id)
-	if err != nil {
-		return Session{}, mapSQLiteErr(err)
-	}
-	return sqliteSession(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSession)
 }
 func (s *sqliteTxStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]Session, error) {
 	rows, err := s.q.ListSessionsForOrg(ctx, orgID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = sqliteSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSession)
 }
 func (s *sqliteTxStore) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
 	rows, err := s.q.ListSessionsForOrgWithCursor(ctx, sqlitestore.ListSessionsForOrgWithCursorParams{OrgID: p.OrgID, CreatedAt: p.Before, Limit: p.Limit})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = sqliteSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSession)
 }
 func (s *sqliteTxStore) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
 	return mapSQLiteErr(s.q.UpdateSessionStatus(ctx, sqlitestore.UpdateSessionStatusParams{OrgID: p.OrgID, ID: p.ID, Status: p.Status}))
@@ -1409,35 +1185,18 @@ func (s *sqliteTxStore) AddSessionMember(ctx context.Context, p AddSessionMember
 }
 func (s *sqliteTxStore) GetSessionMember(ctx context.Context, p GetSessionMemberParams) (SessionMember, error) {
 	row, err := s.q.GetSessionMember(ctx, sqlitestore.GetSessionMemberParams{OrgID: p.OrgID, SessionID: p.SessionID, AccountID: p.AccountID})
-	if err != nil {
-		return SessionMember{}, mapSQLiteErr(err)
-	}
-	return sqliteSessionMember(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSessionMember)
 }
 func (s *sqliteTxStore) ListSessionMembers(ctx context.Context, p ListSessionMembersParams) ([]SessionMember, error) {
 	rows, err := s.q.ListSessionMembers(ctx, sqlitestore.ListSessionMembersParams{OrgID: p.OrgID, SessionID: p.SessionID})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	members := make([]SessionMember, len(rows))
-	for i, r := range rows {
-		members[i] = sqliteSessionMember(r)
-	}
-	return members, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSessionMember)
 }
 func (s *sqliteTxStore) RemoveSessionMember(ctx context.Context, p RemoveSessionMemberParams) error {
 	return mapSQLiteErr(s.q.RemoveSessionMember(ctx, sqlitestore.RemoveSessionMemberParams{OrgID: p.OrgID, SessionID: p.SessionID, AccountID: p.AccountID}))
 }
 func (s *sqliteTxStore) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]SessionMembership, error) {
 	rows, err := s.q.ListSessionMembershipsForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	memberships := make([]SessionMembership, len(rows))
-	for i, r := range rows {
-		memberships[i] = sqliteSessionMembership(r)
-	}
-	return memberships, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSessionMembership)
 }
 
 func (s *sqliteTxStore) NicknameTakenInSession(ctx context.Context, p NicknameTakenInSessionParams) (bool, error) {
@@ -1457,10 +1216,7 @@ func (s *sqliteTxStore) CountSessionMembers(ctx context.Context, p CountSessionM
 // TombstoneStore
 func (s *sqliteTxStore) GetTombstone(ctx context.Context, sessionID string) (Tombstone, error) {
 	row, err := s.q.GetTombstone(ctx, sessionID)
-	if err != nil {
-		return Tombstone{}, mapSQLiteErr(err)
-	}
-	return sqliteTombstone(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteTombstone)
 }
 
 func (s *sqliteTxStore) RecordTombstone(ctx context.Context, p RecordTombstoneParams) error {
@@ -1490,14 +1246,7 @@ func (s *sqliteTxStore) ListExpiredPlaygroundSessions(ctx context.Context, p Lis
 		HardCapAt:     now,
 		IdleTimeoutAt: now,
 	})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	sessions := make([]Session, len(rows))
-	for i, r := range rows {
-		sessions[i] = sqliteSession(r)
-	}
-	return sessions, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSession)
 }
 
 func (s *sqliteTxStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
@@ -1521,10 +1270,7 @@ func (s *sqliteTxStore) CountSessionEventsByType(ctx context.Context, sessionID,
 // OAuthTokenStore
 func (s *sqliteTxStore) CreateOAuthToken(ctx context.Context, p CreateOAuthTokenParams) (OAuthToken, error) {
 	row, err := s.q.CreateOAuthToken(ctx, sqlitestore.CreateOAuthTokenParams{ID: p.ID, AccountID: p.AccountID, TokenHash: p.TokenHash, Kind: p.Kind, IssuedAt: p.IssuedAt, ExpiresAt: p.ExpiresAt, LastUsedAt: p.LastUsedAt, RevokedAt: p.RevokedAt})
-	if err != nil {
-		return OAuthToken{}, mapSQLiteErr(err)
-	}
-	return sqliteOAuthToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOAuthToken)
 }
 func (s *sqliteTxStore) CreateAnonymousBearer(ctx context.Context, p CreateAnonymousBearerParams) (OAuthToken, error) {
 	row, err := s.q.CreateAnonymousBearer(ctx, sqlitestore.CreateAnonymousBearerParams{
@@ -1535,10 +1281,7 @@ func (s *sqliteTxStore) CreateAnonymousBearer(ctx context.Context, p CreateAnony
 		IssuedAt:  p.IssuedAt,
 		ExpiresAt: p.ExpiresAt,
 	})
-	if err != nil {
-		return OAuthToken{}, mapSQLiteErr(err)
-	}
-	return sqliteOAuthToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOAuthToken)
 }
 func (s *sqliteTxStore) RevokeBearersForSession(ctx context.Context, p RevokeBearersForSessionParams) error {
 	return mapSQLiteErr(s.q.RevokeBearersForSession(ctx, sqlitestore.RevokeBearersForSessionParams{
@@ -1548,10 +1291,7 @@ func (s *sqliteTxStore) RevokeBearersForSession(ctx context.Context, p RevokeBea
 }
 func (s *sqliteTxStore) GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error) {
 	row, err := s.q.GetOAuthTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return OAuthToken{}, mapSQLiteErr(err)
-	}
-	return sqliteOAuthToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOAuthToken)
 }
 func (s *sqliteTxStore) TouchOAuthTokenLastUsed(ctx context.Context, p TouchOAuthTokenLastUsedParams) error {
 	return mapSQLiteErr(s.q.TouchOAuthTokenLastUsed(ctx, sqlitestore.TouchOAuthTokenLastUsedParams{ID: p.ID, LastUsedAt: p.LastUsedAt}))
@@ -1564,30 +1304,17 @@ func (s *sqliteTxStore) RevokeAllOAuthTokensForAccount(ctx context.Context, p Re
 }
 func (s *sqliteTxStore) ListOAuthTokensForAccount(ctx context.Context, accountID string) ([]OAuthToken, error) {
 	rows, err := s.q.ListOAuthTokensForAccount(ctx, accountID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	tokens := make([]OAuthToken, len(rows))
-	for i, r := range rows {
-		tokens[i] = sqliteOAuthToken(r)
-	}
-	return tokens, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteOAuthToken)
 }
 
 // MagicLinkTokenStore
 func (s *sqliteTxStore) CreateMagicLinkToken(ctx context.Context, p CreateMagicLinkTokenParams) (MagicLinkToken, error) {
 	row, err := s.q.CreateMagicLinkToken(ctx, sqlitestore.CreateMagicLinkTokenParams{ID: p.ID, TokenHash: p.TokenHash, Email: p.Email, IssuedAt: p.IssuedAt, ExpiresAt: p.ExpiresAt, UsedAt: p.UsedAt})
-	if err != nil {
-		return MagicLinkToken{}, mapSQLiteErr(err)
-	}
-	return sqliteMagicLinkToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteMagicLinkToken)
 }
 func (s *sqliteTxStore) GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error) {
 	row, err := s.q.GetMagicLinkTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return MagicLinkToken{}, mapSQLiteErr(err)
-	}
-	return sqliteMagicLinkToken(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteMagicLinkToken)
 }
 func (s *sqliteTxStore) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) error {
 	return mapSQLiteErr(s.q.ConsumeMagicLinkToken(ctx, sqlitestore.ConsumeMagicLinkTokenParams{ID: p.ID, UsedAt: p.UsedAt}))
@@ -1600,10 +1327,7 @@ func (s *sqliteTxStore) InsertArchivedSession(ctx context.Context, p InsertArchi
 }
 func (s *sqliteTxStore) GetArchivedSession(ctx context.Context, p GetArchivedSessionParams) (ArchivedSession, error) {
 	row, err := s.q.GetArchivedSession(ctx, sqlitestore.GetArchivedSessionParams{OrgID: p.OrgID, SessionID: p.SessionID})
-	if err != nil {
-		return ArchivedSession{}, mapSQLiteErr(err)
-	}
-	return sqliteArchivedSession(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteArchivedSession)
 }
 
 // OAuthStateStore
@@ -1617,6 +1341,7 @@ func (s *sqliteTxStore) ConsumeOAuthState(ctx context.Context, nonce string) (OA
 	}
 	return OAuthState{Nonce: row.Nonce, Provider: row.Provider, RedirectURI: row.RedirectUri, CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt}, nil
 }
+
 func (s *sqliteTxStore) CleanupExpiredOAuthState(ctx context.Context, before time.Time) error {
 	return mapSQLiteErr(s.q.CleanupExpiredOAuthState(ctx, before))
 }
@@ -1678,49 +1403,26 @@ func (s *sqliteTxStore) ListPresenceForSession(ctx context.Context, sessionID st
 // OrgInviteStore
 func (s *sqliteTxStore) InsertOrgInvite(ctx context.Context, p InsertOrgInviteParams) (OrgInvite, error) {
 	row, err := s.q.InsertOrgInvite(ctx, sqlitestore.InsertOrgInviteParams{ID: p.ID, OrgID: p.OrgID, InviterAccountID: p.InviterAccountID, RecipientEmail: p.RecipientEmail, TokenHash: p.TokenHash, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, AcceptedAt: p.AcceptedAt, AcceptedByAccountID: ptrToNullString(p.AcceptedByAccountID)})
-	if err != nil {
-		return OrgInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteOrgInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrgInvite)
 }
 func (s *sqliteTxStore) GetOrgInviteByID(ctx context.Context, id string) (OrgInvite, error) {
 	row, err := s.q.GetOrgInviteByID(ctx, id)
-	if err != nil {
-		return OrgInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteOrgInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrgInvite)
 }
 func (s *sqliteTxStore) GetOrgInviteByTokenHash(ctx context.Context, tokenHash string) (OrgInvite, error) {
 	row, err := s.q.GetOrgInviteByTokenHash(ctx, tokenHash)
-	if err != nil {
-		return OrgInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteOrgInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteOrgInvite)
 }
 func (s *sqliteTxStore) MarkOrgInviteAccepted(ctx context.Context, p MarkOrgInviteAcceptedParams) error {
 	return mapSQLiteErr(s.q.MarkOrgInviteAccepted(ctx, sqlitestore.MarkOrgInviteAcceptedParams{ID: p.ID, AcceptedAt: &p.AcceptedAt, AcceptedByAccountID: ptrToNullString(&p.AcceptedByAccountID)}))
 }
 func (s *sqliteTxStore) ListPendingOrgInvitesForOrg(ctx context.Context, p ListPendingOrgInvitesForOrgParams) ([]OrgInvite, error) {
 	rows, err := s.q.ListPendingOrgInvitesForOrg(ctx, sqlitestore.ListPendingOrgInvitesForOrgParams{OrgID: p.OrgID, ExpiresAt: p.Now})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	invites := make([]OrgInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = sqliteOrgInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteOrgInvite)
 }
 func (s *sqliteTxStore) ListPendingOrgInvitesForEmail(ctx context.Context, p ListPendingOrgInvitesForEmailParams) ([]OrgInvite, error) {
 	rows, err := s.q.ListPendingOrgInvitesForEmail(ctx, sqlitestore.ListPendingOrgInvitesForEmailParams{RecipientEmail: p.Email, ExpiresAt: p.Now})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	invites := make([]OrgInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = sqliteOrgInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteOrgInvite)
 }
 
 // RefModeStore
@@ -1729,58 +1431,32 @@ func (s *sqliteTxStore) UpsertRefMode(ctx context.Context, p UpsertRefModeParams
 }
 func (s *sqliteTxStore) GetRefMode(ctx context.Context, p GetRefModeParams) (RefMode, error) {
 	row, err := s.q.GetRefMode(ctx, sqlitestore.GetRefModeParams{SessionID: p.SessionID, Ref: p.Ref})
-	if err != nil {
-		return RefMode{}, mapSQLiteErr(err)
-	}
-	return sqliteRefMode(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteRefMode)
 }
 func (s *sqliteTxStore) ListRefModesForSession(ctx context.Context, sessionID string) ([]RefMode, error) {
 	rows, err := s.q.ListRefModesForSession(ctx, sessionID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	out := make([]RefMode, len(rows))
-	for i, r := range rows {
-		out[i] = sqliteRefMode(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteRefMode)
 }
 
 // SessionInviteStore (TxStore)
 func (s *sqliteTxStore) InsertSessionInvite(ctx context.Context, p InsertSessionInviteParams) (SessionInvite, error) {
 	row, err := s.q.InsertSessionInvite(ctx, sqlitestore.InsertSessionInviteParams{ID: p.ID, OrgID: p.OrgID, SessionID: p.SessionID, InviterAccountID: p.InviterAccountID, InviteeEmail: p.InviteeEmail, TokenHash: p.TokenHash, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, AcceptedAt: p.AcceptedAt, AcceptedByAccountID: ptrToNullString(p.AcceptedByAccountID)})
-	if err != nil {
-		return SessionInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteSessionInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSessionInvite)
 }
 func (s *sqliteTxStore) GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error) {
 	row, err := s.q.GetSessionInviteByID(ctx, id)
-	if err != nil {
-		return SessionInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteSessionInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSessionInvite)
 }
 func (s *sqliteTxStore) GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error) {
 	row, err := s.q.GetSessionInviteByTokenHash(ctx, tokenHash)
-	if err != nil {
-		return SessionInvite{}, mapSQLiteErr(err)
-	}
-	return sqliteSessionInvite(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteSessionInvite)
 }
 func (s *sqliteTxStore) MarkSessionInviteAccepted(ctx context.Context, p MarkSessionInviteAcceptedParams) error {
 	return mapSQLiteErr(s.q.MarkSessionInviteAccepted(ctx, sqlitestore.MarkSessionInviteAcceptedParams{ID: p.ID, AcceptedAt: &p.AcceptedAt, AcceptedByAccountID: ptrToNullString(&p.AcceptedByAccountID)}))
 }
 func (s *sqliteTxStore) ListPendingSessionInvitesForSession(ctx context.Context, p ListPendingSessionInvitesForSessionParams) ([]SessionInvite, error) {
 	rows, err := s.q.ListPendingSessionInvitesForSession(ctx, sqlitestore.ListPendingSessionInvitesForSessionParams{SessionID: p.SessionID, ExpiresAt: p.Now})
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	invites := make([]SessionInvite, len(rows))
-	for i, r := range rows {
-		invites[i] = sqliteSessionInvite(r)
-	}
-	return invites, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteSessionInvite)
 }
 
 // ---------------------------------------------------------------------------
@@ -1806,10 +1482,7 @@ func (a *sqliteAdapter) InsertConflictEvent(ctx context.Context, p InsertConflic
 
 func (a *sqliteAdapter) GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error) {
 	row, err := a.q.GetConflictEventByID(ctx, id)
-	if err != nil {
-		return ConflictEvent{}, mapSQLiteErr(err)
-	}
-	return sqliteConflictEvent(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteConflictEvent)
 }
 
 func (a *sqliteAdapter) MarkConflictEventResolved(ctx context.Context, p MarkConflictEventResolvedParams) error {
@@ -1823,14 +1496,7 @@ func (a *sqliteAdapter) MarkConflictEventResolved(ctx context.Context, p MarkCon
 
 func (a *sqliteAdapter) ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error) {
 	rows, err := a.q.ListOpenConflictEventsForSession(ctx, sessionID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	out := make([]ConflictEvent, len(rows))
-	for i, r := range rows {
-		out[i] = sqliteConflictEvent(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteConflictEvent)
 }
 
 // ---------------------------------------------------------------------------
@@ -1856,10 +1522,7 @@ func (s *sqliteTxStore) InsertConflictEvent(ctx context.Context, p InsertConflic
 
 func (s *sqliteTxStore) GetConflictEventByID(ctx context.Context, id string) (ConflictEvent, error) {
 	row, err := s.q.GetConflictEventByID(ctx, id)
-	if err != nil {
-		return ConflictEvent{}, mapSQLiteErr(err)
-	}
-	return sqliteConflictEvent(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteConflictEvent)
 }
 
 func (s *sqliteTxStore) MarkConflictEventResolved(ctx context.Context, p MarkConflictEventResolvedParams) error {
@@ -1873,14 +1536,7 @@ func (s *sqliteTxStore) MarkConflictEventResolved(ctx context.Context, p MarkCon
 
 func (s *sqliteTxStore) ListOpenConflictEventsForSession(ctx context.Context, sessionID string) ([]ConflictEvent, error) {
 	rows, err := s.q.ListOpenConflictEventsForSession(ctx, sessionID)
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	out := make([]ConflictEvent, len(rows))
-	for i, r := range rows {
-		out[i] = sqliteConflictEvent(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteConflictEvent)
 }
 
 // sqliteConflictEvent converts a sqlitestore.ConflictEvent to domain ConflictEvent.
@@ -1911,10 +1567,7 @@ func (a *sqliteAdapter) InsertComment(ctx context.Context, p InsertCommentParams
 
 func (a *sqliteAdapter) GetCommentByID(ctx context.Context, id string) (Comment, error) {
 	row, err := a.q.GetCommentByID(ctx, id)
-	if err != nil {
-		return Comment{}, mapSQLiteErr(err)
-	}
-	return sqliteComment(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteComment)
 }
 
 func (a *sqliteAdapter) ResolveComment(ctx context.Context, p ResolveCommentParams) error {
@@ -1929,14 +1582,7 @@ func (a *sqliteAdapter) ResolveComment(ctx context.Context, p ResolveCommentPara
 
 func (a *sqliteAdapter) ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error) {
 	rows, err := a.q.ListCommentsForSession(ctx, sqliteListCommentsParams(p))
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	out := make([]Comment, len(rows))
-	for i, r := range rows {
-		out[i] = sqliteComment(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteComment)
 }
 
 // ---------------------------------------------------------------------------
@@ -1949,10 +1595,7 @@ func (s *sqliteTxStore) InsertComment(ctx context.Context, p InsertCommentParams
 
 func (s *sqliteTxStore) GetCommentByID(ctx context.Context, id string) (Comment, error) {
 	row, err := s.q.GetCommentByID(ctx, id)
-	if err != nil {
-		return Comment{}, mapSQLiteErr(err)
-	}
-	return sqliteComment(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteComment)
 }
 
 func (s *sqliteTxStore) ResolveComment(ctx context.Context, p ResolveCommentParams) error {
@@ -1967,14 +1610,7 @@ func (s *sqliteTxStore) ResolveComment(ctx context.Context, p ResolveCommentPara
 
 func (s *sqliteTxStore) ListCommentsForSession(ctx context.Context, p ListCommentsForSessionParams) ([]Comment, error) {
 	rows, err := s.q.ListCommentsForSession(ctx, sqliteListCommentsParams(p))
-	if err != nil {
-		return nil, mapSQLiteErr(err)
-	}
-	out := make([]Comment, len(rows))
-	for i, r := range rows {
-		out[i] = sqliteComment(r)
-	}
-	return out, nil
+	return wrapList(rows, err, mapSQLiteErr, sqliteComment)
 }
 
 // sqliteInsertCommentParams converts domain InsertCommentParams to sqlitestore.InsertCommentParams.
@@ -2071,18 +1707,12 @@ func (a *sqliteAdapter) InsertFinalizeLock(ctx context.Context, p InsertFinalize
 
 func (a *sqliteAdapter) GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error) {
 	row, err := a.q.GetFinalizeLockByID(ctx, id)
-	if err != nil {
-		return FinalizeLock{}, mapSQLiteErr(err)
-	}
-	return sqliteFinalizeLock(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteFinalizeLock)
 }
 
 func (a *sqliteAdapter) GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error) {
 	row, err := a.q.GetActiveFinalizeLockForSession(ctx, sessionID)
-	if err != nil {
-		return FinalizeLock{}, mapSQLiteErr(err)
-	}
-	return sqliteFinalizeLock(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteFinalizeLock)
 }
 
 func (a *sqliteAdapter) UpdateFinalizeLockCuration(ctx context.Context, p UpdateFinalizeLockCurationParams) error {
@@ -2129,18 +1759,12 @@ func (s *sqliteTxStore) InsertFinalizeLock(ctx context.Context, p InsertFinalize
 
 func (s *sqliteTxStore) GetFinalizeLockByID(ctx context.Context, id string) (FinalizeLock, error) {
 	row, err := s.q.GetFinalizeLockByID(ctx, id)
-	if err != nil {
-		return FinalizeLock{}, mapSQLiteErr(err)
-	}
-	return sqliteFinalizeLock(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteFinalizeLock)
 }
 
 func (s *sqliteTxStore) GetActiveFinalizeLockForSession(ctx context.Context, sessionID string) (FinalizeLock, error) {
 	row, err := s.q.GetActiveFinalizeLockForSession(ctx, sessionID)
-	if err != nil {
-		return FinalizeLock{}, mapSQLiteErr(err)
-	}
-	return sqliteFinalizeLock(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteFinalizeLock)
 }
 
 func (s *sqliteTxStore) UpdateFinalizeLockCuration(ctx context.Context, p UpdateFinalizeLockCurationParams) error {
@@ -2236,10 +1860,7 @@ func (a *sqliteAdapter) InsertLease(ctx context.Context, p InsertLeaseParams) (L
 		PodID:        p.PodID,
 		FencingToken: p.FencingToken,
 	})
-	if err != nil {
-		return Lease{}, mapSQLiteErr(err)
-	}
-	return sqliteLease(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteLease)
 }
 
 func (a *sqliteAdapter) MarkLeaseReleased(ctx context.Context, sessionID string) error {
@@ -2270,10 +1891,7 @@ func (s *sqliteTxStore) InsertLease(ctx context.Context, p InsertLeaseParams) (L
 		PodID:        p.PodID,
 		FencingToken: p.FencingToken,
 	})
-	if err != nil {
-		return Lease{}, mapSQLiteErr(err)
-	}
-	return sqliteLease(row), nil
+	return wrap1(row, err, mapSQLiteErr, sqliteLease)
 }
 
 func (s *sqliteTxStore) MarkLeaseReleased(ctx context.Context, sessionID string) error {
