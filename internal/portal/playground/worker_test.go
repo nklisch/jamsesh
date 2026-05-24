@@ -404,6 +404,141 @@ func TestWorker_RunsEvenWhenCreateDisabled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: exact-boundary cases for hard_cap_at and idle_timeout_at
+// ---------------------------------------------------------------------------
+
+// TestWorker_SessionExpiresWhenNowEqualsHardCapAt pins the boundary behaviour
+// for hard_cap_at.
+//
+// The SQL sweep uses `hard_cap_at <= ?now` (i.e. <=), so `now == hard_cap_at`
+// IS included: the session IS destroyed at the exact boundary. This test locks
+// that inclusion so future refactors or query rewrites can't silently change
+// `<=` to `<` (strict) without a failing test.
+//
+// Secondary observation: reasonFor uses now.After(hard_cap_at) which is
+// strictly `now > hard_cap_at`. At the exact equality point the hard_cap
+// branch is false and the idle branch is also false, so reasonFor falls
+// through to "manual". This test therefore asserts reason "manual" at the
+// boundary — not "hard_cap". A future change that aligns reasonFor to use
+// `>=` (i.e. !now.Before(hard_cap_at)) would correctly return "hard_cap" and
+// this assertion should be updated at that time.
+func TestWorker_SessionExpiresWhenNowEqualsHardCapAt(t *testing.T) {
+	ctx := context.Background()
+	env, worker, clk := newWorkerEnv(t)
+
+	// Set hard_cap_at exactly equal to the current clock time.
+	// SQL sweep: hard_cap_at <= now → true → session is included in the sweep.
+	now := clk.Now()
+	hardCapAt := now            // boundary: hard_cap_at == now
+	idleTimeoutAt := now.Add(30 * time.Minute)
+
+	sess, err := env.s.CreateSession(ctx, store.CreateSessionParams{
+		ID:                        "sess-hc-boundary-001",
+		OrgID:                     playground.ReservedOrgID,
+		Name:                      "hard-cap-boundary-test",
+		Goal:                      "",
+		WritableScope:             `["**"]`,
+		DefaultMode:               "sync",
+		Status:                    "active",
+		CreatedAt:                 now,
+		LastSubstantiveActivityAt: &now,
+		HardCapAt:                 &hardCapAt,
+		IdleTimeoutAt:             &idleTimeoutAt,
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// Do NOT advance the clock — now == hard_cap_at exactly.
+	runWorkerSweep(worker)
+
+	// SQL uses <=, so the session IS included in the sweep and must be gone.
+	_, err = env.s.GetSession(ctx, playground.ReservedOrgID, sess.ID)
+	if err == nil {
+		t.Error("expected session to be destroyed when now == hard_cap_at (SQL uses <=), but GetSession succeeded")
+	}
+	if !isNotFound(err) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
+	}
+
+	// At the exact boundary reasonFor uses now.After(hard_cap_at) which is
+	// strictly >, so it falls through to "manual". This is the documented
+	// off-by-one between the SQL predicate (<=) and reasonFor (>).
+	tomb, err := env.s.GetTombstone(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetTombstone: %v", err)
+	}
+	if tomb.EndReason != "manual" {
+		t.Errorf("tombstone end_reason at exact hard_cap_at boundary: want manual (reasonFor off-by-one), got %s", tomb.EndReason)
+	}
+}
+
+// TestWorker_SessionExpiresWhenNowEqualsIdleTimeoutAt pins the boundary
+// behaviour for idle_timeout_at.
+//
+// The SQL sweep uses `idle_timeout_at <= ?now` (i.e. <=), so
+// `now == idle_timeout_at` IS included: the session IS destroyed at the exact
+// boundary. This test locks that inclusion so future refactors or query
+// rewrites can't silently change `<=` to `<` (strict) without a failing test.
+//
+// Secondary observation: reasonFor uses now.After(idle_timeout_at) which is
+// strictly `now > idle_timeout_at`. At the exact equality point the idle
+// branch is false, so reasonFor falls through to "manual". This test therefore
+// asserts reason "manual" at the boundary — not "idle". A future change that
+// aligns reasonFor to use `>=` (i.e. !now.Before(idle_timeout_at)) would
+// correctly return "idle" and this assertion should be updated at that time.
+func TestWorker_SessionExpiresWhenNowEqualsIdleTimeoutAt(t *testing.T) {
+	ctx := context.Background()
+	env, worker, clk := newWorkerEnv(t)
+
+	// Set idle_timeout_at exactly equal to the current clock time.
+	// SQL sweep: idle_timeout_at <= now → true → session is included in sweep.
+	now := clk.Now()
+	hardCapAt := now.Add(24 * time.Hour)
+	idleTimeoutAt := now // boundary: idle_timeout_at == now
+
+	sess, err := env.s.CreateSession(ctx, store.CreateSessionParams{
+		ID:                        "sess-idle-boundary-001",
+		OrgID:                     playground.ReservedOrgID,
+		Name:                      "idle-timeout-boundary-test",
+		Goal:                      "",
+		WritableScope:             `["**"]`,
+		DefaultMode:               "sync",
+		Status:                    "active",
+		CreatedAt:                 now,
+		LastSubstantiveActivityAt: &now,
+		HardCapAt:                 &hardCapAt,
+		IdleTimeoutAt:             &idleTimeoutAt,
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// Do NOT advance the clock — now == idle_timeout_at exactly.
+	runWorkerSweep(worker)
+
+	// SQL uses <=, so the session IS included in the sweep and must be gone.
+	_, err = env.s.GetSession(ctx, playground.ReservedOrgID, sess.ID)
+	if err == nil {
+		t.Error("expected session to be destroyed when now == idle_timeout_at (SQL uses <=), but GetSession succeeded")
+	}
+	if !isNotFound(err) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
+	}
+
+	// At the exact boundary reasonFor uses now.After(idle_timeout_at) which is
+	// strictly >, so it falls through to "manual". This is the documented
+	// off-by-one between the SQL predicate (<=) and reasonFor (>).
+	tomb, err := env.s.GetTombstone(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetTombstone: %v", err)
+	}
+	if tomb.EndReason != "manual" {
+		t.Errorf("tombstone end_reason at exact idle_timeout_at boundary: want manual (reasonFor off-by-one), got %s", tomb.EndReason)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

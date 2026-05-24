@@ -1,7 +1,7 @@
 ---
 id: gate-tests-hard-cap-idle-timeout-boundary-equality
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -34,3 +34,36 @@ future refactors can't silently change it.
 
 ## Test location (suggested)
 `internal/portal/playground/worker_test.go`
+
+## Implementation notes
+
+Added `TestWorker_SessionExpiresWhenNowEqualsHardCapAt` and
+`TestWorker_SessionExpiresWhenNowEqualsIdleTimeoutAt` to
+`internal/portal/playground/worker_test.go`.
+
+**Discovered: SQL uses `<=`, not strict `>`.**
+The story premise said "SQL uses strict `>` — boundary excluded." The actual
+generated SQL in `sqlitestore/sessions.sql.go` uses:
+```sql
+(hard_cap_at IS NOT NULL AND hard_cap_at <= ?)
+OR (idle_timeout_at IS NOT NULL AND idle_timeout_at <= ?)
+```
+This is `hard_cap_at <= now`, i.e. the boundary `now == hard_cap_at` IS
+included — the session IS swept at the exact boundary instant.
+
+**Secondary discovery: `reasonFor` off-by-one at the exact boundary.**
+`worker.reasonFor` uses `now.After(hard_cap_at)` which is strict `>`. At
+the exact point `now == hard_cap_at`, neither the `hard_cap` nor the `idle`
+branch fires, and the method falls through to `"manual"`. So the SQL sweep
+picks up the session but assigns reason `"manual"` rather than `"hard_cap"`.
+Both tests document this mismatch in comments and assert `"manual"` as the
+expected tombstone reason at the boundary.
+
+The tests lock two behaviors:
+1. Session IS destroyed when `now == hard_cap_at` / `now == idle_timeout_at`
+   (SQL `<=` predicate — boundary included).
+2. Tombstone reason at exact boundary is `"manual"` (reasonFor off-by-one).
+
+Any future change that aligns `reasonFor` to use `!now.Before(...)` would
+correctly produce `"hard_cap"` / `"idle"` at the boundary; the tests would
+need to be updated accordingly, which is the intended forcing function.
