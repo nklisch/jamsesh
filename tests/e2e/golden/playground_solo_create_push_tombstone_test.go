@@ -54,18 +54,18 @@ type soloTombstone struct {
 
 
 func TestPlayground_SoloCreatePushTombstone(t *testing.T) {
-	// Blocked on two parked bugs surfaced during implementation:
-	//   1. idea-playground-worker-clock-not-advanceable (same root cause as
-	//      idea-playground-clock-not-wired-e2etest): the destruction Worker in
-	//      cmd/portal/main.go uses playground.RealClock() instead of the
-	//      AdvanceableClock from testClockProvider, so p.AdvanceClock past
-	//      hard-cap doesn't cause the sweep to see expired sessions.
-	//   2. bug-playground-git-receive-pack-fails-with-200-hangup: the push
-	//      step (whether via the binary or via gitclient) results in HTTP 200
-	//      from the receive-pack route but git client-side reports "fatal:
-	//      the remote end hung up unexpectedly".
-	// Re-enable once both are resolved.
-	t.Skip("blocked on idea-playground-worker-clock-not-advanceable + bug-playground-git-receive-pack-fails-with-200-hangup")
+	// Blocked on bug-playground-git-receive-pack-fails-with-200-hangup
+	// (ROOT CAUSE IDENTIFIED in that bug's body): the base-ref push is
+	// rejected by prereceive.WalkAndValidate because the seed commit lacks
+	// the required Jam-Session/Jam-Turn/Jam-Author trailers
+	// (internal/portal/prereceive/commits.go:15). The test will only pass
+	// once base-ref pushes are exempted from trailer validation (or
+	// equivalent fix).
+	//
+	// The original second blocker (idea-playground-worker-clock-not-advanceable)
+	// was resolved as a single-stride fix at commit cc55579; once the
+	// push bug is also fixed, this test's clock-advance step will Just Work.
+	t.Skip("blocked on bug-playground-git-receive-pack-fails-with-200-hangup (root cause: trailer requirement on seed commit)")
 
 	ctx := context.Background()
 

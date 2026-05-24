@@ -26,18 +26,25 @@ import (
 )
 
 func TestCLI_JamPlayground(t *testing.T) {
-	// Blocked on bug-playground-git-receive-pack-fails-with-200-hangup: the
-	// git push step in newPlaygroundAction returns HTTP 200 with ~166 bytes
-	// but git client reports "fatal: the remote end hung up unexpectedly".
-	// Two related CLI bugs surfaced by this test ARE already fixed inline as
-	// part of this story:
-	//   1. idea-playground-scope-normalization-bug — scope=="**" wasn't normalized
-	//      (cmd/jamsesh/sessioncmd/new.go newPlaygroundAction)
-	//   2. The playground git push URL was missing the org_id segment
-	//      (cmd/jamsesh/sessioncmd/new.go pushBaseRefWithBearer +
-	//      wrapPlaygroundPushError retry hint)
-	// Re-enable this test once the receive-pack hangup is resolved.
-	t.Skip("blocked on bug-playground-git-receive-pack-fails-with-200-hangup")
+	// Blocked on bug-playground-git-receive-pack-fails-with-200-hangup
+	// (ROOT CAUSE IDENTIFIED in that bug's body): the base-ref push is
+	// rejected by prereceive.WalkAndValidate because the seed commit
+	// lacks the required Jam-Session/Jam-Turn/Jam-Author trailers
+	// (internal/portal/prereceive/commits.go:15). A vanilla "initial commit"
+	// from `git commit -m '...'` has no trailers, so jamsesh new --playground
+	// from a fresh repo gets locked out — chicken-and-egg between the
+	// trailer requirement and the bootstrap push.
+	//
+	// Two other CLI bugs were surfaced by this test and ARE already fixed
+	// inline (commit 2bf22ea):
+	//   1. idea-playground-scope-normalization-bug — scope=="**" wasn't
+	//      normalized to ["**"] before sending to the portal.
+	//   2. The playground git push URL was missing the org_id segment;
+	//      portal route is /git/{orgID}/{sessionID}.git/...
+	//
+	// Re-enable once the trailer requirement is resolved for base-ref pushes
+	// (recommended approach: exempt base-ref pushes when OldSHA is empty).
+	t.Skip("blocked on bug-playground-git-receive-pack-fails-with-200-hangup (root cause: trailer requirement on seed commit)")
 
 	ctx := context.Background()
 

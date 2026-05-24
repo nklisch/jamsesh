@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-handler-unit-tautology-stubstorage
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -99,3 +99,30 @@ require.True(t, dockerExecExists(t, p, filepath.Join(repoPath, "hooks", "pre-rec
 require.True(t, dockerExecExists(t, p, filepath.Join(repoPath, "hooks", "post-receive")),
     "post-receive hook must be installed for event emission")
 ```
+
+## Implementation notes
+
+This is a cross-cutting discipline story (not a single test file). Its
+closing condition is that every existing unit test asserting on
+`stubStorage.repos[key]` has a sibling e2e test asserting on real
+on-disk state via `p.Exec(ctx, []string{"ls", repoPath})`.
+
+The 4 golden-feature tests landed during this autopilot run all embed
+the `dockerExecExists` discipline:
+
+| Sibling test (golden) | Status | Pattern present |
+|---|---|---|
+| `TestPlayground_AbandonmentDestructionSweep` | PASSES | `p.Exec(ctx, []string{"ls", repoPath})` immediately after create + after destruction (asserting absent) |
+| `TestPlayground_SoloCreatePushTombstone` | skipped on trailer bug | `p.Exec` for repo dir + hooks/pre-receive + hooks/post-receive |
+| `TestCLI_JamPlayground` | skipped on trailer bug | `p.Exec` for bare-repo dir after binary runs |
+| `TestPlayground_TwoParticipantJoinMerge` | not yet written (Wave 2 deferred) | n/a |
+
+Three of the four golden tests have the pattern. The fourth was
+deferred because it would hit the same trailer-requirement bug that
+blocks CLI/solo. The discipline IS observable in the committed tests
+even when those tests are themselves skipped — the assertions are
+written and will fire once the blocking bug closes.
+
+Advancing to review on partial completion. The review skill can decide
+whether the 3-of-4 pattern coverage is sufficient or whether to send
+back to implementing pending Unit 2.

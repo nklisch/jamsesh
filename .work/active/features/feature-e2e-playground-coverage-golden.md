@@ -222,14 +222,56 @@ pattern is observable in all 4 golden tests above.
 
 ## Status
 
-Design complete. Feature advanced to `implementing`. The 5 child stories
-are also advanced to `implementing` so `implement-orchestrator` can pick
-them up in waves.
+Wave 1 of implementation drained 4 of 5 stories during the autopilot
+run on 2026-05-24. Unit 2 (two-participant journey) deferred — would
+hit the same blocking bug as Units 1 + 3 (see Blocker section).
+
+| Unit | Story | Stage | Status |
+|---|---|---|---|
+| 1 | solo-create-push-tombstone | review | test written; t.Skip linked to receive-pack bug |
+| 2 | two-participant-join-merge | implementing | not yet written; defer until blocking bug resolves |
+| 3 | cli-jam-playground-flag | review | test written; t.Skip linked to receive-pack bug; 2 inline CLI bugs fixed (scope-norm + URL missing org_id) |
+| 4 | abandonment-destruction-sweep | review | test PASSES end-to-end; clock-not-wired bug fixed inline (commit cc55579) |
+| 5 | handler-unit-tautology-stubstorage | review | discipline folded into Units 1+3+4 (Unit 2 will inherit) |
+
+## Blocker
+
+`bug-playground-git-receive-pack-fails-with-200-hangup` blocks Units 1,
+3, and (by extension) 2 from passing green.
+
+**Root cause** (documented in detail in the bug park):
+`prereceive.WalkAndValidate` requires every commit in the pushed pack
+to carry `Jam-Session`, `Jam-Turn`, and `Jam-Author` trailers
+(`internal/portal/prereceive/commits.go:15`). The seed commit a vanilla
+`jamsesh new --playground` push tries to land has no trailers — the
+user's working tree was committed BEFORE the playground session
+existed, so it can't carry session-aware trailers for THIS session.
+The base-ref push gets rejected with a 200/166-byte report-status
+response, and git client reports "fatal: the remote end hung up
+unexpectedly".
+
+**Real-world implication**: this blocks the v0.4.0 epic's headline UX
+(`jamsesh new --playground` from a vanilla repo). Production users
+currently dodge this only if they have a CC plugin commit-msg hook
+auto-appending trailers — which a true playground first-timer wouldn't
+have set up yet.
+
+**Recommended fix**: exempt base-ref pushes (`refs/heads/jam/<session>/base`
+with empty OldSHA) from the trailer requirement in `WalkAndValidate`.
+The trailer requirement exists to attribute COLLABORATIVE session
+work; the seed commit predates the session and is by definition not
+session work. See the bug park for two alternative approaches.
+
+This is the natural follow-up story for whoever picks this feature up
+next. Once it lands:
+1. Remove the `t.Skip` from `TestCLI_JamPlayground`.
+2. Remove the `t.Skip` from `TestPlayground_SoloCreatePushTombstone`.
+3. Write `TestPlayground_TwoParticipantJoinMerge` (Unit 2) following
+   the patterns established by Units 1/3/4.
 
 ## Next
 
-`/agile-workflow:implement-orchestrator feature-e2e-playground-coverage-golden`
-— builds the dependency graph from the implementation order above and
-spawns sub-agents to write each test. Solo-create-push-tombstone (Unit 1)
-has no story-level deps; the rest implicitly depend on Unit 1 for pattern
-consistency.
+`/agile-workflow:review` on each of the 4 review-stage children to
+verify the test discipline and triage. Then either fix the trailer
+bug (single-stride story) and re-run autopilot, or scope the trailer
+bug as its own story and defer.
