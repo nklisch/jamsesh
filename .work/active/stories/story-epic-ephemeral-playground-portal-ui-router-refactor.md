@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-portal-ui-router-refactor
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: []
@@ -102,3 +102,13 @@ None.
 - `npm run check`: 0 errors, 2 pre-existing warnings (unrelated)
 - `npm run test`: 540 tests pass
 - `npm run build`: clean bundle
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches design 1:1. Router gains `requiresAuth: boolean` with `true` default; App.svelte's gate now reads `current.requiresAuth`; `_playgroundContext` rune is correctly orthogonal to `_currentUser`/`_orgs`. The wrapper-object-rune-store project pattern is followed for both the router and the new auth field. Targeted re-run of `vitest src/lib/router.test.ts src/lib/auth.test.ts src/App.test.ts`: 47/47 pass. Downstream consumers (`JoinerPicker.svelte`, `SessionViewShell.svelte`) already integrate `auth.setPlaygroundContext` / `auth.playgroundContext` as designed. Bounce-on-authed-login and invite-accept `?return_to` preservation behaviors intact.
