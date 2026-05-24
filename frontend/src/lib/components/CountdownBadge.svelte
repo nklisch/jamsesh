@@ -20,8 +20,11 @@
   // so SessionViewShell can conditionally render DestructionWarningBanner without
   // duplicating the math.
   //
-  // TODO: replace inline event type annotation with openapi-typescript generated
-  // type once session-lifecycle feature lands EventEnvelope schema additions.
+  // TODO(idea-playground-ws-event-types-missing-from-openapi): playground.activity_reset
+  // and session.destroyed are absent from docs/openapi.yaml; no generated type exists yet.
+  // Once the spec gap is closed and types.gen.ts is regenerated, SessionViewShell (the
+  // parent that subscribes to those WS events) can drop its inline type annotations.
+  // This file itself has no inline event-payload type — the note is informational only.
 
   import { onMount } from 'svelte';
 

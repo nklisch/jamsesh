@@ -27,8 +27,10 @@
   type ActiveDialog = null | 'fork' | 'mode-switch';
 
   // Playground WS event payload types.
-  // TODO: replace with openapi-typescript generated types once
-  // session-lifecycle feature lands EventEnvelope schema additions.
+  // TODO(idea-playground-ws-event-types-missing-from-openapi): these two event types
+  // are absent from docs/openapi.yaml and therefore from types.gen.ts. Once the spec
+  // gap is closed and codegen is re-run, replace these inline annotations with
+  // generated types from '$lib/api/types.gen' and remove this block.
   type PlaygroundActivityResetEvent = {
     type: 'playground.activity_reset';
     last_substantive_activity_at: string; // ISO 8601
