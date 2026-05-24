@@ -188,6 +188,13 @@ fires before context is finalized). Fires before each agent turn.
 **Outputs:**
 - `additionalContext` (string) — "since you last spoke" block
 
+The digest response carries an optional `urgent_events` array for
+time-sensitive events the binary renders in a prominent "Urgent" section
+above the regular digest text. Currently `playground.destruction_warning`
+is the sole member of that class — when a playground session is approaching
+its idle-timeout or hard-cap deadline, the warning surfaces here so the
+agent's next reply can acknowledge or react before destruction lands.
+
 ### `push_gate`
 
 Equivalent to CC's `PreToolUse` filtered to Bash. Fires before each tool call
@@ -368,18 +375,19 @@ All events share a common envelope:
 
 **Event types:**
 
-- `commit.arrived` — payload: `{ref, sha, author_id, summary}`
-- `merge.succeeded` — payload: `{source_sha, draft_sha, merge_commit_sha}`
-- `conflict.detected` — payload: full conflict event
-- `conflict.resolved` — payload: `{event_id, resolving_commit_sha}`
-- `comment.added` — payload: full comment
-- `comment.resolved` — payload: `{comment_id, resolved_by, note}`
-- `ref.forked` — payload: `{ref, parent_sha, mode}`
-- `mode.changed` — payload: `{ref, old_mode, new_mode}`
-- `turn.ended` — payload: `{user_id, ref, final_sha}`
-- `presence.updated` — payload: `{user_id, ref, current_sha, last_active}`
-- `session.finalizing` — payload: `{by_user_id}`
-- `session.ended` — payload: `{reason: "finalize" | "abandon" | "timeout"}`
+- `commit.arrived` — payload: `{ref, sha, author_id, summary}` (schema: [CommitArrivedPayload](./openapi.yaml#/components/schemas/CommitArrivedPayload))
+- `merge.succeeded` — payload: `{source_sha, draft_sha, merge_commit_sha}` (schema: [MergeSucceededPayload](./openapi.yaml#/components/schemas/MergeSucceededPayload))
+- `conflict.detected` — payload: full conflict event (schema: [ConflictDetectedPayload](./openapi.yaml#/components/schemas/ConflictDetectedPayload))
+- `conflict.resolved` — payload: `{event_id, resolving_commit_sha}` (schema: [ConflictResolvedPayload](./openapi.yaml#/components/schemas/ConflictResolvedPayload))
+- `comment.added` — payload: full comment (schema: [CommentAddedPayload](./openapi.yaml#/components/schemas/CommentAddedPayload))
+- `comment.resolved` — payload: `{comment_id, resolved_by, note}` (schema: [CommentResolvedPayload](./openapi.yaml#/components/schemas/CommentResolvedPayload))
+- `ref.forked` — payload: `{ref, parent_sha, mode}` (schema: [RefForkedPayload](./openapi.yaml#/components/schemas/RefForkedPayload))
+- `mode.changed` — payload: `{ref, old_mode, new_mode}` (schema: [ModeChangedPayload](./openapi.yaml#/components/schemas/ModeChangedPayload))
+- `turn.ended` — payload: `{user_id, ref, final_sha}` (schema: [TurnEndedPayload](./openapi.yaml#/components/schemas/TurnEndedPayload))
+- `presence.updated` — payload: `{user_id, ref, current_sha, last_active}` (schema: [PresenceUpdatedPayload](./openapi.yaml#/components/schemas/PresenceUpdatedPayload))
+- `session.finalizing` — payload: `{by_user_id}` (schema: [SessionFinalizingPayload](./openapi.yaml#/components/schemas/SessionFinalizingPayload))
+- `session.ended` — payload: `{reason: "finalize" | "abandon" | "timeout"}` (schema: [SessionEndedPayload](./openapi.yaml#/components/schemas/SessionEndedPayload))
+- `playground.destruction_warning` — payload: `{reason: "idle_timeout" | "hard_cap", ends_at, remaining_seconds, session_id}` (schema: [PlaygroundDestructionWarningPayload](./openapi.yaml#/components/schemas/PlaygroundDestructionWarningPayload))
 
 ## Local state schema (`${CLAUDE_PLUGIN_DATA}/`)
 

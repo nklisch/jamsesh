@@ -1,7 +1,7 @@
 ---
 id: story-playground-foundation-docs-rollup-protocol-destruction-warning
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, playground, protocol]
 parent: feature-playground-foundation-docs-rollup
 depends_on: []
@@ -111,3 +111,37 @@ story owns three PROTOCOL.md edits plus one verification:
 
 This is documentation-only. No code change. Small enough to drain in
 one stride.
+
+## Implementation notes (2026-05-23)
+
+All four PROTOCOL.md edits applied:
+
+1. **Event-type bullet list (~line 369)** — added `playground.destruction_warning`
+   with payload summary `{reason, ends_at, remaining_seconds, session_id}` at
+   the end of the list (after `session.ended`), preserving the session-lifecycle
+   grouping. Per OpenAPI cross-reference (`docs/openapi.yaml:537`) the schema
+   is `PlaygroundDestructionWarningPayload`.
+
+2. **Cross-link openapi schemas** — every event-type bullet now carries a
+   `(schema: [Name](./openapi.yaml#/components/schemas/Name))` parenthetical
+   pointing at its canonical payload definition. All 13 schema anchors verified
+   to exist in `docs/openapi.yaml` via `grep -nE '^    .*Payload:'`. Used the
+   `#/components/schemas/Name` JSON-pointer fragment rather than line numbers
+   so the links survive openapi.yaml renumbering.
+
+3. **`pre_turn_digest` section (~line 187)** — added a paragraph after the
+   Outputs bullet list explaining the `urgent_events` array and naming
+   `playground.destruction_warning` as the current sole member of that class.
+
+4. **Addressing-convention section (lines 302-307)** — VERIFIED unchanged.
+   The anonymous-handles addressing note is present and matches Design-decisions
+   intent (mentions `@amber-otter`, explains durable-vs-anonymous identity-kind
+   equivalence). No edit needed; no regression detected.
+
+Verification:
+- `grep -niE "previously|newly added|note: in|used to be" docs/PROTOCOL.md` → 0 hits
+- `grep -n "playground.destruction_warning" docs/PROTOCOL.md docs/openapi.yaml` →
+  hits in both files; payload field names (`reason`, `ends_at`, `remaining_seconds`,
+  `session_id`) match the openapi schema exactly.
+- All `(schema: ...)` links use `#/components/schemas/<Name>` fragment form;
+  every schema name resolves to an existing definition in openapi.yaml.
