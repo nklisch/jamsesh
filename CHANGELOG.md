@@ -1,5 +1,207 @@
 # Changelog
 
+## v0.4.0
+
+Released 2026-05-24. The headline is the **ephemeral anonymous
+playground**: anyone can spin up a throwaway jam session — no account,
+no org membership, no setup — collaborate with up to N participants on a
+short-lived bare-repo workspace, then watch the destruction worker tomb
+it on idle-timeout or hard-cap. Behind the scenes that pulled in a new
+anonymous-bearer auth surface, a reserved `playground` org guarded by
+`org_protected`, REST + WebSocket lifecycle endpoints, a destruction
+sweep worker, a CLI `jamsesh jam` flow, a slash-command consolidation
+(`/jamsesh:jam` + `/jamsesh:finalize`), and a from-scratch SPA anonymous
+entry surface. Alongside the playground epic, five large refactors
+landed (adapter dialect dedup, generic `wrap` helpers, auto-merger
+decomposition, frontend god-components split into seams, per-package
+clock compliance) and the spec-discipline feature wired up a drift CI
+check plus moved inline event-type strings to generated openapi-fetch.
+Five quality gates (security, tests, cruft, docs, patterns) ran on the
+bundle; findings drained in-cycle except for items explicitly parked to
+backlog. Five new pattern skills shipped under `.claude/skills/patterns/`.
+
+### Features
+
+- **Ephemeral anonymous playground** — `POST /api/playground/sessions`
+  spins up a throwaway jam without auth, server-mints a pronounceable
+  handle + an anonymous bearer scoped to that session, and bare-repo
+  creation happens after the session-row TX commits (3-step sequence
+  to avoid SQLite WAL deadlock; partial failure leaves an orphan that
+  the destruction sweep cleans up). Joiners arrive via `POST
+  /api/playground/sessions/{id}/join` with an optional 2-24 char
+  letters/digits/dashes nickname (server-side validated as of this
+  release). A reserved `playground` org is guarded by an `org_protected`
+  flag — booting the portal with `--playground-enable` against a DB
+  where the slug is taken by a non-protected org exits 1 instead of
+  silently squatting. Lifecycle is bounded by configurable `IdleTimeout`
+  (default 30m) and `HardCap` (default 2h); abuse is bounded by a
+  per-IP/hour create cap and a per-session content cap enforced at
+  pre-receive time. Tombstones with member/commit/auto-merge counts
+  outlive the destroyed session for a short TTL so late HTTP polls get a
+  meaningful 200 instead of a bare 404. Closes
+  `epic-ephemeral-playground` (1 epic, 7 features, 15+ stories).
+- **`jamsesh jam` CLI command and `/jamsesh:jam` slash command** — one
+  command for "start or attach to a jam." On first use without a session
+  id, it pushes the working tree's base-sha + creates a playground
+  session via the same anonymous REST surface; with an id, it attaches
+  to an existing session, optionally as a joiner picker. The plugin
+  slash commands consolidate from the previous fan-out into two
+  surfaces: `/jamsesh:jam` (start/join/attach) and `/jamsesh:finalize`
+  (finish the jam). A new `destruction-warning` skill warns the agent
+  when the session is near its hard-cap or idle-timeout boundary; a new
+  `status-enumeration` skill normalizes how status is reported across
+  jam-aware tools. Closes
+  `feature-epic-ephemeral-playground-cli-first-creation` and
+  `feature-epic-ephemeral-playground-plugin-skills`.
+- **SPA anonymous-entry surface** — the Home screen now has an explicit
+  "Try a playground" path that walks through anonymous session creation
+  without forcing a sign-in detour. The session view picks up a
+  playground branch (clock-driven hard-cap reason rendering, a
+  destruction-warning banner, a joiner picker that handles the 410
+  session-ended race), the new-session drawer was reworked, and the
+  router was refactored so anonymous routes no longer share guards with
+  authenticated routes. Closes
+  `feature-epic-ephemeral-playground-portal-ui`.
+- **Spec-discipline CI gate** — `docs/openapi.yaml` is now the
+  load-bearing single source of truth for event-type strings;
+  `events.AllTypes` mirrors the `EventEnvelope.type` enum exactly and a
+  `TestEventTypeConstants_MatchOpenAPIYAML` regression test plus a
+  drift CI check enforce both directions on every push. SPA event types
+  were migrated from hand-maintained `as const` strings to
+  `openapi-typescript`-generated types. Closes `feature-spec-discipline`.
+
+### Fixes
+
+- **Magic-link request rejects `@playground.local` domains** — the
+  anonymous-bearer subsystem creates synthetic accounts with
+  `anon_<random>@playground.local` emails for internal bookkeeping;
+  `POST /api/auth/magic-link/request` now rejects any user-supplied
+  address in a reserved domain with HTTP 400 and
+  `magic_link.reserved_domain` so an attacker can't request a magic link
+  for an anonymous account by guessing the synthetic email shape.
+- **Plugin slash references rolled forward** — three stories
+  (`skill-consolidation-primer-stale-slash-refs`,
+  `skill-consolidation-references-stale-slash-refs`,
+  `skill-consolidation-rollforward-foundation-docs`) swept stale
+  `/jamsesh:join` / `/jamsesh:create` / etc. references in skill
+  primers and foundation docs to the post-consolidation
+  `/jamsesh:jam` + `/jamsesh:finalize` shape.
+- **`orgs` handler now wraps DB auth failures with `deperr`** — auth-fail
+  branches were returning raw store errors, which bypassed the
+  `httperr.WriteFromError` classifier and surfaced as 500s instead of
+  the typed dep-unavailable envelope.
+- **Tombstone-expired vs session-active 404 disambiguation** —
+  `GET /api/playground/sessions/{id}/tombstone` now distinguishes "no
+  such tombstone yet (session may still be live)" from "tombstone TTL
+  has elapsed" in the 404 message so clients polling for destruction
+  status don't conflate the two states.
+- **Reserved-slug conflict at portal boot** — booting with
+  `--playground-enable` against a DB where the `playground` slug is
+  taken by a non-protected org now exits 1 with a clear error instead
+  of silently overwriting the reserved-org wiring.
+
+### Security
+
+- **Defense-in-depth on `org_protected`** — the `org_protected` flag now
+  guards not just slug squatting at boot but also policy-mutation
+  endpoints, so an authenticated user can't reach into the
+  reserved-org's policy surface via the standard org-management routes.
+- **Pre-receive `writable_scope` validation** — playground session
+  creation validates the supplied `writable_scope` at the REST front
+  door using the same `prereceive.ValidateWritableScope` check the git
+  HTTP layer runs, so a malformed scope is rejected as 400 instead of
+  surfacing later as a deferred pre-receive failure that leaves a
+  poisoned session behind.
+- **Bearer-issuance partial-failure orphan recovery** — the
+  3-step CreatePlaygroundSession sequence (session TX → bearer issuance
+  → member insert) now has a regression test that injects a failing
+  tokens.Service, asserts the orphaned session row persists, and
+  asserts the destruction worker cleans it up.
+
+### Refactor
+
+- **Auto-merger decomposed** — the auto-merger's god-function was split
+  into `side-changes`, `both-modified`, `merge-file`, and
+  `flatten-submodule` helpers, each with its own focused test surface;
+  no behavior change. Closes `feature-refactor-automerger-decomposition`.
+- **Frontend god-components split into seams** — `FinalizeView`,
+  `SessionViewShell`, `SessionAttachWalkthrough`, `JoinerPicker`,
+  `NewSessionDrawer`, and `OrgSettings` were broken out into smaller
+  components and rune-store hooks (`useNewSessionForm.svelte.ts`,
+  `useFinalizeExecution.svelte.ts`) with explicit seam contracts
+  asserted by a new `gate-tests-frontend-god-components-seam-contracts`
+  story. Closes `feature-refactor-frontend-god-components`.
+- **Per-package Clock interface compliance** — four more packages
+  (`ratelimit`, `lease`, `auth`, `objectstore`) adopted the per-package
+  `Clock interface{Now() time.Time}` + `realClock{}` fallback pattern so
+  `*testclock.AdvanceableClock` can advance them without import
+  coupling. Brings the in-use count to 14 packages. Closes
+  `feature-refactor-per-package-clock-compliance`.
+- **Adapter `wrap1` / `wrapList` generics** — single-row and list
+  adapter methods in `internal/db/store/{sqlite,postgres}_adapter.go`
+  collapse to one line via package-private generic helpers in
+  `wrap.go`. Closes `feature-refactor-adapter-generic-wrap-helpers`.
+- **Adapter dialect dedup of null-value converters** — the per-row
+  `sql.Null{String,Int64,Time}` ⇄ `*T` converters were colocated and
+  deduplicated across the sqlite/postgres adapters. Closes
+  `feature-refactor-adapter-dialect-dedup`.
+- **Router deps struct split** — `combinedHandler` construction was
+  refactored from a 30-arg constructor into a deps struct; openapi
+  strict-server handlers now compose through a narrower interface.
+- **`events.Log.Emit` batch helper extracted** — the
+  emit-event-then-fanout pattern was deduped into a single helper used
+  by every domain mutation path.
+- **`config.Validate` and env-helper extraction** — the portal main's
+  config loading was extracted into focused validate / env-helper
+  functions so the main wiring stays declarative.
+- **Per-session read-token sweep** — `state.readtoken` sweep is now
+  per-session instead of global, reducing the surface scanned during
+  routine cleanup. Closes `feature-state-readtoken-per-session-sweep`.
+
+### Documentation
+
+- **Foundation docs rolled forward for the playground epic** —
+  `docs/SPEC.md`, `docs/SECURITY.md`, `docs/PROTOCOL.md`,
+  `docs/ARCHITECTURE.md`, and `docs/UX.md` all picked up playground
+  surfaces: REST routes, idle-timeout / hard-cap config, anonymous
+  bearer storage shape, reserved-org guard, destruction worker,
+  destruction-warning protocol event, and the spin-up / join flows.
+- **`README.md` rewritten for `/jamsesh:jam` + `/jamsesh:finalize`** —
+  the slash-command list and Claude Code quick-start were updated to
+  the post-consolidation shape.
+- **Five new pattern skills** in `.claude/skills/patterns/`:
+  `per-instance-factory-rune-store`, `adapter-wrap-helpers`,
+  `strict-server-partial-handler-shim`, `playground-activity-reset`,
+  and `ticker-sweep-loop`. Three existing pattern skills
+  (`per-package-clock-interface`, `dual-dialect-mirror-queries`,
+  `openapi-fetch-middleware-client`) were rolled forward for v0.4.0
+  reality (package counts, column lists, symbol-based anchors).
+- **`docs/openapi.yaml` documents the playground 400 paths** —
+  `playground.invalid_writable_scope`, `playground.invalid_nickname`,
+  and `magic_link.reserved_domain` are now first-class documented error
+  envelopes.
+
+### Internal
+
+- **Anonymous-bearer test integrity** — a new
+  `feature-anon-bearer-test-integrity` shipped a `migration-updownup`
+  round-trip test for the schema-17→18 changes and a
+  `transactional-rollback` test for the bearer-issuance TX.
+- **Gate-cruft sweep** — 7 dead-code items drained (orphaned
+  `noopLogger`, unused `stepClock`, orphaned `countingHydrator`,
+  test-only `parsePackedRefsContent`, unused `beforeEach` import, unused
+  `WARN_THRESHOLD_MS` const, dead `_ = time.Second` line).
+- **`comments.Service` uses `slog`** — replaced the last stdlib
+  `log.Printf` call with the project-standard `slog`.
+- **CLI `parseInviteEmails` dedupe regression test** added.
+- **80 substrate items bound to v0.4.0**; 40 medium-severity drafting
+  items deferred to subsequent releases. Pre-existing failing tests
+  `TestJoinPlaygroundSession_Success` and
+  `TestJoinPlaygroundSession_WithNickname_UsesIt` were parked as
+  `bug-playground-join-with-nickname-returns-410-on-fresh-session` for
+  a dedicated fix cycle — not bundled into this release per
+  test-integrity discipline.
+
 ## v0.3.1
 
 Released 2026-05-21. Patch release adding the portal's session-attach
