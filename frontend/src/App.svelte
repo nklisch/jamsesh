@@ -10,6 +10,9 @@
   import FinalizeView from '$lib/screens/FinalizeView.svelte';
   import OrgSettings from '$lib/screens/OrgSettings.svelte';
   import InviteAccept from '$lib/screens/InviteAccept.svelte';
+  import PlaygroundLanding from '$lib/screens/PlaygroundLanding.svelte';
+  import JoinerPicker from '$lib/screens/JoinerPicker.svelte';
+  import SessionTombstone from '$lib/screens/SessionTombstone.svelte';
   import NotFound from '$lib/screens/NotFound.svelte';
 
   // Auth gate: routes that declare `requiresAuth: true` (the default) require
@@ -83,6 +86,12 @@
     sessionId={current.params.sessionId}
     inviteId={current.params.inviteId}
   />
+{:else if current.name === 'playground'}
+  <PlaygroundLanding />
+{:else if current.name === 'playground-join'}
+  <JoinerPicker sessionId={current.params.sessionId} />
+{:else if current.name === 'playground-ended'}
+  <SessionTombstone sessionId={current.params.sessionId} />
 {:else}
   <NotFound />
 {/if}

@@ -78,6 +78,7 @@
         you'll be its creator, and you can invite teammates from there.
       </p>
       {@render createForm()}
+      {@render playgroundCta()}
 
     {:else if auth.orgs.length >= 2}
       <!-- Picker: auto-route handles the length === 1 case via $effect -->
@@ -105,9 +106,23 @@
 
       <div class="divider" aria-hidden="true">or</div>
       {@render createForm()}
+      {@render playgroundCta()}
     {/if}
   </Card>
 </main>
+
+{#snippet playgroundCta()}
+  <div class="playground-cta">
+    <span class="playground-cta__label">Just exploring?</span>
+    <a
+      class="playground-cta__link"
+      href="/playground"
+      onclick={(e) => { e.preventDefault(); navigate('/playground'); }}
+    >
+      Try a playground session →
+    </a>
+  </div>
+{/snippet}
 
 {#snippet createForm()}
   <div class="create-block">
@@ -353,5 +368,28 @@
     margin: var(--space-2) 0 0;
     font-size: var(--font-size-sm);
     color: var(--color-text-danger, #e53e3e);
+  }
+
+  /* Playground CTA — shown below the create form for signed-in users */
+  .playground-cta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    margin-top: var(--space-5);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+  }
+
+  .playground-cta__link {
+    color: var(--color-text-link);
+    text-decoration: none;
+    font-weight: var(--font-weight-medium);
+  }
+
+  .playground-cta__link:hover {
+    text-decoration: underline;
   }
 </style>

@@ -615,6 +615,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/playground/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an ephemeral anonymous playground session
+         * @description Creates a new playground session in the reserved playground org. No
+         *     authentication is required. The server mints an anonymous account +
+         *     bearer for the creator and returns them in the response body. The
+         *     bearer is used for all subsequent REST calls and git-over-HTTPS
+         *     operations within this session.
+         *
+         *     Returns 503 when JAMSESH_PLAYGROUND_ENABLED=false.
+         */
+        post: operations["createPlaygroundSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/playground/sessions/{id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join an existing playground session
+         * @description Joins an existing playground session as a new anonymous participant.
+         *     The server mints an anonymous account + bearer for the joiner.
+         *
+         *     Returns 409 playground.session_full when the session is at the
+         *     MaxParticipants cap (default 5). The response body includes
+         *     retry_after_seconds and a link to start a fresh session.
+         *
+         *     Returns 410 playground.session_ended when the session's hard_cap_at
+         *     has elapsed (the session is still in the DB but effectively over —
+         *     the destruction worker hasn't cleaned it up yet).
+         *
+         *     Returns 404 when the session does not exist (never created, or already
+         *     destroyed and tombstone-expired).
+         *
+         *     Returns 503 when JAMSESH_PLAYGROUND_ENABLED=false.
+         */
+        post: operations["joinPlaygroundSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/playground/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get playground session metadata
+         * @description Returns a summary of the playground session including remaining time.
+         *     Requires a valid anonymous session bearer issued for this session.
+         *     Returns 401 for missing/invalid bearer and 403 for a valid bearer
+         *     that does not belong to a member of this session.
+         */
+        get: operations["getPlaygroundSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/playground/sessions/{id}/tombstone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the destruction summary for an ended playground session
+         * @description Returns the tombstone record for a destroyed playground session.
+         *     Returns 404 when the session is still active OR when the tombstone
+         *     TTL (default 30 days) has elapsed. This endpoint is what the
+         *     portal-UI post-destruction page reads from.
+         */
+        get: operations["getPlaygroundTombstone"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1582,6 +1688,170 @@ export interface components {
              *     when omitted, the event payload omits it too.
              */
             final_branch_name?: string | null;
+        };
+        /**
+         * @description Optional body for POST /api/playground/sessions. All fields are optional;
+         *     the server supplies defaults for any omitted field. No auth required.
+         */
+        CreatePlaygroundSessionRequest: {
+            /**
+             * @description Display name for the session. Defaults to "playground-<short-id>" when omitted.
+             * @example demo
+             */
+            name?: string;
+            /**
+             * @description Free-text objective for the session. Defaults to empty string.
+             * @example Explore the new auth refactor
+             */
+            goal?: string;
+            /**
+             * @description JSON array of path globs defining the writable scope.
+             *     Defaults to "**" (allow all paths) when omitted.
+             * @example ["**"]
+             */
+            scope?: string;
+        };
+        /**
+         * @description Body for POST /api/playground/sessions/{id}/join. The nickname field is
+         *     optional; if absent the server picks a handle using the wordlist generator.
+         *     If the suggested nickname is already taken in the session, the server retries
+         *     with a fresh wordlist pick (up to 10 attempts) before falling back to a
+         *     random-suffix handle.
+         */
+        JoinPlaygroundSessionRequest: {
+            /**
+             * @description Requested display handle (e.g. "amber-otter"). Optional; server picks
+             *     one if absent. Server retries on collision with a fresh wordlist pick.
+             * @example quiet-fox
+             */
+            nickname?: string;
+        };
+        /**
+         * @description Response body for POST /api/playground/sessions (201 Created).
+         *     Contains the session summary, the anonymous bearer token for git and
+         *     REST calls, the server-assigned handle, and the token expiry timestamp.
+         */
+        PlaygroundSessionCreated: {
+            session: components["schemas"]["PlaygroundSessionSummary"];
+            /**
+             * @description Raw anonymous-session bearer token. Must be stored by the client
+             *     and passed as HTTP Basic password for git and as Authorization
+             *     Bearer for REST calls. Valid until expires_at.
+             * @example jamsesh_anon_01abcdef...
+             */
+            bearer: string;
+            /**
+             * @description Server-assigned pronounceable handle (adjective-animal form).
+             * @example amber-otter
+             */
+            nickname: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the bearer (and hard-cap) expires.
+             */
+            expires_at: string;
+        };
+        /** @description Response body for POST /api/playground/sessions/{id}/join (200 OK). */
+        PlaygroundJoinResult: {
+            session: components["schemas"]["PlaygroundSessionSummary"];
+            /**
+             * @description Raw anonymous-session bearer token for the joining participant.
+             * @example jamsesh_anon_01xyz...
+             */
+            bearer: string;
+            /**
+             * @description Confirmed handle for this participant (may differ from requested if collision).
+             * @example quiet-fox
+             */
+            nickname: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when this bearer expires (synced to the session
+             *     hard-cap deadline, minus elapsed time).
+             */
+            expires_at: string;
+        };
+        /** @description Compact session descriptor returned by playground endpoints. */
+        PlaygroundSessionSummary: {
+            /**
+             * @description Session ID
+             * @example sess_01abcdef012345
+             */
+            id: string;
+            /**
+             * @description Reserved playground org ID ("org_playground")
+             * @example org_playground
+             */
+            org_id: string;
+            /**
+             * @description Display name
+             * @example playground-01ab
+             */
+            name: string;
+            /** @description Session objective (may be empty) */
+            goal: string;
+            /**
+             * @description JSON array of writable-scope globs
+             * @example ["**"]
+             */
+            scope: string;
+            /**
+             * @description Session lifecycle status
+             * @enum {string}
+             */
+            status: "active" | "ended";
+            /**
+             * Format: date-time
+             * @description ISO-8601 creation timestamp
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the session is hard-terminated
+             */
+            hard_cap_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the session is idle-terminated (last activity + IdleTimeout)
+             */
+            idle_timeout_at: string;
+            /** @description Current number of participants */
+            members_count: number;
+        };
+        /**
+         * @description Destruction summary for a playground session that has ended. Returned by
+         *     GET /api/playground/sessions/{id}/tombstone. The tombstone is retained for
+         *     TombstoneTTL (default 30 days) after destruction, after which both the
+         *     tombstone and the GET endpoint return 404.
+         */
+        PlaygroundTombstone: {
+            /** @description ID of the destroyed session */
+            session_id: string;
+            /** @description Org ID (always "org_playground") */
+            org_id: string;
+            /** @description Total participants at time of destruction */
+            members_count: number;
+            /** @description Total commits pushed to the session */
+            commits_count: number;
+            /** @description Total auto-merges that succeeded during the session */
+            auto_merges_count: number;
+            /** @description Session lifetime in seconds (ended_at minus created_at) */
+            duration_seconds: number;
+            /**
+             * @description Why the session was destroyed
+             * @enum {string}
+             */
+            end_reason: "idle" | "hard_cap" | "manual";
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when the session was destroyed
+             */
+            ended_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp when this tombstone itself expires (default 30 days after ended_at)
+             */
+            expires_at: string;
         };
     };
     responses: {
@@ -2933,6 +3203,155 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+        };
+    };
+    createPlaygroundSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreatePlaygroundSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Session created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaygroundSessionCreated"];
+                };
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Playground feature is disabled on this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    joinPlaygroundSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Playground session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JoinPlaygroundSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Joined successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaygroundJoinResult"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Session full. Error code: playground.session_full.
+             *     Body includes retry_after_seconds and an alternative URL.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session has ended. Error code: playground.session_ended. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Playground feature is disabled on this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPlaygroundSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Playground session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaygroundSessionSummary"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPlaygroundTombstone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Playground session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tombstone record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaygroundTombstone"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
 }

@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-portal-ui-anonymous-entry
 kind: story
-stage: implementing
+stage: review
 tags: [ui, playground]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: [story-epic-ephemeral-playground-portal-ui-router-refactor]
@@ -64,3 +64,51 @@ See the parent feature body's "Story 2 acceptance criteria" section.
   via the existing global stylesheet inclusion
 - Use `openapi-fetch` (generated client) for all REST calls — pattern
   matches the existing screens' API usage
+
+## Implementation notes
+
+All three screens implemented and registered. Key decisions made during
+implementation:
+
+**PlaygroundLanding** — Static landing with two-step CLI install card
+(plugin install + `jamsesh playground new`), ephemeral-session warning
+note, and three feature cards (Real git / Auto-merger / Addressed
+comments). Copy-to-clipboard on both command blocks with a "Copied!"
+label feedback. Top bar has "Sign in →" link; footer has "Sign up for a
+durable account" link.
+
+**JoinerPicker** — No public GET exists for session metadata before
+joining (the GET `/api/playground/sessions/{id}` requires a bearer that
+only exists post-join). Pre-fill uses a client-side adjective-animal
+nickname generator that mirrors the server's wordlist style. User can
+edit the suggested nickname or reroll it. Nickname validation:
+`/^[a-z0-9][a-z0-9-]{0,22}[a-z0-9]$|^[a-z0-9]{2}$/` (2–24 chars,
+lowercase). On 409: friendly full-state with "Try another playground"
+CTA. On 410: redirect to `/playground/s/:id/ended`. On 200: calls
+`auth.setPlaygroundContext` with `{ sessionId, bearer, nickname }` from
+the join response (confirmed nickname, not the requested one), then
+navigates to `/orgs/org_playground/sessions/:id`.
+
+**SessionTombstone** — Fetches tombstone on mount with try/catch for
+transport-level failures (pattern: try/catch wraps the await, not
+`try { data } catch`). On 404 (active session): redirect to live view.
+On 200: renders stats (members, commits, auto-merges, duration formatted
+as `Xh Ym` or `Ym`). Error state has "Try again" button that re-fires
+the GET.
+
+**Router** — Three new routes appended after `org-settings`:
+`playground`, `playground-join` (`:sessionId`), `playground-ended`
+(`:sessionId`). All `requiresAuth: false`.
+
+**App.svelte** — Three new `{:else if}` branches importing the new screens.
+
+**Home.svelte** — `playgroundCta` snippet rendered below the create form
+in both empty-state and picker-state branches. Separated by a border-top
+rule with "Just exploring?" prefix label.
+
+**Types** — ran `npm run generate` to regenerate types.gen.ts from the
+updated openapi.yaml (playground schemas were added by the
+session-lifecycle-rest-endpoints story).
+
+**Test counts**: PlaygroundLanding 14, JoinerPicker 22, SessionTombstone 19.
+All 624 suite tests pass. `npm run check` 0 errors. `npm run build` clean.

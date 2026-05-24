@@ -20,6 +20,11 @@ const routes: Route[] = [
   { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/invites\/([^/]+)\/accept$/,        name: 'invite-accept', params: ['orgId', 'sessionId', 'inviteId'], requiresAuth: true  },
   { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)$/,                                  name: 'session-view',  params: ['orgId', 'sessionId'],             requiresAuth: true  },
   { pattern: /^\/orgs\/([^/]+)\/settings$/,                            name: 'org-settings',   params: ['orgId'],                             requiresAuth: true  },
+  // Playground public routes — requiresAuth: false, anonymous-mode is handled
+  // by the playground-aware components (JoinerPicker, SessionTombstone).
+  { pattern: /^\/playground$/,                                          name: 'playground',     params: [],                                    requiresAuth: false },
+  { pattern: /^\/playground\/s\/([^/]+)\/join$/,                        name: 'playground-join', params: ['sessionId'],                         requiresAuth: false },
+  { pattern: /^\/playground\/s\/([^/]+)\/ended$/,                       name: 'playground-ended', params: ['sessionId'],                        requiresAuth: false },
 ];
 
 function match(path: string): { name: string; params: Record<string, string>; requiresAuth: boolean } {
