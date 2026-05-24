@@ -1,14 +1,14 @@
 ---
 id: story-playground-ws-protocol-mismatch-session-view-extensions
 kind: story
-stage: implementing
+stage: review
 tags: [bug, playground, portal, ws, protocol]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Playground SessionViewShell WS protocol mismatch (countdown never renders, never resets, never tombstones)
@@ -121,3 +121,56 @@ remove the TODO comment.
   defined inline with TODO pointing at openapi-typescript regeneration"
   which acknowledged the issue but did not catch that the underlying
   events were also never wired server-side.
+
+## Implementation discovery — fixed via sibling story
+
+**Land mode: fully fixed by commit `d50e575`**
+(`implement: story-epic-ephemeral-playground-portal-ui-session-view-extensions`)
+
+All three root causes identified in this bug story were addressed in the
+sibling story that landed immediately before this one:
+
+### Root cause 1 — wrong REST endpoint (no `hard_cap_at` / `idle_timeout_at`)
+
+**Fixed in `d50e575`** — `SessionViewShell.svelte` now branches on `orgId === 'org_playground'`
+to call `GET /api/playground/sessions/{id}`, which returns `PlaygroundSessionSummary`
+carrying the required `hard_cap_at` and `idle_timeout_at` fields. The durable-session
+path retains `GET /api/orgs/{orgID}/sessions/{sessionID}`. The CountdownBadge gate
+(`{#if playground.isPlayground && playground.hardCapAt && playground.idleTimeoutAt}`)
+now evaluates to true for playground sessions.
+
+**Regression test:** `SessionViewShell.test.ts` → "calls GET /api/playground/sessions/{id}
+(not the orgs endpoint) for playground sessions".
+
+### Root cause 2 — wrong WS event name for session destruction (`session.destroyed` → `session.ended`)
+
+**Fixed in `d50e575`** — `usePlaygroundCountdown.svelte.ts` subscribes to
+`'session.ended'` (the canonical PROTOCOL.md name) and calls
+`navigate('/playground/s/:id/ended')` on receipt. The incorrect
+`'session.destroyed'` subscription is gone.
+
+**Regression test:** `SessionViewShell.test.ts` → "navigates to /playground/s/:id/ended
+when session.ended WS event fires".
+
+### Root cause 3 — wrong WS event name for idle reset (`playground.activity_reset` → `playground.destruction_warning`)
+
+**Fixed in `d50e575`** — `usePlaygroundCountdown.svelte.ts` subscribes to
+`'playground.destruction_warning'` and updates `_hardCapAt` or `_idleTimeoutAt`
+from the event's `ends_at` field depending on `reason`. The incorrect
+`'playground.activity_reset'` subscription is gone.
+
+**Regression test:** `SessionViewShell.test.ts` → "updates idle timer when
+playground.destruction_warning fires with reason=idle_timeout".
+
+### Additional coverage added by sibling story
+
+- PlaygroundChip renders for playground sessions (not for durable).
+- Subscription set validated: contains `playground.destruction_warning` and
+  `session.ended`; explicitly asserts absence of `playground.activity_reset`
+  and `session.destroyed`.
+
+### Verification (this pass)
+
+- `npm run check` — 0 errors, 2 pre-existing warnings (unrelated).
+- `npm run test` — 635/635 tests pass (50 test files).
+- `npm run build` — clean build.
