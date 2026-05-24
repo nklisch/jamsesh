@@ -1,7 +1,7 @@
 ---
 id: story-refactor-config-validate-and-env-helpers
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -68,3 +68,36 @@ Behavior-preserving — error message wording and env-var precedence are
 preserved. The file currently has `secrets.go` with a `readEnvOrFile`
 helper already; this story extends that file with the simpler
 `readEnvX` helpers and applies them at every call site in `config.go`.
+
+## Implementation notes
+
+**Files changed:**
+- `internal/portal/config/secrets.go` — added `mustBePositive`, `mustBeNonNegative`, `readEnvString`, `readEnvInt`, `readEnvInt64`, `readEnvDuration` helpers
+- `internal/portal/config/config.go` — reduced from 858 → 685 lines (−173 LoC)
+
+**Placement decision:** New helpers added to `secrets.go` to co-locate all
+env-reading primitives in one place, consistent with the existing `readEnvOrFile`.
+
+**validate() refactor:** The 9 "must be positive" checks are now driven by a
+small anonymous struct slice iterated with `mustBePositive`. `HydrationCacheMaxBytes`
+uses the sibling `mustBeNonNegative` (int64) to preserve the distinct "zero means
+unlimited" semantics.
+
+**applyEnv() refactor:** All sub-functions (`applyLeaseEnv`, `applyObjectStorageEnv`,
+`applyHydrationEnv`, `applyGitEnv`, `applyDBEnv`, `applyAuthRateLimitEnv`,
+`applyMetricsEnv`, `applyAPIBodyLimitEnv`, `applyPlaygroundEnv`) were inlined into
+a single flat `applyEnv()` using the new helpers. Only `applyEmailEnv` and
+`applyOAuthEnv` remain as separate functions because they have error return paths
+from `readEnvOrFile` secrets.
+
+**Bool knobs kept inline:** `OBJECT_STORAGE_PATH_STYLE`, `AUTH_RATE_LIMIT_ENABLED`,
+and `PLAYGROUND_ENABLED` each have distinct truthiness semantics and are kept as
+inline `if` blocks with comments explaining the divergence. A shared bool parser
+would mask these differences.
+
+**JAMSESH_API_BODY_LIMIT_BYTES:** Kept inline because it has an extra `n > 0`
+guard that the generic `readEnvInt64` doesn't carry.
+
+**Pre-existing build failures:** `cmd/portal`, `internal/portal/router`, and
+`internal/portal/server` test packages fail to build due to an unrelated
+in-flight router refactor story. These failures pre-date this commit.

@@ -503,9 +503,6 @@ func (c Config) validate() error {
 	default:
 		return fmt.Errorf("config: db_driver must be \"sqlite\" or \"postgres\", got %q", c.DBDriver)
 	}
-	if c.ShutdownGraceSeconds <= 0 {
-		return fmt.Errorf("config: shutdown_grace_s must be a positive integer, got %d", c.ShutdownGraceSeconds)
-	}
 	switch c.DeployMode {
 	case "single", "clustered":
 		// valid
@@ -520,32 +517,27 @@ func (c Config) validate() error {
 			"bare-repo durability in clustered mode depends on object storage — " +
 			"set JAMSESH_OBJECT_STORAGE_URL to an s3://, s3-compatible://, gs://, or azblob:// URL")
 	}
-	if c.ObjectStorageSyncQueueSize <= 0 {
-		return fmt.Errorf("config: object_storage_sync_queue_size must be a positive integer, got %d", c.ObjectStorageSyncQueueSize)
+	for _, check := range []struct {
+		name string
+		v    int
+	}{
+		{"shutdown_grace_s", c.ShutdownGraceSeconds},
+		{"lease_heartbeat_interval_s", c.LeaseHeartbeatIntervalS},
+		{"lease_retention_days", c.LeaseRetentionDays},
+		{"lease_retention_interval_hours", c.LeaseRetentionIntervalHours},
+		{"object_storage_sync_queue_size", c.ObjectStorageSyncQueueSize},
+		{"hydration_idle_timeout_s", c.HydrationIdleTimeoutS},
+		{"hydration_idle_check_period_s", c.HydrationIdleCheckPeriodS},
+		{"hydration_workers", c.HydrationWorkers},
+		{"git.receive_pack_max_concurrent", c.Git.ReceivePackMaxConcurrent},
+	} {
+		if err := mustBePositive(check.name, check.v); err != nil {
+			return err
+		}
 	}
-	if c.LeaseHeartbeatIntervalS <= 0 {
-		return fmt.Errorf("config: lease_heartbeat_interval_s must be a positive integer, got %d", c.LeaseHeartbeatIntervalS)
-	}
-	if c.LeaseRetentionDays <= 0 {
-		return fmt.Errorf("config: lease_retention_days must be a positive integer, got %d", c.LeaseRetentionDays)
-	}
-	if c.LeaseRetentionIntervalHours <= 0 {
-		return fmt.Errorf("config: lease_retention_interval_hours must be a positive integer, got %d", c.LeaseRetentionIntervalHours)
-	}
-	if c.HydrationIdleTimeoutS <= 0 {
-		return fmt.Errorf("config: hydration_idle_timeout_s must be a positive integer, got %d", c.HydrationIdleTimeoutS)
-	}
-	if c.HydrationIdleCheckPeriodS <= 0 {
-		return fmt.Errorf("config: hydration_idle_check_period_s must be a positive integer, got %d", c.HydrationIdleCheckPeriodS)
-	}
-	if c.HydrationWorkers <= 0 {
-		return fmt.Errorf("config: hydration_workers must be a positive integer, got %d", c.HydrationWorkers)
-	}
-	if c.HydrationCacheMaxBytes < 0 {
-		return fmt.Errorf("config: hydration_cache_max_bytes must be zero or positive, got %d", c.HydrationCacheMaxBytes)
-	}
-	if c.Git.ReceivePackMaxConcurrent <= 0 {
-		return fmt.Errorf("config: git.receive_pack_max_concurrent must be a positive integer, got %d", c.Git.ReceivePackMaxConcurrent)
+	// HydrationCacheMaxBytes uses "zero or positive" semantics: zero means unlimited.
+	if err := mustBeNonNegative("hydration_cache_max_bytes", c.HydrationCacheMaxBytes); err != nil {
+		return err
 	}
 	return nil
 }
@@ -554,305 +546,140 @@ func (c Config) validate() error {
 // values take effect; missing vars leave the existing value unchanged.
 // Returns an error if a _FILE secret variable is set but unreadable.
 func applyEnv(c *Config) error {
-	if v := os.Getenv("JAMSESH_BIND"); v != "" {
-		c.Bind = v
-	}
-	if v := os.Getenv("JAMSESH_DB_DRIVER"); v != "" {
-		c.DBDriver = v
-	}
-	v, err := readEnvOrFile("JAMSESH_DB_DSN")
-	if err != nil {
+	// Plain string knobs.
+	readEnvString("JAMSESH_BIND", &c.Bind)
+	readEnvString("JAMSESH_DB_DRIVER", &c.DBDriver)
+	readEnvString("JAMSESH_TLS_MODE", &c.TLS.Mode)
+	readEnvString("JAMSESH_TLS_CERT", &c.TLS.CertPath)
+	readEnvString("JAMSESH_TLS_KEY", &c.TLS.KeyPath)
+	readEnvString("JAMSESH_LOG_FORMAT", &c.Log.Format)
+	readEnvString("JAMSESH_STORAGE", &c.Storage)
+	readEnvString("JAMSESH_PORTAL_URL", &c.PortalURL)
+	readEnvString("JAMSESH_DEPLOY_MODE", &c.DeployMode)
+	readEnvString("JAMSESH_OBJECT_STORAGE_URL", &c.ObjectStorageURL)
+	readEnvString("JAMSESH_OBJECT_STORAGE_REGION", &c.ObjectStorageRegion)
+	readEnvString("JAMSESH_OBJECT_STORAGE_ENDPOINT_URL", &c.ObjectStorageEndpointURL)
+	readEnvString("JAMSESH_METRICS_TOKEN", &c.MetricsToken)
+
+	// Secret knobs (plain-var or _FILE; fail-fast on unreadable file).
+	if v, err := readEnvOrFile("JAMSESH_DB_DSN"); err != nil {
 		return err
-	}
-	if v != "" {
+	} else if v != "" {
 		c.DBDSN = v
 	}
-	if v := os.Getenv("JAMSESH_TLS_MODE"); v != "" {
-		c.TLS.Mode = v
-	}
-	if v := os.Getenv("JAMSESH_TLS_CERT"); v != "" {
-		c.TLS.CertPath = v
-	}
-	if v := os.Getenv("JAMSESH_TLS_KEY"); v != "" {
-		c.TLS.KeyPath = v
-	}
-	if v := os.Getenv("JAMSESH_LOG_FORMAT"); v != "" {
-		c.Log.Format = v
-	}
-	if v := os.Getenv("JAMSESH_LOG_LEVEL"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.Log.Level = slog.Level(n)
-		}
-	}
-	if v := os.Getenv("JAMSESH_STORAGE"); v != "" {
-		c.Storage = v
-	}
-	if v := os.Getenv("JAMSESH_PORTAL_URL"); v != "" {
-		c.PortalURL = v
-	}
-	if err := applyEmailEnv(&c.Email); err != nil {
-		return err
-	}
-	if err := applyOAuthEnv(&c.OAuth); err != nil {
-		return err
-	}
-	applyGitEnv(&c.Git)
-	applyDBEnv(&c.DB)
-	if v := os.Getenv("JAMSESH_SHUTDOWN_GRACE_S"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.ShutdownGraceSeconds = n
-		}
-	}
-	applyLeaseEnv(c)
-	applyObjectStorageEnv(c)
-	applyHydrationEnv(c)
-	applyAuthRateLimitEnv(c)
-	applyMetricsEnv(c)
-	applyAPIBodyLimitEnv(c)
-	applyPlaygroundEnv(c)
-	return nil
-}
 
-// applyLeaseEnv overlays lease-related environment variables.
-func applyLeaseEnv(c *Config) {
-	if v := os.Getenv("JAMSESH_DEPLOY_MODE"); v != "" {
-		c.DeployMode = v
-	}
-	if v := os.Getenv("JAMSESH_LEASE_HEARTBEAT_INTERVAL_S"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.LeaseHeartbeatIntervalS = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_LEASE_RETENTION_DAYS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.LeaseRetentionDays = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_LEASE_RETENTION_INTERVAL_HOURS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.LeaseRetentionIntervalHours = n
-		}
-	}
-}
+	// Integer knobs.
+	readEnvInt("JAMSESH_SHUTDOWN_GRACE_S", &c.ShutdownGraceSeconds)
+	readEnvInt("JAMSESH_LEASE_HEARTBEAT_INTERVAL_S", &c.LeaseHeartbeatIntervalS)
+	readEnvInt("JAMSESH_LEASE_RETENTION_DAYS", &c.LeaseRetentionDays)
+	readEnvInt("JAMSESH_LEASE_RETENTION_INTERVAL_HOURS", &c.LeaseRetentionIntervalHours)
+	readEnvInt("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE", &c.ObjectStorageSyncQueueSize)
+	readEnvInt("JAMSESH_HYDRATION_IDLE_TIMEOUT_S", &c.HydrationIdleTimeoutS)
+	readEnvInt("JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S", &c.HydrationIdleCheckPeriodS)
+	readEnvInt("JAMSESH_HYDRATION_WORKERS", &c.HydrationWorkers)
+	readEnvInt("JAMSESH_RECEIVE_PACK_MAX_CONCURRENT", &c.Git.ReceivePackMaxConcurrent)
+	readEnvInt("JAMSESH_DB_MAX_OPEN_CONNS", &c.DB.MaxOpenConns)
+	readEnvInt("JAMSESH_DB_MAX_IDLE_CONNS", &c.DB.MaxIdleConns)
 
-// applyObjectStorageEnv overlays object-storage environment variables.
-func applyObjectStorageEnv(c *Config) {
-	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_URL"); v != "" {
-		c.ObjectStorageURL = v
-	}
-	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_REGION"); v != "" {
-		c.ObjectStorageRegion = v
-	}
-	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_ENDPOINT_URL"); v != "" {
-		c.ObjectStorageEndpointURL = v
-	}
-	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_PATH_STYLE"); v != "" {
-		c.ObjectStoragePathStyle = v == "true"
-	}
-	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_SYNC_QUEUE_SIZE"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.ObjectStorageSyncQueueSize = n
-		}
-	}
-}
+	// int64 knobs.
+	readEnvInt64("JAMSESH_GIT_MAX_PACK_BYTES", &c.Git.MaxPackBytes)
+	readEnvInt64("JAMSESH_HYDRATION_CACHE_MAX_BYTES", &c.HydrationCacheMaxBytes)
+	readEnvInt64("JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES", &c.PlaygroundMaxContentBytes)
 
-// applyHydrationEnv overlays hydration-lifecycle environment variables.
-func applyHydrationEnv(c *Config) {
-	if v := os.Getenv("JAMSESH_HYDRATION_IDLE_TIMEOUT_S"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.HydrationIdleTimeoutS = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_HYDRATION_CACHE_MAX_BYTES"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-			c.HydrationCacheMaxBytes = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_HYDRATION_IDLE_CHECK_PERIOD_S"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.HydrationIdleCheckPeriodS = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_HYDRATION_WORKERS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.HydrationWorkers = n
-		}
-	}
-}
-
-// applyGitEnv overlays git-policy environment variables.
-func applyGitEnv(g *GitConfig) {
-	if v := os.Getenv("JAMSESH_GIT_MAX_PACK_BYTES"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-			g.MaxPackBytes = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_RECEIVE_PACK_MAX_CONCURRENT"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			g.ReceivePackMaxConcurrent = n
-		}
-	}
-}
-
-// applyDBEnv overlays database connection pool environment variables.
-func applyDBEnv(d *DBConfig) {
-	if v := os.Getenv("JAMSESH_DB_MAX_OPEN_CONNS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			d.MaxOpenConns = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_DB_MAX_IDLE_CONNS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			d.MaxIdleConns = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_DB_CONN_MAX_LIFETIME"); v != "" {
-		if dur, err := time.ParseDuration(v); err == nil {
-			d.ConnMaxLifetime = dur
-		}
-	}
-}
-
-// applyOAuthEnv overlays OAuth-related environment variables.
-// Returns an error if a _FILE secret variable is set but unreadable.
-func applyOAuthEnv(o *OAuthConfig) error {
-	if v := os.Getenv("JAMSESH_OAUTH_GITHUB_CLIENT_ID"); v != "" {
-		o.GitHub.ClientID = v
-	}
-	v, err := readEnvOrFile("JAMSESH_OAUTH_GITHUB_CLIENT_SECRET")
-	if err != nil {
-		return err
-	}
-	if v != "" {
-		o.GitHub.ClientSecret = v
-	}
-	if v := os.Getenv("JAMSESH_OAUTH_GITHUB_BASE_URL"); v != "" {
-		o.GitHub.BaseURL = v
-	}
-	return nil
-}
-
-// applyAuthRateLimitEnv overlays auth rate-limit environment variables.
-// JAMSESH_AUTH_RATE_LIMIT_ENABLED accepts "true" (default) or "false".
-// Any value other than "false" is treated as enabled.
-func applyAuthRateLimitEnv(c *Config) {
-	if v := os.Getenv("JAMSESH_AUTH_RATE_LIMIT_ENABLED"); v != "" {
-		c.AuthRateLimitEnabled = v != "false"
-	}
-}
-
-// applyMetricsEnv overlays metrics-auth environment variables.
-// JAMSESH_METRICS_TOKEN, when set, enables the /metrics endpoint and
-// requires requests to present a matching bearer token.
-func applyMetricsEnv(c *Config) {
-	if v := os.Getenv("JAMSESH_METRICS_TOKEN"); v != "" {
-		c.MetricsToken = v
-	}
-}
-
-// applyAPIBodyLimitEnv overlays the REST body-cap environment variable.
-// JAMSESH_API_BODY_LIMIT_BYTES, when set to a positive integer, overrides the
-// default 1 MiB cap applied to all /api/* routes.
-func applyAPIBodyLimitEnv(c *Config) {
+	// JAMSESH_API_BODY_LIMIT_BYTES: only apply when the parsed value is positive.
 	if v := os.Getenv("JAMSESH_API_BODY_LIMIT_BYTES"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			c.APIBodyLimitBytes = n
 		}
 	}
-}
 
-// applyPlaygroundEnv overlays playground-subsystem environment variables.
-// JAMSESH_PLAYGROUND_ENABLED accepts "true", "1", or "yes" (case-insensitive)
-// for enabled; any other non-empty value is treated as disabled.
-func applyPlaygroundEnv(c *Config) {
+	// Duration knobs.
+	readEnvDuration("JAMSESH_DB_CONN_MAX_LIFETIME", &c.DB.ConnMaxLifetime)
+
+	// Log level: integer parsed as slog.Level.
+	if v := os.Getenv("JAMSESH_LOG_LEVEL"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.Log.Level = slog.Level(n)
+		}
+	}
+
+	// Bool knobs — kept inline because each has distinct truthiness semantics:
+	// PATH_STYLE:        "true" means true, anything else means false.
+	// AUTH_RATE_LIMIT:   "false" disables; any other non-empty value enables.
+	// PLAYGROUND_ENABLED:"true", "1", "yes" enable; any other non-empty disables.
+	if v := os.Getenv("JAMSESH_OBJECT_STORAGE_PATH_STYLE"); v != "" {
+		c.ObjectStoragePathStyle = v == "true"
+	}
+	if v := os.Getenv("JAMSESH_AUTH_RATE_LIMIT_ENABLED"); v != "" {
+		c.AuthRateLimitEnabled = v != "false"
+	}
 	if v := os.Getenv("JAMSESH_PLAYGROUND_ENABLED"); v != "" {
 		c.PlaygroundEnabled = v == "true" || v == "1" || v == "yes"
 	}
-	if v := os.Getenv("JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.PlaygroundIdleTimeoutS = n
-		}
+
+	// Playground integer knobs.
+	readEnvInt("JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S", &c.PlaygroundIdleTimeoutS)
+	readEnvInt("JAMSESH_PLAYGROUND_HARD_CAP_S", &c.PlaygroundHardCapS)
+	readEnvInt("JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR", &c.PlaygroundCreatePerIPHour)
+	readEnvInt("JAMSESH_PLAYGROUND_MAX_PARTICIPANTS", &c.PlaygroundMaxParticipants)
+	readEnvInt("JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S", &c.PlaygroundDestructionSweepIntervalS)
+
+	// Email knobs.
+	if err := applyEmailEnv(&c.Email); err != nil {
+		return err
 	}
-	if v := os.Getenv("JAMSESH_PLAYGROUND_HARD_CAP_S"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.PlaygroundHardCapS = n
-		}
+
+	// OAuth knobs.
+	if err := applyOAuthEnv(&c.OAuth); err != nil {
+		return err
 	}
-	if v := os.Getenv("JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.PlaygroundCreatePerIPHour = n
-		}
+
+	return nil
+}
+
+// applyOAuthEnv overlays OAuth-related environment variables.
+// Returns an error if a _FILE secret variable is set but unreadable.
+func applyOAuthEnv(o *OAuthConfig) error {
+	readEnvString("JAMSESH_OAUTH_GITHUB_CLIENT_ID", &o.GitHub.ClientID)
+	if v, err := readEnvOrFile("JAMSESH_OAUTH_GITHUB_CLIENT_SECRET"); err != nil {
+		return err
+	} else if v != "" {
+		o.GitHub.ClientSecret = v
 	}
-	if v := os.Getenv("JAMSESH_PLAYGROUND_MAX_PARTICIPANTS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.PlaygroundMaxParticipants = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-			c.PlaygroundMaxContentBytes = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.PlaygroundDestructionSweepIntervalS = n
-		}
-	}
+	readEnvString("JAMSESH_OAUTH_GITHUB_BASE_URL", &o.GitHub.BaseURL)
+	return nil
 }
 
 // applyEmailEnv overlays email-related environment variables.
 // Returns an error if a _FILE secret variable is set but unreadable.
 func applyEmailEnv(e *EmailConfig) error {
-	if v := os.Getenv("JAMSESH_EMAIL_PROVIDER"); v != "" {
-		e.Provider = v
-	}
-	if v := os.Getenv("JAMSESH_EMAIL_FROM"); v != "" {
-		e.From = v
-	}
-	if v := os.Getenv("JAMSESH_EMAIL_SMTP_HOST"); v != "" {
-		e.SMTP.Host = v
-	}
-	if v := os.Getenv("JAMSESH_EMAIL_SMTP_PORT"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			e.SMTP.Port = n
-		}
-	}
-	if v := os.Getenv("JAMSESH_EMAIL_SMTP_USER"); v != "" {
-		e.SMTP.User = v
-	}
-	smtpPass, err := readEnvOrFile("JAMSESH_EMAIL_SMTP_PASS")
-	if err != nil {
+	readEnvString("JAMSESH_EMAIL_PROVIDER", &e.Provider)
+	readEnvString("JAMSESH_EMAIL_FROM", &e.From)
+	readEnvString("JAMSESH_EMAIL_SMTP_HOST", &e.SMTP.Host)
+	readEnvInt("JAMSESH_EMAIL_SMTP_PORT", &e.SMTP.Port)
+	readEnvString("JAMSESH_EMAIL_SMTP_USER", &e.SMTP.User)
+	readEnvString("JAMSESH_EMAIL_SMTP_TLS", &e.SMTP.TLSMode)
+	readEnvString("JAMSESH_EMAIL_POSTMARK_MESSAGE_STREAM", &e.Postmark.MessageStream)
+
+	if v, err := readEnvOrFile("JAMSESH_EMAIL_SMTP_PASS"); err != nil {
 		return err
+	} else if v != "" {
+		e.SMTP.Pass = v
 	}
-	if smtpPass != "" {
-		e.SMTP.Pass = smtpPass
-	}
-	if v := os.Getenv("JAMSESH_EMAIL_SMTP_TLS"); v != "" {
-		e.SMTP.TLSMode = v
-	}
-	sendgridKey, err := readEnvOrFile("JAMSESH_EMAIL_SENDGRID_API_KEY")
-	if err != nil {
+	if v, err := readEnvOrFile("JAMSESH_EMAIL_SENDGRID_API_KEY"); err != nil {
 		return err
+	} else if v != "" {
+		e.SendGrid.APIKey = v
 	}
-	if sendgridKey != "" {
-		e.SendGrid.APIKey = sendgridKey
-	}
-	postmarkToken, err := readEnvOrFile("JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN")
-	if err != nil {
+	if v, err := readEnvOrFile("JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN"); err != nil {
 		return err
+	} else if v != "" {
+		e.Postmark.ServerToken = v
 	}
-	if postmarkToken != "" {
-		e.Postmark.ServerToken = postmarkToken
-	}
-	if v := os.Getenv("JAMSESH_EMAIL_POSTMARK_MESSAGE_STREAM"); v != "" {
-		e.Postmark.MessageStream = v
-	}
-	resendKey, err := readEnvOrFile("JAMSESH_EMAIL_RESEND_API_KEY")
-	if err != nil {
+	if v, err := readEnvOrFile("JAMSESH_EMAIL_RESEND_API_KEY"); err != nil {
 		return err
-	}
-	if resendKey != "" {
-		e.Resend.APIKey = resendKey
+	} else if v != "" {
+		e.Resend.APIKey = v
 	}
 	return nil
 }
