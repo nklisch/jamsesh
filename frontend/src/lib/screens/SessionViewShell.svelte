@@ -18,27 +18,14 @@
   import DestructionWarningBanner from '$lib/components/DestructionWarningBanner.svelte';
   import { auth } from '$lib/auth.svelte';
   import { navigate } from '$lib/router.svelte';
-  import { subscribe } from '$lib/ws.svelte';
+  import { createTreeState } from '$lib/session/useTreeState.svelte';
+  import { createPlaygroundCountdown } from '$lib/session/usePlaygroundCountdown.svelte';
+  import { createRefActions } from '$lib/session/useRefActions.svelte';
+  import { createCommentComposer } from '$lib/session/useCommentComposer.svelte';
   import type { components } from '$lib/api/types.gen';
 
   type Session = components['schemas']['Session'];
-  type TreeState = 'tree-collapsed' | 'tree-expanded' | 'tree-wide';
   type BottomTab = 'activity' | 'comments';
-  type ActiveDialog = null | 'fork' | 'mode-switch';
-
-  // Playground WS event payload types.
-  // TODO(idea-playground-ws-event-types-missing-from-openapi): these two event types
-  // are absent from docs/openapi.yaml and therefore from types.gen.ts. Once the spec
-  // gap is closed and codegen is re-run, replace these inline annotations with
-  // generated types from '$lib/api/types.gen' and remove this block.
-  type PlaygroundActivityResetEvent = {
-    type: 'playground.activity_reset';
-    last_substantive_activity_at: string; // ISO 8601
-    idle_timeout_at: string; // ISO 8601
-  };
-  type SessionDestroyedEvent = {
-    type: 'session.destroyed';
-  };
 
   let {
     orgId,
@@ -48,36 +35,21 @@
     sessionId: string;
   } = $props();
 
-  // Session data
+  // ── Rune modules ──────────────────────────────────────────────────────────
+  // Wrap sessionId in a getter so svelte-check doesn't warn about "only
+  // captures the initial value" — sessionId is stable for the lifetime of
+  // this component instance and the factories only run once.
+  const getSessionId = () => sessionId;
+  const treeState = createTreeState(getSessionId());
+  const playground = createPlaygroundCountdown(getSessionId());
+  const refActions = createRefActions();
+  const composer = createCommentComposer();
+
+  // ── Session data ──────────────────────────────────────────────────────────
   let session = $state<Session | null>(null);
   let loadError = $state<string | null>(null);
 
-  // Tree state — persisted per session in localStorage
-  const TREE_STATES: TreeState[] = ['tree-collapsed', 'tree-expanded', 'tree-wide'];
-  // Use a function to build the key so we capture sessionId in a closure (avoids
-  // the "reference only captures initial value" svelte-check warning).
-  const treeStateKey = () => `jamsesh.tree-state.${sessionId}`;
-
-  function loadTreeState(): TreeState {
-    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(treeStateKey()) : null;
-    if (stored && TREE_STATES.includes(stored as TreeState)) return stored as TreeState;
-    return 'tree-collapsed';
-  }
-
-  let treeState = $state<TreeState>(loadTreeState());
-
-  $effect(() => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(treeStateKey(), treeState);
-    }
-  });
-
-  function cycleTree() {
-    const idx = TREE_STATES.indexOf(treeState);
-    treeState = TREE_STATES[(idx + 1) % TREE_STATES.length];
-  }
-
-  // Bottom panel
+  // ── Bottom panel ──────────────────────────────────────────────────────────
   let bottomExpanded = $state(false);
   let activeTab = $state<BottomTab>('activity');
 
@@ -86,70 +58,16 @@
     if (!bottomExpanded) bottomExpanded = true;
   }
 
-  // Commit selection
+  // ── Commit / file selection ───────────────────────────────────────────────
   let selectedCommitSha = $state<string | null>(null);
-  // File selection (set by future file-tree or external signal)
   let selectedFilePath = $state<string | null>(null);
 
   function handleSelectCommit(sha: string) {
     selectedCommitSha = sha;
-    // Clear file selection when switching commits.
     selectedFilePath = null;
   }
 
-  // Comment composer
-  let composerOpen = $state(false);
-  let composerRange = $state<{ start: number; end: number } | null>(null);
-
-  // ── Playground-mode state ─────────────────────────────────────────────────
-  // Derived: true when this session belongs to the reserved playground org.
-  // Uses auth.playgroundContext as a fallback for anonymous joiners who may
-  // land here before the session load completes.
-  let isPlayground = $derived(
-    session?.org_id === 'org_playground' ||
-    auth.playgroundContext?.sessionId === sessionId,
-  );
-
-  // Countdown props — initialised from session data when available, updated by
-  // the playground.activity_reset WS event. The CountdownBadge component reads
-  // these via props; replacing them triggers its $derived recompute.
-  let playgroundHardCapAt = $state<Date | null>(null);
-  let playgroundIdleTimeoutAt = $state<Date | null>(null);
-  let playgroundLastActivityAt = $state<Date | null>(null);
-
-  // Current remaining times (ms) — set by CountdownBadge via onremainingupdate.
-  let idleRemainingMs = $state<number>(Infinity);
-  let hardCapRemainingMs = $state<number>(Infinity);
-
-  function handleRangeSelect(range: { start: number; end: number } | null) {
-    composerRange = range;
-    if (range) composerOpen = true;
-  }
-
-  // Ref actions
-  let activeMenuRef = $state<{ ref: string; x: number; y: number } | null>(null);
-  let activeDialog = $state<ActiveDialog>(null);
-  let activeDialogRef = $state<string>('');
-  let activeDialogRefMode = $state<'sync' | 'isolated' | undefined>(undefined);
-
-  function handleRefAction(event: { ref: string; action: 'menu'; x: number; y: number }) {
-    activeMenuRef = { ref: event.ref, x: event.x, y: event.y };
-  }
-
-  function handleMenuAction(action: 'fork' | 'mode-switch', ref: string) {
-    activeMenuRef = null;
-    activeDialogRef = ref;
-    activeDialog = action;
-    // Fetch current mode for the mode-switch dialog (best-effort).
-    activeDialogRefMode = undefined;
-  }
-
-  function closeDialog() {
-    activeDialog = null;
-    activeDialogRef = '';
-    activeDialogRefMode = undefined;
-  }
-
+  // ── Data loading ──────────────────────────────────────────────────────────
   async function loadSession() {
     const { data, error } = await client.GET('/api/orgs/{orgID}/sessions/{sessionID}', {
       params: { path: { orgID: orgId, sessionID: sessionId } },
@@ -158,17 +76,7 @@
       loadError = 'Failed to load session.';
     } else if (data) {
       session = data;
-      // Seed playground countdown props from the session payload if present.
-      if (
-        data.org_id === 'org_playground' &&
-        'hard_cap_at' in data &&
-        'idle_timeout_at' in data &&
-        'last_substantive_activity_at' in data
-      ) {
-        playgroundHardCapAt = new Date(data.hard_cap_at as string);
-        playgroundIdleTimeoutAt = new Date(data.idle_timeout_at as string);
-        playgroundLastActivityAt = new Date(data.last_substantive_activity_at as string);
-      }
+      playground.seedFromSession(data);
     }
   }
 
@@ -184,47 +92,16 @@
 
   onMount(() => {
     void loadSession();
-
-    // Subscribe to playground-specific WS events. These handlers are no-ops
-    // for durable sessions (isPlayground is false, and the events won't arrive
-    // on non-playground sessions anyway), but we register them unconditionally
-    // for simplicity — the WS module deduplicates connections per sessionId.
-    const unsubActivity = subscribe(
-      sessionId,
-      'playground.activity_reset',
-      (env) => {
-        const e = env as unknown as PlaygroundActivityResetEvent;
-        if (e.last_substantive_activity_at) {
-          playgroundLastActivityAt = new Date(e.last_substantive_activity_at);
-        }
-        if (e.idle_timeout_at) {
-          playgroundIdleTimeoutAt = new Date(e.idle_timeout_at);
-        }
-      },
-    );
-
-    const unsubDestroyed = subscribe(
-      sessionId,
-      'session.destroyed',
-      (_env: unknown) => {
-        void (_env as SessionDestroyedEvent);
-        navigate(`/playground/s/${sessionId}/ended`);
-      },
-    );
-
-    return () => {
-      unsubActivity();
-      unsubDestroyed();
-    };
+    return playground.mountSubscriptions();
   });
 </script>
 
-<div class="shell" data-tree-state={treeState}>
+<div class="shell" data-tree-state={treeState.value}>
   <!-- App chrome -->
   <header class="app-chrome">
     <div class="wordmark" aria-label="jamsesh">jam<span class="dot">·</span>sesh</div>
 
-    {#if isPlayground}
+    {#if playground.isPlayground}
       <!-- Playground branch: chip + session name (no org breadcrumb) -->
       <PlaygroundChip />
       <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -243,16 +120,13 @@
 
     <div class="chrome-spacer"></div>
 
-    {#if isPlayground && playgroundHardCapAt && playgroundIdleTimeoutAt && playgroundLastActivityAt}
+    {#if playground.isPlayground && playground.hardCapAt && playground.idleTimeoutAt && playground.lastActivityAt}
       <!-- Countdown badge replaces org-name in playground mode -->
       <CountdownBadge
-        hardCapAt={playgroundHardCapAt}
-        idleTimeoutAt={playgroundIdleTimeoutAt}
-        lastSubstantiveActivityAt={playgroundLastActivityAt}
-        onremainingupdate={(idleMs, hardMs) => {
-          idleRemainingMs = idleMs;
-          hardCapRemainingMs = hardMs;
-        }}
+        hardCapAt={playground.hardCapAt}
+        idleTimeoutAt={playground.idleTimeoutAt}
+        lastSubstantiveActivityAt={playground.lastActivityAt}
+        onremainingupdate={(idleMs, hardMs) => playground.updateRemaining(idleMs, hardMs)}
       />
     {/if}
 
@@ -294,25 +168,25 @@
     <WsStatusBanner {sessionId} />
 
     <!-- Playground destruction warning banner (absent for durable sessions) -->
-    {#if isPlayground}
+    {#if playground.isPlayground}
       <DestructionWarningBanner
-        {idleRemainingMs}
-        {hardCapRemainingMs}
+        idleRemainingMs={playground.idleRemainingMs}
+        hardCapRemainingMs={playground.hardCapRemainingMs}
         {sessionId}
         {orgId}
       />
     {/if}
 
     <!-- Main body: tree rail | artifact -->
-    <div class="top" class:tree-collapsed={treeState === 'tree-collapsed'} class:tree-expanded={treeState === 'tree-expanded'} class:tree-wide={treeState === 'tree-wide'}>
+    <div class="top" class:tree-collapsed={treeState.value === 'tree-collapsed'} class:tree-expanded={treeState.value === 'tree-expanded'} class:tree-wide={treeState.value === 'tree-wide'}>
       <!-- Tree pane -->
       <aside class="pane tree" aria-label="Tree">
         <div class="tree-head">
           <span class="tree-title">tree · {session.members.length} refs</span>
           <button
             class="tree-resize-btn"
-            onclick={cycleTree}
-            title="cycle tree: {treeState}"
+            onclick={treeState.cycle}
+            title="cycle tree: {treeState.value}"
             aria-label="Cycle tree width"
           >⇔</button>
         </div>
@@ -320,10 +194,10 @@
           <TreeDag
             {orgId}
             {sessionId}
-            {treeState}
+            treeState={treeState.value}
             selectedSha={selectedCommitSha}
             onselect={handleSelectCommit}
-            onrefaction={handleRefAction}
+            onrefaction={refActions.handleRefAction}
           />
         </div>
       </aside>
@@ -336,20 +210,20 @@
             {orgId}
             selectedSha={selectedCommitSha}
             selectedPath={selectedFilePath}
-            onrangeselect={handleRangeSelect}
+            onrangeselect={composer.handleRangeSelect}
           />
         </div>
-        {#if composerOpen && selectedCommitSha}
+        {#if composer.open && selectedCommitSha}
           <div class="composer-overlay">
             <CommentComposer
               {orgId}
               {sessionId}
               anchorCommitSha={selectedCommitSha}
               anchorFilePath={selectedFilePath}
-              anchorLineStart={composerRange?.start ?? null}
-              anchorLineEnd={composerRange?.end ?? null}
-              onsubmit={() => { composerOpen = false; }}
-              oncancel={() => { composerOpen = false; }}
+              anchorLineStart={composer.range?.start ?? null}
+              anchorLineEnd={composer.range?.end ?? null}
+              onsubmit={composer.close}
+              oncancel={composer.close}
             />
           </div>
         {/if}
@@ -420,35 +294,35 @@
     </div>
 
     <!-- Ref context menu -->
-    {#if activeMenuRef}
+    {#if refActions.activeMenuRef}
       <RefActionsMenu
-        ref={activeMenuRef.ref}
-        x={activeMenuRef.x}
-        y={activeMenuRef.y}
-        onaction={handleMenuAction}
-        onclose={() => { activeMenuRef = null; }}
+        ref={refActions.activeMenuRef.ref}
+        x={refActions.activeMenuRef.x}
+        y={refActions.activeMenuRef.y}
+        onaction={refActions.handleMenuAction}
+        onclose={refActions.closeMenu}
       />
     {/if}
 
     <!-- Fork dialog -->
-    {#if activeDialog === 'fork'}
+    {#if refActions.activeDialog === 'fork'}
       <ForkDialog
         {sessionId}
-        sourceRef={activeDialogRef}
-        onclose={closeDialog}
-        onsuccess={closeDialog}
+        sourceRef={refActions.activeDialogRef}
+        onclose={refActions.closeDialog}
+        onsuccess={refActions.closeDialog}
       />
     {/if}
 
     <!-- Mode-switch dialog -->
-    {#if activeDialog === 'mode-switch'}
+    {#if refActions.activeDialog === 'mode-switch'}
       <ModeSwitchDialog
         {orgId}
         {sessionId}
-        ref={activeDialogRef}
-        currentMode={activeDialogRefMode}
-        onclose={closeDialog}
-        onsuccess={closeDialog}
+        ref={refActions.activeDialogRef}
+        currentMode={refActions.activeDialogRefMode}
+        onclose={refActions.closeDialog}
+        onsuccess={refActions.closeDialog}
       />
     {/if}
   {:else}

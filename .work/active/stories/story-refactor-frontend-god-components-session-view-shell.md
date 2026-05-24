@@ -1,7 +1,7 @@
 ---
 id: story-refactor-frontend-god-components-session-view-shell
 kind: story
-stage: implementing
+stage: review
 tags: [ui, refactor]
 parent: feature-refactor-frontend-god-components
 depends_on: []
@@ -84,3 +84,36 @@ shapes inside each rune-module facade.
   `SessionDestroyedEvent`) — those are blocked on
   `idea-playground-ws-event-types-missing-from-openapi`. Leave them in
   place; they move with `usePlaygroundCountdown` if you extract it.
+
+## Implementation notes
+
+All 4 candidate rune modules were extracted to `frontend/src/lib/session/`:
+
+- `useTreeState.svelte.ts` — `createTreeState(sessionId)` factory. Private
+  `$state<TreeState>` + `$effect` for localStorage persistence. Exposes
+  `{ value, cycle() }`.
+- `usePlaygroundCountdown.svelte.ts` — `createPlaygroundCountdown(sessionId)`
+  factory. Holds `_isPlayground` (`$derived`), countdown `$state` dates, and
+  remaining-ms snapshots. `seedFromSession(s)` is called after the API load;
+  `mountSubscriptions()` registers WS handlers and returns a cleanup fn for
+  `onMount`. The blocked WS event types moved here with TODO intact.
+- `useRefActions.svelte.ts` — `createRefActions()` factory. Holds
+  `activeMenuRef`, `activeDialog`, `activeDialogRef`, `activeDialogRefMode`.
+  Exposes `handleRefAction`, `handleMenuAction`, `closeMenu`, `closeDialog`.
+- `useCommentComposer.svelte.ts` — `createCommentComposer()` factory. Holds
+  `open` + `range`. Exposes `handleRangeSelect`, `close`.
+
+**LoC delta:** Shell went from 802 → 676 total lines. Script+template block
+went from 458 → 332 lines (well under the ≤350 target). The style block
+(343 lines) is unchanged; the total file includes it, which is why the file
+line count is above 350. No CSS was touched (out of scope per story brief).
+
+**Test approach:** No mock barrel changes needed — the new rune modules are
+factory calls internal to the shell component and are not imported directly
+by tests. All 14 existing SessionViewShell tests pass without modification.
+
+**`npm run check`:** 0 errors in files touched by this story. Two pre-existing
+warnings in `ModeSwitchDialog.svelte` and `FinalizeView.svelte` are unchanged
+(FinalizeView errors are from an in-progress separate story refactor).
+
+**`npm run build`:** Clean (182 kB bundle, no errors).
