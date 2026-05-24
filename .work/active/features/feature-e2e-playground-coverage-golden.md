@@ -1,7 +1,7 @@
 ---
 id: feature-e2e-playground-coverage-golden
 kind: feature
-stage: implementing
+stage: review
 tags: [testing, e2e-test, playground, portal, plugin]
 parent: epic-e2e-playground-coverage
 depends_on: []
@@ -275,3 +275,32 @@ next. Once it lands:
 verify the test discipline and triage. Then either fix the trailer
 bug (single-stride story) and re-run autopilot, or scope the trailer
 bug as its own story and defer.
+
+## Children complete (2026-05-24)
+
+All 5 child stories advanced to `stage: done`:
+
+- `e2e-audit-playground-solo-create-push-tombstone-journey` — Approve
+- `e2e-audit-playground-abandonment-destruction-sweep-journey` — Approve
+- `e2e-audit-cli-jam-playground-flag-end-to-end` — Approve
+- `e2e-audit-playground-two-participant-join-merge-journey` — Approve (5/5 flake-free)
+- `e2e-audit-playground-handler-unit-tautology-stubstorage` — Approve (discipline observable in all 4 tests)
+
+Production bugs surfaced + resolved during the work:
+- `idea-playground-scope-normalization-bug` — fixed (`2bf22ea`)
+- Playground push URL missing org_id — fixed (`2bf22ea`)
+- `idea-playground-clock-not-wired-e2etest` — fixed (`cc55579`)
+- `idea-playground-worker-clock-not-advanceable` — fixed (same as above)
+- `bug-playground-git-receive-pack-fails-with-200-hangup` (root cause:
+  trailer requirement on seed commit) — fixed via
+  `story-fix-playground-base-ref-trailer-exemption` (`297616a`)
+- Foundation-doc drift in `docs/PROTOCOL.md` re trailer requirement —
+  rolled forward (`9c5df29`)
+
+Important finding for follow-up: the parked bug
+`bug-playground-join-with-nickname-returns-410-on-fresh-session` does
+NOT reproduce against the real portal binary. It's a unit-suite
+`fixedClock` artifact only. The 2 affected unit tests should be either
+rewritten or marked as unit-suite-only known-failures.
+
+Feature advanced `stage: implementing → review`.
