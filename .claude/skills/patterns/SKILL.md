@@ -27,3 +27,8 @@ Available patterns:
 - [same-origin-returnto-guard.md](same-origin-returnto-guard.md) — Same-Origin return_to Validation
 - [spa-test-module-mock-barrel.md](spa-test-module-mock-barrel.md) — SPA Test Module-Mock Barrel
 - [window-location-defineproperty-stub.md](window-location-defineproperty-stub.md) — window.location Override via Object.defineProperty
+- [per-instance-factory-rune-store.md](per-instance-factory-rune-store.md) — Per-Instance Factory Rune Store
+- [adapter-wrap-helpers.md](adapter-wrap-helpers.md) — Adapter wrap1/wrapList Helpers
+- [strict-server-partial-handler-shim.md](strict-server-partial-handler-shim.md) — Strict-Server Partial Handler Shim
+- [playground-activity-reset.md](playground-activity-reset.md) — Playground Activity Reset on Substantive Action
+- [ticker-sweep-loop.md](ticker-sweep-loop.md) — Context-Cancellable Ticker Sweep Loop

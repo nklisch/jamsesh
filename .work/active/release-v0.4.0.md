@@ -123,3 +123,6 @@ updated: 2026-05-24
   - pattern-skill-staleness (5): pattern-per-package-clock-package-count-undercount, pattern-dual-dialect-stale-createsession-columns, pattern-openapi-fetch-middleware-stale-anchors, pattern-view-state-union-anchors-and-new-examples, pattern-wrapper-object-rune-store-anchors-and-playgroundcontext
   - changelog-gap (1): changelog-v0-4-0-entry-missing (resolved by release-deploy Phase 5.5)
   - repo-skill-staleness (1): skill-jamsesh-hard-deadlines-prose-brittle
+- **gate-patterns** (2026-05-24) — 5 new patterns extracted, 0 inconsistencies
+  - New patterns: per-instance-factory-rune-store, adapter-wrap-helpers, strict-server-partial-handler-shim, playground-activity-reset, ticker-sweep-loop
+  - Tracking item `gate-patterns-v0.4.0` at stage:done (gate's deliverable is the pattern files themselves)
