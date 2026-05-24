@@ -1,7 +1,7 @@
 // Tests for the History-API router.
 // Vitest runs with jsdom (globals: true) so window and history are available.
 
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect } from 'vitest';
 
 // The router module uses module-level $state / $derived runes which means
 // we need to import it as an ES module and work with the exported values.

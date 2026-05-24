@@ -177,41 +177,8 @@ func (m *testLeaseManager) handleFor(sessionID string) *testHandle {
 // Test helpers: hydrator
 // ---------------------------------------------------------------------------
 
-// countingHydrator wraps a real Hydrator and counts Hydrate calls.
-type countingHydrator struct {
-	hydrator    *Hydrator
-	hydrateCalls atomic.Int32
-	errOnHydrate error
-}
-
-func (c *countingHydrator) Hydrate(ctx context.Context, orgID, sessionID string) (HydrationOutput, error) {
-	c.hydrateCalls.Add(1)
-	if c.errOnHydrate != nil {
-		return HydrationOutput{}, c.errOnHydrate
-	}
-	return c.hydrator.Hydrate(ctx, orgID, sessionID)
-}
-
-// wrappedHydrator adapts countingHydrator to look like *Hydrator for
-// newTestLifecycleManager. We achieve this by embedding the counting logic
-// in a thin struct that produces a real *Hydrator.
-//
-// Since LifecycleManager.Hydrator is typed as *Hydrator (concrete), we can't
-// mock it directly without an interface. For tests that need hydration-call
-// counting we instrument via storage.CreateRepoCalled and backend state.
-// For the hydration-failure test we use a nil-backend Hydrator that always fails.
-
-// newFailingHydrator returns a *Hydrator whose Hydrate always returns an error.
-// It uses a memBackend that rejects all operations.
-func newFailingHydrator(stor storage.Service) *Hydrator {
-	return &Hydrator{
-		Backend:   &errBackend{err: errors.New("backend: simulated failure")},
-		Manifests: &ManifestStore{Backend: &errBackend{err: errors.New("backend: simulated failure")}},
-		Storage:   stor,
-	}
-}
-
 // errBackend is a Backend that returns errors on all operations.
+// Used by tests that need a hydrator whose backend always fails.
 type errBackend struct {
 	err error
 }

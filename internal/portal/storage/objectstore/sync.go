@@ -4,7 +4,6 @@
 package objectstore
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -570,26 +569,3 @@ func (s *Syncer) lazyDeletePacks(keys []string) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// packed-refs parsing helper
-// ---------------------------------------------------------------------------
-
-// parsePackedRefsContent parses the content of a packed-refs file and returns
-// a map of ref name → SHA. Lines starting with '#' are skipped. Lines with a
-// peeled tag entry ('^') are also skipped.
-func parsePackedRefsContent(content string) map[string]string {
-	refs := make(map[string]string)
-	sc := bufio.NewScanner(strings.NewReader(content))
-	for sc.Scan() {
-		line := sc.Text()
-		if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "^") {
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) < 2 {
-			continue
-		}
-		refs[parts[1]] = parts[0]
-	}
-	return refs
-}

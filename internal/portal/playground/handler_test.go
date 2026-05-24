@@ -29,21 +29,6 @@ type fixedClock struct{ t time.Time }
 
 func (c fixedClock) Now() time.Time { return c.t }
 
-// stepClock advances by step every time Now() is called. Used only by tests
-// that need a clock value to change between two consecutive reads from the
-// handler (e.g. the hard-cap-elapsed inner-branch test). For everything else
-// fixedClock is the right choice.
-type stepClock struct {
-	t    time.Time
-	step time.Duration
-}
-
-func (c *stepClock) Now() time.Time {
-	now := c.t
-	c.t = c.t.Add(c.step)
-	return now
-}
-
 // ---------------------------------------------------------------------------
 // Storage stub
 // ---------------------------------------------------------------------------

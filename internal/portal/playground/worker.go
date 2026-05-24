@@ -133,12 +133,6 @@ func (w *Worker) reasonFor(sess store.Session, now time.Time) string {
 	return "manual"
 }
 
-// noopLogger returns a slog.Logger that discards all output. Used by tests
-// that don't want log noise.
-func noopLogger() *slog.Logger {
-	return slog.New(slog.DiscardHandler)
-}
-
 // errStopRetrying is used internally to signal a step that cannot usefully be
 // retried (e.g. the session row is already gone). It is NEVER surfaced to the
 // caller — it is swallowed within Destroy() and logged if unexpected.

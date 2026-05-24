@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"jamsesh/internal/portal/playground"
 )
@@ -270,5 +269,4 @@ func TestNewCreateRateLimiter_LargePerHour(t *testing.T) {
 	if !allowed1 || !allowed2 {
 		t.Error("first 2 requests should be within the per-minute burst of 2")
 	}
-	_ = time.Second // not actually sleeping; just confirming logic via the above
 }

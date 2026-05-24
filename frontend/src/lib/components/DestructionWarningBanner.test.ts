@@ -11,9 +11,8 @@ vi.mock('$lib/router.svelte', () => ({
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const WARN_THRESHOLD_MS = 5 * 60 * 1000; // 5 min
-const SAFE_MS = 10 * 60 * 1000;          // 10 min — above threshold
-const WARN_MS = 4 * 60 * 1000;           // 4 min — below threshold
+const SAFE_MS = 10 * 60 * 1000;          // 10 min — above 5-min warn threshold
+const WARN_MS = 4 * 60 * 1000;           // 4 min — below 5-min warn threshold
 
 function baseProps(overrides: Partial<{
   idleRemainingMs: number;

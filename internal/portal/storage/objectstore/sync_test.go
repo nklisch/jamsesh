@@ -715,26 +715,3 @@ func countKeysWithPrefix(b Backend, ctx context.Context, prefix string) int {
 	})
 	return int(atomic.LoadInt32(&count))
 }
-
-// ---------------------------------------------------------------------------
-// parsePackedRefsContent tests
-// ---------------------------------------------------------------------------
-
-func TestParsePackedRefsContent(t *testing.T) {
-	content := `# pack-refs with: peeled fully-peeled sorted
-deadbeef refs/heads/main
-cafebabe refs/heads/feature
-^abc123
-`
-	refs := parsePackedRefsContent(content)
-	if refs["refs/heads/main"] != "deadbeef" {
-		t.Errorf("refs/heads/main = %q; want deadbeef", refs["refs/heads/main"])
-	}
-	if refs["refs/heads/feature"] != "cafebabe" {
-		t.Errorf("refs/heads/feature = %q; want cafebabe", refs["refs/heads/feature"])
-	}
-	// Peeled lines and comments should not appear as refs.
-	if _, ok := refs["#"]; ok {
-		t.Error("comment line should not be a ref")
-	}
-}
