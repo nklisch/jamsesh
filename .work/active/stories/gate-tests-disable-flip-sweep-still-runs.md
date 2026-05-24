@@ -1,7 +1,7 @@
 ---
 id: gate-tests-disable-flip-sweep-still-runs
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -35,3 +35,20 @@ All existing worker tests use default-enabled config.
 
 ## Test location (suggested)
 `internal/portal/playground/worker_test.go`
+
+## Implementation notes
+
+Verified that `Worker.Run()` and `Worker.sweep()` in `worker.go` make no check
+on `Cfg.Enabled` — the flag is only read by `CreatePlaygroundSession` and
+`JoinPlaygroundSession` in `handler.go`. The worker correctly runs regardless
+of the Enabled setting, matching the SELF_HOST.md specification.
+
+Added `TestWorker_RunsEvenWhenCreateDisabled` to `worker_test.go`. The test
+constructs a Worker with `Cfg.Enabled=false`, seeds an expired session (hard
+cap 1s, clock advanced 2s past), runs one sweep via `runWorkerSweep`, and
+asserts the session is destroyed (ErrNotFound) with tombstone `end_reason:
+hard_cap`. Test passes, pinning the contract.
+
+Also fixed a pre-existing test-debt issue: `destruction_test.go` imported the
+`sync` package but never used it, causing a build failure that blocked the
+test run. Removed the unused import.

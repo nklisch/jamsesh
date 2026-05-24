@@ -328,6 +328,82 @@ func TestWorker_ReasonFor_HardCapTakesPriority(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: sweep still runs when Cfg.Enabled=false (disable-flip)
+// ---------------------------------------------------------------------------
+
+// TestWorker_RunsEvenWhenCreateDisabled verifies the documented invariant from
+// SELF_HOST.md: "Existing in-flight sessions keep running through their normal
+// idle / hard-cap lifecycles — the destruction sweep continues to fire even
+// when the create endpoint is off."
+//
+// The create endpoint checks Cfg.Enabled and returns 503 when false; the
+// worker must NOT — it always sweeps. This test pins that contract.
+func TestWorker_RunsEvenWhenCreateDisabled(t *testing.T) {
+	ctx := context.Background()
+
+	// Build a worker with Cfg.Enabled=false — only the create endpoint should
+	// be gated; the sweep loop must be unaffected.
+	cfg := defaultCfg()
+	cfg.Enabled = false
+	env := newTestEnvSQLite(t, cfg)
+	clk := &mutableClock{now: env.clock.Now()}
+
+	worker := &playground.Worker{
+		Store:    env.s,
+		Storage:  env.stor,
+		Cfg:      cfg,
+		Clock:    clk,
+		Interval: 10 * time.Millisecond,
+		Logger:   noopLogger(),
+	}
+
+	// Seed a session that is already past its hard cap.
+	now := clk.Now()
+	hardCapAt := now.Add(1 * time.Second)
+	idleTimeoutAt := now.Add(30 * time.Minute)
+	sess, err := env.s.CreateSession(ctx, store.CreateSessionParams{
+		ID:                        "sess-disabled-001",
+		OrgID:                     playground.ReservedOrgID,
+		Name:                      "disabled-flag-test",
+		Goal:                      "",
+		WritableScope:             `["**"]`,
+		DefaultMode:               "sync",
+		Status:                    "active",
+		CreatedAt:                 now,
+		LastSubstantiveActivityAt: &now,
+		HardCapAt:                 &hardCapAt,
+		IdleTimeoutAt:             &idleTimeoutAt,
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// Advance the clock past the hard cap so the session is expired.
+	clk.Advance(2 * time.Second)
+
+	// Run one sweep — this must destroy the session even though Enabled=false.
+	runWorkerSweep(worker)
+
+	// The session must be gone: the sweep runs regardless of Cfg.Enabled.
+	_, err = env.s.GetSession(ctx, playground.ReservedOrgID, sess.ID)
+	if err == nil {
+		t.Error("expected session to be destroyed by sweep even with Cfg.Enabled=false, but GetSession succeeded")
+	}
+	if !isNotFound(err) {
+		t.Errorf("expected ErrNotFound after sweep, got: %v", err)
+	}
+
+	// Tombstone confirms the reason.
+	tomb, err := env.s.GetTombstone(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetTombstone: %v", err)
+	}
+	if tomb.EndReason != "hard_cap" {
+		t.Errorf("tombstone end_reason: want hard_cap, got %s", tomb.EndReason)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

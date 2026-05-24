@@ -10,6 +10,7 @@ import (
 
 	"jamsesh/internal/db"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/handlerauth"
 	"jamsesh/internal/portal/tokens"
 )
 
@@ -359,5 +360,113 @@ func TestIssueAnonymousSessionBearer_EmptySessionID_Rejected(t *testing.T) {
 	_, _, _, err := svc.IssueAnonymousSessionBearer(ctx, "", "ghost-heron", 24*time.Hour)
 	if err == nil {
 		t.Fatal("expected error for empty sessionID, got nil")
+	}
+}
+
+// TestIssueAnonymousSessionBearer_BearerRejectedOnDifferentSession pins the
+// SECURITY.md contract: "a leaked anonymous bearer authenticates only the
+// session it was issued for. No cross-session privilege."
+//
+// Protection does NOT come from Validate itself (which has no session-binding
+// check — see gate-security-anon-bearer-validate-no-session-binding). It comes
+// from the downstream RequireSessionMember check that every session-scoped
+// handler uses. This test exercises that path directly.
+func TestIssueAnonymousSessionBearer_BearerRejectedOnDifferentSession(t *testing.T) {
+	ctx := context.Background()
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	now := time.Now().UTC()
+
+	// Create one org that owns both sessions (mirrors playground: both
+	// sessions live in the same org).
+	org, err := s.CreateOrg(ctx, store.CreateOrgParams{
+		ID:        "org-xsess-test",
+		Name:      "Cross-Session Org",
+		Slug:      "xsess-org",
+		CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+
+	createSession := func(id, name string) store.Session {
+		t.Helper()
+		sess, err := s.CreateSession(ctx, store.CreateSessionParams{
+			ID:            id,
+			OrgID:         org.ID,
+			Name:          name,
+			Goal:          "cross-session test",
+			WritableScope: `["src/"]`,
+			DefaultMode:   "sync",
+			Status:        "active",
+			CreatedAt:     now,
+		})
+		if err != nil {
+			t.Fatalf("CreateSession(%q): %v", id, err)
+		}
+		return sess
+	}
+
+	sessA := createSession("sess-xsess-A", "Session A")
+	sessB := createSession("sess-xsess-B", "Session B")
+
+	// Issue an anonymous bearer bound to session A.
+	svc := tokens.New(s)
+	_, accountID, _, err := svc.IssueAnonymousSessionBearer(ctx, sessA.ID, "iron-lynx", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueAnonymousSessionBearer(sessA): %v", err)
+	}
+
+	// Register the anon account as a member of session A (mimics step 3 of
+	// the playground create-session handler). The account must NOT be added
+	// to session B — that is the invariant we're testing.
+	if err := s.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID:     org.ID,
+		SessionID: sessA.ID,
+		AccountID: accountID,
+		Role:      "creator",
+		JoinedAt:  now,
+	}); err != nil {
+		t.Fatalf("AddSessionMember(sessA): %v", err)
+	}
+
+	// Retrieve the anon account as Validate/middleware would leave it in ctx.
+	anonAcct, err := s.GetAccountByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("GetAccountByID: %v", err)
+	}
+
+	// Place the anon account into a context (same as BearerMiddleware does
+	// after a successful Validate call).
+	authCtx := tokens.ContextWithAccount(ctx, &anonAcct)
+
+	// Exercise the downstream session-membership guard against session B.
+	// This is the same call every session-scoped handler makes.
+	_, _, fail, ok := handlerauth.RequireSessionMember(authCtx, s, org.ID, sessB.ID)
+
+	if ok {
+		// CRITICAL: the bearer for session A authenticated against session B.
+		// This violates the SECURITY.md threat model.
+		t.Error("SECURITY BUG: anon bearer for session A was accepted on session B — cross-session auth leak")
+		return
+	}
+
+	// Expect a 403 (not a member of this session), not a 401 or 500.
+	if fail.Status != 403 {
+		t.Errorf("want status 403 (not a session member), got %d; fail=%+v", fail.Status, fail)
+	}
+	if fail.Forbidden.Error != "auth.insufficient_permission" {
+		t.Errorf("want error=auth.insufficient_permission, got %q", fail.Forbidden.Error)
+	}
+
+	// Confirm the same account IS accepted on session A (positive control:
+	// the bearer is still valid for its own session).
+	_, _, failA, okA := handlerauth.RequireSessionMember(authCtx, s, org.ID, sessA.ID)
+	if !okA {
+		t.Errorf("anon account should be accepted on session A (positive control), got fail=%+v", failA)
 	}
 }
