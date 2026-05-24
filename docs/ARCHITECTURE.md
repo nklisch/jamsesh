@@ -135,26 +135,40 @@ contains body text that instructs Claude to run `jamsesh <name> $ARGUMENTS`:
 **Auth subcommand:**
 
 - `jamsesh auth` — initiates OAuth flow against the configured portal URL,
-  writes the token to `${CLAUDE_PLUGIN_DATA}/token`.
+  writes the account-wide OAuth token to `${CLAUDE_PLUGIN_DATA}/token`. On the
+  next binary invocation (e.g. the next `jamsesh` call), the startup migration
+  fans the token out into `${CLAUDE_PLUGIN_DATA}/sessions/<id>/token` for every
+  session directory that exists, then replaces `token` with a
+  `MIGRATED_TO_PER_SESSION` stub to indicate that per-session files are now
+  canonical.
 
 **Internal subcommand for MCP auth:**
 
 - `jamsesh mcp-headers` — invoked by CC's MCP `headersHelper` at connection
-  time. Reads the user's OAuth token from `${CLAUDE_PLUGIN_DATA}/token` and
-  outputs `{"Authorization": "Bearer <token>"}` as JSON.
+  time. When the current CC instance has a bound jamsesh session (matched by
+  `CLAUDE_SESSION_ID` against `sessions/<id>/instance_id`), reads the bearer
+  from `${CLAUDE_PLUGIN_DATA}/sessions/<id>/token` and emits both
+  `Authorization: Bearer <token>` and `Jam-Session-Id: <id>`. Falls back to the
+  legacy account-wide `${CLAUDE_PLUGIN_DATA}/token` when no session binding
+  exists or the per-session token file is absent.
 
 **Local state layout** under `${CLAUDE_PLUGIN_DATA}/`:
 
 ```
 ${CLAUDE_PLUGIN_DATA}/
-├── token                                   user OAuth token (mode 0600)
+├── token                                   account-wide OAuth token (mode 0600);
+│                                           contains "MIGRATED_TO_PER_SESSION" once
+│                                           per-session files are canonical
 ├── refresh_token                           OAuth refresh token (mode 0600)
 ├── portal_url                              configured portal URL
 └── sessions/
     └── <session-id>/
-        ├── ref                             which user/<branch> this CC bound to
-        ├── last_seen_seq                   digest cursor
-        └── last_seen_sha/<peer>            per-peer git cursor
+        ├── token                           per-session bearer (mode 0600)
+        ├── instance_id                     CC session ID bound at join time
+        ├── ref                             which user/<branch> this CC is bound to
+        ├── org_id                          org that owns this session
+        ├── account_id                      authenticated user's account ID
+        └── last_seen_seq                   digest cursor
 ```
 
 ### Claude Code plugin package
@@ -297,10 +311,12 @@ refs under it. Each Claude Code instance binds to exactly one ref at join:
 /jamsesh:join <session> --as <branch> --from <ref>   # creates from specific parent
 ```
 
-Each CC instance has its own working tree and tracks its own ref binding
-(stored per-instance via the CC `session_id` keyed under
-`${CLAUDE_PLUGIN_DATA}/sessions/`). Concurrent instances under the same user
-push to different refs in the same namespace — there's no contention.
+Each CC instance has its own working tree and tracks its own ref binding via
+`${CLAUDE_PLUGIN_DATA}/sessions/<jamsesh-session-id>/instance_id`, which holds
+the `CLAUDE_SESSION_ID` of the CC instance that joined. The per-session bearer
+at `sessions/<jamsesh-session-id>/token` is also scoped to that binding.
+Concurrent instances under the same user push to different refs in the same
+namespace — there's no contention.
 
 A user's two refs may both be sync (both auto-merging into draft) or any
 mix. The auto-merger treats them as independent inputs.

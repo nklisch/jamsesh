@@ -1,14 +1,14 @@
 ---
 id: story-foundation-doc-drift-bearer-storage-architecture
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, plugin]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Roll docs/ARCHITECTURE.md forward to reflect per-session bearer storage
@@ -66,3 +66,36 @@ In `docs/ARCHITECTURE.md`:
   story's explicit acceptance criteria were all met. The blocker is the
   cross-cutting docs alignment that the story did not include.
 - Trivial-sized change (one doc, ~15 lines edited). Single-stride.
+
+## Implementation notes
+
+Three sections of `docs/ARCHITECTURE.md` were corrected:
+
+1. **`jamsesh auth` description** — was: "writes the token to
+   `${CLAUDE_PLUGIN_DATA}/token`" (incomplete). Now describes that `token`
+   holds the account-wide OAuth token and that on the next binary invocation
+   the startup migration fans it out into `sessions/<id>/token` for each
+   existing session, then overwrites `token` with the
+   `MIGRATED_TO_PER_SESSION` stub.
+
+2. **`jamsesh mcp-headers` description** — was: "Reads the user's OAuth token
+   from `${CLAUDE_PLUGIN_DATA}/token`" (misleading after migration). Now
+   describes the per-session-first read path: when `CLAUDE_SESSION_ID` matches
+   an `instance_id` file, reads `sessions/<id>/token` and also emits the
+   `Jam-Session-Id` header; falls back to the legacy `token` file only when no
+   binding is found or the per-session token is absent.
+
+3. **Local state layout diagram** — was: the legacy single-`token` layout with
+   `sessions/<session-id>/` containing only `ref`, `last_seen_seq`, and
+   `last_seen_sha/<peer>`. Now shows the full per-session file tree:
+   `sessions/<session-id>/token`, `instance_id`, `ref`, `org_id`,
+   `account_id`, `last_seen_seq`; and clarifies `token` at root as the
+   account-wide token / migration stub. Removed `last_seen_sha/<peer>` which
+   is not present in the actual `writeSessionState` implementation.
+
+4. **"Multi-agent per human" section** — tightened the description of how
+   per-instance bindings are stored: was vague ("CC `session_id` keyed under
+   `${CLAUDE_PLUGIN_DATA}/sessions/`"), now explicitly names `instance_id`
+   and `sessions/<jamsesh-session-id>/token` as the binding mechanism.
+
+All changes describe the system as it is now. No legacy-note language added.
