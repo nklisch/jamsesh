@@ -1,7 +1,7 @@
 ---
 id: epic-ephemeral-playground
 kind: epic
-stage: implementing
+stage: review
 tags: [playground, portal, ui, plugin]
 parent: null
 depends_on: []
@@ -10,6 +10,60 @@ gate_origin: null
 created: 2026-05-23
 updated: 2026-05-23
 ---
+
+## Implementation summary (autopilot run completed)
+
+All 7 child features advanced to `stage: review`:
+
+- `feature-...-cli-first-creation` (3 stories) — `jamsesh new` + `jamsesh invite` subcommands + portal post-receive base_sha stamping
+- `feature-...-anon-bearer` (monolithic, 7 units) — `oauth_tokens.session_id` FK + `accounts.is_anonymous` + `IssueAnonymousSessionBearer` method; SECURITY.md + PROTOCOL.md updates
+- `feature-...-reserved-org` (monolithic, 5 units) — `org_protected` column + `JAMSESH_PLAYGROUND_ENABLED` config + ProvisionReservedOrg startup hook; SELF_HOST.md updates
+- `feature-...-session-lifecycle` (5 stories) — REST endpoints + wordlist + destruction worker + abuse caps + CLI --playground flag + SPEC.md/SECURITY.md updates
+- `feature-...-portal-ui` (4 stories) — router refactor + 3 anonymous-entry screens + SessionViewShell extensions + NewSessionDrawer rework
+- `feature-...-plugin-skills` (4 stories) — `/jamsesh:jam` skill + per-session bearer storage + status enumeration + destruction-warning surfacing
+- `feature-...-skill-consolidation` (monolithic, 4 units) — deletion of obsolete narrow skills + additive extension of /jamsesh:jam + framing updates
+
+### Autopilot waves
+
+- **Wave 1** (3 parallel): cli-first-creation-base-sha, feature-anon-bearer, portal-ui-drawer-rework
+- **Wave 2** (3 parallel): feature-reserved-org, cli-first-creation-new, portal-ui-router-refactor
+- **Wave 3** (3 parallel): session-lifecycle-rest-endpoints, portal-ui-session-view-extensions, plugin-skills-bearer-storage
+- **Wave 4** (3 parallel): session-lifecycle-destruction, session-lifecycle-docs, portal-ui-anonymous-entry
+- **Wave 5** (3 parallel): session-lifecycle-abuse-caps, plugin-skills-destruction-warning, plugin-skills-status-enumeration
+- **Wave 6** (2 parallel): session-lifecycle-cli-playground-flag, plugin-skills-jam-consolidation
+- **Wave 7** (2 parallel): cli-first-creation-invite, feature-skill-consolidation
+
+Total: 19 implementation items + 4 Phase 9 parent advancements over 7 waves.
+
+### Parked during the run
+
+- `bug-mcpheaders-stale-fixture-migrated-stub` — pre-existing test fixture failure surfaced by the bearer-storage migration. Out of scope for this epic; in backlog for separate scoping.
+
+### Foundation docs rolled forward in implementation
+
+- `docs/SPEC.md` — ephemeral-playground subsection with concrete defaults (timeouts, caps, rate limits)
+- `docs/SECURITY.md` — anonymous-bearer threat model + abuse model for playground sessions
+- `docs/SELF_HOST.md` — playground config section with env-var table + conflict-resolution + disable-behavior
+- `docs/PROTOCOL.md` — addressing convention note for anonymous handles
+- `docs/UX.md` — Flow: creating a session reworked for CLI-first
+- `docs/openapi.yaml` — 4 new playground REST routes + 6 new component schemas + EventEnvelope extension for `playground.destruction_warning`
+
+### Discovered + addressed during implementation
+
+- SQLite WAL deadlock in session-lifecycle's bearer issuance — resolved by splitting outside WithTx (3-step sequence)
+- urfave/cli v3 parent-pointer aliasing — resolved by calling sessioncmd factory functions fresh inside JamCommand()
+- Activity-reset wired in 3 substantive-event call-sites (post-receive, comments, finalize) with local `playgroundOrgID` constants to avoid import cycles
+- Synthetic email approach for anonymous accounts (`anon_<random>@playground.local`) preserves accounts.email NOT NULL UNIQUE without SQLite table rebuild
+- Pre-launch reality means no aliases for deleted /jamsesh:status/fork/mode/join skills
+
+### Verification status
+
+- `go build ./...` — clean
+- `go vet ./...` — clean
+- `go test ./...` — all packages pass except the parked mcpheaders fixture
+- Frontend: `npm run check` clean, `npm run test` 624 pass, `npm run build` clean
+
+**Next**: epic + 7 features at `stage: review`; ready for `/agile-workflow:release-deploy` to bind to a release version and run gate-security / gate-tests / gate-cruft / gate-docs / gate-patterns.
 
 # Ephemeral playground sessions (CLI-first creation)
 

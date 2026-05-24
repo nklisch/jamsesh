@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-cli-first-creation
 kind: feature
-stage: implementing
+stage: review
 tags: [plugin, portal]
 parent: epic-ephemeral-playground
 depends_on: []
@@ -10,6 +10,21 @@ gate_origin: null
 created: 2026-05-23
 updated: 2026-05-23
 ---
+
+## Implementation summary (autopilot)
+
+All 3 child stories advanced to `stage: review`:
+
+- `story-...-cli-first-creation-new` — `jamsesh new` Go subcommand (330 LOC): NewCommand + newAction orchestrator + helpers (resolveCreateParams, pickOrgInteractive, createSessionAPI, pushBaseRef, writeNewSessionState, etc.); 11 tests pass; docs/UX.md reworked
+- `story-...-cli-first-creation-invite` — standalone `jamsesh invite` subcommand; shared parseInviteEmails/sendInvitesIfRequested helpers moved from new.go to invite.go; org_id resolution from state file with --org override; 7 tests
+- `story-...-cli-first-creation-base-sha` — portal post-receive `SetSessionBaseSHA` stamping fix; 3 tests including failure-resilience
+
+**Cross-cutting deviations**:
+- `mattn/go-isatty` used instead of `golang.org/x/term` for TTY detection (already an indirect dep; no new `go get` needed)
+- Token-via-extraHeader on git push (NOT URL-embedded credentials) — preserved per the security note
+- `instance_id` state file intentionally NOT written by `new` — binding deferred to first attach
+
+**Verification status**: `go build ./...` clean, `go vet ./...` clean, `go test ./cmd/jamsesh/sessioncmd/...` 48 tests pass.
 
 # CLI-first session creation
 
