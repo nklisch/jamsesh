@@ -1,7 +1,7 @@
 ---
 id: gate-tests-frontend-set-playground-context-rune-store
 kind: story
-stage: implementing
+stage: review
 tags: [testing, ui, playground]
 parent: null
 depends_on: []
@@ -32,3 +32,14 @@ it('clearPlaygroundContext purges the rune-store state', () => { ... });
 
 ## Test location (suggested)
 `frontend/src/lib/auth.test.ts`
+
+## Implementation notes
+
+**Land mode** — all specified tests already exist in `frontend/src/lib/auth.test.ts` (lines 396–464). The test suite includes:
+- `playgroundContext starts null` (line 396)
+- `setPlaygroundContext populates playgroundContext` with all three fields (line 401)
+- `setPlaygroundContext(null) clears the context` (line 417)
+- `setting playgroundContext does not affect isAuthenticated` (line 431)
+- `isAuthenticated true and playgroundContext non-null can coexist` (line 448)
+
+The seam contract is fully documented. No new code written.
