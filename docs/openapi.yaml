@@ -157,6 +157,7 @@ components:
           type: string
           description: Event type; used as discriminator for payload
           enum:
+            - auto-merger.backpressure
             - commit.arrived
             - merge.succeeded
             - conflict.detected
@@ -180,6 +181,7 @@ components:
           description: Session this event belongs to
         payload:
           oneOf:
+            - $ref: '#/components/schemas/AutoMergerBackpressurePayload'
             - $ref: '#/components/schemas/CommitArrivedPayload'
             - $ref: '#/components/schemas/MergeSucceededPayload'
             - $ref: '#/components/schemas/ConflictDetectedPayload'
@@ -197,6 +199,7 @@ components:
       discriminator:
         propertyName: type
         mapping:
+          auto-merger.backpressure: '#/components/schemas/AutoMergerBackpressurePayload'
           commit.arrived: '#/components/schemas/CommitArrivedPayload'
           merge.succeeded: '#/components/schemas/MergeSucceededPayload'
           conflict.detected: '#/components/schemas/ConflictDetectedPayload'
@@ -213,6 +216,22 @@ components:
           playground.destruction_warning: '#/components/schemas/PlaygroundDestructionWarningPayload'
 
     # --- Payload schemas (PROTOCOL.md field names are canonical) ---
+
+    AutoMergerBackpressurePayload:
+      type: object
+      description: >
+        The auto-merger work queue was full when a commit.arrived event was
+        received; the commit was dropped from the merge pipeline. Emitted so
+        clients can surface backpressure warnings. PROTOCOL.md canonical
+        fields: session_id, dropped_ref.
+      required: [session_id]
+      properties:
+        session_id:
+          type: string
+          description: ID of the session whose auto-merger queue was full
+        dropped_ref:
+          type: string
+          description: The session ref whose commit was dropped from the queue (omitted if unknown)
 
     CommitArrivedPayload:
       type: object
