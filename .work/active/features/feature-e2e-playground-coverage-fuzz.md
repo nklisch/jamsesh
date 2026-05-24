@@ -1,7 +1,7 @@
 ---
 id: feature-e2e-playground-coverage-fuzz
 kind: feature
-stage: drafting
+stage: implementing
 tags: [testing, e2e-test, playground, portal, fuzz]
 parent: epic-e2e-playground-coverage
 depends_on: [feature-e2e-playground-coverage-golden]
@@ -51,7 +51,45 @@ Unicode boundary cases, length boundary cases at 1/2/24/25, and
 mixed-ASCII edge cases) and the assertion shape (echo-back exact match
 vs. echo-back with collision-retry suffix).
 
+## Mock-boundary plan
+
+Inherited from golden. No new fixtures needed.
+
+## Taxonomy plan
+
+This feature is the **fuzz** layer for the playground. 1 Go fuzz
+harness covering the nickname-validation boundary.
+
+## Implementation Units
+
+### Unit 1: nickname fuzz harness
+**File**: `tests/e2e/fuzz/playground_nickname_test.go`
+**Story**: `e2e-audit-playground-nickname-fuzz` (Low)
+**Invariant**: For every fuzz-generated nickname input passed to
+`POST /api/playground/sessions/{id}/join`:
+- Inputs matching the documented rule (2-24 chars,
+  letters/digits/dashes) return 200 with the echoed nickname (or a
+  collision-retry suffix if the wordlist collided).
+- All other inputs return 400 with `playground.invalid_nickname`.
+
+Seed corpus from the unit-suite cases in
+`TestJoinPlaygroundSession_NicknameValidation` (6 invalid + 5 valid).
+Extend with Unicode boundary cases, length boundary cases at 1/2/24/25,
+empty string (server-mints), mixed-ASCII edge cases.
+
+## Anti-tautology guardrails
+
+Inherited from golden. Fuzz inputs are random; assertions are on the
+documented contract — never on "whatever the code returned". The
+contract is: 2-24 chars letters/digits/dashes accepted with echo,
+everything else rejected with the documented error code.
+
+## Status
+
+Design complete. Feature advanced to `implementing`. The 1 child story
+is also advanced to `implementing`.
+
 ## Next
 
-`/agile-workflow:e2e-test-design feature-e2e-playground-coverage-fuzz`
-once golden is at `stage: implementing` or beyond.
+`/agile-workflow:implement-orchestrator feature-e2e-playground-coverage-fuzz`
+— single-agent run.

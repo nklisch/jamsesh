@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-destruction-during-push-chaos
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-chaos
 depends_on: []
