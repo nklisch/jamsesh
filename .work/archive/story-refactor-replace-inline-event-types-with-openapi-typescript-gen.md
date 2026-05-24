@@ -1,7 +1,7 @@
 ---
 id: story-refactor-replace-inline-event-types-with-openapi-typescript-gen
 kind: story
-stage: review
+stage: done
 tags: [ui, refactor, cleanup]
 parent: feature-spec-discipline
 depends_on: [story-spec-discipline-audit-and-close-emit-vs-yaml-gaps]
@@ -131,3 +131,13 @@ present with no inline event-payload types remaining.
 
 **Verification:** `npm run check` (0 errors), `npm run test` (635/635 pass),
 `npm run build` — all clean.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches design. Drift-ci-check caught a bonus gap (`auto-merger.backpressure`) and closed it inline — proves the test's value immediately. Pattern doc indexed in both rules and SKILL.md; SPEC.md cross-reference added. Replace-inline-event-types swapped 2 inline payload types to generated imports; the third file (CountdownBadge) had no inline type and only the stale TODO removed.

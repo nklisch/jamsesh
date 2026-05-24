@@ -1,7 +1,7 @@
 ---
 id: story-spec-discipline-pattern-doc
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: feature-spec-discipline
 depends_on: [story-spec-discipline-drift-ci-check]
@@ -104,3 +104,13 @@ hypothetical one.
 - **SPEC.md cross-reference**: four-line bullet added to the "Generated contracts"
   section immediately after the `make generate` build-wire bullet, naming
   `events.AllTypes`, the test, and the pattern file path.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Implementation matches design. Drift-ci-check caught a bonus gap (`auto-merger.backpressure`) and closed it inline — proves the test's value immediately. Pattern doc indexed in both rules and SKILL.md; SPEC.md cross-reference added. Replace-inline-event-types swapped 2 inline payload types to generated imports; the third file (CountdownBadge) had no inline type and only the stale TODO removed.

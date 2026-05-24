@@ -1,7 +1,7 @@
 ---
 id: feature-spec-discipline
 kind: feature
-stage: implementing
+stage: done
 tags: [portal, ui, documentation, infra]
 parent: null
 depends_on: []
@@ -133,3 +133,15 @@ Serial chain:
 3. `story-spec-discipline-pattern-doc` — codifies the rule
 4. `story-refactor-replace-inline-event-types-with-openapi-typescript-gen` —
    unblocked once codegen refreshes the generated types
+
+## Review (2026-05-24)
+
+**Verdict**: Approve — feature delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All 4 child stories at done. Aggregate review: spec-discipline closed end-to-end. The audit closed 2 real gaps (`session.created`, `auto-merger.backpressure`) plus the codegen-stale issue (`PlaygroundDestructionWarningPayload`). The CI test (`TestEventTypeConstants_MatchOpenAPIYAML`) enforces the rule going forward and explicitly caught the `auto-merger.backpressure` gap during the drift-ci-check implementation. The pattern doc + foundation-doc cross-reference make the rule discoverable. Verification: `go build`, `go test ./...`, `npm run check/test/build` all clean.
+
+**What's now possible**: a future developer who adds a new event-emit string without updating `docs/openapi.yaml` gets a clear CI failure pointing at the resolution flow. The frontend's WS event payload types are now spec-driven end-to-end — no inline workarounds remain.
