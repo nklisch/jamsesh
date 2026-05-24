@@ -42,33 +42,70 @@ The OpenAPI rollup happened; the PROTOCOL.md rollup did not.
 
 ## Scope
 
-Append the new event to PROTOCOL.md:
+Per feature-design (`feature-playground-foundation-docs-rollup`), this
+story owns three PROTOCOL.md edits plus one verification:
 
-1. In § "WebSocket event types" event-list, add:
+1. **§ "WebSocket event types"** (~lines 369–382) — add:
    ```
    - `playground.destruction_warning` — payload: `{reason: "idle_timeout" | "hard_cap", ends_at, remaining_seconds, session_id}`
    ```
-2. In the digest section (around line 178 / `pre_turn_digest`), note
-   that the digest may surface an `urgent_events` field for
-   time-sensitive events that the binary renders in a prominent
-   "Urgent" section above regular digest text.
-3. Optionally: cross-link to the openapi.yaml schemas for full payload
-   field definitions.
+   Place adjacent to the existing `session.*` lifecycle entries (it shares
+   that semantic family).
 
-Also worth considering: a brief mention in the addressing-convention
-section that anonymous handles (`amber-otter`) participate in
-`@<handle>` mentions identically to durable handles — that was the
-*other* PROTOCOL.md update the feature design promised.
+2. **Cross-link openapi.yaml schemas across the event-type list** —
+   alongside EVERY event-type entry in the bullet list (not just the new
+   one), add a parenthetical link of the form
+   `(schema: [SchemaName](./openapi.yaml#/components/schemas/SchemaName))`
+   pointing at the canonical payload definition in `docs/openapi.yaml`.
+   The set of schemas to map:
+   - `commit.arrived` → `CommitArrivedPayload`
+   - `merge.succeeded` → `MergeSucceededPayload`
+   - `conflict.detected` → conflict event schema (verify name)
+   - `conflict.resolved` → `ConflictResolvedPayload`
+   - `comment.added` → comment schema (verify name)
+   - `comment.resolved` → `CommentResolvedPayload`
+   - `ref.forked` → `RefForkedPayload`
+   - `mode.changed` → `ModeChangedPayload`
+   - `turn.ended` → `TurnEndedPayload`
+   - `presence.updated` → `PresenceUpdatedPayload`
+   - `session.finalizing` → `SessionFinalizingPayload`
+   - `session.ended` → `SessionEndedPayload`
+   - `playground.destruction_warning` → `PlaygroundDestructionWarningPayload`
+
+   Verify each anchor target exists by `grep -n "^    SchemaName:" docs/openapi.yaml`.
+   If a schema isn't yet defined for an existing event, link to the
+   nearest available section and leave a TODO comment in the PR — do NOT
+   block this story on missing openapi schemas (file a follow-up).
+
+3. **§ `pre_turn_digest`** (~line 178) — note that the digest may
+   surface an `urgent_events` field for time-sensitive events that the
+   binary renders in a prominent "Urgent" section above regular digest
+   text. Mention `playground.destruction_warning` as the current member
+   of that class.
+
+4. **§ Addressing syntax — VERIFY-ONLY (no edit)** — lines 302–307
+   already contain the anonymous-handles addressing note ("Anonymous
+   session participants use the same `@<nickname>` form…", with the
+   `@amber-otter` example). Re-read the section; confirm the prose
+   matches the Design-decisions intent. Record the verification in the
+   PR description so the reviewer doesn't flag the missing edit as a
+   gap. If the section has somehow regressed since 2026-05-23, restore
+   it; otherwise leave it untouched.
 
 ## Acceptance criteria
 
 - [ ] PROTOCOL.md § "WebSocket event types" includes
       `playground.destruction_warning` with its payload shape
-- [ ] PROTOCOL.md digest section references the `urgent_events` field
-- [ ] (Optional but desirable) Addressing convention note for
-      anonymous handles is present in the addressing section
-- [ ] No drift between PROTOCOL.md and `docs/openapi.yaml` for this
-      event
+- [ ] Every event-type bullet in the list carries a `(schema: ...)`
+      cross-link to its openapi.yaml schema anchor (or a TODO marker if
+      the schema is missing — with a follow-up filed)
+- [ ] PROTOCOL.md `pre_turn_digest` section references the
+      `urgent_events` field and cites `playground.destruction_warning`
+- [ ] Addressing-convention section verified present (no edit needed);
+      verification recorded in PR description
+- [ ] No drift between PROTOCOL.md and `docs/openapi.yaml` for the
+      destruction-warning event — payload field names match exactly
+- [ ] No "previously" / "newly added" framing — present-tense throughout
 
 ## Notes
 

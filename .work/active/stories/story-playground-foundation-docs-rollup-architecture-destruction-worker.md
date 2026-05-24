@@ -50,8 +50,32 @@ expired playground sessions, parallel to auto-merger workers).
 
 ## Fix
 
-Add a `**Playground destruction worker**` bullet to the portal Components
-list, paralleling the Auto-merger workers entry. Suggested text:
+Per feature-design (`feature-playground-foundation-docs-rollup`), this
+story owns BOTH the Components-list update AND the ASCII diagram update
+(the latter was originally marked optional but is now in-scope per the
+feature's Design decisions).
+
+### Edit 1 — § System overview ASCII diagram (lines ~7–38)
+
+The portal block currently lists `• Auto-merger workers` on line 28.
+Add a parallel bullet immediately beneath:
+
+```
+│  • Auto-merger workers   │
+│  • Playground destruction│
+│    worker                │
+```
+
+(Or however best fits within the box width — preserve trailing pipe
+alignment. The "Playground destruction worker" label may need to wrap;
+either single-line `• Playground destroy worker` or wrapped two-line form
+is acceptable as long as ASCII alignment holds. Test by viewing the file
+in a monospace editor after the edit.)
+
+### Edit 2 — § Components → Portal (lines ~44–86)
+
+Insert a new bold-prefixed paragraph between the existing
+**Auto-merger workers** entry (line 73) and **WebSocket gateway** (line 78):
 
 > **Playground destruction worker** — single background goroutine (started
 > when `JAMSESH_PLAYGROUND_ENABLED=true`) that sweeps active playground
@@ -63,16 +87,16 @@ list, paralleling the Auto-merger workers entry. Suggested text:
 > partial-failure resumption on the next tick. Periodic tombstone-TTL purge
 > runs every 60th tick.
 
-Optionally also update the ASCII portal block diagram (lines ~20–31) to
-mention the destruction worker alongside the auto-merger workers, though
-that's lower priority.
-
 ## Acceptance criteria
 
-- [ ] `docs/ARCHITECTURE.md` Components list has a "Playground destruction
-      worker" entry
+- [ ] `docs/ARCHITECTURE.md` Components → Portal has a "Playground
+      destruction worker" entry between Auto-merger workers and WebSocket
+      gateway
 - [ ] Entry describes the goroutine topology, interval config knob,
-      destruction cascade summary, and idempotency stance
+      destruction cascade summary, idempotency stance, and tombstone purge
+- [ ] System overview ASCII diagram (lines ~7–38) lists the destruction
+      worker in the portal block alongside Auto-merger workers; box-art
+      alignment preserved
 - [ ] Reads cleanly in present tense (rolling-foundation principle)
 - [ ] No "previously" or "newly added" framing
 
