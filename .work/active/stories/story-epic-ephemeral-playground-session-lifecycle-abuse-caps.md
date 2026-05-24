@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-abuse-caps
 kind: story
-stage: review
+stage: done
 tags: [portal, playground, security]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: [story-epic-ephemeral-playground-session-lifecycle-rest-endpoints]
@@ -152,3 +152,37 @@ that construct Handler directly).
 
 SQL queries (`ResetSessionIdleTimer`, `ListExpiredPlaygroundSessions`) were
 already present from prior story implementations — no SQL changes needed.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+
+**Important**:
+- Activity-reset call-sites lack coverage — `idea-playground-abuse-caps-activity-reset-integration-test`
+- `comments/service.go` uses stdlib `log` instead of project-standard `slog` — `idea-comments-service-use-slog-not-stdlib-log`
+
+**Nits**:
+- `CheckPlaygroundCaps` return signature `(Rejection, bool)` where `true` means
+  "allowed/skip" is mildly unusual; reads correctly at the call site but a future
+  reader may briefly invert the meaning. Not worth a separate item.
+- Four packages (githttp, comments, sessions, prereceive) each define a local
+  `playgroundOrgID = "org_playground"` const to dodge import cycles. A shared
+  `internal/portal/playground/orgid` package exporting just the constant would
+  collapse this — small refactor, not blocking.
+- The disk-walk `repoDirSize` counts every byte under the bare repo dir
+  (objects, refs, hooks, config). Conservative against the cap; acceptable for
+  playground where the cap (50 MiB default) has comfortable margin.
+
+**Notes**:
+- `go build ./...` clean; `go vet` clean on touched packages; tests pass for
+  `playground`, `prereceive`, `comments`, `githttp`, `sessions`, `ratelimit`.
+- Pre-receive durable-session pass-through is well-covered by the integration
+  test `TestValidate_DurableSessionUnaffectedByPlaygroundCap`.
+- Rate-limit per-IP isolation and 4th-create-blocked acceptance criteria are
+  both directly tested.
+- chi RealIP middleware is correctly wired via the router when
+  `TrustProxyHeaders` is enabled — per-IP keying works behind a proxy.
+- Sibling stories under the parent feature are all `done`; parent feature was
+  already at `stage: review` so no parent-advance needed.
