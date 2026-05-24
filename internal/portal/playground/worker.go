@@ -27,8 +27,15 @@ import (
 //	        logger.Error("playground worker exited", "err", err)
 //	    }
 //	}()
+// workerStore is the minimal store interface consumed by Worker (and transitively
+// by Destruction, which Worker constructs from the same store).
+type workerStore interface {
+	destructionStore
+	store.PlaygroundSessionStore
+}
+
 type Worker struct {
-	Store    store.Store
+	Store    workerStore
 	Storage  storage.Service
 	Cfg      Config
 	Clock    Clock

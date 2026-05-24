@@ -31,8 +31,17 @@ import (
 //  7. Delete collected anonymous accounts (session_members already gone via
 //     cascade; accounts are not cascaded from sessions).
 //  8. Remove the bare git repo from disk via Storage.RemoveRepo.
+// destructionStore is the minimal store interface consumed by Destruction.
+type destructionStore interface {
+	store.SessionStore
+	store.SessionMemberStore
+	store.PlaygroundSessionStore
+	store.TombstoneStore
+	store.OAuthTokenStore
+}
+
 type Destruction struct {
-	Store        store.Store
+	Store        destructionStore
 	Storage      storage.Service
 	Clock        Clock
 	Logger       *slog.Logger

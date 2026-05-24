@@ -54,10 +54,18 @@ type Config struct {
 	MaxContentBytes int64
 }
 
+// handlerStore is the minimal store interface consumed by Handler.
+type handlerStore interface {
+	store.SessionStore
+	store.SessionMemberStore
+	store.TombstoneStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
+}
+
 // Handler implements the openapi.StrictServerInterface playground methods.
 // It is constructed by main.go and composed into combinedHandler.
 type Handler struct {
-	Store   store.Store
+	Store   handlerStore
 	Tokens  tokens.Service
 	Storage storage.Service
 	Cfg     Config

@@ -47,7 +47,7 @@ var ErrReservedSlugConflict = errors.New("reserved slug conflict")
 // The conflict check fires on EVERY boot — not just first provisioning —
 // so if the protected playground org is later renamed and a regular org
 // takes the slug, the next boot catches it.
-func ProvisionReservedOrg(ctx context.Context, s store.Store, now time.Time, logger *slog.Logger) error {
+func ProvisionReservedOrg(ctx context.Context, s store.OrgStore, now time.Time, logger *slog.Logger) error {
 	existing, err := s.GetOrgBySlug(ctx, ReservedOrgSlug)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("lookup existing %s org: %w", ReservedOrgSlug, err)
