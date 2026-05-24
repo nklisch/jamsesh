@@ -1,7 +1,7 @@
 ---
-id: idea-comments-service-use-slog-not-stdlib-log
+id: story-comments-service-use-slog-not-stdlib-log
 kind: story
-stage: drafting
+stage: implementing
 tags: [portal, cleanup, logging]
 parent: null
 depends_on: []
