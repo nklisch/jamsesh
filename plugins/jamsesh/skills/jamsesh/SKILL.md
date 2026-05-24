@@ -280,9 +280,12 @@ session. It has these distinguishing properties:
 - **No persistent identity**: every participant has a server-minted
   pronounceable handle (e.g., `amber-otter`); no email, no account
   outside the session.
-- **Hard deadlines**: a session is destroyed after either 24 hours since
-  creation (`hard_cap`) or 30 minutes of inactivity (`idle_timeout`),
-  whichever fires first.
+- **Hard deadlines**: a session is destroyed after either a hard-cap
+  wall-clock window (`JAMSESH_PLAYGROUND_HARD_CAP_S`, default 24h) or an
+  idle-timeout window since the last substantive activity
+  (`JAMSESH_PLAYGROUND_IDLE_TIMEOUT_S`, default 30m), whichever fires
+  first. Operators can tune both via env vars; the source of truth for
+  defaults is `docs/SPEC.md` / `docs/SELF_HOST.md`.
 - **No claim path**: when the session ends, all its data is destroyed —
   refs, comments, conflict events, the bare repo. The ONLY way to keep
   work is to finalize-out locally BEFORE the destruction trigger fires.
