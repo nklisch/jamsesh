@@ -1,7 +1,7 @@
 ---
 id: gate-tests-destruction-concurrent-clustered-race
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground, concurrency]
 parent: null
 depends_on: []
@@ -36,3 +36,27 @@ func TestDestruction_ConcurrentDestroyCallsForSameSession_NoCorruption(t *testin
 
 ## Test location (suggested)
 `internal/portal/playground/destruction_test.go`
+
+## Implementation notes
+
+Added `TestDestruction_ConcurrentDestroyCallsForSameSession_NoCorruption` to
+`internal/portal/playground/destruction_test.go`.
+
+**Approach:**
+- Two goroutines release simultaneously via a `close(barrier)` pattern, both
+  calling `Destroy(ctx, sess, "hard_cap")` on the same session.
+- A local `concurrentSafeStorage` type wraps `stubStorage` with a `sync.Mutex`
+  so the race detector doesn't fire on the stub's map (a test-infra concern,
+  not production).
+- SQLite `:memory:` gives each pool connection its own empty database, so
+  `rawDBer.RawDB().SetMaxOpenConns(1)` is called to pin all goroutines to the
+  same in-memory DB — mirroring the pattern in `automerger/worker_test.go`.
+- Assertions cover: no errors from either goroutine, exactly one tombstone,
+  session deleted, anon account deleted, bare repo removed.
+
+**Outcome:** The test passes cleanly with `-race`. `Destroy` is already
+concurrency-safe at the in-process level — the idempotency guards (ON CONFLICT
+DO NOTHING for tombstone, ErrNotFound tolerance for DeleteSession) hold under
+concurrent invocation. No race conditions detected. The broader clustered-mode
+risk (two pods, no advisory lock) remains documented in
+`bug-playground-destruction-clustered-advisory-lock`.
