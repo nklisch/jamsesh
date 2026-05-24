@@ -1,7 +1,7 @@
 ---
 id: story-refactor-automerger-decomposition-side-changes-helper
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: feature-refactor-automerger-decomposition
 depends_on: []
@@ -114,3 +114,16 @@ if err != nil {
 ## Rollback
 
 `git revert` the commit.
+
+## Implementation discovery
+
+Both loops were structurally identical — same field assignments, same
+`deleted`/`added` flags, same `effectivePath` key. No side-channel state
+mutation was found. Extraction is clean.
+
+## Implementation notes
+
+- Extracted `buildSideChanges(changes object.Changes, side string) (map[string]*sideChange, error)` as a package-private function at the bottom of `merge.go`, after `effectivePath`.
+- Error strings preserved exactly via the `side` parameter: `"automerger: %s change files: %w"` emits the same messages as before.
+- `computeMergeDiff` shrank by ~32 lines (two 20-line loops replaced by two 3-line call blocks).
+- `go build ./internal/portal/automerger/...` and `go test ./internal/portal/automerger/...` both clean. Pre-existing unrelated build failure in `internal/portal/storage/objectstore` noted but not touched.

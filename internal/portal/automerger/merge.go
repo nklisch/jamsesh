@@ -157,48 +157,13 @@ func computeMergeDiff(
 		return mergeDiff{}, fmt.Errorf("automerger: diff base→theirs: %w", err)
 	}
 
-	ourChanges := make(map[string]*sideChange)
-	for _, ch := range baseToOurs {
-		from, to, err := ch.Files()
-		if err != nil {
-			return mergeDiff{}, fmt.Errorf("automerger: ours change files: %w", err)
-		}
-		sc := &sideChange{}
-		if from != nil {
-			sc.fromHash = from.Blob.Hash
-			sc.fromPath = from.Name
-			sc.mode = from.Mode
-		}
-		if to != nil {
-			sc.toHash = to.Blob.Hash
-			sc.toPath = to.Name
-			sc.mode = to.Mode
-		}
-		sc.deleted = (to == nil)
-		sc.added = (from == nil)
-		ourChanges[effectivePath(sc)] = sc
+	ourChanges, err := buildSideChanges(baseToOurs, "ours")
+	if err != nil {
+		return mergeDiff{}, err
 	}
-
-	theirChanges := make(map[string]*sideChange)
-	for _, ch := range baseToTheirs {
-		from, to, err := ch.Files()
-		if err != nil {
-			return mergeDiff{}, fmt.Errorf("automerger: theirs change files: %w", err)
-		}
-		sc := &sideChange{}
-		if from != nil {
-			sc.fromHash = from.Blob.Hash
-			sc.fromPath = from.Name
-			sc.mode = from.Mode
-		}
-		if to != nil {
-			sc.toHash = to.Blob.Hash
-			sc.toPath = to.Name
-			sc.mode = to.Mode
-		}
-		sc.deleted = (to == nil)
-		sc.added = (from == nil)
-		theirChanges[effectivePath(sc)] = sc
+	theirChanges, err := buildSideChanges(baseToTheirs, "theirs")
+	if err != nil {
+		return mergeDiff{}, err
 	}
 
 	// Build the union of changed paths.
@@ -657,4 +622,32 @@ func effectivePath(sc *sideChange) string {
 		return sc.toPath
 	}
 	return sc.fromPath
+}
+
+// buildSideChanges walks an object.Changes list and builds a map from
+// effectivePath to *sideChange.  side ("ours" or "theirs") is used only in
+// error messages so callers receive the same strings as the inlined loops did.
+func buildSideChanges(changes object.Changes, side string) (map[string]*sideChange, error) {
+	out := make(map[string]*sideChange)
+	for _, ch := range changes {
+		from, to, err := ch.Files()
+		if err != nil {
+			return nil, fmt.Errorf("automerger: %s change files: %w", side, err)
+		}
+		sc := &sideChange{}
+		if from != nil {
+			sc.fromHash = from.Blob.Hash
+			sc.fromPath = from.Name
+			sc.mode = from.Mode
+		}
+		if to != nil {
+			sc.toHash = to.Blob.Hash
+			sc.toPath = to.Name
+			sc.mode = to.Mode
+		}
+		sc.deleted = (to == nil)
+		sc.added = (from == nil)
+		out[effectivePath(sc)] = sc
+	}
+	return out, nil
 }
