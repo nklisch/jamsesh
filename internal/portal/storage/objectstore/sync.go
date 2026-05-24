@@ -248,7 +248,7 @@ func (s *Syncer) doSyncAt(
 		FencingToken: fencingToken,
 	}
 
-	newEtag, err := s.Manifests.Save(ctx, newManifest, oldEtag)
+	newEtag, err := s.Manifests.Save(ctx, newManifest, oldEtag, start.UTC())
 	if err != nil {
 		if errors.Is(err, ErrFenced) {
 			s.recordResult("fenced", start)

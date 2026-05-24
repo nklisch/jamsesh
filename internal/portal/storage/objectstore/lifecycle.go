@@ -79,6 +79,11 @@ type LifecycleManager struct {
 	// Metrics is an optional Prometheus registry. Nil-safe throughout.
 	Metrics *metrics.Registry
 
+	// clock is the injectable time source. Nil is safe — the now() accessor
+	// falls back to realClock{}.Now(). Set via NewLifecycleManagerWithClock in
+	// tests; production code leaves it nil (realClock default).
+	clock Clock
+
 	// sessions maps sessionID → *sessionEntry. Values are always *sessionEntry.
 	sessions sync.Map
 }
@@ -95,8 +100,7 @@ type sessionEntry struct {
 	repoSizeBytes atomic.Int64
 }
 
-func (e *sessionEntry) touchLastActive() {
-	now := time.Now()
+func (e *sessionEntry) touchLastActive(now time.Time) {
 	e.lastActiveAt.Store(&now)
 }
 
@@ -123,6 +127,17 @@ func (m *LifecycleManager) idleCheckPeriod() time.Duration {
 	return m.IdleCheckPeriod
 }
 
+// now returns the current time from the injected clock, falling back to
+// realClock{} when no clock has been set. This nil-safe accessor means
+// LifecycleManager can be used as a zero-value struct literal in tests
+// that don't need clock control, while still supporting injection.
+func (m *LifecycleManager) now() time.Time {
+	if m.clock == nil {
+		return realClock{}.Now()
+	}
+	return m.clock.Now()
+}
+
 // AcquireForRequest returns the active lease handle for sessionID, acquiring
 // and hydrating if this is the first request on this pod.
 //
@@ -139,7 +154,7 @@ func (m *LifecycleManager) AcquireForRequest(ctx context.Context, sessionID stri
 		if v, ok := m.sessions.Load(sessionID); ok {
 			entry := v.(*sessionEntry)
 			if !entry.releasing.Load() {
-				entry.touchLastActive()
+				entry.touchLastActive(m.now())
 				return entry.handle, nil
 			}
 			// Entry is in the middle of being released. Wait briefly and retry.
@@ -177,7 +192,7 @@ func (m *LifecycleManager) acquireNew(ctx context.Context, sessionID string) (le
 		return nil, fmt.Errorf("lifecycle: hydrate %s: %w", sessionID, hydrateErr)
 	}
 
-	now := time.Now()
+	now := m.now()
 	entry := &sessionEntry{
 		orgID:      orgID,
 		handle:     handle,
@@ -191,7 +206,7 @@ func (m *LifecycleManager) acquireNew(ctx context.Context, sessionID string) (le
 	if loaded {
 		_ = handle.Release()
 		winner := actual.(*sessionEntry)
-		winner.touchLastActive()
+		winner.touchLastActive(m.now())
 		return winner.handle, nil
 	}
 
@@ -334,7 +349,7 @@ func (m *LifecycleManager) Start(ctx context.Context) error {
 // idle-check tick and during tests.
 func (m *LifecycleManager) evictIdleAndOversize(ctx context.Context) {
 	idleTimeout := m.idleTimeout()
-	now := time.Now()
+	now := m.now()
 
 	type candidate struct {
 		sessionID     string

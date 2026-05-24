@@ -136,7 +136,7 @@ func seedPackInBackend(t *testing.T, backend *memBackend, sessionID, sha string,
 func seedManifestInBackend(t *testing.T, backend *memBackend, m Manifest) string {
 	t.Helper()
 	store := &ManifestStore{Backend: backend}
-	etag, err := store.Save(context.Background(), m, "")
+	etag, err := store.Save(context.Background(), m, "", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("seedManifestInBackend: %v", err)
 	}

@@ -1,7 +1,7 @@
 ---
 id: story-refactor-per-package-clock-compliance-objectstore
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor, testing]
 parent: feature-refactor-per-package-clock-compliance
 depends_on: []
@@ -172,3 +172,29 @@ and other `internal/portal/` packages).
 `Manifest.Save`'s new `now` parameter is a signature change — once landed,
 every caller must update. This is a single-commit operation by construction
 (the build won't pass partway), so revert is the only rollback option.
+
+## Implementation notes
+
+**Files created:**
+- `internal/portal/storage/objectstore/clock.go` — new file, exports `Clock` interface and unexported `realClock{}`.
+
+**Files modified:**
+- `internal/portal/storage/objectstore/lifecycle.go` — added `clock Clock` field to `LifecycleManager`, `now()` nil-safe accessor, updated `touchLastActive` to accept `now time.Time`, replaced all three `time.Now()` call sites with `m.now()`.
+- `internal/portal/storage/objectstore/manifest.go` — `ManifestStore.Save` signature changed to `Save(ctx, m, ifMatch, now time.Time)`, `UpdatedAt` stamped from parameter.
+- `internal/portal/storage/objectstore/sync.go` — `doSyncAt` passes `start.UTC()` as `now` to `Manifests.Save`.
+- `internal/portal/storage/objectstore/lifecycle_test.go` — added `fakeClock` struct + `TestLifecycle_IdleEviction_WithFakeClock` test.
+- `internal/portal/storage/objectstore/manifest_test.go` — all `Save` calls updated to pass `now`; `TestManifestStore_Save_SetsUpdatedAt` converted to deterministic fixed-time assertion; added `TestManifestStore_Save_UpdatedAt_PassedThrough`.
+- `internal/portal/storage/objectstore/sync_test.go` — three `Save` seeding calls updated.
+- `internal/portal/storage/objectstore/hydrate_test.go` — one `Save` seeding call updated.
+
+**Pattern notes:**
+- `LifecycleManager` uses struct-field form (`clock Clock` + nil-safe `now()` accessor) — matches `events.Log` pattern.
+- `ManifestStore.Save` uses parameter-passing form — matches `auth.FindOrProvisionAt` pattern. Syncer passes `start.UTC()` (the sync start time) as the boundary value; no clock field needed on `Syncer`.
+- `sessionEntry.touchLastActive` updated to accept `now time.Time` (caller always has `m.now()`); no back-reference to manager required.
+
+**Test strategy:**
+- `TestLifecycle_IdleEviction_WithFakeClock`: injects `fakeClock`, advances by 5m (no eviction), touches B, advances 10m more (A=15m idle → evicted, B=10m → survives). Zero real sleep.
+- `TestManifestStore_Save_SetsUpdatedAt`: now uses fixed deterministic time `2026-05-23T10:00:00Z` instead of `time.Now()` comparison.
+- `TestManifestStore_Save_UpdatedAt_PassedThrough`: exercises two successive writes with distinct times, verifies each `UpdatedAt` round-trips exactly.
+
+**Verification:** `go build ./...` and `go test ./...` both clean.

@@ -17,6 +17,30 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Fake clock — satisfies the Clock interface and allows deterministic time
+// advancement in tests without real sleep.
+// ---------------------------------------------------------------------------
+
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func newFakeClock(t time.Time) *fakeClock { return &fakeClock{now: t} }
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+// ---------------------------------------------------------------------------
 // Test helpers: storage
 // ---------------------------------------------------------------------------
 
@@ -674,5 +698,60 @@ func TestLifecycle_AcquireWhileReleasing(t *testing.T) {
 	})
 	if count > 1 {
 		t.Errorf("concurrent Acquire+Release produced %d map entries; want ≤1", count)
+	}
+}
+
+// TestLifecycle_IdleEviction_WithFakeClock drives idle eviction deterministically
+// using an injected fake clock. No real sleep is required — the test advances the
+// clock past IdleTimeout and verifies the session is evicted on the next tick.
+func TestLifecycle_IdleEviction_WithFakeClock(t *testing.T) {
+	epoch := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+	clk := newFakeClock(epoch)
+
+	mgr, _, _ := newTestLifecycleManager(t)
+	mgr.clock = clk
+	mgr.IdleTimeout = 10 * time.Minute
+	ctx := context.Background()
+
+	sessA := "sess-clock-idle-a"
+	sessB := "sess-clock-idle-b"
+
+	// Acquire both sessions while clock is at epoch.
+	if _, err := mgr.AcquireForRequest(ctx, sessA); err != nil {
+		t.Fatalf("AcquireForRequest A: %v", err)
+	}
+	if _, err := mgr.AcquireForRequest(ctx, sessB); err != nil {
+		t.Fatalf("AcquireForRequest B: %v", err)
+	}
+
+	// Advance clock by 5 minutes — both sessions are still within the idle timeout.
+	clk.Advance(5 * time.Minute)
+	mgr.evictIdleAndOversize(ctx)
+
+	if _, ok := mgr.sessions.Load(sessA); !ok {
+		t.Error("sess A evicted at 5m — should still be active (timeout is 10m)")
+	}
+	if _, ok := mgr.sessions.Load(sessB); !ok {
+		t.Error("sess B evicted at 5m — should still be active (timeout is 10m)")
+	}
+
+	// Touch B at 5m so its lastActiveAt is advanced.
+	if _, err := mgr.AcquireForRequest(ctx, sessB); err != nil {
+		t.Fatalf("re-AcquireForRequest B at 5m: %v", err)
+	}
+
+	// Advance clock to 15 minutes total — A has been idle for 15m (> 10m timeout);
+	// B was touched at 5m and has only been idle for 10m (equal, not strictly over).
+	clk.Advance(10 * time.Minute) // now at epoch+15m
+	mgr.evictIdleAndOversize(ctx)
+
+	// A must be evicted (15m idle > 10m timeout).
+	if _, ok := mgr.sessions.Load(sessA); ok {
+		t.Error("sess A still in map at 15m idle — should have been evicted (idle timeout 10m)")
+	}
+
+	// B must still be active (touched at 5m, only 10m idle — equal, not strictly over).
+	if _, ok := mgr.sessions.Load(sessB); !ok {
+		t.Error("sess B evicted at 10m idle — should still be active (timeout is strictly >10m)")
 	}
 }

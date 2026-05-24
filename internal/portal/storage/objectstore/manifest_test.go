@@ -136,7 +136,7 @@ func newStore(b Backend) *ManifestStore {
 
 func seedManifest(t *testing.T, store *ManifestStore, m Manifest) string {
 	t.Helper()
-	etag, err := store.Save(context.Background(), m, "")
+	etag, err := store.Save(context.Background(), m, "", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("seedManifest: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestManifestStore_Save_FreshSession(t *testing.T) {
 		SessionID:    "sess-fresh",
 		FencingToken: 1,
 	}
-	etag, err := store.Save(context.Background(), m, "")
+	etag, err := store.Save(context.Background(), m, "", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Save fresh session: %v", err)
 	}
@@ -242,12 +242,12 @@ func TestManifestStore_Save_FreshSession_AlreadyExists(t *testing.T) {
 	store := newStore(newMemBackend())
 	m := Manifest{SessionID: "sess-exists", FencingToken: 1}
 	// First Save with ifMatch="" should succeed.
-	_, err := store.Save(context.Background(), m, "")
+	_, err := store.Save(context.Background(), m, "", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("first Save: %v", err)
 	}
 	// Second Save with ifMatch="" should fail — manifest already exists.
-	_, err = store.Save(context.Background(), m, "")
+	_, err = store.Save(context.Background(), m, "", time.Now().UTC())
 	if !errors.Is(err, ErrPrecondition) {
 		t.Errorf("second Save ifMatch empty: got %v; want ErrPrecondition", err)
 	}
@@ -261,7 +261,7 @@ func TestManifestStore_Save_MatchingETag(t *testing.T) {
 
 	// Advance fencing token and save with matching ETag.
 	m.FencingToken = 2
-	newEtag, err := store.Save(context.Background(), m, etag)
+	newEtag, err := store.Save(context.Background(), m, etag, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Save with matching ETag: %v", err)
 	}
@@ -281,14 +281,14 @@ func TestManifestStore_Save_StaleETag(t *testing.T) {
 
 	// Write again to advance the ETag.
 	m.FencingToken = 2
-	_, err := store.Save(context.Background(), m, etag)
+	_, err := store.Save(context.Background(), m, etag, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("second Save: %v", err)
 	}
 
 	// Now try to write with the original (stale) ETag.
 	m.FencingToken = 3
-	_, err = store.Save(context.Background(), m, etag)
+	_, err = store.Save(context.Background(), m, etag, time.Now().UTC())
 	if !errors.Is(err, ErrPrecondition) {
 		t.Errorf("Save stale ETag: got %v; want ErrPrecondition", err)
 	}
@@ -304,7 +304,7 @@ func TestManifestStore_Save_StaleFencingToken(t *testing.T) {
 	// the correct ETag. The fencing check should catch this before the ETag
 	// check even applies.
 	stale := Manifest{SessionID: "sess-stale-fence", FencingToken: 3}
-	_, err := store.Save(context.Background(), stale, etag)
+	_, err := store.Save(context.Background(), stale, etag, time.Now().UTC())
 	if !errors.Is(err, ErrFenced) {
 		t.Errorf("Save stale fencing token: got %v; want ErrFenced", err)
 	}
@@ -312,10 +312,11 @@ func TestManifestStore_Save_StaleFencingToken(t *testing.T) {
 
 func TestManifestStore_Save_SetsUpdatedAt(t *testing.T) {
 	store := newStore(newMemBackend())
-	before := time.Now().Add(-time.Second)
+	// Use a fixed, deterministic time — the parameter form means we control it exactly.
+	wantTime := time.Date(2026, 5, 23, 10, 0, 0, 0, time.UTC)
 
 	m := Manifest{SessionID: "sess-updated-at", FencingToken: 1}
-	_, err := store.Save(context.Background(), m, "")
+	_, err := store.Save(context.Background(), m, "", wantTime)
 	if err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -325,10 +326,49 @@ func TestManifestStore_Save_SetsUpdatedAt(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if loaded.UpdatedAt.IsZero() {
-		t.Error("UpdatedAt is zero; want it set by Save")
+		t.Error("UpdatedAt is zero; want it set to the passed now")
 	}
-	if loaded.UpdatedAt.Before(before) {
-		t.Errorf("UpdatedAt %v is before test start %v; want it to be recent", loaded.UpdatedAt, before)
+	if !loaded.UpdatedAt.Equal(wantTime) {
+		t.Errorf("UpdatedAt = %v; want %v (the passed now)", loaded.UpdatedAt, wantTime)
+	}
+}
+
+// TestManifestStore_Save_UpdatedAt_PassedThrough verifies that the now parameter
+// is stamped onto UpdatedAt and callers can control it precisely — the contract
+// that replaces the old time.Now().UTC() call inside Save.
+func TestManifestStore_Save_UpdatedAt_PassedThrough(t *testing.T) {
+	store := newStore(newMemBackend())
+
+	t1 := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 6, 15, 12, 30, 0, 0, time.UTC)
+
+	m := Manifest{SessionID: "sess-updatedAt-param", FencingToken: 1}
+
+	// First write with t1.
+	etag, err := store.Save(context.Background(), m, "", t1)
+	if err != nil {
+		t.Fatalf("first Save: %v", err)
+	}
+	loaded1, _, err := store.Load(context.Background(), "sess-updatedAt-param")
+	if err != nil {
+		t.Fatalf("Load after first Save: %v", err)
+	}
+	if !loaded1.UpdatedAt.Equal(t1) {
+		t.Errorf("first UpdatedAt = %v; want %v", loaded1.UpdatedAt, t1)
+	}
+
+	// Second write with t2.
+	m.FencingToken = 2
+	_, err = store.Save(context.Background(), m, etag, t2)
+	if err != nil {
+		t.Fatalf("second Save: %v", err)
+	}
+	loaded2, _, err := store.Load(context.Background(), "sess-updatedAt-param")
+	if err != nil {
+		t.Fatalf("Load after second Save: %v", err)
+	}
+	if !loaded2.UpdatedAt.Equal(t2) {
+		t.Errorf("second UpdatedAt = %v; want %v", loaded2.UpdatedAt, t2)
 	}
 }
 
@@ -336,7 +376,7 @@ func TestManifestStore_Save_DefaultsVersion(t *testing.T) {
 	store := newStore(newMemBackend())
 	// Submit with Version=0 — Save should normalise to 1.
 	m := Manifest{SessionID: "sess-version", FencingToken: 1, Version: 0}
-	_, err := store.Save(context.Background(), m, "")
+	_, err := store.Save(context.Background(), m, "", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -433,7 +473,7 @@ func TestManifestStore_Save_FencingTokenEqualOnDisk(t *testing.T) {
 
 	// Same fencing token — should succeed (not fenced).
 	m.Refs = map[string]string{"refs/heads/main": "abc"}
-	_, err := store.Save(context.Background(), m, etag)
+	_, err := store.Save(context.Background(), m, etag, time.Now().UTC())
 	if err != nil {
 		t.Errorf("Save equal fencing token: got %v; want nil", err)
 	}

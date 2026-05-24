@@ -129,6 +129,11 @@ func (s *ManifestStore) Load(ctx context.Context, sessionID string) (Manifest, s
 
 // Save writes m to object storage as the session's canonical manifest.
 //
+// now is the caller's clock value; it is stamped onto m.UpdatedAt. Callers
+// should pass their Clock.Now() — e.g. Syncer passes time.Now().UTC() at the
+// call boundary since Syncer does not yet carry a Clock field. This follows
+// the parameter-passing form of auth.FindOrProvisionAt.
+//
 // Conditional-write semantics (via ifMatch):
 //   - ifMatch = "" creates the manifest; returns ErrPrecondition if one
 //     already exists (concurrent writer beat us to the first write).
@@ -142,12 +147,12 @@ func (s *ManifestStore) Load(ctx context.Context, sessionID string) (Manifest, s
 // returns ErrFenced without issuing the write. This guard catches stale
 // lease-holder writes that a pure ETag check would not catch.
 //
-// Save sets m.UpdatedAt = time.Now().UTC() and, if m.Version == 0, sets
-// m.Version = 1 before marshalling. These mutations happen on the local copy
-// only; the caller's m is not modified.
+// Save sets m.UpdatedAt = now and, if m.Version == 0, sets m.Version = 1
+// before marshalling. These mutations happen on the local copy only; the
+// caller's m is not modified.
 //
 // On success, Save returns the new ETag assigned by the Backend.
-func (s *ManifestStore) Save(ctx context.Context, m Manifest, ifMatch string) (string, error) {
+func (s *ManifestStore) Save(ctx context.Context, m Manifest, ifMatch string, now time.Time) (string, error) {
 	// Fencing-token pre-flight: load on-disk manifest and compare tokens.
 	//
 	// We deliberately load directly here rather than trusting the caller's
@@ -175,7 +180,7 @@ func (s *ManifestStore) Save(ctx context.Context, m Manifest, ifMatch string) (s
 	}
 
 	// Apply server-side defaults.
-	m.UpdatedAt = time.Now().UTC()
+	m.UpdatedAt = now
 	if m.Version == 0 {
 		m.Version = 1
 	}

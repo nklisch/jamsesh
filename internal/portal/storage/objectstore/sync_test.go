@@ -342,7 +342,7 @@ func TestSyncer_FencedLease_ReturnsErrFenced(t *testing.T) {
 		FencingToken: 9999,
 		Refs:         map[string]string{},
 	}
-	if _, err := store.Save(ctx, highToken, ""); err != nil {
+	if _, err := store.Save(ctx, highToken, "", time.Now().UTC()); err != nil {
 		t.Fatalf("seed high-token manifest: %v", err)
 	}
 
@@ -566,7 +566,7 @@ func TestSyncer_MetricsEmission(t *testing.T) {
 		store := &ManifestStore{Backend: backend}
 
 		// Seed high fencing token.
-		_, _ = store.Save(ctx, Manifest{SessionID: sessionID, FencingToken: 9999, Refs: map[string]string{}}, "")
+		_, _ = store.Save(ctx, Manifest{SessionID: sessionID, FencingToken: 9999, Refs: map[string]string{}}, "", time.Now().UTC())
 
 		syncer := &Syncer{
 			Backend:                backend,
@@ -663,7 +663,7 @@ func TestSyncer_LazyDelete_OldPacksScheduled(t *testing.T) {
 			{PackKey: fakePackKey, IdxKey: fakeIdxKey, SHA: "fakePack"},
 		},
 	}
-	_, err := syncer.Manifests.Save(ctx, staleManifest, "")
+	_, err := syncer.Manifests.Save(ctx, staleManifest, "", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("seed stale manifest: %v", err)
 	}
