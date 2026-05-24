@@ -1,7 +1,7 @@
 ---
 id: feature-playground-foundation-docs-rollup
 kind: feature
-stage: implementing
+stage: review
 tags: [documentation, playground]
 parent: null
 depends_on: []
@@ -230,4 +230,43 @@ only failure modes are:
   schema-name or line-number anchor lives in the story; either is
   acceptable since openapi.yaml is itself a foundation doc that rarely
   shifts unscheduled.
+
+## Implementation summary (2026-05-23)
+
+Both child stories landed in parallel (no inter-dependency, different files,
+no shared section) and are at stage:review.
+
+1. `story-playground-foundation-docs-rollup-protocol-destruction-warning` —
+   PROTOCOL.md: added `playground.destruction_warning` to the event-type
+   bullet list with payload summary; cross-linked every event-type entry
+   to its openapi schema using `#/components/schemas/<Name>` fragments
+   (verified all 13 schema names exist in openapi.yaml); added
+   `urgent_events` paragraph to `pre_turn_digest` section; verified the
+   addressing-convention section (lines 302-307) already contains the
+   anonymous-handles note — no edit needed there.
+
+2. `story-playground-foundation-docs-rollup-architecture-destruction-worker` —
+   ARCHITECTURE.md: added `• Playground destroyer` bullet to the portal
+   block of the system-overview ASCII diagram (all lines remain at 59-char
+   width — alignment verified); added a new **Playground destruction
+   worker** paragraph in Components → Portal between Auto-merger workers
+   and WebSocket gateway, covering all five required topics (goroutine
+   topology, interval knob, destruction cascade, idempotency stance,
+   tombstone purge).
+
+### Verification
+
+- `grep -n "playground.destruction_warning" docs/PROTOCOL.md docs/openapi.yaml` →
+  hits in both files; payload field names match exactly between the
+  PROTOCOL.md bullet and the `PlaygroundDestructionWarningPayload` schema.
+- `grep -n "destruction worker\|Playground destroyer" docs/ARCHITECTURE.md` →
+  hits in both the diagram (line 29) and Components (line 79).
+- `grep -niE "previously|newly added|note: in|used to be" docs/PROTOCOL.md
+  docs/ARCHITECTURE.md` → no hits in the edited regions; one pre-existing
+  hit in ARCHITECTURE.md is unrelated to this feature and predates the
+  rolling-foundation principle's enforcement.
+- ASCII diagram pipe alignment verified by `awk` line-width check.
+
+No production code changes; docs-only feature. No build/test commands to
+run beyond visual inspection — performed.
 
