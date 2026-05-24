@@ -117,3 +117,9 @@ updated: 2026-05-24
   - High → active/stories (7): worker-noopLogger-unreachable, handler-test-stepClock-unused, objectstore-countingHydrator-orphaned, objectstore-parsePackedRefsContent-test-only, router-test-unused-beforeEach-import, destructionwarning-test-unused-warn-threshold-const, playground-ratelimit-test-dead-time-second-line
   - Medium → active/stories (3): pushbase-headsha-discard-pattern, pushbasebearer-ctx-placeholder, userpromptsubmit-test-stale-dir-captures
   - Low → backlog (2): oauth-stale-doc-comment-findorprovision, per-package-stores-wrapper-helpers
+- **gate-docs** (2026-05-24) — 19 findings (12 high, 7 medium)
+  - foundation-doc-assertion (10): spec-playground-sweep-env-var-name-drift, spec-jamsesh-join-slash-command-stale, security-anon-email-separator-drift, protocol-event-types-missing-two, protocol-local-state-schema-block-stale, protocol-rest-route-catalog-missing-playground, protocol-common-error-codes-missing-playground-three, ux-playground-flow-not-documented, architecture-spa-playground-context-not-documented, architecture-security-org-protected-flag-not-documented
+  - readme-staleness (2): readme-stale-slash-command-list, readme-playground-mode-not-mentioned
+  - pattern-skill-staleness (5): pattern-per-package-clock-package-count-undercount, pattern-dual-dialect-stale-createsession-columns, pattern-openapi-fetch-middleware-stale-anchors, pattern-view-state-union-anchors-and-new-examples, pattern-wrapper-object-rune-store-anchors-and-playgroundcontext
+  - changelog-gap (1): changelog-v0-4-0-entry-missing (resolved by release-deploy Phase 5.5)
+  - repo-skill-staleness (1): skill-jamsesh-hard-deadlines-prose-brittle
