@@ -1,14 +1,14 @@
 ---
 id: feature-state-readtoken-per-session-sweep
 kind: feature
-stage: drafting
+stage: implementing
 tags: [plugin, cleanup, refactor]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Sweep remaining `state.ReadToken()` callers to per-session reads
@@ -119,3 +119,43 @@ Decisions for the design pass:
 ## Routing note
 
 `feature-design --only-questions --all` (2026-05-23) skipped this feature: tags include `refactor`, so the design family routes it to `/agile-workflow:refactor-design` rather than feature-design. Re-run the design pass via `refactor-design` (or autopilot, which routes correctly by tag).
+
+## Refactor Overview & Design Decision (2026-05-24, autopilot)
+
+The feature body already enumerated the 5 callsites and proposed two
+options (one-story sweep vs per-cluster split). Autopilot picks
+**helper-extraction + serial sweep** — best of both:
+
+- **Step 1**: Add `state.ReadCurrentBearer(sessionID)` helper with tests.
+  Pure addition, no callers touched. Low risk, fully reversible.
+- **Step 2**: Sweep all 5 callsites to use the helper. Depends on step 1.
+  Each callsite is a one-line swap with sessionID threaded through.
+
+This matches design-note (2) in the feature body: the helper makes each
+callsite swap a one-liner regardless of split strategy.
+
+## Refactor Steps
+
+### Step 1: Add state.ReadCurrentBearer helper
+**Priority**: High  **Risk**: Low
+**Files**: `cmd/jamsesh/state/state.go`, `cmd/jamsesh/state/state_test.go`
+**Story**: `story-state-readtoken-sweep-step-1-helper`
+
+Pure addition — `ReadCurrentBearer(sessionID)` encapsulates
+mcp-headers' per-session-first / legacy-fallback pattern. 4 tests cover
+the resolution paths (hit, miss-falls-back, empty-sid, post-migration-stub).
+
+### Step 2: Sweep 5 callsites
+**Priority**: High  **Risk**: Low
+**Files**: `cmd/jamsesh/portalclient/client.go`, `cmd/jamsesh/sessioncmd/{new,fork,join}.go`
+**Story**: `story-state-readtoken-sweep-step-2-callsites`
+**Depends on**: Step 1
+
+Mechanical sweep — replace `state.ReadToken()` with
+`state.ReadCurrentBearer(sessionID)` at 5 callsites; sessionID threaded
+through per the per-callsite table in the story body.
+
+## Implementation Order
+
+Serial: Step 1 → Step 2. The compiler catches missing sessionID
+parameters in step 2 once step 1 lands.
