@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-cli-first-creation
 kind: feature
-stage: review
+stage: done
 tags: [plugin, portal]
 parent: epic-ephemeral-playground
 depends_on: []
@@ -761,3 +761,68 @@ via `stores(t)` harness — SQLite always, Postgres when
   flow that mentions both `jamsesh new` for durable and a forward
   reference to `jamsesh new --playground` for the playground variant
   shipped later in this epic).
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none filed at the feature tier (per-story nits already captured
+in child story Review sections; one important finding from the invite
+child — `cli-invite-dedupe-parseinviteemails-test` — already filed as a
+backlog item).
+
+**Notes**:
+
+Feature-level acceptance — per-line lenses skipped (already exercised when
+each child story was individually reviewed). Aggregate lenses applied:
+
+- **Capability completeness (end-to-end)**: All six elements promised in
+  the brief are delivered.
+  - (a) Flags + interactive prompts for org/goal/scope/mode/invite —
+    Story `-new` (Units 1-4)
+  - (b) Portal session creation via existing portalclient — Story `-new`
+    (Unit 5)
+  - (c) HEAD pushed as base ref with token-via-extraHeader (no
+    URL-embedded credentials, no `git remote add` side effect) —
+    Story `-new` (Unit 6)
+  - (d) Per-session state files written under
+    `${CLAUDE_PLUGIN_DATA}/sessions/<id>/` with `instance_id`
+    intentionally deferred to first attach — Story `-new` (Unit 7)
+  - (e) Inline `--invite` flag plus standalone `jamsesh invite`
+    subcommand sharing helpers — Story `-new` (Unit 8 wiring) + Story
+    `-invite` (Unit 9 + helper owner)
+  - (f) Post-receive stamps `sessions.base_sha` so the success path
+    leaves the session row complete — Story `-base-sha` (Unit 10)
+
+- **Design alignment (aggregate)**: All 10 units from the design body are
+  realized. Cross-cutting deviations enumerated in the autopilot
+  implementation summary are all sensible: (i) `mattn/go-isatty` reused
+  instead of adding `golang.org/x/term` (saves a dep), (ii) helpers
+  relocated `new.go` → `invite.go` for clean ownership (Story `-invite`
+  owns invite primitives, sibling callsite resolves via package scope),
+  (iii) `writeNewSessionState` rename avoids shadowing `join.go` helper,
+  (iv) invite endpoint is org-scoped
+  (`POST /api/orgs/{orgID}/sessions/{sessionID}/invites`) per actual
+  OpenAPI surface vs the flat path in the design sketch.
+
+- **Breaking changes (cross-cutting)**: Two new top-level CLI subcommands
+  (`jamsesh new`, `jamsesh invite`) registered in `cmd/jamsesh/main.go`
+  alongside existing entries — additive, no surface broken. Portal
+  post-receive `SetSessionBaseSHA` call is additive and non-fatal on
+  failure (preserves RPO=0 contract). No public-API or schema changes.
+
+- **Foundation-doc alignment**: `docs/UX.md` "Flow: creating a session"
+  reworked for CLI-first agent-primary + interactive paths
+  (lines 29-93), with forward reference to `jamsesh new --playground`
+  for the sibling `session-lifecycle` feature. Cross-checked vs the
+  feature's design-decisions section — no remaining drift.
+
+- **Integration sanity**: `go build ./cmd/jamsesh/...` clean.
+  `go test ./cmd/jamsesh/sessioncmd/... ./internal/portal/githttp/...`
+  passes (48 sessioncmd tests + the 3 new base_sha stamping tests).
+  Sibling work (`session-lifecycle-cli-playground-flag`) layered on
+  top of `new.go` does not regress this feature's surface.
+
+Feature delivered as briefed; advancing to done.
