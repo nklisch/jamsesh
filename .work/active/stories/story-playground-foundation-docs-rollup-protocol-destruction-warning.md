@@ -1,7 +1,7 @@
 ---
 id: story-playground-foundation-docs-rollup-protocol-destruction-warning
 kind: story
-stage: review
+stage: done
 tags: [documentation, playground, protocol]
 parent: feature-playground-foundation-docs-rollup
 depends_on: []
@@ -145,3 +145,38 @@ Verification:
   `session_id`) match the openapi schema exactly.
 - All `(schema: ...)` links use `#/components/schemas/<Name>` fragment form;
   every schema name resolves to an existing definition in openapi.yaml.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**:
+
+All four scoped edits land cleanly and meet every acceptance criterion.
+
+- Event-type bullet added with payload `{reason, ends_at, remaining_seconds, session_id}` —
+  field names match `PlaygroundDestructionWarningPayload` in `docs/openapi.yaml:537` exactly.
+- All 13 event-type bullets carry `(schema: [Name](./openapi.yaml#/components/schemas/Name))`
+  cross-links; every anchor target verified present via
+  `grep -nE '^    [A-Z][A-Za-z]*Payload:' docs/openapi.yaml` (13/13 hits, including
+  the previously-uncertain `CommentAddedPayload` and `ConflictDetectedPayload`).
+  Implementer chose stable JSON-pointer fragments over line numbers — survives
+  openapi.yaml renumbering, better than the design's `#L537` suggestion.
+- `pre_turn_digest` paragraph at PROTOCOL.md:191-196 documents the optional
+  `urgent_events` array and cites `playground.destruction_warning`. Matches the
+  openapi `urgent_events` schema at openapi.yaml:927-934 (array of
+  `PlaygroundDestructionWarningPayload`).
+- Addressing-convention section (PROTOCOL.md:309-314) verified unchanged — the
+  anonymous-handles note with `@amber-otter` example is present and matches
+  Design-decisions intent.
+
+Rolling-foundation check: `grep -niE "previously|newly added|note: in|used to be" docs/PROTOCOL.md`
+returns zero hits. Present-tense throughout.
+
+Sibling story `story-playground-foundation-docs-rollup-architecture-destruction-worker`
+is still at `review`, so parent feature stays at `review` until that one
+advances. Nothing blocking or significant to flag — clean docs rollup.
