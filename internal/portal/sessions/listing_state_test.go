@@ -366,12 +366,201 @@ func TestCursorFilterMismatch(t *testing.T) {
 
 // failingListSessionsStore wraps a real store and returns a transient error
 // from ListSessionsForOrgWithCursor, simulating a DB connection failure.
+//
+// Implements sessionsStore (SessionStore + SessionMemberStore + OrgStore +
+// OrgMemberStore + AccountStore + PlaygroundSessionStore + SessionInviteStore +
+// RefModeStore + EventLogStore + WithTx), delegating everything except
+// ListSessionsForOrgWithCursor to the real store.
 type failingListSessionsStore struct {
-	store.Store
+	realStore store.Store
 }
 
+// SessionStore delegation (ListSessionsForOrgWithCursor overridden below)
+func (f *failingListSessionsStore) CreateSession(ctx context.Context, p store.CreateSessionParams) (store.Session, error) {
+	return f.realStore.CreateSession(ctx, p)
+}
+func (f *failingListSessionsStore) GetSession(ctx context.Context, orgID, id string) (store.Session, error) {
+	return f.realStore.GetSession(ctx, orgID, id)
+}
+func (f *failingListSessionsStore) GetSessionByID(ctx context.Context, id string) (store.Session, error) {
+	return f.realStore.GetSessionByID(ctx, id)
+}
+func (f *failingListSessionsStore) ListSessionsForOrg(ctx context.Context, orgID string) ([]store.Session, error) {
+	return f.realStore.ListSessionsForOrg(ctx, orgID)
+}
 func (f *failingListSessionsStore) ListSessionsForOrgWithCursor(_ context.Context, _ store.ListSessionsForOrgWithCursorParams) ([]store.Session, error) {
 	return nil, errors.New("conn refused")
+}
+func (f *failingListSessionsStore) UpdateSessionStatus(ctx context.Context, p store.UpdateSessionStatusParams) error {
+	return f.realStore.UpdateSessionStatus(ctx, p)
+}
+func (f *failingListSessionsStore) UpdateSessionGoalScopeMode(ctx context.Context, p store.UpdateSessionGoalScopeModeParams) error {
+	return f.realStore.UpdateSessionGoalScopeMode(ctx, p)
+}
+func (f *failingListSessionsStore) SetSessionBaseSHA(ctx context.Context, p store.SetSessionBaseSHAParams) error {
+	return f.realStore.SetSessionBaseSHA(ctx, p)
+}
+func (f *failingListSessionsStore) SetSessionEndReason(ctx context.Context, p store.SetSessionEndReasonParams) error {
+	return f.realStore.SetSessionEndReason(ctx, p)
+}
+func (f *failingListSessionsStore) SetFinalizeLock(ctx context.Context, p store.SetFinalizeLockParams) error {
+	return f.realStore.SetFinalizeLock(ctx, p)
+}
+func (f *failingListSessionsStore) ClearFinalizeLock(ctx context.Context, p store.ClearFinalizeLockParams) error {
+	return f.realStore.ClearFinalizeLock(ctx, p)
+}
+func (f *failingListSessionsStore) DeleteSession(ctx context.Context, p store.DeleteSessionParams) error {
+	return f.realStore.DeleteSession(ctx, p)
+}
+
+// SessionMemberStore delegation
+func (f *failingListSessionsStore) AddSessionMember(ctx context.Context, p store.AddSessionMemberParams) error {
+	return f.realStore.AddSessionMember(ctx, p)
+}
+func (f *failingListSessionsStore) GetSessionMember(ctx context.Context, p store.GetSessionMemberParams) (store.SessionMember, error) {
+	return f.realStore.GetSessionMember(ctx, p)
+}
+func (f *failingListSessionsStore) ListSessionMembers(ctx context.Context, p store.ListSessionMembersParams) ([]store.SessionMember, error) {
+	return f.realStore.ListSessionMembers(ctx, p)
+}
+func (f *failingListSessionsStore) RemoveSessionMember(ctx context.Context, p store.RemoveSessionMemberParams) error {
+	return f.realStore.RemoveSessionMember(ctx, p)
+}
+func (f *failingListSessionsStore) ListSessionMembershipsForAccount(ctx context.Context, accountID string) ([]store.SessionMembership, error) {
+	return f.realStore.ListSessionMembershipsForAccount(ctx, accountID)
+}
+func (f *failingListSessionsStore) NicknameTakenInSession(ctx context.Context, p store.NicknameTakenInSessionParams) (bool, error) {
+	return f.realStore.NicknameTakenInSession(ctx, p)
+}
+func (f *failingListSessionsStore) CountSessionMembers(ctx context.Context, p store.CountSessionMembersParams) (int64, error) {
+	return f.realStore.CountSessionMembers(ctx, p)
+}
+
+// OrgStore delegation
+func (f *failingListSessionsStore) CreateOrg(ctx context.Context, p store.CreateOrgParams) (store.Org, error) {
+	return f.realStore.CreateOrg(ctx, p)
+}
+func (f *failingListSessionsStore) CreateProtectedOrg(ctx context.Context, p store.CreateProtectedOrgParams) (store.Org, error) {
+	return f.realStore.CreateProtectedOrg(ctx, p)
+}
+func (f *failingListSessionsStore) GetOrgByID(ctx context.Context, id string) (store.Org, error) {
+	return f.realStore.GetOrgByID(ctx, id)
+}
+func (f *failingListSessionsStore) GetOrgBySlug(ctx context.Context, slug string) (store.Org, error) {
+	return f.realStore.GetOrgBySlug(ctx, slug)
+}
+func (f *failingListSessionsStore) UpdateOrgSessionInvitePolicy(ctx context.Context, p store.UpdateOrgSessionInvitePolicyParams) error {
+	return f.realStore.UpdateOrgSessionInvitePolicy(ctx, p)
+}
+
+// OrgMemberStore delegation
+func (f *failingListSessionsStore) AddOrgMember(ctx context.Context, p store.AddOrgMemberParams) error {
+	return f.realStore.AddOrgMember(ctx, p)
+}
+func (f *failingListSessionsStore) GetOrgMember(ctx context.Context, p store.GetOrgMemberParams) (store.OrgMember, error) {
+	return f.realStore.GetOrgMember(ctx, p)
+}
+func (f *failingListSessionsStore) ListOrgsForAccount(ctx context.Context, accountID string) ([]store.Org, error) {
+	return f.realStore.ListOrgsForAccount(ctx, accountID)
+}
+func (f *failingListSessionsStore) ListOrgMembers(ctx context.Context, orgID string) ([]store.OrgMemberWithAccount, error) {
+	return f.realStore.ListOrgMembers(ctx, orgID)
+}
+func (f *failingListSessionsStore) RemoveOrgMember(ctx context.Context, p store.RemoveOrgMemberParams) error {
+	return f.realStore.RemoveOrgMember(ctx, p)
+}
+
+// AccountStore delegation
+func (f *failingListSessionsStore) CreateAccount(ctx context.Context, p store.CreateAccountParams) (store.Account, error) {
+	return f.realStore.CreateAccount(ctx, p)
+}
+func (f *failingListSessionsStore) CreateAnonymousAccount(ctx context.Context, p store.CreateAnonymousAccountParams) (store.Account, error) {
+	return f.realStore.CreateAnonymousAccount(ctx, p)
+}
+func (f *failingListSessionsStore) GetAccountByID(ctx context.Context, id string) (store.Account, error) {
+	return f.realStore.GetAccountByID(ctx, id)
+}
+func (f *failingListSessionsStore) GetAccountByEmail(ctx context.Context, email string) (store.Account, error) {
+	return f.realStore.GetAccountByEmail(ctx, email)
+}
+func (f *failingListSessionsStore) GetAccountByGitHubUserID(ctx context.Context, id *string) (store.Account, error) {
+	return f.realStore.GetAccountByGitHubUserID(ctx, id)
+}
+func (f *failingListSessionsStore) UpdateAccountDisplayName(ctx context.Context, p store.UpdateAccountDisplayNameParams) error {
+	return f.realStore.UpdateAccountDisplayName(ctx, p)
+}
+
+// PlaygroundSessionStore delegation
+func (f *failingListSessionsStore) ResetSessionIdleTimer(ctx context.Context, p store.ResetSessionIdleTimerParams) error {
+	return f.realStore.ResetSessionIdleTimer(ctx, p)
+}
+func (f *failingListSessionsStore) ListExpiredPlaygroundSessions(ctx context.Context, p store.ListExpiredPlaygroundSessionsParams) ([]store.Session, error) {
+	return f.realStore.ListExpiredPlaygroundSessions(ctx, p)
+}
+func (f *failingListSessionsStore) PurgeExpiredTombstones(ctx context.Context, before time.Time) error {
+	return f.realStore.PurgeExpiredTombstones(ctx, before)
+}
+func (f *failingListSessionsStore) ListAnonymousSessionMemberIDs(ctx context.Context, orgID, sessID string) ([]string, error) {
+	return f.realStore.ListAnonymousSessionMemberIDs(ctx, orgID, sessID)
+}
+func (f *failingListSessionsStore) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return f.realStore.DeleteAccountsByIDs(ctx, ids)
+}
+func (f *failingListSessionsStore) CountSessionEventsByType(ctx context.Context, orgID, eventType string) (int64, error) {
+	return f.realStore.CountSessionEventsByType(ctx, orgID, eventType)
+}
+
+// SessionInviteStore delegation
+func (f *failingListSessionsStore) InsertSessionInvite(ctx context.Context, p store.InsertSessionInviteParams) (store.SessionInvite, error) {
+	return f.realStore.InsertSessionInvite(ctx, p)
+}
+func (f *failingListSessionsStore) GetSessionInviteByID(ctx context.Context, id string) (store.SessionInvite, error) {
+	return f.realStore.GetSessionInviteByID(ctx, id)
+}
+func (f *failingListSessionsStore) GetSessionInviteByTokenHash(ctx context.Context, h string) (store.SessionInvite, error) {
+	return f.realStore.GetSessionInviteByTokenHash(ctx, h)
+}
+func (f *failingListSessionsStore) MarkSessionInviteAccepted(ctx context.Context, p store.MarkSessionInviteAcceptedParams) error {
+	return f.realStore.MarkSessionInviteAccepted(ctx, p)
+}
+func (f *failingListSessionsStore) ListPendingSessionInvitesForSession(ctx context.Context, p store.ListPendingSessionInvitesForSessionParams) ([]store.SessionInvite, error) {
+	return f.realStore.ListPendingSessionInvitesForSession(ctx, p)
+}
+
+// RefModeStore delegation
+func (f *failingListSessionsStore) UpsertRefMode(ctx context.Context, p store.UpsertRefModeParams) error {
+	return f.realStore.UpsertRefMode(ctx, p)
+}
+func (f *failingListSessionsStore) GetRefMode(ctx context.Context, p store.GetRefModeParams) (store.RefMode, error) {
+	return f.realStore.GetRefMode(ctx, p)
+}
+func (f *failingListSessionsStore) ListRefModesForSession(ctx context.Context, sessionID string) ([]store.RefMode, error) {
+	return f.realStore.ListRefModesForSession(ctx, sessionID)
+}
+
+// EventLogStore delegation
+func (f *failingListSessionsStore) EnsureEventSeqRow(ctx context.Context, sessionID string) error {
+	return f.realStore.EnsureEventSeqRow(ctx, sessionID)
+}
+func (f *failingListSessionsStore) AllocateNextSeq(ctx context.Context, sessionID string) (int64, error) {
+	return f.realStore.AllocateNextSeq(ctx, sessionID)
+}
+func (f *failingListSessionsStore) AllocateNextSeqN(ctx context.Context, sessionID string, n int64) (int64, error) {
+	return f.realStore.AllocateNextSeqN(ctx, sessionID, n)
+}
+func (f *failingListSessionsStore) InsertEvent(ctx context.Context, p store.InsertEventParams) error {
+	return f.realStore.InsertEvent(ctx, p)
+}
+func (f *failingListSessionsStore) ListEventsSince(ctx context.Context, p store.ListEventsSinceParams) ([]store.Event, error) {
+	return f.realStore.ListEventsSince(ctx, p)
+}
+func (f *failingListSessionsStore) ListEventsSinceForDigest(ctx context.Context, p store.ListEventsSinceForDigestParams) ([]store.Event, error) {
+	return f.realStore.ListEventsSinceForDigest(ctx, p)
+}
+
+// WithTx delegation
+func (f *failingListSessionsStore) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	return f.realStore.WithTx(ctx, fn)
 }
 
 func TestListSessions_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
@@ -380,7 +569,7 @@ func TestListSessions_DBUnavailable_Returns503DepDBUnavailable(t *testing.T) {
 	org := seedOrg(t, real, "Dep Fail Org", "dep-fail-org")
 	seedOrgMember(t, real, org.ID, acc.ID, "creator")
 
-	failing := &failingListSessionsStore{Store: real}
+	failing := &failingListSessionsStore{realStore: real}
 	env := newTestEnvWithStore(t, failing, real)
 
 	token := env.bearerToken(t, acc.ID)

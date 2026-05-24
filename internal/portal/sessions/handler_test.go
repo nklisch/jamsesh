@@ -208,6 +208,22 @@ func getRequest(t *testing.T, srv *httptest.Server, path, bearer string) *http.R
 // Test environment
 // ---------------------------------------------------------------------------
 
+// testSessionsStore mirrors the unexported sessionsStore interface so test
+// helpers can accept narrow mock types (e.g. failingListSessionsStore) without
+// requiring full store.Store satisfaction.
+type testSessionsStore interface {
+	store.SessionStore
+	store.SessionMemberStore
+	store.OrgStore
+	store.OrgMemberStore
+	store.AccountStore
+	store.PlaygroundSessionStore
+	store.SessionInviteStore
+	store.RefModeStore
+	store.EventLogStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
+}
+
 type testEnv struct {
 	srv      *httptest.Server
 	svc      tokens.Service
@@ -238,17 +254,16 @@ func newTestEnv(t *testing.T) *testEnv {
 
 // newTestEnvWithStore builds a testEnv that wires the session handler against
 // handlerStore (which may be a wrapping store that simulates DB failures),
-// while keeping baseStore for fixture seeding. token issue/validation still
-// runs against handlerStore so the bearer middleware path works against the
-// same store the handler uses.
-func newTestEnvWithStore(t *testing.T, handlerStore, baseStore store.Store) *testEnv {
+// while keeping baseStore for fixture seeding and token issuance. Separating
+// the two lets narrow mock types satisfy the handler's interface without also
+// needing to implement the full tokensStore.
+func newTestEnvWithStore(t *testing.T, handlerStore testSessionsStore, baseStore store.Store) *testEnv {
 	t.Helper()
-	s := handlerStore
-	svc := tokens.New(s)
+	svc := tokens.New(baseStore)
 	stor := newStubStorage()
 	log := events.New(baseStore)
 	sender := &stubSender{}
-	h := sessions.New(s, stor, log, sender, "http://localhost:8443")
+	h := sessions.New(handlerStore, stor, log, sender, "http://localhost:8443")
 	// Wire the dep-failure translator so sender errors surface as the
 	// typed dep.smtp_unavailable envelope (mirrors cmd/portal/main.go).
 	strictAPI := openapi.NewStrictHandlerWithOptions(&sessionsOnlyStrict{h}, nil,
@@ -280,7 +295,7 @@ func newTestEnvWithStore(t *testing.T, handlerStore, baseStore store.Store) *tes
 
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
-	return &testEnv{srv: srv, svc: svc, s: s, stor: stor, sender: sender, eventLog: log}
+	return &testEnv{srv: srv, svc: svc, s: baseStore, stor: stor, sender: sender, eventLog: log}
 }
 
 func (e *testEnv) bearerToken(t *testing.T, accountID string) string {
