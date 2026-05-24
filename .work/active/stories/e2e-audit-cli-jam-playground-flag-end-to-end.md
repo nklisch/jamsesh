@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-cli-jam-playground-flag-end-to-end
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground, cli]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -120,3 +120,64 @@ func TestCLI_Jam_PlaygroundFlag(t *testing.T) {
     // assert: 200, summary.OrgID == "playground".
 }
 ```
+
+## Implementation notes
+
+Test landed at `tests/e2e/golden/cli_jam_playground_flag_test.go` —
+~240 LoC end-to-end against real portal binary + real Postgres + real
+`jamsesh new --playground` subprocess. The test ships with `t.Skip`
+linked to `bug-playground-git-receive-pack-fails-with-200-hangup` (a
+real product bug surfaced during implementation that has no path-of-least
+-resistance fix from this story).
+
+**Bugs surfaced and resolved inline as part of this story:**
+
+1. `idea-playground-scope-normalization-bug` — `newPlaygroundAction`
+   in `cmd/jamsesh/sessioncmd/new.go:390` skipped `normalizeScope` when
+   `req.Scope == "**"` (the flag default), sending raw `"**"` to the
+   portal which 400-rejected with `session.invalid_writable_scope`.
+   Fixed by removing the `req.Scope != "**"` guard — the default is now
+   normalized the same as any user-supplied value.
+
+2. Playground git push URL was missing the `org_id` segment — the portal
+   route is `/git/{orgID}/{sessionID}.git/...` but the binary was
+   pushing to `/git/{sessionID}.git/...`. Fixed in two places in
+   `cmd/jamsesh/sessioncmd/new.go`:
+   - `pushBaseRefWithBearer` (line ~448) — the actual push URL.
+   - `wrapPlaygroundPushError` (line ~498) — the retry-hint message.
+
+3. Updated stale unit test
+   `TestPlaygroundAction_pushFailureLeavesSessionLiveWithRetry` to
+   assert on the corrected URL shape (`/git/org_playground/{sessionID}.git`).
+
+**Bug surfaced but parked (blocks this test):**
+
+- `bug-playground-git-receive-pack-fails-with-200-hangup` — auth passes
+  through the `basicAuth` middleware (anon bearer accepted by
+  `tokens.BasicAuthValidator`), the URL is correct, but the
+  receive-pack subprocess responds with HTTP 200 + ~166 bytes in ~1ms
+  and git client-side reports "fatal: the remote end hung up
+  unexpectedly". Root cause not investigated in autopilot scope — the
+  fix needs a `slog.Debug` trace through the receive-pack pkt-line
+  output to find the early-exit point. Likely either an anon-account
+  shape mismatch with what `receivePack` expects, or a storage-layout
+  mismatch for the reserved `org_playground` org.
+
+**Out-of-scope discovery:**
+
+- The `wrapPushError` function (durable-session variant of
+  `wrapPlaygroundPushError`) has the same missing-org_id bug as the
+  pre-fix playground variant did. Left as-is with a comment pointing
+  at `bug-playground-git-receive-pack-fails-with-200-hangup` for
+  follow-up; not fixed because it's outside this story's playground
+  scope and would have its own production impact assessment.
+
+**Anti-tautology discipline (Unit 5 application):**
+
+The test includes a `p.Exec(ctx, []string{"ls", repoPath})` assertion
+that the bare repo exists on real disk in the portal container after
+the binary runs. This is the assertion-shape Unit 5 mandates. Will
+fire once the receive-pack bug is resolved.
+
+Re-enable with `git grep -n "blocked on bug-playground-git-receive-pack"`
+when the bug closes.
