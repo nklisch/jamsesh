@@ -1,7 +1,7 @@
 ---
-id: extend-org-protected-guard-to-policy-mutations
+id: story-extend-org-protected-guard-to-policy-mutations
 kind: story
-stage: backlog
+stage: implementing
 tags: [portal, playground, defense-in-depth]
 parent: null
 depends_on: []
