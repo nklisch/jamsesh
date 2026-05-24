@@ -137,33 +137,44 @@ func writeFlushPkt(w io.Writer) error {
 // indicating that all refs were rejected. The format matches what git clients
 // expect to render inline rejection messages.
 //
-// When caps includes "side-band-64k", each inner pkt-line is wrapped in an
-// outer sideband packet on band 1 (data channel):
+// The report-status content is transmitted through the sideband-64k channel
+// (band 1). Each inner pkt-line is wrapped in an outer sideband packet:
 //
-//	<outer-len>\x01<inner-pkt-line>
+//	<outer-len>\x01<inner-pkt-line>   ← band 1 = data
 //	...
-//	0000
+//	<outer-len>\x010000               ← band 1, inner flush pkt
+//	0000                               ← outer sideband flush (stream end)
 //
-// Without sideband negotiation the inner pkt-lines are written directly:
+// Two important protocol details:
 //
-//	0014unpack ok\n
-//	<NNNN>ng <ref-name> <reason>\n
-//	...
-//	0000
+//  1. We always use sideband-64k regardless of what the caps map reports.
+//     Git's stateless-RPC protocol sends capabilities only in the first
+//     command-list line of the first POST. The second POST (which carries
+//     the pack data and is where rejections are generated) re-sends the
+//     command list without capabilities. If we respected caps["side-band-64k"]
+//     we would write plain pkt-lines when git expects sideband-64k, causing
+//     it to mis-parse the 'u' in "unpack ok" as band byte 0x75 (117,
+//     "bad band #117"). Modern git always negotiates sideband-64k.
+//
+//  2. The inner report-status flush (0000) must be sent INSIDE a sideband
+//     band-1 packet, before the outer sideband flush. Git's report-status
+//     parser reads all content (including the terminating flush) through
+//     the sideband demultiplexer. If we send the outer sideband flush
+//     without first flushing the inner report-status stream through band 1,
+//     the report-status parser gets EOF before it reads the expected flush
+//     packet and displays "remote end hung up unexpectedly" — even though
+//     the ng lines were already parsed correctly.
 //
 // If there are no specific per-ref rejections a generic message is used for
 // each update.
 func writeReportStatusRejection(w io.Writer, updates []gitref.RefUpdate, rejections []prereceive.Rejection, caps map[string]bool) {
-	sideband := caps["side-band-64k"]
+	// Always use sideband-64k. See function doc for why caps is not consulted.
+	_ = caps
 
 	writeLine := func(payload string) {
-		if sideband {
-			// Inner pkt-line bytes: 4-byte length prefix + payload
-			inner := fmt.Sprintf("%04x%s", len(payload)+4, payload)
-			_ = writeSidebandPktLine(w, 0x01, inner)
-		} else {
-			_ = writePktLine(w, payload)
-		}
+		// Inner pkt-line bytes: 4-byte length prefix + payload
+		inner := fmt.Sprintf("%04x%s", len(payload)+4, payload)
+		_ = writeSidebandPktLine(w, 0x01, inner)
 	}
 
 	// unpack ok — the pack itself parsed correctly; only refs are rejected.
@@ -196,5 +207,9 @@ func writeReportStatusRejection(w io.Writer, updates []gitref.RefUpdate, rejecti
 		writeLine("ng " + u.Ref + " " + reason + "\n")
 	}
 
+	// Send the inner report-status flush (0000) through the sideband band-1
+	// channel so git's report-status parser sees it via the demultiplexer.
+	// Then send the outer sideband flush to signal end-of-stream.
+	_ = writeSidebandPktLine(w, 0x01, "0000")
 	_ = writeFlushPkt(w)
 }

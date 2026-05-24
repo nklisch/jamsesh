@@ -228,8 +228,22 @@ func TestWriteReportStatusRejection_PerRefReason(t *testing.T) {
 
 // TestWriteReportStatusRejection_SidebandWrap verifies that when the client
 // negotiates side-band-64k, report-status pkt-lines are wrapped in outer
-// sideband packets on band 1 (\x01). This is the core fix for the
-// "bad band #117" regression (git reads the 'u' in "unpack ok" as band 117).
+// sideband packets on band 1 (\x01), and that the inner report-status flush
+// (0000) is also transmitted through a band-1 sideband packet before the outer
+// sideband flush.
+//
+// Expected wire format:
+//
+//	outer-pkt(\x01 + "000eunpack ok\n")   ← band 1, inner "unpack ok" line
+//	outer-pkt(\x01 + "NNNN ng <ref>\n")   ← band 1, inner "ng" line
+//	outer-pkt(\x01 + "0000")              ← band 1, inner flush (CRITICAL)
+//	0000                                   ← outer sideband flush
+//
+// The inner flush must travel through band 1 so git's report-status parser
+// (which reads through the sideband demultiplexer) sees it. Without the inner
+// flush in band 1, git's parser gets EOF before it reads the expected flush
+// packet and shows "remote end hung up unexpectedly" — even though the ng
+// lines were already parsed correctly.
 func TestWriteReportStatusRejection_SidebandWrap(t *testing.T) {
 	ref := "refs/heads/jam/sess-1/acc-1/main"
 	updates := []prereceive.RefUpdate{
@@ -247,6 +261,7 @@ func TestWriteReportStatusRejection_SidebandWrap(t *testing.T) {
 
 	// Helper: parse one outer pkt-line from raw[offset:].
 	// Returns (payload bytes, new offset, error).
+	// Returns (nil, offset+4, nil) for a flush packet (0000).
 	parseOuterPktLine := func(data []byte, offset int) (payload []byte, next int, err error) {
 		if offset+4 > len(data) {
 			return nil, offset, fmt.Errorf("not enough bytes for length prefix at offset %d", offset)
@@ -269,7 +284,7 @@ func TestWriteReportStatusRejection_SidebandWrap(t *testing.T) {
 		return data[offset+4 : end], end, nil
 	}
 
-	// --- First outer packet: should be sideband-wrapped "unpack ok\n" ---
+	// --- First outer packet: sideband-wrapped "unpack ok\n" ---
 	outerPayload, offset, err := parseOuterPktLine(raw, 0)
 	if err != nil {
 		t.Fatalf("parse first outer pkt-line: %v", err)
@@ -288,7 +303,7 @@ func TestWriteReportStatusRejection_SidebandWrap(t *testing.T) {
 			inner, hex.EncodeToString([]byte(inner)))
 	}
 
-	// --- Second outer packet: should be sideband-wrapped "ng <ref> <reason>\n" ---
+	// --- Second outer packet: sideband-wrapped "ng <ref> <reason>\n" ---
 	outerPayload2, offset, err := parseOuterPktLine(raw, offset)
 	if err != nil {
 		t.Fatalf("parse second outer pkt-line: %v", err)
@@ -304,15 +319,36 @@ func TestWriteReportStatusRejection_SidebandWrap(t *testing.T) {
 		t.Errorf("second outer pkt-line: inner payload should contain 'ng %s', got:\n%s", ref, inner2)
 	}
 
-	// --- Final packet must be a flush (0000) ---
+	// --- Third outer packet: sideband-wrapped inner flush (0000) ---
+	// This is the critical packet: it carries the inner report-status flush
+	// through band 1 so git's report-status parser sees the end of the stream.
+	// Without this, git reads EOF after the "ng" line and displays
+	// "remote end hung up unexpectedly".
+	outerPayload3, offset, err := parseOuterPktLine(raw, offset)
+	if err != nil {
+		t.Fatalf("parse third outer pkt-line (inner flush): %v", err)
+	}
+	if len(outerPayload3) == 0 {
+		t.Fatal("third outer pkt-line (inner flush) payload is empty")
+	}
+	if outerPayload3[0] != 0x01 {
+		t.Errorf("third outer pkt-line: want band byte 0x01, got 0x%02x", outerPayload3[0])
+	}
+	innerFlush := string(outerPayload3[1:])
+	if innerFlush != "0000" {
+		t.Errorf("third outer pkt-line: inner payload should be '0000' (inner flush), got %q (hex: %s)",
+			innerFlush, hex.EncodeToString(outerPayload3[1:]))
+	}
+
+	// --- Final (outer) packet must be a sideband flush (0000) ---
 	if offset+4 > len(raw) {
-		t.Fatalf("no bytes remaining for final flush packet at offset %d (len=%d)", offset, len(raw))
+		t.Fatalf("no bytes remaining for final outer flush packet at offset %d (len=%d)", offset, len(raw))
 	}
 	finalPkt := string(raw[offset : offset+4])
 	if finalPkt != "0000" {
-		t.Errorf("final packet: want '0000' flush, got %q", finalPkt)
+		t.Errorf("final outer packet: want '0000' sideband flush, got %q", finalPkt)
 	}
 	if offset+4 != len(raw) {
-		t.Errorf("unexpected trailing bytes after flush at offset %d (total len=%d)", offset+4, len(raw))
+		t.Errorf("unexpected trailing bytes after outer flush at offset %d (total len=%d)", offset+4, len(raw))
 	}
 }

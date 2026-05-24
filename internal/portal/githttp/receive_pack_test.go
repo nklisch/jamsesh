@@ -1316,3 +1316,59 @@ func TestPostReceive_SetBaseSHAFailureIsNonFatal(t *testing.T) {
 		t.Error("base ref not found in bare repo after push")
 	}
 }
+
+// TestReceivePack_RejectionMessageSurfacedToClient verifies that when pre-receive
+// rejects a push, the human-readable rejection message is surfaced to the git
+// client rather than the opaque "remote end hung up unexpectedly" error.
+//
+// This is the regression test for bug-playground-content-cap-rejection-message-not-surfaced-to-git-client.
+// The root cause was that writeReportStatusRejection checked caps["side-band-64k"]
+// to decide the pkt-line format. Git's stateless-RPC protocol sends capabilities
+// only in the first POST (the probe), not in the second POST (with the pack),
+// so the caps map was empty on the rejection path. Writing plain (non-sideband)
+// pkt-lines when git expects sideband-64k caused git to read the 'u' in "unpack ok"
+// as band byte 0x75 (117, "bad band #117") and display "remote end hung up
+// unexpectedly" instead of the rejection message.
+//
+// Fix: always write sideband-64k format from writeReportStatusRejection.
+// This test asserts the rejection message substring appears in git's output.
+func TestReceivePack_RejectionMessageSurfacedToClient(t *testing.T) {
+	env := newPushEnv(t)
+	acc, token := env.mustIssueToken(t, "rejection-msg@example.com")
+	orgID, sessionID := env.mustCreateSession(t, acc, `["**"]`)
+
+	bareDir := filepath.Join(env.storageRoot, "orgs", orgID, "sessions", sessionID+".git")
+	workDir := initBareRepo(t, bareDir)
+
+	// Commit WITHOUT required trailers — pre-receive will reject with a message
+	// containing "missing required trailers".
+	makeCommitNoTrailers(t, workDir, "src/bad.go", "package main")
+
+	refName := fmt.Sprintf("refs/heads/jam/%s/%s/main", sessionID, acc.ID)
+	pushURLStr := env.pushURL(token, orgID, sessionID)
+
+	output, ok := runGitExpectFail(workDir, "push", pushURLStr,
+		fmt.Sprintf("HEAD:%s", refName))
+	if ok {
+		t.Fatal("git push should have failed (rejected by pre-receive), but it succeeded")
+	}
+
+	// The rejection message must be visible in git's output. Before the fix,
+	// git displayed "remote end hung up unexpectedly" instead. After the fix,
+	// the sideband-wrapped pkt-lines are parsed correctly and the rejection
+	// message from prereceive appears as "remote: error: <message>".
+	//
+	// We assert on "missing required trailers" — the exact text emitted by
+	// prereceive.CheckCommits when Jam-Session/Jam-Turn/Jam-Author trailers
+	// are absent. Do NOT weaken this to "error" or "reject" — the bug was
+	// that the real message was invisible; asserting on its content is the point.
+	const wantSubstr = "missing required trailers"
+	if !strings.Contains(output, wantSubstr) {
+		t.Errorf("rejection message not surfaced to git client\n"+
+			"want substring: %q\n"+
+			"got output:\n%s\n"+
+			"If the output contains 'remote end hung up unexpectedly', the sideband "+
+			"framing fix in writeReportStatusRejection has regressed.",
+			wantSubstr, output)
+	}
+}
