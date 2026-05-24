@@ -4,6 +4,10 @@ description: Finalize the jamsesh session — opens the portal finalize UI, or p
 argument-hint: "[--local]"
 ---
 
+> Finalize is the one operation that stays as its own skill (separate
+> from `/jamsesh:jam`). It's a multi-step flow with local-vs-portal
+> coordination, so it warrants its own surface.
+
 # Finalize the session
 
 Finalize is the end-of-jam curation step run by a human. It produces a

@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-skill-consolidation
 kind: feature
-stage: implementing
+stage: review
 tags: [plugin]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-plugin-skills]
@@ -389,3 +389,35 @@ unit tests in the Go sense. Verification:
   "how to invoke" (vocabulary + flags); keep the auto-loaded body
   focused on "why this shape" (architectural framing). They
   complement, don't repeat.
+
+## Implementation notes
+
+Implemented as 4 sequential units with no design-flaw discoveries.
+
+**Unit 1** — Deleted 3 obsolete SKILL.md files via `git rm`:
+`plugins/jamsesh/skills/status/SKILL.md`,
+`plugins/jamsesh/skills/fork/SKILL.md`,
+`plugins/jamsesh/skills/mode/SKILL.md`.
+The binary subcommands (`jamsesh status`, `jamsesh fork`, `jamsesh mode`)
+remain intact — verified via `jamsesh --help`.
+
+**Unit 2** — Extended `plugins/jamsesh/skills/jam/SKILL.md` additively.
+Read the file first (wave-3 wave-3-authored content confirmed intact),
+then used Edit to append three new sections: Status, Fork, Mode. The
+wave-3 create/join vocabulary is preserved unchanged.
+
+**Unit 3** — Added the framing note at the top of
+`plugins/jamsesh/skills/finalize/SKILL.md` (before the `# Finalize the
+session` heading). No other content changed. Used Edit, not Write.
+
+**Unit 4** — Inserted a new `## Skill surface` section in
+`plugins/jamsesh/skills/jamsesh/SKILL.md` after the opening callout
+blocks and before `## 1. What you're working in`. The wave-3 "Playground
+sessions" section at the bottom is unchanged.
+
+**Verification**:
+- `ls plugins/jamsesh/skills/` → `finalize`, `jam`, `jamsesh` only
+- `jamsesh --help` → all subcommands present (auth, mcp-headers, hook, new,
+  invite, join, status, fork, mode, finalize, finalize-run, jam)
+- `go test ./cmd/jamsesh/...` → all pass
+- `go vet ./...` → clean

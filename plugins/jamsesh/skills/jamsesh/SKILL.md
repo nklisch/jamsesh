@@ -27,6 +27,28 @@ lives in the reference files listed in section 9, loaded on demand.
 
 ---
 
+## Skill surface
+
+This plugin exposes two top-level skills:
+
+- `/jamsesh:jam` — intent-driven entry for creating, joining, and
+  operating on jam sessions. The agent reads the user's natural-language
+  request and invokes the right underlying subcommand. Covers: new
+  durable sessions, new playground sessions, joining via URL or ID,
+  status queries, forking, mode flips. See `/jamsesh:jam`'s own body
+  for the full vocabulary.
+- `/jamsesh:finalize` — multi-step finalize flow with local cherry-pick
+  coordination. Standalone because the multi-step shape doesn't
+  compress into intent-driven dispatch cleanly.
+
+The binary's subcommand surface (`jamsesh new`, `jamsesh join`,
+`jamsesh status`, `jamsesh fork`, `jamsesh mode`, `jamsesh finalize`)
+remains rich and explicit — the agent invokes them directly via the
+skill bodies above. Skills are thin intent translators, not parameter
+multipliers.
+
+---
+
 ## 1. What you're working in
 
 You are not alone. Right now, in this same session:

@@ -41,3 +41,35 @@ event surfaces in your UserPromptSubmit digest (the session is ~5
 minutes from idle/hard-cap destruction), surface the warning to the
 human in your reply, including `ends_at` and the imperative:
 "Run `jamsesh finalize --local` now if you want to keep this work."
+
+## Status
+
+When the user wants to inspect a jam session ("what's the state",
+"show me the session", "who's online"), invoke
+`jamsesh status [--json]`. Output groups durable and playground
+sessions separately.
+
+If the user has only playground sessions (no account-wide OAuth),
+status still works — it enumerates per-session tokens. No
+"sign in first" friction.
+
+## Fork
+
+When the user wants to fork from a peer's ref or commit
+("fork from amber-otter's tip", "branch off f02ac41"), invoke
+`jamsesh fork <commit-sha> [--as <branch>] [--mode sync|isolated]`.
+
+Default mode is `sync` (auto-merger will weave the new ref into draft);
+isolated mode keeps the fork private until promoted.
+
+## Mode
+
+When the user wants to flip the current ref's mode ("switch to
+isolated", "rejoin sync"), invoke `jamsesh mode sync|isolated`. The
+flip takes effect on the next push.
+
+Mode-flip semantics:
+- `isolated → sync`: subsequent pushes are auto-merger candidates;
+  expect conflicts proportional to drift while isolated
+- `sync → isolated`: subsequent pushes don't auto-merge; existing
+  merged commits remain in draft
