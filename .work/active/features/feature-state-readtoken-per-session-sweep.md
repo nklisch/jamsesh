@@ -115,3 +115,7 @@ Decisions for the design pass:
   vs falls back to legacy)
 - This lands BEFORE the first external release (release v0.4.0 or
   whichever is the first publicly distributed)
+
+## Routing note
+
+`feature-design --only-questions --all` (2026-05-23) skipped this feature: tags include `refactor`, so the design family routes it to `/agile-workflow:refactor-design` rather than feature-design. Re-run the design pass via `refactor-design` (or autopilot, which routes correctly by tag).
