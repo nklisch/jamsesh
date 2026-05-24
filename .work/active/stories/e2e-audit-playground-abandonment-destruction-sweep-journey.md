@@ -1,7 +1,7 @@
 ---
 id: e2e-audit-playground-abandonment-destruction-sweep-journey
 kind: story
-stage: implementing
+stage: review
 tags: [testing, e2e-test, audit, playground]
 parent: feature-e2e-playground-coverage-golden
 depends_on: []
@@ -118,3 +118,45 @@ func TestPlayground_AbandonedSessionDestroyed(t *testing.T) {
     require.False(t, dockerExecExists(t, p, repoPath))
 }
 ```
+
+## Implementation notes
+
+Test landed at `tests/e2e/golden/playground_abandonment_destruction_sweep_test.go`
+— real-stack test that creates a playground session, calls
+`p.AdvanceClock` past the idle-timeout, polls
+`GET /api/playground/sessions/{id}/tombstone` for a 200, and asserts
+the tombstone payload (`end_reason: idle_timeout`, `members_count: 1`,
+`duration_seconds > 0`).
+
+Ships with `t.Skip` linked to
+`idea-playground-clock-not-wired-e2etest` — the playground Handler and
+destruction Worker in `cmd/portal/main.go` are wired with
+`playground.RealClock()` instead of the AdvanceableClock from
+testClockProvider, so `POST /test/clock-advance` has zero effect on
+playground session expiry checks or destruction-worker sweep decisions.
+The test will silently never see the sweep fire until the wiring is
+fixed.
+
+**Bug surfaced and parked:**
+
+- `idea-playground-clock-not-wired-e2etest` — `testClockProvider` in
+  `cmd/portal/test_clock_advance.go` (only present under `-tags
+  e2etest`) has no `playgroundClock()` accessor; `main.go` wires
+  `playground.Handler` and `playground.Worker` with
+  `playground.RealClock()`. Fix needs:
+  1. Add `playgroundClock() playground.Clock` to `testClockProvider`
+     that returns a wrapper around the shared `AdvanceableClock`.
+  2. In `main.go`, swap `playground.RealClock()` for `tcp.playgroundClock()`
+     where `tcp` is the test clock provider (only under build tag).
+  3. Add an integration test confirming clock-advance causes the next
+     sweep to see expired sessions.
+
+**Anti-tautology discipline (Unit 5 application):**
+
+The test includes a `p.Exec(ctx, []string{"ls", repoPath})` assertion
+that the bare repo exists immediately after `POST /api/playground/sessions`,
+and a complementary post-destruction assertion that the directory is
+gone. Real filesystem, not stub map.
+
+Re-enable with `git grep -n "blocked on idea-playground-clock-not-wired-e2etest"`
+when the bug closes.
