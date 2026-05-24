@@ -13,14 +13,30 @@
   import ForkDialog from '$lib/components/ForkDialog.svelte';
   import ModeSwitchDialog from '$lib/components/ModeSwitchDialog.svelte';
   import WsStatusBanner from '$lib/components/WsStatusBanner.svelte';
+  import PlaygroundChip from '$lib/components/PlaygroundChip.svelte';
+  import CountdownBadge from '$lib/components/CountdownBadge.svelte';
+  import DestructionWarningBanner from '$lib/components/DestructionWarningBanner.svelte';
   import { auth } from '$lib/auth.svelte';
   import { navigate } from '$lib/router.svelte';
+  import { subscribe } from '$lib/ws.svelte';
   import type { components } from '$lib/api/types.gen';
 
   type Session = components['schemas']['Session'];
   type TreeState = 'tree-collapsed' | 'tree-expanded' | 'tree-wide';
   type BottomTab = 'activity' | 'comments';
   type ActiveDialog = null | 'fork' | 'mode-switch';
+
+  // Playground WS event payload types.
+  // TODO: replace with openapi-typescript generated types once
+  // session-lifecycle feature lands EventEnvelope schema additions.
+  type PlaygroundActivityResetEvent = {
+    type: 'playground.activity_reset';
+    last_substantive_activity_at: string; // ISO 8601
+    idle_timeout_at: string; // ISO 8601
+  };
+  type SessionDestroyedEvent = {
+    type: 'session.destroyed';
+  };
 
   let {
     orgId,
@@ -83,6 +99,26 @@
   let composerOpen = $state(false);
   let composerRange = $state<{ start: number; end: number } | null>(null);
 
+  // ── Playground-mode state ─────────────────────────────────────────────────
+  // Derived: true when this session belongs to the reserved playground org.
+  // Uses auth.playgroundContext as a fallback for anonymous joiners who may
+  // land here before the session load completes.
+  let isPlayground = $derived(
+    session?.org_id === 'org_playground' ||
+    auth.playgroundContext?.sessionId === sessionId,
+  );
+
+  // Countdown props — initialised from session data when available, updated by
+  // the playground.activity_reset WS event. The CountdownBadge component reads
+  // these via props; replacing them triggers its $derived recompute.
+  let playgroundHardCapAt = $state<Date | null>(null);
+  let playgroundIdleTimeoutAt = $state<Date | null>(null);
+  let playgroundLastActivityAt = $state<Date | null>(null);
+
+  // Current remaining times (ms) — set by CountdownBadge via onremainingupdate.
+  let idleRemainingMs = $state<number>(Infinity);
+  let hardCapRemainingMs = $state<number>(Infinity);
+
   function handleRangeSelect(range: { start: number; end: number } | null) {
     composerRange = range;
     if (range) composerOpen = true;
@@ -120,6 +156,17 @@
       loadError = 'Failed to load session.';
     } else if (data) {
       session = data;
+      // Seed playground countdown props from the session payload if present.
+      if (
+        data.org_id === 'org_playground' &&
+        'hard_cap_at' in data &&
+        'idle_timeout_at' in data &&
+        'last_substantive_activity_at' in data
+      ) {
+        playgroundHardCapAt = new Date(data.hard_cap_at as string);
+        playgroundIdleTimeoutAt = new Date(data.idle_timeout_at as string);
+        playgroundLastActivityAt = new Date(data.last_substantive_activity_at as string);
+      }
     }
   }
 
@@ -135,6 +182,38 @@
 
   onMount(() => {
     void loadSession();
+
+    // Subscribe to playground-specific WS events. These handlers are no-ops
+    // for durable sessions (isPlayground is false, and the events won't arrive
+    // on non-playground sessions anyway), but we register them unconditionally
+    // for simplicity — the WS module deduplicates connections per sessionId.
+    const unsubActivity = subscribe(
+      sessionId,
+      'playground.activity_reset',
+      (env) => {
+        const e = env as unknown as PlaygroundActivityResetEvent;
+        if (e.last_substantive_activity_at) {
+          playgroundLastActivityAt = new Date(e.last_substantive_activity_at);
+        }
+        if (e.idle_timeout_at) {
+          playgroundIdleTimeoutAt = new Date(e.idle_timeout_at);
+        }
+      },
+    );
+
+    const unsubDestroyed = subscribe(
+      sessionId,
+      'session.destroyed',
+      (_env: unknown) => {
+        void (_env as SessionDestroyedEvent);
+        navigate(`/playground/s/${sessionId}/ended`);
+      },
+    );
+
+    return () => {
+      unsubActivity();
+      unsubDestroyed();
+    };
   });
 </script>
 
@@ -142,14 +221,39 @@
   <!-- App chrome -->
   <header class="app-chrome">
     <div class="wordmark" aria-label="jamsesh">jam<span class="dot">·</span>sesh</div>
-    <nav class="breadcrumb" aria-label="Breadcrumb">
-      <button class="breadcrumb-link" onclick={() => navigate(`/orgs/${orgId}/sessions`)}>
-        {orgId}
-      </button>
-      <span class="sep" aria-hidden="true">/</span>
-      <span class="here">{session?.name ?? sessionId}</span>
-    </nav>
+
+    {#if isPlayground}
+      <!-- Playground branch: chip + session name (no org breadcrumb) -->
+      <PlaygroundChip />
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <span class="here">{session?.name ?? sessionId}</span>
+      </nav>
+    {:else}
+      <!-- Durable session breadcrumb -->
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <button class="breadcrumb-link" onclick={() => navigate(`/orgs/${orgId}/sessions`)}>
+          {orgId}
+        </button>
+        <span class="sep" aria-hidden="true">/</span>
+        <span class="here">{session?.name ?? sessionId}</span>
+      </nav>
+    {/if}
+
     <div class="chrome-spacer"></div>
+
+    {#if isPlayground && playgroundHardCapAt && playgroundIdleTimeoutAt && playgroundLastActivityAt}
+      <!-- Countdown badge replaces org-name in playground mode -->
+      <CountdownBadge
+        hardCapAt={playgroundHardCapAt}
+        idleTimeoutAt={playgroundIdleTimeoutAt}
+        lastSubstantiveActivityAt={playgroundLastActivityAt}
+        onremainingupdate={(idleMs, hardMs) => {
+          idleRemainingMs = idleMs;
+          hardCapRemainingMs = hardMs;
+        }}
+      />
+    {/if}
+
     <AttachHelpLink sessionId={sessionId} />
     <ThemeToggle />
     {#if auth.currentUser}
@@ -186,6 +290,16 @@
 
     <!-- WebSocket reconnect indicator (absent when the socket is healthy) -->
     <WsStatusBanner {sessionId} />
+
+    <!-- Playground destruction warning banner (absent for durable sessions) -->
+    {#if isPlayground}
+      <DestructionWarningBanner
+        {idleRemainingMs}
+        {hardCapRemainingMs}
+        {sessionId}
+        {orgId}
+      />
+    {/if}
 
     <!-- Main body: tree rail | artifact -->
     <div class="top" class:tree-collapsed={treeState === 'tree-collapsed'} class:tree-expanded={treeState === 'tree-expanded'} class:tree-wide={treeState === 'tree-wide'}>

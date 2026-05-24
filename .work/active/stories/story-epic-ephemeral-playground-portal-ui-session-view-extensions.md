@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-portal-ui-session-view-extensions
 kind: story
-stage: implementing
+stage: review
 tags: [ui, playground]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: []
@@ -57,3 +57,36 @@ See the parent feature body's "Story 3 acceptance criteria" section.
   reset). One banner shown at a time.
 - Durable session render path is unchanged — the playground branch is
   guarded by the org_id check. Regression test the durable path.
+
+## Implementation notes
+
+**Delivered 2026-05-23.**
+
+### Design discoveries
+
+**CountdownBadge idle deadline simplification:** The spec described
+`lastSubstantiveActivityAt` as a separate prop used to compute
+`effectiveIdleDeadline` via a captured `IDLE_WINDOW_MS` constant. In
+practice, Svelte 5 warns when props are captured in a `const` outside of
+`$derived` (they only reflect the initial value). Since the parent
+already updates `idleTimeoutAt` alongside `lastSubstantiveActivityAt` on
+`playground.activity_reset`, the component uses `idleTimeoutAt` directly
+inside `$derived` — Svelte tracks it reactively. The
+`lastSubstantiveActivityAt` prop is still accepted (for interface
+compatibility and test clarity) but is not used in the reactive chain.
+
+**WS payload types defined inline:** The `session-lifecycle` feature
+(which owns the OpenAPI EventEnvelope schema additions for
+`playground.activity_reset` and `session.destroyed`) was not yet landed
+at implementation time. Payload types are defined inline in
+`SessionViewShell.svelte` with a `// TODO: replace with
+openapi-typescript generated type` comment. The integration fix is
+mechanical once `session-lifecycle` ships.
+
+### Verification
+
+- `npm run check` — 0 errors, 2 pre-existing warnings (unrelated files)
+- `npm run test` — 569 tests passed, 47 test files (includes 4 new test files:
+  PlaygroundChip, CountdownBadge, DestructionWarningBanner, and the
+  existing SessionViewShell suite which exercises the WS subscribe mock)
+- `npm run build` — clean bundle (163.93 kB JS, 91.81 kB CSS)
