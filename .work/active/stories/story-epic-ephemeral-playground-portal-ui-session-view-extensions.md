@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-portal-ui-session-view-extensions
 kind: story
-stage: review
+stage: implementing
 tags: [ui, playground]
 parent: feature-epic-ephemeral-playground-portal-ui
 depends_on: []
@@ -90,3 +90,51 @@ mechanical once `session-lifecycle` ships.
   PlaygroundChip, CountdownBadge, DestructionWarningBanner, and the
   existing SessionViewShell suite which exercises the WS subscribe mock)
 - `npm run build` — clean bundle (163.93 kB JS, 91.81 kB CSS)
+
+## Review (2026-05-23)
+
+**Verdict**: Request changes
+
+**Blockers**:
+- `story-playground-ws-protocol-mismatch-session-view-extensions` —
+  triple protocol mismatch with what session-lifecycle actually
+  shipped. The UI subscribes to `playground.activity_reset` and
+  `session.destroyed` (neither defined in `docs/openapi.yaml`'s
+  EventEnvelope nor emitted from any Go file), and reads
+  `hard_cap_at` / `idle_timeout_at` / `last_substantive_activity_at`
+  off the generic Session schema (which doesn't carry them). Net
+  effect in production: CountdownBadge never renders for playground
+  sessions, idle timer never resets on activity,
+  `session.destroyed` → tombstone navigation never fires. Three of
+  the feature-level acceptance criteria for this story silently
+  fail. Tests pass only because they exercise the components in
+  isolation against hand-crafted props.
+
+**Important**:
+- `idea-sessionviewshell-test-playground-branch-coverage` —
+  `SessionViewShell.test.ts` has zero coverage of the new
+  playground branch (no PlaygroundChip mount test, no WS
+  subscribe-call assertion, no destruction-navigate test). The
+  isolation tests on the child components are fine; what's missing
+  is the shell-level wire-up test that would have caught the
+  protocol mismatch.
+
+**Nits**:
+- `PlaygroundChip.svelte` is presentational and has no `<script>`
+  body — the `<script lang="ts">` block with comments only is
+  harmless but extraneous; an HTML comment above the markup would
+  serve the same purpose. Style polish only.
+- The inline event payload types in `SessionViewShell.svelte:30-39`
+  carry a TODO pointing at openapi-typescript regeneration; once
+  the blocker fix lands, remove the TODO and import the generated
+  types.
+
+**Notes**: CountdownBadge's reactive design (`$state` for `now`,
+`$derived` for remaining values, `$effect` to call `onremainingupdate`)
+is clean and the Page Visibility recompute is the right fix for
+backgrounded-tab drift. DestructionWarningBanner's hard-cap-beats-idle
+priority is implemented correctly with the `<` (strict less-than)
+threshold consistent across both components. The component-level
+isolation tests are thorough and well-structured. The substrate of the
+work is sound — only the cross-feature integration with
+session-lifecycle is broken.
