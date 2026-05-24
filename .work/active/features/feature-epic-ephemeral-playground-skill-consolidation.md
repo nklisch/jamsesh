@@ -1,7 +1,7 @@
 ---
 id: feature-epic-ephemeral-playground-skill-consolidation
 kind: feature
-stage: review
+stage: implementing
 tags: [plugin]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-plugin-skills]
@@ -421,3 +421,46 @@ sessions" section at the bottom is unchanged.
   invite, join, status, fork, mode, finalize, finalize-run, jam)
 - `go test ./cmd/jamsesh/...` → all pass
 - `go vet ./...` → clean
+
+## Review (2026-05-23)
+
+**Verdict**: Request changes
+
+**Blockers**:
+- `story-skill-consolidation-rollforward-foundation-docs` — `docs/UX.md`
+  and `docs/ARCHITECTURE.md` still reference the deleted `/jamsesh:status`,
+  `/jamsesh:fork`, `/jamsesh:mode`, `/jamsesh:join` slashes. Rolling-foundation
+  is a hard-rule blocker, and this feature's own "Foundation references"
+  section explicitly assigned the UX.md roll-forward to this work.
+- `story-skill-consolidation-primer-stale-slash-refs` — the auto-loaded
+  primer `plugins/jamsesh/skills/jamsesh/SKILL.md` instructs agents 6+
+  times to run `/jamsesh:status` / `/jamsesh:mode ...` which no longer
+  exist. The primer is canonical context for every agent; following its
+  current instructions hits "skill not found." This is a correctness bug
+  in the consolidated documentation surface.
+
+**Important**:
+- `idea-skill-consolidation-references-stale-slash-refs` (backlog) —
+  reference files `plugins/jamsesh/skills/jamsesh/references/mcp-tools.md`
+  (lines 8, 68) and `references/conflicts.md` (lines 42, 102, 117) also
+  reference deleted slashes. Lower blast radius than the primer (loaded
+  on-demand, not auto-loaded), but should be cleaned up in the same pass.
+
+**Nits**:
+- The `jam` SKILL.md `argument-hint: "[new|join] [flags]"` is now slightly
+  misleading because the body documents status/fork/mode flows that bypass
+  `jamsesh jam` and invoke the top-level binary subcommands directly. Not
+  worth filing — the intent-driven design means the agent translates intent
+  rather than passing `$ARGUMENTS` literally for those flows, and the hint
+  is still accurate for the literal `jam new|join` paths. Worth a future
+  pass when the consolidated mental model settles.
+
+**Notes**:
+- The SKILL.md surface changes themselves (delete status/fork/mode, append
+  to jam, framing note on finalize, Skill surface section in primer) are
+  exactly what the design specified — implementation is faithful to the
+  acceptance criteria.
+- Binary verification clean: `jamsesh --help` shows all subcommands;
+  `go test ./cmd/jamsesh/...` passes.
+- The two blocker stories can be batched into a single follow-up PR — they
+  share a common cleanup theme. Re-review after they land.
