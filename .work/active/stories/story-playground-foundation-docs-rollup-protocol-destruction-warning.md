@@ -1,9 +1,9 @@
 ---
-id: idea-protocol-md-add-playground-destruction-warning-event
+id: story-playground-foundation-docs-rollup-protocol-destruction-warning
 kind: story
 stage: implementing
 tags: [documentation, playground, protocol]
-parent: null
+parent: feature-playground-foundation-docs-rollup
 depends_on: []
 release_binding: null
 gate_origin: null

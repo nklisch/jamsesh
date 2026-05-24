@@ -1,9 +1,9 @@
 ---
-id: idea-architecture-md-add-playground-destruction-worker
+id: story-playground-foundation-docs-rollup-architecture-destruction-worker
 kind: story
 stage: implementing
 tags: [documentation, playground]
-parent: null
+parent: feature-playground-foundation-docs-rollup
 depends_on: []
 release_binding: null
 gate_origin: null
