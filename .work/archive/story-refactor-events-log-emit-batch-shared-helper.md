@@ -1,7 +1,7 @@
 ---
 id: story-refactor-events-log-emit-batch-shared-helper
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -69,3 +69,15 @@ same error-return shape on either entry point.
 **Verification:** `go build ./...`, `go test ./internal/portal/events/...`, and `go test ./...` all pass clean. No tests modified.
 
 **LoC delta:** Removed ~50 lines of duplicated logic from `Emit` + `EmitBatch`; added ~65 lines for `insertAndPublish` + slimmed callers. Net: `log.go` went from 353 to ~370 lines (helper is slightly longer than either individual method it replaces, but the callers are each 5–7 lines vs 40–50 lines).
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `Payload: json.RawMessage(draft.Payload)` (log.go ~line 200) is a redundant cast — `DraftEvent.Payload` is already `json.RawMessage`.
+- `insertAndPublish` has no defensive `if n == 0 return ...` guard; current call sites preclude that case (`Emit` sends 1, `EmitBatch` short-circuits empty), but a guard would harden the helper against future callers.
+
+**Notes**: Behavior-preserving refactor. `tx-emit-then-fanout` discipline preserved by construction — fan-out lives in the helper outside `WithTx`. `AllocateNextSeqN(n=1)` confirmed identical to `AllocateNextSeq` against the underlying SQL. `UpdatePresence` correctly excluded from the helper. `go build ./...` and `go test ./...` clean.
