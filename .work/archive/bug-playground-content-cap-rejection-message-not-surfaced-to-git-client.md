@@ -1,7 +1,7 @@
 ---
 id: bug-playground-content-cap-rejection-message-not-surfaced-to-git-client
 kind: story
-stage: review
+stage: done
 tags: [bug, playground, git, ux]
 parent: null
 depends_on: []
@@ -133,3 +133,58 @@ output contains `"missing required trailers"`. Before the fix this test fails wi
 All prereceive rejection types (content-cap, missing trailers, ref-namespace violations,
 scope violations) flow through `writeReportStatusRejection`. The fix corrects the sideband
 framing for all of them, not just content-cap rejections.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Notes**:
+
+The agent's investigation overturned the original hypothesis (sideband
+caps missing on the second stateless-RPC POST). Real cause, confirmed
+via `GIT_TRACE_PACKET=1 GIT_TRACE_CURL=1`: a missing inner flush
+packet INSIDE the sideband stream.
+
+Git's report-status parser reads ALL content — including the inner
+terminating `0000` flush — through the sideband band-1 demultiplexer.
+The original `writeReportStatusRejection` wrote `writeFlushPkt(w)`
+which terminated the OUTER sideband stream directly, so git's inner
+parser tried to read one more pkt-line through a now-closed sideband,
+hit EOF, and surfaced "remote end hung up" — even though the `ng`
+rejection lines had already been parsed correctly.
+
+Fix is two changes in `pktline.go`:
+1. Always write sideband-64k format regardless of `caps` (defensive
+   for the two-POST stateless-RPC corner).
+2. Send inner `0000` flush as a sideband band-1 packet BEFORE the
+   outer sideband flush.
+
+**Side-benefit** (worth highlighting): all prereceive rejection paths
+flow through `writeReportStatusRejection` — content-cap, missing
+trailers, ref-namespace violations, scope violations. The fix benefits
+ALL of them. The trailer-rejection bug we fixed earlier (commit
+`297616a`) which had to add an exemption to AVOID the bad UX is now
+backed by a real UX fix; future trailer rejections that legitimately
+fire (on non-base refs) will now surface their reason instead of
+"hung up".
+
+Tests:
+- `TestWriteReportStatusRejection_SidebandWrap` updated to assert the
+  three-packet structure (unpack ok + ng + inner flush) followed by
+  outer flush.
+- `TestReceivePack_RejectionMessageSurfacedToClient` added as a
+  regression that pushes a no-trailers commit through real `git push`
+  → httptest server and asserts `"missing required trailers"` appears
+  in git's output (not just "hung up").
+
+Optional follow-up (not blocking): extend `TestPlayground_ContentCap`
+in the e2e suite to assert the cap's rejection message is now visible
+end-to-end through the real container pipeline. Currently the test
+only asserts exit-code != 0 + on-disk size constraint. Skipping for
+now — the unit-level regression locks the contract and the e2e test
+will benefit silently.
+
+Verification: `go test ./internal/portal/githttp/ -count=1` (1.334s)
+all green.
+
+Advanced `stage: review → done`.
