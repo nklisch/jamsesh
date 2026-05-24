@@ -5,7 +5,7 @@ stage: drafting
 tags: [security, portal, tokens, defense-in-depth]
 parent: null
 depends_on: []
-release_binding: v0.4.0
+release_binding: null
 gate_origin: security
 created: 2026-05-24
 updated: 2026-05-24

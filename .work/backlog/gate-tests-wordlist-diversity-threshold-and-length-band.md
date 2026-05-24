@@ -5,7 +5,7 @@ stage: drafting
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
-release_binding: v0.4.0
+release_binding: null
 gate_origin: tests
 created: 2026-05-24
 updated: 2026-05-24
