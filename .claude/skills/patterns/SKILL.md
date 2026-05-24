@@ -20,6 +20,7 @@ Available patterns:
 - [testcontainers-fixture-shape.md](testcontainers-fixture-shape.md) — Testcontainers Fixture Package Shape
 - [wrapper-object-rune-store.md](wrapper-object-rune-store.md) — Wrapper-Object Rune Store
 - [snippet-children-component.md](snippet-children-component.md) — Snippet-Children Polymorphic Component
+- [spec-driven-event-types.md](spec-driven-event-types.md) — Spec-Driven Event Types
 - [view-state-union-machine.md](view-state-union-machine.md) — String-Literal-Union View-State Machine
 - [openapi-fetch-middleware-client.md](openapi-fetch-middleware-client.md) — openapi-fetch Client with Global Middleware
 - [openapi-fetch-result-branch.md](openapi-fetch-result-branch.md) — openapi-fetch Destructure-and-Branch Result

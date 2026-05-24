@@ -52,6 +52,11 @@ Technical boundaries and decisions for jamsesh. Present truth, not roadmap.
 - **Build wire**: a single `make generate` target invokes both generators.
   CI verifies the working tree matches the spec (`make generate && git diff
   --exit-code`). Generated files are committed (no run-time generation).
+- **Event-type discipline**: `events.AllTypes` in
+  `internal/portal/events/types.go` must mirror the `EventEnvelope.type`
+  enum in the YAML exactly; `TestEventTypeConstants_MatchOpenAPIYAML`
+  enforces this bidirectionally at CI. See
+  `.claude/skills/patterns/spec-driven-event-types.md`.
 
 **Local client**
 - A `jamsesh` Go binary shipped in the Claude Code plugin's `bin/` directory.

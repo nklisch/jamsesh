@@ -1,7 +1,7 @@
 ---
 id: story-spec-discipline-pattern-doc
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: feature-spec-discipline
 depends_on: [story-spec-discipline-drift-ci-check]
@@ -87,3 +87,20 @@ Two markdown files:
 Depending on `story-spec-discipline-drift-ci-check` first ensures
 the pattern doc references the *actual implemented test*, not a
 hypothetical one.
+
+## Implementation notes
+
+- **Pattern file**: `.claude/skills/patterns/spec-driven-event-types.md`
+  created at 142 lines. Format mirrored from `tx-emit-then-fanout.md` and
+  `per-package-clock-interface.md` (H1 title + one-line summary paragraph,
+  Rationale, rule enumeration, Examples with file references, CI test section,
+  Failure mode with literal test output, Resolution flow, When to Use / When
+  NOT to Use, Common Violations).
+- **Index**: `.claude/rules/patterns.md` — `spec-driven-event-types` entry
+  inserted in alphabetical position between `snippet-children-component` and
+  `view-state-union-machine`.
+- **SKILL.md**: `.claude/skills/patterns/SKILL.md` — `spec-driven-event-types.md`
+  entry added in same alphabetical position.
+- **SPEC.md cross-reference**: four-line bullet added to the "Generated contracts"
+  section immediately after the `make generate` build-wire bullet, naming
+  `events.AllTypes`, the test, and the pattern file path.
