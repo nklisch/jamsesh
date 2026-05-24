@@ -1,7 +1,7 @@
 ---
 id: story-fix-playground-join-handler-unit-test-clock-injection-debt
 kind: story
-stage: implementing
+stage: review
 tags: [bug, testing, portal, playground]
 parent: null
 depends_on: []
@@ -135,3 +135,42 @@ the existing clock-injection contract.
   interface that the handler should be using.
 - `.claude/skills/patterns/per-package-clock-interface.md` — the
   project's standard pattern for clock injection.
+
+## Implementation notes
+
+**Root cause: Hypothesis 1 was correct.** The handler at
+`internal/portal/playground/handler.go` line 272 called
+`time.Until(*sess.HardCapAt)` instead of using the injected clock.
+
+The timeline:
+- `newTestEnv` uses a `fixedClock` frozen at `2026-05-23 12:00:00 UTC`
+- `CreatePlaygroundSession` runs under this clock, storing
+  `HardCapAt = 2026-05-23 12:00:00 + 24h = 2026-05-24 12:00:00 UTC`
+- By the time tests run (real wall time `2026-05-24 16:18 UTC`),
+  `time.Until(HardCapAt)` returns a negative duration (~-4h)
+- The guard `if ttl <= 0` fires and returns 410
+
+The outer guard at line 225 (`!h.Clock.Now().UTC().Before(*sess.HardCapAt)`)
+correctly uses `h.Clock.Now()`, which stays frozen at 2026-05-23, so it
+passes. But the TTL computation silently leaked to real wall time.
+
+**The fix** (one line, `handler.go:272`):
+
+```go
+// Before:
+ttl = time.Until(*sess.HardCapAt)
+// After:
+ttl = sess.HardCapAt.Sub(h.Clock.Now().UTC())
+```
+
+This makes the TTL calculation consistent with the outer hard-cap guard.
+
+**Regression test**: No new test was added. The two existing tests
+(`TestJoinPlaygroundSession_Success` and
+`TestJoinPlaygroundSession_WithNickname_UsesIt`) already serve as the
+regression — they use `fixedClock` set to the past, so if the handler
+ever reverts to `time.Until`, they will fail again deterministically
+once real wall time advances past the frozen `HardCapAt`.
+
+**Full suite**: `go test ./internal/portal/playground/... -count=1` passes
+green after the fix.

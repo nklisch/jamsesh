@@ -269,7 +269,7 @@ func (h *Handler) JoinPlaygroundSession(ctx context.Context, req openapi.JoinPla
 	// TTL is the remaining hard-cap window.
 	var ttl time.Duration
 	if sess.HardCapAt != nil {
-		ttl = time.Until(*sess.HardCapAt)
+		ttl = sess.HardCapAt.Sub(h.Clock.Now().UTC())
 		if ttl <= 0 {
 			return openapi.JoinPlaygroundSession410JSONResponse(openapi.ErrorEnvelope{
 				Error:   "playground.session_ended",
