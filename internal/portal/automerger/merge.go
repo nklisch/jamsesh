@@ -253,75 +253,99 @@ func applyChangesPerPath(repo *gogit.Repository, diff mergeDiff) (mergeState, er
 			}
 
 		case ourCh != nil && theirCh != nil:
-			// Both sides changed this path.
-			ourDeleted := ourCh.deleted
-			theirDeleted := theirCh.deleted
-
-			if ourDeleted && theirDeleted {
-				// Both deleted — take delete.
-				delete(state.mergedEntries, path)
-				continue
-			}
-			if ourDeleted || theirDeleted {
-				// One deleted, other modified — hard conflict (no merged content).
-				state.hardConflicts = append(state.hardConflicts, Conflict{File: path})
-				continue
-			}
-			// Both modified the file content.
-			if ourCh.toHash == theirCh.toHash {
-				// Identical result — both sides made the same change.
-				state.mergedEntries[path] = treeEntry{hash: ourCh.toHash, mode: ourCh.mode}
-				continue
-			}
-			// Actually different edits — need per-file three-way merge.
-			baseContent, err := blobContent(repo, state.mergedEntries[path].hash)
-			if err != nil {
-				return mergeState{}, fmt.Errorf("automerger: read base blob %s: %w", path, err)
-			}
-			oursContent, err := blobContent(repo, ourCh.toHash)
-			if err != nil {
-				return mergeState{}, fmt.Errorf("automerger: read ours blob %s: %w", path, err)
-			}
-			theirsContent, err := blobContent(repo, theirCh.toHash)
-			if err != nil {
-				return mergeState{}, fmt.Errorf("automerger: read theirs blob %s: %w", path, err)
-			}
-
-			merged, numConflicts, err := mergeFileContent(baseContent, oursContent, theirsContent)
-			if err != nil {
-				return mergeState{}, fmt.Errorf("automerger: merge-file %s: %w", path, err)
-			}
-
-			if numConflicts == 0 {
-				// Write merged blob and record new hash.
-				newHash, err := writeBlob(repo, merged)
-				if err != nil {
-					return mergeState{}, fmt.Errorf("automerger: write merged blob %s: %w", path, err)
-				}
-				state.mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
-			} else {
-				// Conflict — attempt safe auto-resolution before recording as hard.
-				ranges := ParseConflictRanges(merged)
-				state.conflictedFiles = append(state.conflictedFiles, conflictedFile{
-					path:   path,
-					base:   baseContent,
-					ours:   oursContent,
-					theirs: theirsContent,
-					mode:   ourCh.mode,
-					ranges: ranges,
-				})
-				// Write the conflict-marker blob as a placeholder; it will be
-				// replaced below if auto-resolution succeeds.
-				newHash, err := writeBlob(repo, merged)
-				if err != nil {
-					return mergeState{}, fmt.Errorf("automerger: write conflict blob %s: %w", path, err)
-				}
-				state.mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
+			// Both sides changed this path — delegate to helper.
+			if err := mergeBothModifiedPath(repo, &state, path, ourCh, theirCh); err != nil {
+				return mergeState{}, err
 			}
 		}
 	}
 
 	return state, nil
+}
+
+// mergeBothModifiedPath handles a single path where both ours and theirs
+// changed relative to the base. It mutates state.mergedEntries,
+// state.hardConflicts, and state.conflictedFiles in place.
+//
+// Four sub-cases:
+//  1. delete/delete → take delete.
+//  2. delete/modify (or modify/delete) → hard conflict.
+//  3. identical edits → take either.
+//  4. different edits → three-way merge via runThreeWayMerge.
+func mergeBothModifiedPath(repo *gogit.Repository, state *mergeState, path string, ourCh, theirCh *sideChange) error {
+	// delete/delete → take delete.
+	if ourCh.deleted && theirCh.deleted {
+		delete(state.mergedEntries, path)
+		return nil
+	}
+	// delete/modify (or modify/delete) → hard conflict.
+	if ourCh.deleted || theirCh.deleted {
+		state.hardConflicts = append(state.hardConflicts, Conflict{File: path})
+		return nil
+	}
+	// Identical edits → take either.
+	if ourCh.toHash == theirCh.toHash {
+		state.mergedEntries[path] = treeEntry{hash: ourCh.toHash, mode: ourCh.mode}
+		return nil
+	}
+	// Different edits → three-way content merge.
+	return runThreeWayMerge(repo, state, path, ourCh, theirCh)
+}
+
+// runThreeWayMerge invokes git merge-file on the three blob versions for path,
+// then either writes a clean merged blob into state.mergedEntries or records a
+// placeholder conflict-marker blob and appends to state.conflictedFiles.
+//
+// Invariant: on return, state.mergedEntries[path] is always set — either to
+// the cleanly merged blob hash or to the conflict-marker placeholder blob hash.
+// state.conflictedFiles is only appended when numConflicts > 0.
+func runThreeWayMerge(repo *gogit.Repository, state *mergeState, path string, ourCh, theirCh *sideChange) error {
+	baseContent, err := blobContent(repo, state.mergedEntries[path].hash)
+	if err != nil {
+		return fmt.Errorf("automerger: read base blob %s: %w", path, err)
+	}
+	oursContent, err := blobContent(repo, ourCh.toHash)
+	if err != nil {
+		return fmt.Errorf("automerger: read ours blob %s: %w", path, err)
+	}
+	theirsContent, err := blobContent(repo, theirCh.toHash)
+	if err != nil {
+		return fmt.Errorf("automerger: read theirs blob %s: %w", path, err)
+	}
+
+	merged, numConflicts, err := mergeFileContent(baseContent, oursContent, theirsContent)
+	if err != nil {
+		return fmt.Errorf("automerger: merge-file %s: %w", path, err)
+	}
+
+	if numConflicts == 0 {
+		// Write merged blob and record new hash.
+		newHash, err := writeBlob(repo, merged)
+		if err != nil {
+			return fmt.Errorf("automerger: write merged blob %s: %w", path, err)
+		}
+		state.mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
+		return nil
+	}
+
+	// Conflict — record for auto-resolution attempt; write placeholder blob.
+	// The placeholder is overwritten in resolveConflicts if auto-resolution
+	// succeeds; otherwise it remains as the canonical conflict-marker blob.
+	ranges := ParseConflictRanges(merged)
+	state.conflictedFiles = append(state.conflictedFiles, conflictedFile{
+		path:   path,
+		base:   baseContent,
+		ours:   oursContent,
+		theirs: theirsContent,
+		mode:   ourCh.mode,
+		ranges: ranges,
+	})
+	newHash, err := writeBlob(repo, merged)
+	if err != nil {
+		return fmt.Errorf("automerger: write conflict blob %s: %w", path, err)
+	}
+	state.mergedEntries[path] = treeEntry{hash: newHash, mode: ourCh.mode}
+	return nil
 }
 
 // resolveConflicts attempts safe auto-resolution for all files in

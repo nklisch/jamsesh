@@ -1,7 +1,7 @@
 ---
 id: story-refactor-automerger-decomposition-both-modified-helper
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: feature-refactor-automerger-decomposition
 depends_on: [story-refactor-automerger-decomposition-side-changes-helper]
@@ -130,3 +130,26 @@ verification.
 `depends_on: [story-refactor-automerger-decomposition-side-changes-helper]`
 — both stories touch `merge.go`. The side-changes helper lands first to
 avoid textual conflicts; this story rebases on top.
+
+## Implementation notes
+
+Extracted two helpers from `applyChangesPerPath`:
+
+- **`mergeBothModifiedPath`** (lines 275–301): handles delete/delete,
+  delete/modify, identical-edit, and different-edit sub-cases. Accepts
+  `state *mergeState` for in-place mutation of `mergedEntries`,
+  `hardConflicts`, and `conflictedFiles`.
+
+- **`runThreeWayMerge`** (lines 302–362): invokes `mergeFileContent`, then
+  writes either a clean merged blob or a conflict-marker placeholder blob
+  and appends to `state.conflictedFiles`. The placeholder/conflictedFiles
+  dual-write invariant is preserved — both mutations happen atomically
+  within the helper before any return path.
+
+`applyChangesPerPath` went from 96 lines to 36 lines (LoC delta: −60),
+nesting depth from 4 to 2. `runThreeWayMerge` was extracted because
+`mergeBothModifiedPath` alone would have been ~40 LoC — extracting both
+brings both helpers to clean, readable lengths.
+
+All automerger tests pass without modification. `go build ./...` and
+`go test ./...` both clean.
