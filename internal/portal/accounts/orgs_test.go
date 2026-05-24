@@ -1,6 +1,7 @@
 package accounts_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -840,6 +841,144 @@ func TestPatchOrg_DBTransientOnAuthLookup_Returns503DepDBUnavailable(t *testing.
 		map[string]any{"session_invite_policy": "open"})
 
 	assertDepDBUnavailable(t, resp)
+}
+
+// ---------------------------------------------------------------------------
+// Regression-trip: every org mutation handler must check OrgProtected
+// ---------------------------------------------------------------------------
+
+// protectedMutationGuardStore wraps a real store and returns an error if any
+// org mutation store method is invoked. If the OrgProtected guard fires
+// correctly, none of these methods should be reached. A call here means the
+// guard was bypassed — the test trip-wires the store so a bypass is
+// immediately detectable.
+type protectedMutationGuardStore struct {
+	store.Store
+	mutationCalled string // name of the first bypassed mutation, if any
+}
+
+func (s *protectedMutationGuardStore) UpdateOrgSessionInvitePolicy(_ context.Context, _ store.UpdateOrgSessionInvitePolicyParams) error {
+	s.mutationCalled = "UpdateOrgSessionInvitePolicy"
+	return fmt.Errorf("protectedMutationGuardStore: UpdateOrgSessionInvitePolicy called on protected org — guard bypass detected")
+}
+
+// TestOrgProtectedGuard_RegressionTrip_AllMutationHandlers verifies the
+// defense-in-depth invariant: any handler method that mutates an org MUST
+// check org.OrgProtected and return 409 (error="org.protected") BEFORE
+// reaching any store mutation. This test trips each known mutation endpoint
+// against a protected org.
+//
+// **How to extend this test when adding a new mutation handler** (e.g. DeleteOrg):
+//  1. Wire the new route into the chi router below.
+//  2. Add a new case to the table with its HTTP method, path, and body.
+//  3. Add a stub implementation to protectedMutationGuardStore for any new
+//     store method the handler calls so bypasses are caught.
+//
+// The test will fail at compile time if the new route's store method is not
+// added to the guard, and at runtime if the 409 is missing.
+func TestOrgProtectedGuard_RegressionTrip_AllMutationHandlers(t *testing.T) {
+	t.Helper()
+
+	// Build a fresh env where the real store is wrapped in the guard.
+	s := openStore(t)
+	guardedStore := &protectedMutationGuardStore{Store: s}
+
+	svc := tokens.New(s) // tokens backed by real store
+	sender := &captureSenderOrgs{}
+	h := accounts.New(guardedStore, sender, "https://portal.example.com")
+
+	strictHandler := openapi.NewStrictHandlerWithOptions(&accountsOnlyStrict{h}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
+	apiWrapper := &openapi.ServerInterfaceWrapper{
+		Handler:          strictHandler,
+		ErrorHandlerFunc: httperr.WriteBadRequest,
+	}
+
+	r := chi.NewRouter()
+	r.Group(func(r chi.Router) {
+		r.Use(tokens.BearerMiddleware(svc))
+		r.Patch("/api/orgs/{orgID}", apiWrapper.PatchOrg)
+		// Future mutation handlers (e.g. DeleteOrg) should be added here.
+	})
+
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	// Seed a protected org and a creator account with membership.
+	protectedOrg, err := s.CreateProtectedOrg(context.Background(), store.CreateProtectedOrgParams{
+		ID:        "protected-regression-trip",
+		Name:      "ProtectedReg",
+		Slug:      "protected-reg",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("seed protected org: %v", err)
+	}
+	creator := seedAccount(t, s, "rt-creator@example.com")
+	seedMember(t, s, protectedOrg.ID, creator.ID, "creator")
+
+	pair, err := svc.Issue(context.Background(), creator.ID)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+	tok := pair.AccessToken
+
+	// Table of every org-mutation endpoint that must enforce OrgProtected.
+	// Extend this slice whenever a new mutation handler is added to OrgsHandler.
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		body   map[string]any
+	}{
+		{
+			name:   "PatchOrg",
+			method: http.MethodPatch,
+			path:   "/api/orgs/" + protectedOrg.ID,
+			body:   map[string]any{"session_invite_policy": "members_only"},
+		},
+		// DeleteOrg (future):
+		// {name: "DeleteOrg", method: http.MethodDelete, path: "/api/orgs/"+protectedOrg.ID, body: nil},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			guardedStore.mutationCalled = "" // reset sentinel
+
+			var b []byte
+			if tc.body != nil {
+				b, _ = json.Marshal(tc.body)
+			}
+			req, _ := http.NewRequest(tc.method, srv.URL+tc.path, bytes.NewReader(b))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+tok)
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("request: %v", err)
+			}
+			t.Cleanup(func() { _ = resp.Body.Close() })
+
+			// The guard MUST fire and return 409 BEFORE any store mutation.
+			if guardedStore.mutationCalled != "" {
+				t.Errorf("%s: store mutation %q was called on a protected org — OrgProtected guard was bypassed",
+					tc.name, guardedStore.mutationCalled)
+			}
+			if resp.StatusCode != http.StatusConflict {
+				t.Errorf("%s: expected 409 Conflict from OrgProtected guard, got %d", tc.name, resp.StatusCode)
+			}
+			var body map[string]any
+			if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+				t.Fatalf("%s: decode body: %v", tc.name, err)
+			}
+			if code, _ := body["error"].(string); code != "org.protected" {
+				t.Errorf("%s: error code: want org.protected, got %q", tc.name, code)
+			}
+		})
+	}
 }
 
 // Ensure the import is used.
