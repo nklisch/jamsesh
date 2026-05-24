@@ -22,7 +22,7 @@ computed from a private map.
 ## Examples
 
 ### Example 1: `auth` store — private `$state` + getter facade + mutation methods
-**File**: `frontend/src/lib/auth.svelte.ts:16`
+**File**: `frontend/src/lib/auth.svelte.ts:26`
 
 ```ts
 let _token = $state<string | null>(
@@ -31,22 +31,34 @@ let _token = $state<string | null>(
 let _refresh = $state<string | null>(...);
 let _currentUser = $state<{...} | null>(null);
 let _orgs = $state<MeOrgMembership[] | null>(null);
+// In-memory-only playground identity (no localStorage persistence — dropped on reload).
+let _playgroundContext = $state<PlaygroundContext | null>(null);
 
 export const auth = {
   get token(): string | null { return _token; },
   get refresh(): string | null { return _refresh; },
   get currentUser() { return _currentUser; },
   get orgs() { return _orgs; },
+  get playgroundContext() { return _playgroundContext; },
   get isAuthenticated(): boolean { return _token !== null; },
   setTokens(access, refreshTok) { _token = access; ... },
   signOut() { _token = null; ... },
+  setPlaygroundContext(ctx) { _playgroundContext = ctx; },
   async loadCurrentUser() { ... },
   addOrg(org) { _orgs = _orgs === null ? [org] : [..._orgs, org]; },
 };
 ```
 
+`_playgroundContext` is a third, **orthogonal** identity state added on
+top of the original `_token` / `_refresh` / `_currentUser` / `_orgs`
+wrapper. It's deliberately in-memory-only — no `localStorage` — because
+the server revokes the playground bearer on session end, so persisting it
+across reloads would only surface confusing 401s. The same wrapper-object
+pattern absorbs the addition cleanly: one private `$state`, one getter,
+one setter method.
+
 ### Example 2: `current` route store — private `$derived` exposed through getter wrapper
-**File**: `frontend/src/lib/router.svelte.ts:32`
+**File**: `frontend/src/lib/router.svelte.ts:44`
 
 ```ts
 let path = $state(typeof window !== 'undefined' ? window.location.pathname : '/');
@@ -106,5 +118,5 @@ export const wsStatus = {
 - Exporting `_orgs` directly and a separate `addOrg()` function — splits the
   API, makes mocking awkward, and tempts callers to mutate the array in
   place (which breaks reactivity unless reassigned — see the `addOrg`
-  implementation in `auth.svelte.ts:99` that explicitly reassigns to fire
+  implementation in `auth.svelte.ts:123` that explicitly reassigns to fire
   reactivity).
