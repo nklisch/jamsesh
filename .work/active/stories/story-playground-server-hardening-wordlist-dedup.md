@@ -1,7 +1,7 @@
 ---
 id: story-playground-server-hardening-wordlist-dedup
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground, polish]
 parent: feature-playground-server-hardening
 depends_on: []
@@ -68,3 +68,18 @@ Full spec is in the parent feature body under `## Implementation Units`
   reviewable. Implementer's discretion.
 - **No `depends_on`** — parallel-safe with the other two stories; no
   shared files or APIs. Sequenced last only for PR-shape cleanliness.
+
+## Implementation notes (2026-05-23)
+
+Applied `sort -u adjectives.txt` to produce 177 unique entries, preserving
+the trailing newline. Verified:
+
+- `wc -l adjectives.txt` → 177
+- `sort adjectives.txt | uniq -c | awk '$1>1' | wc -l` → 0 (no duplicates)
+- `go test ./internal/portal/playground/wordlist/...` → ok (TestPick_Diversity
+  still clears the 900/1000-distinct threshold; effective adj×animal space is
+  now 177 × 182 = 32 214, well above the 1 000-pick sampling).
+
+Did not pad back up to 256 entries — the diversity test passes and the parent
+feature acceptance only requires "no duplicates". Padding can land later as
+a follow-up if/when wordspace breadth becomes a concern.
