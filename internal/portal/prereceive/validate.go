@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 )
 
 // Validator is the top-level pre-receive policy enforcer. It is constructed
@@ -13,6 +14,17 @@ type Validator struct {
 	// MaxPackBytes is the maximum number of bytes a pushed pack may contain.
 	// A value of 0 or negative disables the size check.
 	MaxPackBytes int64
+
+	// PlaygroundMaxContentBytes is the per-session accumulated repo content
+	// cap in bytes for playground sessions. A push that would push the total
+	// repo size (current on-disk size + incoming pack) beyond this value is
+	// rejected with playground.size_exceeded. A value of 0 or negative
+	// disables the playground content-size check.
+	PlaygroundMaxContentBytes int64
+
+	// Logger is used for best-effort warnings during playground-caps checks
+	// (e.g. when the repo-size walk fails). When nil, slog.Default() is used.
+	Logger *slog.Logger
 }
 
 // Validate runs all pre-receive policy checks for a push and returns a
@@ -52,6 +64,13 @@ func (v *Validator) Validate(ctx context.Context, in ValidateInput) (ValidateRes
 	for _, u := range in.Updates {
 		rejections = append(rejections, ValidateRef(ctx, in.Repo, in.Session.ID, in.Account.ID, u)...)
 		rejections = append(rejections, WalkAndValidate(ctx, in.Repo, u, scope)...)
+	}
+
+	// 4. Playground-specific caps (content-size). Fires only for pushes to
+	// the reserved playground org. Durable session pushes return nil
+	// immediately — the org_id branch is the guard.
+	if r, ok := v.CheckPlaygroundCaps(ctx, in); !ok {
+		rejections = append(rejections, r)
 	}
 
 	return ValidateResult{

@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 
@@ -26,6 +28,10 @@ import (
 	"jamsesh/internal/portal/storage"
 )
 
+// playgroundOrgID is the hard-coded org_id for the reserved playground org.
+// Defined locally to avoid an import cycle. Value must match playground.ReservedOrgID.
+const playgroundOrgID = "org_playground"
+
 // Handler implements the openapi.StrictServerInterface session lifecycle methods.
 type Handler struct {
 	store     store.Store
@@ -34,6 +40,9 @@ type Handler struct {
 	sender    senders.Sender
 	portalURL string
 	clock     Clock
+	// playgroundIdleTimeout, when > 0, enables activity-reset on successful
+	// finalize-attempt for playground sessions. Zero disables the reset.
+	playgroundIdleTimeout time.Duration
 }
 
 // New constructs a Handler with the real system clock. Production callers use
@@ -46,6 +55,15 @@ func New(s store.Store, stor storage.Service, log *events.Log, sender senders.Se
 // tests (fakeClock) and the e2etest-tagged binary (testclock.AdvanceableClock).
 func NewWithClock(s store.Store, stor storage.Service, log *events.Log, sender senders.Sender, portalURL string, clock Clock) *Handler {
 	return &Handler{store: s, storage: stor, events: log, sender: sender, portalURL: portalURL, clock: clock}
+}
+
+// WithPlaygroundIdleTimeout returns a copy of h with the given playground idle
+// timeout wired in. Call after New/NewWithClock to enable activity-reset for
+// playground finalize-attempts.
+func (h *Handler) WithPlaygroundIdleTimeout(d time.Duration) *Handler {
+	h2 := *h
+	h2.playgroundIdleTimeout = d
+	return &h2
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +315,23 @@ func (h *Handler) FinalizeSession(ctx context.Context, req openapi.FinalizeSessi
 	}
 	payload, _ := json.Marshal(sessionFinalizingPayload{SessionID: sessionID, OrgID: orgID})
 	_, _ = h.events.Emit(ctx, orgID, sessionID, "session.finalizing", payload)
+
+	// Activity-reset for playground sessions (best-effort). A finalize-attempt
+	// is substantive collaboration — it means at least one participant believes
+	// the session is ready. Resets the idle timer so the destruction worker
+	// doesn't race with the finalizing transition.
+	if orgID == playgroundOrgID && h.playgroundIdleTimeout > 0 {
+		now := h.clock.Now().UTC()
+		if resetErr := h.store.ResetSessionIdleTimer(ctx, store.ResetSessionIdleTimerParams{
+			OrgID:                     orgID,
+			SessionID:                 sessionID,
+			LastSubstantiveActivityAt: now,
+			IdleTimeoutAt:             now.Add(h.playgroundIdleTimeout),
+		}); resetErr != nil {
+			slog.WarnContext(ctx, "sessions: finalize: reset idle timer failed (best-effort)",
+				"org", orgID, "session", sessionID, "err", resetErr)
+		}
+	}
 
 	members, _ := h.store.ListSessionMembers(ctx, store.ListSessionMembersParams{
 		OrgID:     orgID,

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -16,6 +17,11 @@ import (
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/pagination"
 )
+
+// playgroundOrgID is the hard-coded org_id for the reserved playground org.
+// Defined locally to avoid an import cycle (comments → playground would be
+// cyclic). Value must match playground.ReservedOrgID.
+const playgroundOrgID = "org_playground"
 
 // ErrAlreadyResolved is returned by Resolve when the comment is already resolved.
 var ErrAlreadyResolved = errors.New("comments: comment already resolved")
@@ -38,6 +44,13 @@ type Service struct {
 	Store store.Store
 	Log   *events.Log
 	Clock Clock
+	// PlaygroundIdleTimeout, when > 0, enables activity-reset on successful
+	// comment creation for playground sessions: the session's
+	// last_substantive_activity_at and idle_timeout_at are bumped to prevent
+	// the destruction worker from treating an active session as idle.
+	// Zero (default) disables the reset — durable sessions are unaffected
+	// regardless of this value (the playground org_id guard fires first).
+	PlaygroundIdleTimeout time.Duration
 }
 
 // now returns the Service's current time. Falls back to time.Now().UTC() when
@@ -192,6 +205,26 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (store.Comment, er
 	})
 	if err != nil {
 		return store.Comment{}, err
+	}
+
+	// Activity-reset for playground sessions (best-effort). A comment posted
+	// by any participant constitutes substantive collaboration and resets the
+	// session's idle timer. Durable sessions are unaffected — the org_id guard
+	// inside ResetSessionIdleTimer's caller fires first.
+	if p.OrgID == playgroundOrgID && s.PlaygroundIdleTimeout > 0 {
+		resetAt := s.now()
+		if resetErr := s.Store.ResetSessionIdleTimer(ctx, store.ResetSessionIdleTimerParams{
+			OrgID:                     p.OrgID,
+			SessionID:                 p.SessionID,
+			LastSubstantiveActivityAt: resetAt,
+			IdleTimeoutAt:             resetAt.Add(s.PlaygroundIdleTimeout),
+		}); resetErr != nil {
+			// Best-effort: log and continue. The session may die slightly
+			// early (original idle_timeout_at), but the push itself succeeded.
+			// slog.Default() avoids importing log/slog as a Service dep.
+			log.Printf("comments: reset idle timer failed (best-effort): session=%s err=%v",
+				p.SessionID, resetErr)
+		}
 	}
 
 	// Fan out the comment.added event to WebSocket subscribers.

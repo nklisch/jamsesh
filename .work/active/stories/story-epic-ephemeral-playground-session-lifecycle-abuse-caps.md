@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-abuse-caps
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground, security]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: [story-epic-ephemeral-playground-session-lifecycle-rest-endpoints]
@@ -91,3 +91,64 @@ durable sessions unaffected.
   the cap is on TOTAL content, not rate. The "rolling hour" was a
   red herring in the parent feature body's first draft — fix the
   parent body to clarify if you go with (B).
+
+## Implementation notes
+
+Implemented 2026-05-23. Chose Option B (total content size cap) per
+the story guidance.
+
+### Design decisions made
+
+**Content-size check via disk-walk**: `CheckPlaygroundCaps` measures the
+current on-disk repo size by walking the bare repo directory
+(`filepath.WalkDir`). No new DB query or push-event table needed. Consistent
+with Option B: the cap is on TOTAL accumulated content, not a rolling window.
+When the repo path is empty or non-existent (first push, or walk error), size
+is treated as 0 so the first push is never rejected by the size check alone.
+
+**Per-minute burst = ceil(CreatePerIPHour/60), min 1**: With the default
+`CreatePerIPHour=3`, `perMinute=1`. This is stricter than "3 per hour" — the
+minute-level burst of 1 prevents rapid-fire abuse (you can't fire 3 creates in
+1 second). The hourly cap of 3 prevents accumulation over time. Both limiters
+must pass.
+
+**`RepoPath` added to `ValidateInput`**: Added an optional `RepoPath string`
+field to `prereceive.ValidateInput`. When empty, the playground size check
+treats current size as 0 (forward-compatible). `receive_pack.go` passes
+`repoPath` which is already computed at that point.
+
+**`PlaygroundIdleTimeout` threaded via local constants**: Each package that
+needs the playground org_id check defines its own `const playgroundOrgID =
+"org_playground"` to avoid import cycles (githttp → playground, comments →
+playground, sessions → playground are all cyclic).
+
+**Activity-reset wired in 3 call-sites**:
+1. `internal/portal/githttp/receive_pack.go` — after successful push and storage sync
+2. `internal/portal/comments/service.go` — after successful comment insert (TX + fanout)
+3. `internal/portal/sessions/handler.go` — after successful active→finalizing transition
+
+All three use the same best-effort pattern: log a warning on reset failure, do
+not fail the substantive event.
+
+**`WithPlaygroundIdleTimeout` builder**: `sessions.Handler` exposes a
+`WithPlaygroundIdleTimeout(d) *Handler` method so main.go can wire the timeout
+without changing the constructor signature (preserves backward compat with tests
+that construct Handler directly).
+
+### Files delivered
+
+- `internal/portal/playground/ratelimit.go` (new)
+- `internal/portal/playground/ratelimit_test.go` (new)
+- `internal/portal/prereceive/playground_caps.go` (new)
+- `internal/portal/prereceive/playground_caps_test.go` (new)
+- `internal/portal/prereceive/validate.go` (modified — added `PlaygroundMaxContentBytes`, `Logger` to `Validator`; wired `CheckPlaygroundCaps` as last check)
+- `internal/portal/prereceive/types.go` (modified — added `RepoPath` to `ValidateInput`)
+- `internal/portal/githttp/handler.go` (modified — added `PlaygroundIdleTimeout`, `playgroundOrgID`)
+- `internal/portal/githttp/receive_pack.go` (modified — passes `RepoPath`; activity-reset after successful push)
+- `internal/portal/playground/handler.go` (modified — added `CreatePerIPHour`, `MaxContentBytes` to `Config`)
+- `internal/portal/comments/service.go` (modified — added `PlaygroundIdleTimeout`; activity-reset after comment create)
+- `internal/portal/sessions/handler.go` (modified — added `playgroundIdleTimeout`, `WithPlaygroundIdleTimeout`, activity-reset in FinalizeSession)
+- `cmd/portal/main.go` (modified — threads pgCfg to all consumers; mounts `pgCreateRL` on playground create route; wires `PlaygroundMaxContentBytes` to Validator)
+
+SQL queries (`ResetSessionIdleTimer`, `ListExpiredPlaygroundSessions`) were
+already present from prior story implementations — no SQL changes needed.

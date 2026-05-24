@@ -578,6 +578,17 @@ func main() {
 		)
 	}
 
+	// Build the playground config once; shared by playground handler, destruction
+	// worker, rate limiter, git handler, comments service, and sessions handler.
+	pgCfg := playground.Config{
+		Enabled:         cfg.PlaygroundEnabled,
+		IdleTimeout:     time.Duration(cfg.PlaygroundIdleTimeoutS) * time.Second,
+		HardCap:         time.Duration(cfg.PlaygroundHardCapS) * time.Second,
+		MaxParticipants: cfg.PlaygroundMaxParticipants,
+		CreatePerIPHour: cfg.PlaygroundCreatePerIPHour,
+		MaxContentBytes: cfg.PlaygroundMaxContentBytes,
+	}
+
 	// Build the sessions handler (lifecycle + invites + member-remove endpoints).
 	// In e2etest builds, inject the advanceable clock so /test/clock-advance
 	// affects session created_at / ended_at stamps, invite created/expires/
@@ -588,6 +599,9 @@ func main() {
 	} else {
 		sessionsHandler = sessions.New(dbStore, storageSvc, eventLog, emailSender, cfg.PortalURL)
 	}
+	// Wire the playground idle timeout so FinalizeSession can reset the idle
+	// timer for playground sessions (substantive-event activity tracking).
+	sessionsHandler = sessionsHandler.WithPlaygroundIdleTimeout(pgCfg.IdleTimeout)
 
 	// Build the playground handler. The handler is always constructed (even
 	// when PlaygroundEnabled=false) because the routes are registered
@@ -596,21 +610,21 @@ func main() {
 		Store:   dbStore,
 		Tokens:  tokenSvc,
 		Storage: storageSvc,
-		Cfg: playground.Config{
-			Enabled:         cfg.PlaygroundEnabled,
-			IdleTimeout:     time.Duration(cfg.PlaygroundIdleTimeoutS) * time.Second,
-			HardCap:         time.Duration(cfg.PlaygroundHardCapS) * time.Second,
-			MaxParticipants: cfg.PlaygroundMaxParticipants,
-		},
-		Clock:  playground.RealClock(),
-		Logger: slog.Default(),
+		Cfg:     pgCfg,
+		Clock:   playground.RealClock(),
+		Logger:  slog.Default(),
 	}
 
 	// Build the comments service and handler. In e2etest builds, the
 	// Clock field is set to the advanceable clock via the struct-literal;
 	// in production builds commentsClock() returns nil and the now()
 	// helper falls back to the real wall clock.
-	commentsSvc := &comments.Service{Store: dbStore, Log: eventLog, Clock: testClk.commentsClock()}
+	commentsSvc := &comments.Service{
+		Store:                 dbStore,
+		Log:                   eventLog,
+		Clock:                 testClk.commentsClock(),
+		PlaygroundIdleTimeout: pgCfg.IdleTimeout,
+	}
 	commentsHandler := comments.NewHandler(commentsSvc)
 
 	// Build the finalize handler (lock-CRUD endpoints; plan/fetch-token/
@@ -646,14 +660,9 @@ func main() {
 	// Interval window). This mirrors the lifecycle goroutine above.
 	if cfg.PlaygroundEnabled {
 		destructionWorker := &playground.Worker{
-			Store:   dbStore,
-			Storage: storageSvc,
-			Cfg: playground.Config{
-				Enabled:         cfg.PlaygroundEnabled,
-				IdleTimeout:     time.Duration(cfg.PlaygroundIdleTimeoutS) * time.Second,
-				HardCap:         time.Duration(cfg.PlaygroundHardCapS) * time.Second,
-				MaxParticipants: cfg.PlaygroundMaxParticipants,
-			},
+			Store:    dbStore,
+			Storage:  storageSvc,
+			Cfg:      pgCfg,
 			Clock:    playground.RealClock(),
 			Interval: time.Duration(cfg.PlaygroundDestructionSweepIntervalS) * time.Second,
 			Logger:   slog.Default(),
@@ -762,7 +771,8 @@ func main() {
 		Tokens:  tokenSvc,
 		Storage: storageSvc,
 		Validator: &prereceive.Validator{
-			MaxPackBytes: cfg.Git.MaxPackBytes,
+			MaxPackBytes:              cfg.Git.MaxPackBytes,
+			PlaygroundMaxContentBytes: cfg.PlaygroundMaxContentBytes,
 		},
 		Emitter: &postreceive.Emitter{
 			Log:       eventLog,
@@ -770,8 +780,9 @@ func main() {
 			Lifecycle: objLifecycle, // nil in single-instance mode; provides hydration + long-held lease
 			Storage:   storageSvc,  // used only when Syncer is non-nil
 		},
-		Metrics:        metricsReg,
-		ReceivePackSem: receivePackSem,
+		Metrics:               metricsReg,
+		ReceivePackSem:        receivePackSem,
+		PlaygroundIdleTimeout: pgCfg.IdleTimeout,
 	}
 	// Set Lifecycle only when objLifecycle is non-nil. Assigning a
 	// typed nil *LifecycleManager to the lifecycleAcquirer interface field
@@ -925,8 +936,16 @@ func main() {
 
 			// Playground — unauthenticated: create and join issue fresh bearers,
 			// tombstone is public (no credential needed to read destruction summary).
+			// CreatePlaygroundSession is rate-limited per source IP to prevent
+			// drive-by abuse. Join and tombstone are NOT rate-limited: joining
+			// requires a valid session ID (already gated by participant cap), and
+			// tombstone reads are idempotent cheap GETs.
+			pgCreateRL := playground.CreateRateLimitMiddleware(
+				playground.NewCreateRateLimiter(pgCfg),
+				cfg.PlaygroundEnabled,
+			)
 			r.Group(func(r chi.Router) {
-				r.Post("/playground/sessions", apiWrapper.CreatePlaygroundSession)
+				r.With(pgCreateRL).Post("/playground/sessions", apiWrapper.CreatePlaygroundSession)
 				r.Post("/playground/sessions/{id}/join", apiWrapper.JoinPlaygroundSession)
 				r.Get("/playground/sessions/{id}/tombstone", apiWrapper.GetPlaygroundTombstone)
 			})

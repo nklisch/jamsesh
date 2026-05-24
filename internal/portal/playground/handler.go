@@ -35,6 +35,16 @@ type Config struct {
 	IdleTimeout     time.Duration
 	HardCap         time.Duration
 	MaxParticipants int
+
+	// CreatePerIPHour caps anonymous session creation from a single IP
+	// address per hour. Default: 3. Used by NewCreateRateLimiter.
+	CreatePerIPHour int
+
+	// MaxContentBytes is the per-session accumulated repo content cap in
+	// bytes. A push that would push the total repo size beyond this value
+	// is rejected with playground.size_exceeded at pre-receive time.
+	// Default: 52428800 (50 MiB).
+	MaxContentBytes int64
 }
 
 // Handler implements the openapi.StrictServerInterface playground methods.

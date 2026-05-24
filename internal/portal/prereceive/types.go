@@ -43,12 +43,17 @@ type RefUpdate = gitref.RefUpdate
 // Session and Account are the authenticated caller's data from the DB.
 // Updates lists every ref being updated by the push.
 // PackBytes is the Content-Length of the pushed pack (used for size check).
+// RepoPath is the absolute filesystem path to the bare repo on disk. Used
+// by playground-caps check to measure current repo disk usage.
 type ValidateInput struct {
 	Repo      *git.Repository
 	Session   *store.Session
 	Account   *store.Account
 	Updates   []RefUpdate
 	PackBytes int64
+	// RepoPath is the on-disk path to the bare repo. Optional; when empty,
+	// the playground content-size check is skipped (treats current size as 0).
+	RepoPath string
 }
 
 // ValidateResult is the outcome of a full validation run.

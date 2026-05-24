@@ -7,6 +7,7 @@ package githttp
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -18,6 +19,11 @@ import (
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
 )
+
+// playgroundOrgID is the hard-coded org_id for the reserved playground org.
+// Defined locally to avoid an import cycle (githttp → playground would be
+// cyclic). Value must match playground.ReservedOrgID.
+const playgroundOrgID = "org_playground"
 
 // lifecycleAcquirer is the subset of objectstore.LifecycleManager used by the
 // git smart-HTTP handler. Defined locally so tests can inject a stub without
@@ -47,6 +53,13 @@ type Handler struct {
 	// 503 Retry-After. If nil, no concurrency limit is enforced.
 	// Initialise with make(chan struct{}, N) where N is the desired cap.
 	ReceivePackSem chan struct{}
+	// PlaygroundIdleTimeout is the idle-timeout duration for playground sessions.
+	// When a commit push to a playground session succeeds, the session's
+	// last_substantive_activity_at and idle_timeout_at are reset using this
+	// value (idle_timeout_at = now + PlaygroundIdleTimeout). A zero value
+	// disables the activity-reset call — the session's destruction sweep will
+	// still work but will use the original idle_timeout_at.
+	PlaygroundIdleTimeout time.Duration
 }
 
 // acquireForGitRequest invokes LifecycleManager.AcquireForRequest in
