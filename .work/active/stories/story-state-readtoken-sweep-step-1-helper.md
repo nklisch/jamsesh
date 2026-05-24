@@ -1,7 +1,7 @@
 ---
 id: story-state-readtoken-sweep-step-1-helper
 kind: story
-stage: implementing
+stage: review
 tags: [plugin, refactor]
 parent: feature-state-readtoken-per-session-sweep
 depends_on: []
@@ -108,3 +108,17 @@ func ReadCurrentBearer(sessionID string) (string, error) {
 ## Rollback
 
 `git revert` the implementation commit.
+
+## Implementation notes
+
+- Added `ReadCurrentBearer(sessionID string) (string, error)` to
+  `cmd/jamsesh/state/state.go` immediately after `ReadSessionToken`.
+- `ReadSessionToken` returns `([]byte, error)`; the helper trims whitespace
+  via `strings.TrimSpace(string(tok))` before returning, matching the
+  inline trim already in `mcpheaders`.
+- Four tests added to `cmd/jamsesh/state/state_test.go`:
+  - `TestReadCurrentBearer_PerSessionHit` — per-session file present; returns trimmed token.
+  - `TestReadCurrentBearer_PerSessionMiss_FallsBackToLegacy` — per-session absent; returns legacy token.
+  - `TestReadCurrentBearer_EmptySessionID_UsesLegacy` — empty sessionID skips per-session lookup.
+  - `TestReadCurrentBearer_PostMigrationStub_PassesThrough` — stub value passes through unchanged.
+- `go build ./...` and `go test ./...` both clean.

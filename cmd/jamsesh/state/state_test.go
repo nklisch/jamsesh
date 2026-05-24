@@ -303,6 +303,87 @@ func TestListSessions_empty(t *testing.T) {
 	}
 }
 
+// TestReadCurrentBearer_PerSessionHit verifies that ReadCurrentBearer returns
+// the per-session token when sessionID is set and the per-session file exists.
+func TestReadCurrentBearer_PerSessionHit(t *testing.T) {
+	dir := t.TempDir()
+	withPluginData(t, dir)
+
+	const sessID = "sess-hit"
+	if err := WriteSessionToken(sessID, []byte("per-session-bearer\n")); err != nil {
+		t.Fatalf("WriteSessionToken: %v", err)
+	}
+
+	got, err := ReadCurrentBearer(sessID)
+	if err != nil {
+		t.Fatalf("ReadCurrentBearer: %v", err)
+	}
+	// Whitespace must be trimmed.
+	if got != "per-session-bearer" {
+		t.Errorf("ReadCurrentBearer() = %q, want %q", got, "per-session-bearer")
+	}
+}
+
+// TestReadCurrentBearer_PerSessionMiss_FallsBackToLegacy verifies that when the
+// per-session token is absent the helper falls back to the legacy token.
+func TestReadCurrentBearer_PerSessionMiss_FallsBackToLegacy(t *testing.T) {
+	dir := t.TempDir()
+	withPluginData(t, dir)
+
+	// Write only the legacy token — no per-session file for "sess-miss".
+	if err := WriteToken("legacy-bearer"); err != nil {
+		t.Fatalf("WriteToken: %v", err)
+	}
+
+	got, err := ReadCurrentBearer("sess-miss")
+	if err != nil {
+		t.Fatalf("ReadCurrentBearer: %v", err)
+	}
+	if got != "legacy-bearer" {
+		t.Errorf("ReadCurrentBearer() = %q, want %q", got, "legacy-bearer")
+	}
+}
+
+// TestReadCurrentBearer_EmptySessionID_UsesLegacy verifies that passing an
+// empty sessionID bypasses per-session lookup entirely and reads the legacy token.
+func TestReadCurrentBearer_EmptySessionID_UsesLegacy(t *testing.T) {
+	dir := t.TempDir()
+	withPluginData(t, dir)
+
+	if err := WriteToken("legacy-only"); err != nil {
+		t.Fatalf("WriteToken: %v", err)
+	}
+
+	got, err := ReadCurrentBearer("")
+	if err != nil {
+		t.Fatalf("ReadCurrentBearer: %v", err)
+	}
+	if got != "legacy-only" {
+		t.Errorf("ReadCurrentBearer() = %q, want %q", got, "legacy-only")
+	}
+}
+
+// TestReadCurrentBearer_PostMigrationStub_PassesThrough verifies that when no
+// sessionID is provided and the legacy token is the migration stub, the stub is
+// returned as-is (interpreting the stub is the caller's responsibility).
+func TestReadCurrentBearer_PostMigrationStub_PassesThrough(t *testing.T) {
+	dir := t.TempDir()
+	withPluginData(t, dir)
+
+	const stub = "MIGRATED_TO_PER_SESSION"
+	if err := WriteToken(stub); err != nil {
+		t.Fatalf("WriteToken: %v", err)
+	}
+
+	got, err := ReadCurrentBearer("")
+	if err != nil {
+		t.Fatalf("ReadCurrentBearer: %v", err)
+	}
+	if got != stub {
+		t.Errorf("ReadCurrentBearer() = %q, want stub %q", got, stub)
+	}
+}
+
 // TestListSessions_returnsSubdirs verifies ListSessions enumerates session
 // subdirectory names and ignores non-directory entries.
 func TestListSessions_returnsSubdirs(t *testing.T) {

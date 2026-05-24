@@ -126,6 +126,32 @@ func ReadSessionToken(sessionID string) ([]byte, error) {
 	return Read("sessions/" + sessionID + "/token")
 }
 
+// ReadCurrentBearer returns the most appropriate bearer token for the
+// current binary invocation. Resolution order:
+//
+//  1. If sessionID is non-empty AND the per-session bearer file exists
+//     AND is readable, return that token (trimmed).
+//  2. Otherwise, fall back to ReadToken() (legacy account-wide path).
+//
+// Post-migration the legacy token is a `MIGRATED_TO_PER_SESSION` stub;
+// callers that receive the stub should treat it as an absent token
+// (the portal will reject it as a malformed bearer). Pre-migration or
+// for unbound invocations (no sessionID) the legacy token is the
+// canonical bearer.
+//
+// sessionID is typically resolved by the caller via the
+// CLAUDE_SESSION_ID -> instance_id binding lookup; callers without a
+// binding context pass "".
+func ReadCurrentBearer(sessionID string) (string, error) {
+	if sessionID != "" {
+		if tok, err := ReadSessionToken(sessionID); err == nil {
+			return strings.TrimSpace(string(tok)), nil
+		}
+		// Per-session miss is non-fatal; fall through to legacy.
+	}
+	return ReadToken()
+}
+
 // WriteSessionToken stores the bearer token for the given session at mode 0600.
 // The sessions/<sessionID>/ directory is created if it does not already exist.
 func WriteSessionToken(sessionID string, token []byte) error {
