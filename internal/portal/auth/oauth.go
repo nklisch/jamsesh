@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
@@ -21,21 +20,37 @@ type OAuthHandler struct {
 	store     store.Store
 	tokensSvc tokens.Service
 	portalURL string // e.g. "https://example.com"
+	clock     Clock
 }
 
-// NewOAuthHandler constructs an OAuthHandler. providers is a map from
-// provider name to Provider implementation. For v1 this is {"github": ...}.
+// NewOAuthHandler constructs an OAuthHandler with the real system clock.
+// Production callers use this. providers is a map from provider name to
+// Provider implementation. For v1 this is {"github": ...}.
 func NewOAuthHandler(
 	providers map[string]portaloauth.Provider,
 	s store.Store,
 	tokensSvc tokens.Service,
 	portalURL string,
 ) *OAuthHandler {
+	return NewOAuthHandlerWithClock(providers, s, tokensSvc, portalURL, realClock{})
+}
+
+// NewOAuthHandlerWithClock constructs an OAuthHandler with the supplied clock.
+// Used by unit tests (fakeClock) and the e2etest-tagged binary
+// (testclock.AdvanceableClock).
+func NewOAuthHandlerWithClock(
+	providers map[string]portaloauth.Provider,
+	s store.Store,
+	tokensSvc tokens.Service,
+	portalURL string,
+	clock Clock,
+) *OAuthHandler {
 	return &OAuthHandler{
 		providers: providers,
 		store:     s,
 		tokensSvc: tokensSvc,
 		portalURL: portalURL,
+		clock:     clock,
 	}
 }
 
@@ -107,7 +122,7 @@ func (h *OAuthHandler) OauthCallback(
 
 	// Guard: expired nonce (ConsumeOAuthState returns it regardless of expiry
 	// so we validate after consuming to prevent timing attacks on state).
-	if time.Now().UTC().After(stateRow.ExpiresAt) {
+	if h.clock.Now().After(stateRow.ExpiresAt) {
 		return oauthBadRequest("oauth.expired_state", "state nonce has expired"), nil
 	}
 
@@ -167,7 +182,7 @@ func (h *OAuthHandler) OauthCallback(
 		DisplayName: ghIdentity.DisplayName,
 	}
 
-	acc, _, err := FindOrProvision(ctx, h.store, id)
+	acc, _, err := FindOrProvisionAt(ctx, h.store, id, h.clock.Now())
 	if err != nil {
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("oauth callback: provision account: %w", err))
 	}

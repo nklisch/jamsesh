@@ -673,31 +673,67 @@ func TestOauthCallback_UnverifiedEmail_Returns400WithOauthUnverifiedEmailCode(t 
 	}
 }
 
-// TestOAuthCallback_ExpiredState verifies that a manually-expired nonce
-// returns 400. We test this by checking the expiry guard path using the store
-// directly (injecting a past time is not practical via the HTTP surface
-// without time injection, so this is a unit-level check via a helper).
+// TestOAuthCallback_ExpiredState_Returns400 verifies that a state nonce whose
+// ExpiresAt has passed returns 400 with oauth.expired_state. The fake clock
+// starts just before expiry, we call /start to store the nonce, advance the
+// clock past the 5-minute TTL, then call /callback — the handler must reject
+// the nonce with the expired_state error code.
+//
+// This test drives the expiry guard deterministically via the injected clock
+// rather than relying on wall time or a database-level past timestamp.
 func TestOAuthCallback_ExpiredState_Returns400(t *testing.T) {
-	// We validate expiry after consuming — if expires_at is in the past
-	// the handler must return 400. This test exercises that branch by
-	// verifying the guard logic exists: since we can't set time in the
-	// past easily here, we confirm through a different test approach: a
-	// fresh nonce is never expired, and the guard logic is present in the
-	// source code.
+	clk := &fakeClock{t: time.Now().UTC()}
+	s := openStore(t)
+	tokenSvc := tokens.New(s)
 
-	// Instead, test: nonce that has never been inserted → 400.
 	provider := &stubProvider{name: "github"}
-	env := newOAuthTestEnv(t, "github", provider)
+	providers := map[string]portaloauth.Provider{"github": provider}
+	handler := auth.NewOAuthHandlerWithClock(providers, s, tokenSvc, "https://portal.example.com", clk)
 
-	resp := postJSONBody(t, env.srv, "/api/auth/oauth/callback", map[string]string{
+	strictAPI := openapi.NewStrictHandlerWithOptions(
+		&oauthOnlyStrict{handler}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
+
+	r := chi.NewRouter()
+	r.Post("/api/auth/oauth/start", strictAPI.StartOAuth)
+	r.Post("/api/auth/oauth/callback", strictAPI.OauthCallback)
+
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	// Obtain a valid nonce while the clock is still in the present.
+	startResp := postJSONBody(t, srv, "/api/auth/oauth/start", map[string]string{"provider": "github"})
+	defer startResp.Body.Close()
+	if startResp.StatusCode != http.StatusOK {
+		t.Fatalf("start status = %d, want 200", startResp.StatusCode)
+	}
+	var startBody struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}
+	if err := json.NewDecoder(startResp.Body).Decode(&startBody); err != nil {
+		t.Fatalf("decode start: %v", err)
+	}
+	nonce := extractStateFromURL(t, startBody.AuthorizeURL)
+
+	// Advance the clock past the 5-minute oauth-state TTL so the nonce is expired.
+	clk.advance(6 * time.Minute)
+
+	resp := postJSONBody(t, srv, "/api/auth/oauth/callback", map[string]string{
 		"provider": "github",
 		"code":     "code",
-		"state":    "nonexistent-nonce-abcdef",
+		"state":    nonce,
 	})
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("status = %d, want 400", resp.StatusCode)
+		t.Errorf("status = %d, want 400 (expired state)", resp.StatusCode)
+	}
+	body := decodeJSONResponse(t, resp)
+	if code, _ := body["error"].(string); code != "oauth.expired_state" {
+		t.Errorf("error code = %q, want %q", code, "oauth.expired_state")
 	}
 }
 

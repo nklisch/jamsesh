@@ -1,7 +1,7 @@
 ---
 id: story-refactor-per-package-clock-compliance-auth
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor, testing]
 parent: feature-refactor-per-package-clock-compliance
 depends_on: []
@@ -136,3 +136,50 @@ production.
 - `auth/slug.go:66` (`time.Now().UnixNano()` as PRNG seed) — tracked
   separately under a non-`[refactor]` story; replacing the seed changes
   RNG behavior.
+
+## Implementation notes
+
+### Discovery
+
+`grep -rn "auth.FindOrProvision\b\|\.FindOrProvision(" internal/ cmd/` found
+callers only in `provision_test.go` (test-only; uses `FindOrProvision` as a
+convenience, no clock needed) and `oauth.go` (the single production caller that
+had a clock). No boot-path or other non-handler callers. `provision_test.go`
+callers were left as-is — they are tests that don't care about clock-stamped
+timestamps, and `FindOrProvision` wrapper remains valid for that use.
+
+`NewOAuthHandler` is called from `cmd/portal/main.go:431` and four test sites
+in `oauth_test.go`; all use the positional constructor and required zero
+signature changes.
+
+### Changes made
+
+**`internal/portal/auth/oauth.go`**
+- Added `clock Clock` field to `OAuthHandler`.
+- Replaced `NewOAuthHandler` body with a delegation to new
+  `NewOAuthHandlerWithClock(..., realClock{})` — existing callers unaffected.
+- Added `NewOAuthHandlerWithClock` for test injection.
+- `OauthCallback` line 110: `time.Now().UTC().After(stateRow.ExpiresAt)` →
+  `h.clock.Now().After(stateRow.ExpiresAt)`.
+- `OauthCallback` `FindOrProvision` call → `FindOrProvisionAt(ctx, h.store, id, h.clock.Now())`.
+- Removed now-unused `"time"` import.
+
+**`internal/portal/auth/oauth_test.go`**
+- Replaced the weak `TestOAuthCallback_ExpiredState_Returns400` (which just
+  tested a missing nonce) with a deterministic fake-clock test: injects
+  `&fakeClock{}` via `NewOAuthHandlerWithClock`, stores a valid nonce, advances
+  the clock 6 minutes past the 5-minute TTL, calls callback — asserts 400 with
+  `oauth.expired_state` error code.
+
+### `FindOrProvision` caller list
+
+- `internal/portal/auth/provision_test.go` — test only, no clock, left as-is.
+- `internal/portal/auth/oauth.go` — updated to `FindOrProvisionAt(..., h.clock.Now())`.
+
+### Verification
+
+`go build ./...` — clean.
+`go test ./internal/portal/auth/...` — all pass (19 tests including new expired-state test).
+`go test ./...` — auth and all other packages pass; three pre-existing build
+failures in `githttp`, `postreceive`, `objectstore` belong to another
+in-progress story and were present before this change.
