@@ -19,6 +19,13 @@ source repo — on your own terms, with your own Claude Code instance. The porta
 never touches your source repo. Everything is real git: diff-able, recoverable,
 and attributable.
 
+For first-contact evaluation, jamsesh ships an optional **playground mode**:
+ephemeral, anonymous sessions that require no account and no org, so a
+prospective team can spin up a real jam and feel the substrate before committing
+to any setup. Playground mode is off by default and operator-opt-in; see
+[`docs/SELF_HOST.md` §15](docs/SELF_HOST.md#15-playground-configuration) for
+the configuration knobs.
+
 ## Local development
 
 The fastest way to spin up a dev environment:

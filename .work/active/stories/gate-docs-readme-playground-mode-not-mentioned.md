@@ -1,7 +1,7 @@
 ---
 id: gate-docs-readme-playground-mode-not-mentioned
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -28,3 +28,10 @@ readme-staleness
 
 ## Required edit
 Add a short paragraph (or bullet) in the "What it is" section noting the optional ephemeral-anonymous playground mode for first-contact evaluation, with a one-line pointer to `docs/SELF_HOST.md` §15 for operator config.
+
+## Implementation notes
+Added a paragraph immediately after the second paragraph of the "What it is" section (after "Everything is real git: diff-able, recoverable, and attributable."). The paragraph reads:
+
+> For first-contact evaluation, jamsesh ships an optional **playground mode**: ephemeral, anonymous sessions that require no account and no org, so a prospective team can spin up a real jam and feel the substrate before committing to any setup. Playground mode is off by default and operator-opt-in; see [`docs/SELF_HOST.md` §15](docs/SELF_HOST.md#15-playground-configuration) for the configuration knobs.
+
+`docs/SELF_HOST.md` §15 ("Playground configuration") exists at line 1535 and covers exactly the operator config knobs described in the story. The anchor `#15-playground-configuration` matches the section heading. Wording sourced from `docs/VISION.md` lines 46-48 and 64-67.
