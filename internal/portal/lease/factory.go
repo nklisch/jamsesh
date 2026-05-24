@@ -19,7 +19,7 @@ import (
 func New(
 	deployMode string,
 	db *sql.DB,
-	s store.Store,
+	s store.LeaseStore,
 	podID string,
 	heartbeatInterval time.Duration,
 	metricsReg *metrics.Registry,

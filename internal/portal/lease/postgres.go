@@ -26,7 +26,7 @@ const defaultHeartbeatInterval = 10 * time.Second
 // IssueLeaseFencingToken and the sequence-based advisory-lock path).
 type PostgresManager struct {
 	DB                *sql.DB           // pgxpool-backed *sql.DB
-	Store             store.Store       // for InsertLease / IssueLeaseFencingToken
+	Store             store.LeaseStore  // for InsertLease / IssueLeaseFencingToken
 	PodID             string            // identifies this pod in the leases table
 	HeartbeatInterval time.Duration     // default 10s when zero
 	Metrics           *metrics.Registry // optional; nil disables metrics emission
@@ -195,9 +195,9 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 type pgHandle struct {
 	sessionID    string
 	fencingToken int64
-	acquiredAt   time.Time       // used to compute hold duration on Release
+	acquiredAt   time.Time        // used to compute hold duration on Release
 	conn         *sql.Conn
-	store        store.Store
+	store        store.LeaseStore
 	mgr          *PostgresManager // back-reference for metric emission
 
 	lost chan struct{} // closed when the lease is lost (heartbeat failure)

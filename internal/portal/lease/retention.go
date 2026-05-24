@@ -9,7 +9,7 @@ import (
 )
 
 // RunRetention periodically deletes released lease rows that are older than
-// retentionAfter. It uses [store.Store.DeleteReleasedLeasesOlderThan] and
+// retentionAfter. It uses [store.LeaseStore.DeleteReleasedLeasesOlderThan] and
 // runs on the provided interval.
 //
 // now is the reference time used to compute the retention cutoff
@@ -22,7 +22,7 @@ import (
 // is used and no lease rows are ever written), the underlying query is a no-op
 // and RunRetention is not called at all — the caller (main.go) only starts the
 // goroutine in clustered mode.
-func RunRetention(ctx context.Context, s store.Store, interval, retentionAfter time.Duration, now time.Time) error {
+func RunRetention(ctx context.Context, s store.LeaseStore, interval, retentionAfter time.Duration, now time.Time) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
