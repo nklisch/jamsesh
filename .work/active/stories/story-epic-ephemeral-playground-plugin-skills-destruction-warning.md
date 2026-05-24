@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-plugin-skills-destruction-warning
 kind: story
-stage: review
+stage: done
 tags: [plugin, playground]
 parent: feature-epic-ephemeral-playground-plugin-skills
 depends_on: []
@@ -106,3 +106,55 @@ response protocol.
   instruction.
 - `TestUserPromptSubmit_nonPlaygroundDigestUnchanged` — regression: digest
   with no `urgent_events` field must not inject any warning section.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+
+**Important**:
+- Foundation-doc drift: `docs/PROTOCOL.md` § "WebSocket event types"
+  was not updated to include `playground.destruction_warning`. The
+  OpenAPI schema (canonical machine-readable source) was correctly
+  extended, but the human-readable PROTOCOL.md taxonomy is now stale.
+  Filed as `idea-protocol-md-add-playground-destruction-warning-event`
+  in `.work/backlog/`. Not blocking advancement because the canonical
+  contract (openapi.yaml) is correct and the gap is now tracked.
+
+**Nits** (no items filed):
+- Implementation-notes section in this story body says it fixed a
+  "missing `time` import" in `internal/portal/githttp/receive_pack.go`,
+  but the diff actually adds a 22-line idle-timer reset block. The
+  abuse-caps sibling story's body claimed it had added that block but
+  never actually committed it — this story silently filled that gap.
+  The work is correct and well-tested (see `internal/portal/githttp`
+  tests still passing); the documentation in the body just
+  understates the scope. No correctness concern.
+- Story body claims `cmd/jamsesh/sessioncmd/status.go` was modified
+  here; in fact Story 3 (status-enumeration) owns that file. Body
+  text inaccuracy only.
+- Design spec line 144 used `reason: "idle" | "hard_cap"`. Shipped
+  value is `idle_timeout` (matches DB column `idle_timeout_at` and
+  the rest of the codebase). Implementation choice is the better one.
+
+**Notes**:
+- `go build ./cmd/jamsesh/...`, `go test ./cmd/jamsesh/hooks/...
+  ./cmd/jamsesh/state/... ./cmd/jamsesh/mcpheaders/...
+  ./internal/portal/githttp/...`, and `go vet ./...` all pass.
+- Tests are thorough: positive path verifies ordering (urgent before
+  digest), human duration formatting, reason rendering, ends_at
+  rendering, and finalize-instruction surfacing; regression path
+  verifies non-playground digests are unchanged.
+- OpenAPI schema additions
+  (`PlaygroundDestructionWarningPayload`, `urgent_events` field,
+  enum extension, discriminator mapping) are well-shaped and
+  internally consistent; `internal/api/openapi/server.gen.go`
+  regeneration looks faithful.
+- SKILL.md append is clean and matches the spec; the
+  separator-then-section pattern leaves room for the wave-4
+  skill-consolidation feature to extend additively as planned.
+- Pre-existing-bug fixes (migration zero-sessions guard,
+  mcpheaders per-session bearer path) are correctly scoped and
+  tested per the test-integrity rule.
+
