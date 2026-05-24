@@ -2,6 +2,7 @@ package sessioncmd
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -587,6 +588,260 @@ func TestNormalizeScope(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("normalizeScope(%q) = %q, want %q", tc.input, got, tc.want)
 		}
+	}
+}
+
+// ---- Playground tests ----
+
+// setupPlaygroundEnv creates a temp CLAUDE_PLUGIN_DATA dir WITHOUT an OAuth
+// token file (playground is unauthenticated) and points JAMSESH_PORTAL_URL at
+// the given test server URL. Returns the temp dir path.
+func setupPlaygroundEnv(t *testing.T, srvURL string) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
+	// Deliberately NO token file — playground must not require auth.
+	return dir
+}
+
+// samplePlaygroundResp returns a PlaygroundSessionCreated response for testing.
+func samplePlaygroundResp(sessionID string) openapi.PlaygroundSessionCreated {
+	return openapi.PlaygroundSessionCreated{
+		Bearer:    "anon-bearer-abc123",
+		Nickname:  "amber-otter",
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Session: openapi.PlaygroundSessionSummary{
+			Id:            sessionID,
+			Name:          "playground-" + sessionID[:6],
+			Goal:          "",
+			OrgId:         "org_playground",
+			Scope:         `["**"]`,
+			Status:        openapi.PlaygroundSessionSummaryStatusActive,
+			MembersCount:  1,
+			CreatedAt:     time.Now(),
+			HardCapAt:     time.Now().Add(24 * time.Hour),
+			IdleTimeoutAt: time.Now().Add(30 * time.Minute),
+		},
+	}
+}
+
+// writePlaygroundJSON writes a PlaygroundSessionCreated JSON response at 201.
+func writePlaygroundJSON(w http.ResponseWriter, resp openapi.PlaygroundSessionCreated) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// TestPlaygroundAction_happyPath verifies the full playground happy path:
+// POST /api/playground/sessions with no auth header, bearer stored, push
+// uses the received bearer, and per-session state files written.
+func TestPlaygroundAction_happyPath(t *testing.T) {
+	const sessionID = "sess-pg-001"
+
+	var (
+		createCalled    bool
+		capturedAuthHdr string
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "want POST", http.StatusMethodNotAllowed)
+			return
+		}
+		createCalled = true
+		capturedAuthHdr = r.Header.Get("Authorization")
+		writePlaygroundJSON(w, samplePlaygroundResp(sessionID))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dir := setupPlaygroundEnv(t, srv.URL)
+	gitCalls := stubGitForNew(t, nil)
+
+	app := buildCLIApp()
+	err := app.Run(context.Background(), []string{"jamsesh", "new", "--playground"})
+	if err != nil {
+		t.Fatalf("new --playground returned error: %v", err)
+	}
+
+	if !createCalled {
+		t.Error("expected POST /api/playground/sessions to be called")
+	}
+
+	// The create request must NOT carry an Authorization header.
+	if capturedAuthHdr != "" {
+		t.Errorf("playground create must send no auth header, got: %q", capturedAuthHdr)
+	}
+
+	// At least one push call must have been made.
+	foundPush := false
+	for _, call := range *gitCalls {
+		for _, arg := range call {
+			if arg == "push" {
+				foundPush = true
+				break
+			}
+		}
+	}
+	if !foundPush {
+		t.Errorf("expected git push call, git calls: %v", *gitCalls)
+	}
+
+	// Per-session state files must have been written.
+	orgIDPath := filepath.Join(dir, "sessions", sessionID, "org_id")
+	orgIDData, err := os.ReadFile(orgIDPath)
+	if err != nil {
+		t.Fatalf("reading org_id state: %v", err)
+	}
+	if string(orgIDData) != "org_playground" {
+		t.Errorf("org_id = %q, want %q", string(orgIDData), "org_playground")
+	}
+
+	// Bearer must have been stored in per-session token file.
+	tokenPath := filepath.Join(dir, "sessions", sessionID, "token")
+	tokenData, err := os.ReadFile(tokenPath)
+	if err != nil {
+		t.Fatalf("reading session token: %v", err)
+	}
+	if string(tokenData) != "anon-bearer-abc123" {
+		t.Errorf("session token = %q, want %q", string(tokenData), "anon-bearer-abc123")
+	}
+}
+
+// TestPlaygroundAction_namePassthrough verifies that --name "demo" is sent in
+// the create request body.
+func TestPlaygroundAction_namePassthrough(t *testing.T) {
+	const sessionID = "sess-pg-002"
+
+	var capturedName string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		var body openapi.CreatePlaygroundSessionRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			capturedName = body.Name
+		}
+		writePlaygroundJSON(w, samplePlaygroundResp(sessionID))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupPlaygroundEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+
+	app := buildCLIApp()
+	err := app.Run(context.Background(), []string{
+		"jamsesh", "new", "--playground", "--name", "demo",
+	})
+	if err != nil {
+		t.Fatalf("new --playground --name demo returned error: %v", err)
+	}
+
+	if capturedName != "demo" {
+		t.Errorf("expected name %q in create request, got %q", "demo", capturedName)
+	}
+}
+
+// TestPlaygroundAction_mutuallyExclusiveWithOrg verifies that combining
+// --playground and --org returns a clear error.
+func TestPlaygroundAction_mutuallyExclusiveWithOrg(t *testing.T) {
+	// No server needed — error fires before any network call.
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:19997")
+	// Write a token so buildPortalClient doesn't also error (guard fires first,
+	// but be defensive to keep the test focused).
+	_ = os.WriteFile(filepath.Join(dir, "token"), []byte("tok"), 0o600)
+
+	app := buildCLIApp()
+	err := app.Run(context.Background(), []string{
+		"jamsesh", "new", "--playground", "--org", "org-foo",
+	})
+	if err == nil {
+		t.Fatal("expected error for --playground --org, got nil")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("error should mention mutually exclusive, got: %v", err)
+	}
+}
+
+// TestPlaygroundAction_pushUsesBearerNotOAuthToken verifies that the push
+// injects the just-received bearer (not the account-wide OAuth token) via
+// the -c http.extraHeader argument. The bearer is Base64-encoded inside
+// the Basic auth value: "Authorization: Basic base64(jamsesh:<bearer>)".
+func TestPlaygroundAction_pushUsesBearerNotOAuthToken(t *testing.T) {
+	const (
+		sessionID  = "sess-pg-003"
+		anonBearer = "anon-bearer-xyz789"
+		oauthToken = "oauth-tok-should-not-appear"
+	)
+
+	// Expected Basic auth credential: "jamsesh:<bearer>" Base64-encoded.
+	expectedB64 := base64.StdEncoding.EncodeToString([]byte("jamsesh:" + anonBearer))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		resp := samplePlaygroundResp(sessionID)
+		resp.Bearer = anonBearer
+		writePlaygroundJSON(w, resp)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// Set up env WITHOUT an OAuth token — playground must not need one.
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
+
+	// Capture all git-with-env calls so we can inspect the extraHeader arg.
+	var capturedGitArgs [][]string
+
+	origRunGit := runGit
+	origRunGitOutput := runGitOutput
+	origRunGitWithEnv := runGitWithEnv
+	t.Cleanup(func() {
+		runGit = origRunGit
+		runGitOutput = origRunGitOutput
+		runGitWithEnv = origRunGitWithEnv
+	})
+	runGit = func(args ...string) error { return nil }
+	runGitOutput = func(args ...string) (string, error) { return "abc1234", nil }
+	runGitWithEnv = func(env []string, args ...string) error {
+		capturedGitArgs = append(capturedGitArgs, append([]string(nil), args...))
+		return nil
+	}
+
+	app := buildCLIApp()
+	err := app.Run(context.Background(), []string{"jamsesh", "new", "--playground"})
+	if err != nil {
+		t.Fatalf("new --playground returned error: %v", err)
+	}
+
+	// Find the -c http.extraHeader=... argument in the push call.
+	// The header is injected as Base64 Basic auth: "Authorization: Basic <b64>".
+	foundBearerInPush := false
+	for _, callArgs := range capturedGitArgs {
+		for _, arg := range callArgs {
+			if strings.Contains(arg, "http.extraHeader=") {
+				// The header must contain the anon bearer's Base64 encoding.
+				if strings.Contains(arg, expectedB64) {
+					foundBearerInPush = true
+				}
+				// The OAuth token must NOT appear in any push header.
+				oauthB64 := base64.StdEncoding.EncodeToString([]byte("jamsesh:" + oauthToken))
+				if strings.Contains(arg, oauthB64) || strings.Contains(arg, oauthToken) {
+					t.Errorf("OAuth token leaked into playground push header: %q", arg)
+				}
+			}
+		}
+	}
+	if !foundBearerInPush {
+		t.Errorf("expected anon bearer (b64: %q) in push extraHeader, git calls: %v",
+			expectedB64, capturedGitArgs)
 	}
 }
 

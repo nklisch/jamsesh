@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-session-lifecycle-cli-playground-flag
 kind: story
-stage: implementing
+stage: review
 tags: [plugin, playground]
 parent: feature-epic-ephemeral-playground-session-lifecycle
 depends_on: [story-epic-ephemeral-playground-session-lifecycle-rest-endpoints]
@@ -85,3 +85,35 @@ state, prints share URL + nickname + ends_at; mutually exclusive with
   (the `new.go` file must exist). Cross-feature deps are inherited
   via the feature-level depends_on declared in the parent feature's
   frontmatter — no need to re-declare here at the story level.
+
+## Implementation notes
+
+### Files changed
+
+- `cmd/jamsesh/portalclient/client.go` — added `PostJSONAnon[T]()`, a
+  generic that issues an unauthenticated POST (no Authorization header),
+  parallel to the existing `GetJSONWithBearer` pattern already in the file.
+
+- `cmd/jamsesh/sessioncmd/new.go` — extended as designed:
+  - Added `--playground` `BoolFlag` to `NewCommand`
+  - Mutual-exclusion guard at the top of `newAction` (`--playground` + `--org` → clear error)
+  - Early branch to `newPlaygroundAction` when `--playground` is set
+  - `buildPlaygroundClient()` — returns portal URL without requiring a stored OAuth token
+  - `newPlaygroundAction(ctx, cmd)` — calls `PostJSONAnon` → stores bearer → pushes → writes state → prints summary
+  - `pushBaseRefWithBearer(ctx, baseURL, sessionID, bearer)` — thin variant of wave-1 `pushBaseRef` using an explicit bearer; same `-c http.extraHeader=` approach (no URL-embedded credentials)
+  - `writePlaygroundSessionState(session)` — writes org_id (`"org_playground"`), ref, last_seen_seq; no account_id (anonymous)
+  - `wrapPlaygroundPushError` — push-failure wrapper with retry command
+  - `printPlaygroundSummary` — share URL + nickname + ends-in
+
+- `cmd/jamsesh/sessioncmd/new_test.go` — 4 new playground tests:
+  - `TestPlaygroundAction_happyPath` — full happy path; asserts no auth header on create, push fires, state files written, token stored
+  - `TestPlaygroundAction_namePassthrough` — `--name "demo"` propagated to request body
+  - `TestPlaygroundAction_mutuallyExclusiveWithOrg` — `--playground --org foo` returns error mentioning "mutually exclusive"
+  - `TestPlaygroundAction_pushUsesBearerNotOAuthToken` — push `http.extraHeader` contains the Base64-encoded anon bearer, not the OAuth token
+
+### Design discoveries
+
+- `WriteSessionToken` was already implemented by the bearer-storage story (confirmed in `state.go`). No changes needed to `state.go`.
+- `portalclient.Client.Do` always calls `attachBearer` (reads state OAuth token), making it unsuitable for anonymous playground calls. Added `PostJSONAnon` as a bare `net/http` call with no auth header, following the existing `GetJSONWithBearer` pattern.
+- `buildPlaygroundClient()` returns `(string, *http.Client, error)` rather than `*portalclient.Client` to keep the anonymous path clearly separate from the authenticated client — no risk of accidentally wiring token refresh on playground calls.
+- `net/http` import added to `new.go` (was not previously imported; only `net/url` was present).

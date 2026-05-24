@@ -174,6 +174,49 @@ func GetJSONWithBearer[T any](ctx context.Context, httpClient *http.Client, base
 	return result, nil
 }
 
+// PostJSONAnon marshals body to JSON, issues an unauthenticated POST to
+// baseURL+path, decodes the response body as JSON into T, and returns it.
+// Unlike PostJSON it does NOT attach any Authorization header — suitable
+// for public/anonymous endpoints such as POST /api/playground/sessions.
+// httpClient may be nil; http.DefaultClient is used in that case.
+func PostJSONAnon[T any](ctx context.Context, httpClient *http.Client, baseURL, path string, body any) (T, error) {
+	var zero T
+
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return zero, fmt.Errorf("portalclient: encoding POST body for %q: %w", path, err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+path, bytes.NewReader(encoded))
+	if err != nil {
+		return zero, fmt.Errorf("portalclient: building POST request for %q: %w", path, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	hc := httpClient
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+
+	resp, err := hc.Do(req)
+	if err != nil {
+		return zero, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return zero, fmt.Errorf("portalclient: POST %q returned %d: %s", path, resp.StatusCode, respBody)
+	}
+
+	var result T
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return zero, fmt.Errorf("portalclient: decoding POST %q response: %w", path, err)
+	}
+	return result, nil
+}
+
 // PostJSON marshals body to JSON, issues a POST to <c.BaseURL><path> through
 // Do, decodes the response body as JSON into T, and returns it.
 func PostJSON[T any](ctx context.Context, c *Client, path string, body any) (T, error) {

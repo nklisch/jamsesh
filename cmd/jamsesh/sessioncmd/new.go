@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -60,6 +61,7 @@ func NewCommand() *cli.Command {
 			&cli.StringFlag{Name: "mode", Value: "sync", Usage: "Default mode (sync|isolated)"},
 			&cli.StringFlag{Name: "invite", Usage: "Comma-separated emails to invite after creation"},
 			&cli.BoolFlag{Name: "non-interactive", Usage: "Skip all prompts; require all params via flags"},
+			&cli.BoolFlag{Name: "playground", Usage: "Create an ephemeral anonymous playground session (no auth required)"},
 		},
 		Action: newAction,
 	}
@@ -76,6 +78,16 @@ type CreateParams struct {
 
 // newAction is the urfave/cli action for "jamsesh new".
 func newAction(ctx context.Context, cmd *cli.Command) error {
+	// Mutual-exclusion guard: --playground and --org are incompatible.
+	if cmd.Bool("playground") && cmd.String("org") != "" {
+		return errors.New("--playground and --org are mutually exclusive: playground sessions are always in the reserved playground org")
+	}
+
+	// Playground path: skip auth, org picker, and durable-session creation.
+	if cmd.Bool("playground") {
+		return newPlaygroundAction(ctx, cmd)
+	}
+
 	// 1. Construct portal client (reads portal URL + token via state helpers)
 	pc, err := buildPortalClient()
 	if err != nil {
@@ -340,6 +352,163 @@ func buildPortalClient() (*portalclient.Client, error) {
 	pc := &portalclient.Client{BaseURL: portalURL}
 	portalclient.WireRefresh(pc)
 	return pc, nil
+}
+
+// buildPlaygroundClient returns the base portal URL for unauthenticated
+// playground requests. Unlike buildPortalClient it does NOT check for a
+// stored token — the playground endpoint is public (no auth required).
+// The HTTP client (nil = http.DefaultClient) is returned separately so the
+// caller can pass it directly to PostJSONAnon / pushBaseRefWithBearer.
+func buildPlaygroundClient() (string, *http.Client, error) {
+	portalURL, err := state.ReadPortalURL()
+	if err != nil {
+		return "", nil, fmt.Errorf("resolving portal URL: %w", err)
+	}
+	return portalURL, nil, nil
+}
+
+// newPlaygroundAction handles `jamsesh new --playground`. It creates an
+// ephemeral anonymous playground session (no auth required), pushes the
+// local HEAD as base ref using the just-received bearer, writes per-session
+// state, and prints a playground-specific success summary.
+func newPlaygroundAction(ctx context.Context, cmd *cli.Command) error {
+	baseURL, hc, err := buildPlaygroundClient()
+	if err != nil {
+		return err
+	}
+
+	// Build the create request. All fields optional; server supplies defaults.
+	req := openapi.CreatePlaygroundSessionRequest{
+		Name:  cmd.String("name"),
+		Goal:  cmd.String("goal"),
+		Scope: cmd.String("scope"),
+	}
+	// scope defaults to "**" via the flag Default; normalise it.
+	if req.Scope != "" && req.Scope != "**" {
+		normalized, err := normalizeScope(req.Scope)
+		if err != nil {
+			return fmt.Errorf("invalid --scope: %w", err)
+		}
+		req.Scope = normalized
+	}
+
+	resp, err := portalclient.PostJSONAnon[openapi.PlaygroundSessionCreated](
+		ctx, hc, baseURL, "/api/playground/sessions", req)
+	if err != nil {
+		return fmt.Errorf("creating playground session: %w", err)
+	}
+
+	// Persist the just-received bearer to per-session token storage immediately.
+	if err := state.WriteSessionToken(resp.Session.Id, []byte(resp.Bearer)); err != nil {
+		return fmt.Errorf("writing playground session token: %w", err)
+	}
+
+	// Push local HEAD as base ref using the just-received bearer (no OAuth token).
+	if err := pushBaseRefWithBearer(ctx, baseURL, resp.Session.Id, resp.Bearer); err != nil {
+		// Session stays live with base_sha NULL per locked decision.
+		return wrapPlaygroundPushError(err, resp.Session, baseURL)
+	}
+
+	// Write per-session state files.
+	if err := writePlaygroundSessionState(resp.Session); err != nil {
+		return err
+	}
+
+	printPlaygroundSummary(resp, baseURL)
+	return nil
+}
+
+// pushBaseRefWithBearer is a variant of pushBaseRef that uses an explicit
+// bearer token instead of reading the account-wide OAuth token from state.
+// This is used for playground sessions where the user may not have (or need)
+// an OAuth token — the anonymous session bearer is sufficient.
+// Credentials are injected via -c http.extraHeader (NOT URL-embedded) to
+// prevent token leakage into git's reflog or `git remote -v` output.
+func pushBaseRefWithBearer(ctx context.Context, baseURL, sessionID, bearer string) error {
+	_ = ctx // reserved for future cancellation propagation
+
+	// Verify we're in a git checkout with a HEAD.
+	if err := runGit("rev-parse", "--git-dir"); err != nil {
+		return fmt.Errorf("not a git checkout: %w", err)
+	}
+	headSHA, err := runGitOutput("rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("repo has no commits yet (nothing to push as base): %w", err)
+	}
+	headSHA = strings.TrimSpace(headSHA)
+	_ = headSHA // validated; actual push uses HEAD refspec
+
+	remoteURL := strings.TrimRight(baseURL, "/") + "/git/" + sessionID + ".git"
+	// HTTP Basic: username is arbitrary ("jamsesh"), password is the bearer token.
+	basicHeader := "Authorization: Basic " + base64.StdEncoding.EncodeToString(
+		[]byte("jamsesh:"+bearer))
+
+	refspec := "HEAD:refs/heads/jam/" + sessionID + "/base"
+	return runGitWithEnv(
+		[]string{},
+		"-c", "http.extraHeader="+basicHeader,
+		"push", remoteURL, refspec,
+	)
+}
+
+// writePlaygroundSessionState writes per-session state files for a playground
+// session. The org_id is always "org_playground" and there is no account_id
+// to bind at create time (no durable account — the anonymous bearer is the
+// credential).
+func writePlaygroundSessionState(session openapi.PlaygroundSessionSummary) error {
+	dir, err := state.PluginDataDir()
+	if err != nil {
+		return err
+	}
+
+	sessDir := filepath.Join(dir, "sessions", session.Id)
+	if err := os.MkdirAll(sessDir, 0o700); err != nil {
+		return fmt.Errorf("creating session state dir: %w", err)
+	}
+
+	// For playground sessions the ref is jam/<sessionID>/playground/main;
+	// there is no per-account ref variant because the account is anonymous.
+	ref := fmt.Sprintf("jam/%s/playground/main", session.Id)
+
+	writes := []struct{ name, value string }{
+		{"sessions/" + session.Id + "/ref", ref},
+		{"sessions/" + session.Id + "/org_id", session.OrgId},
+		{"sessions/" + session.Id + "/last_seen_seq", "0"},
+	}
+	for _, w := range writes {
+		if err := state.Write(w.name, []byte(w.value), 0o600); err != nil {
+			return fmt.Errorf("write %s: %w", w.name, err)
+		}
+	}
+	return nil
+}
+
+// wrapPlaygroundPushError wraps a push failure for the playground path,
+// including the explicit retry command. Session stays live per locked decision.
+func wrapPlaygroundPushError(pushErr error, session openapi.PlaygroundSessionSummary, baseURL string) error {
+	remoteURL := strings.TrimRight(baseURL, "/") + "/git/" + session.Id + ".git"
+	retryCmd := fmt.Sprintf("git push %s HEAD:refs/heads/jam/%s/base", remoteURL, session.Id)
+	return fmt.Errorf(
+		"push failed (playground session %s is live with base_sha: null): %w\n"+
+			"Retry with:\n  %s",
+		session.Id, pushErr, retryCmd)
+}
+
+// printPlaygroundSummary prints a human-readable summary for a newly created
+// playground session, highlighting the share URL, nickname, and expiry.
+func printPlaygroundSummary(resp openapi.PlaygroundSessionCreated, baseURL string) {
+	shareURL := strings.TrimRight(baseURL, "/") + "/playground/" + resp.Session.Id
+	expiresIn := time.Until(resp.ExpiresAt).Round(time.Minute)
+
+	fmt.Printf("Playground session created!\n")
+	fmt.Printf("  Share URL:  %s\n", shareURL)
+	fmt.Printf("  You are:    %s\n", resp.Nickname)
+	fmt.Printf("  Session:    %s (%s)\n", resp.Session.Name, resp.Session.Id)
+	if resp.Session.Goal != "" {
+		fmt.Printf("  Goal:       %s\n", resp.Session.Goal)
+	}
+	fmt.Printf("  Ends:       in %s (hard cap) or after idle timeout\n", expiresIn)
+	fmt.Printf("Base ref pushed. Others can join at:\n  %s\n", shareURL)
 }
 
 // parseInviteEmails splits a comma-separated email string, trimming whitespace
