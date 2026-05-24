@@ -3,12 +3,12 @@ id: story-refactor-replace-inline-event-types-with-openapi-typescript-gen
 kind: story
 stage: drafting
 tags: [ui, refactor, cleanup]
-parent: null
-depends_on: []
+parent: feature-spec-discipline
+depends_on: [story-spec-discipline-add-playground-event-payloads]
 release_binding: null
 gate_origin: refactor-design
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Replace inline WS event-type annotations with openapi-typescript-generated types
