@@ -146,76 +146,31 @@ func (l *Log) fanOut(e Event) {
 	}
 }
 
-// Emit allocates the next seq for the session, inserts one event row, and
-// returns the seq. The entire operation runs in a single DB transaction.
+// insertAndPublish is the shared core for Emit and EmitBatch. It opens a
+// single DB transaction that:
+//  1. Ensures the per-session event_seq row exists (idempotent).
+//  2. Allocates len(drafts) contiguous seq numbers via AllocateNextSeqN.
+//  3. Inserts one event row per draft inside the same transaction.
 //
-// orgID is stored on the row for org-scoped queries; sessionID is the
-// per-session namespace for seq allocation.
-func (l *Log) Emit(ctx context.Context, orgID, sessionID, eventType string, payload json.RawMessage) (int64, error) {
-	var seq int64
-	var emittedAt time.Time
-	var id string
-	err := l.s.WithTx(ctx, func(tx store.TxStore) error {
-		if err := tx.EnsureEventSeqRow(ctx, sessionID); err != nil {
-			return fmt.Errorf("ensure event_seq row: %w", err)
-		}
-		allocated, err := tx.AllocateNextSeq(ctx, sessionID)
-		if err != nil {
-			return fmt.Errorf("allocate seq: %w", err)
-		}
-		seq = allocated
-		id = ulid.Make().String()
-		emittedAt = l.clock.Now()
-		return tx.InsertEvent(ctx, store.InsertEventParams{
-			ID:        id,
-			OrgID:     orgID,
-			SessionID: sessionID,
-			Seq:       seq,
-			Type:      eventType,
-			Payload:   string(payload),
-			CreatedAt: emittedAt,
-		})
-	})
-	if err != nil {
-		return 0, err
-	}
-	l.fanOut(Event{
-		ID:        id,
-		OrgID:     orgID,
-		SessionID: sessionID,
-		Seq:       seq,
-		Type:      eventType,
-		Payload:   payload,
-		CreatedAt: emittedAt,
-	})
-	if l.metrics != nil {
-		l.metrics.EventLogEmitTotal.Inc()
-	}
-	return seq, nil
-}
-
-// EmitBatch emits n events in a single transaction with contiguous seq values.
-// It returns the first allocated seq. All events share the same sessionID and
-// orgID; each draft carries its own Type and Payload.
+// After the transaction commits it fans out every inserted event to all
+// subscribers. Fan-out is strictly outside the transaction so the DB lock is
+// never held across slow socket writes, and a dropped subscriber cannot cause
+// a rollback.
 //
-// If drafts is empty the call is a no-op and returns 0, nil.
-func (l *Log) EmitBatch(ctx context.Context, orgID, sessionID string, drafts []DraftEvent) (int64, error) {
-	if len(drafts) == 0 {
-		return 0, nil
-	}
+// Returns the first allocated seq, the generated IDs (in draft order), the
+// shared emittedAt timestamp, and any error.
+func (l *Log) insertAndPublish(ctx context.Context, orgID, sessionID string, drafts []DraftEvent) (firstSeq int64, ids []string, emittedAt time.Time, err error) {
 	n := int64(len(drafts))
-	var firstSeq int64
 	now := l.clock.Now()
+	ids = make([]string, len(drafts))
 
-	// ids holds the generated IDs in order so we can fan out after commit.
-	ids := make([]string, len(drafts))
-
-	err := l.s.WithTx(ctx, func(tx store.TxStore) error {
+	err = l.s.WithTx(ctx, func(tx store.TxStore) error {
 		if err := tx.EnsureEventSeqRow(ctx, sessionID); err != nil {
 			return fmt.Errorf("ensure event_seq row: %w", err)
 		}
 		// AllocateNextSeqN increments by n and returns the LAST allocated seq.
-		// The range is [last-n+1, last].
+		// The range is [last-n+1, last]. For n=1 this is identical to
+		// AllocateNextSeq: last == firstSeq.
 		last, err := tx.AllocateNextSeqN(ctx, sessionID, n)
 		if err != nil {
 			return fmt.Errorf("allocate %d seqs: %w", n, err)
@@ -239,8 +194,10 @@ func (l *Log) EmitBatch(ctx context.Context, orgID, sessionID string, drafts []D
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return 0, nil, time.Time{}, err
 	}
+
+	// Fan-out after commit: tx-emit-then-fanout discipline preserved.
 	for i, draft := range drafts {
 		l.fanOut(Event{
 			ID:        ids[i],
@@ -248,9 +205,42 @@ func (l *Log) EmitBatch(ctx context.Context, orgID, sessionID string, drafts []D
 			SessionID: sessionID,
 			Seq:       firstSeq + int64(i),
 			Type:      draft.Type,
-			Payload:   draft.Payload,
+			Payload:   json.RawMessage(draft.Payload),
 			CreatedAt: now,
 		})
+	}
+
+	return firstSeq, ids, now, nil
+}
+
+// Emit allocates the next seq for the session, inserts one event row, and
+// returns the seq. The entire operation runs in a single DB transaction.
+//
+// orgID is stored on the row for org-scoped queries; sessionID is the
+// per-session namespace for seq allocation.
+func (l *Log) Emit(ctx context.Context, orgID, sessionID, eventType string, payload json.RawMessage) (int64, error) {
+	firstSeq, _, _, err := l.insertAndPublish(ctx, orgID, sessionID, []DraftEvent{{Type: eventType, Payload: payload}})
+	if err != nil {
+		return 0, err
+	}
+	if l.metrics != nil {
+		l.metrics.EventLogEmitTotal.Inc()
+	}
+	return firstSeq, nil
+}
+
+// EmitBatch emits n events in a single transaction with contiguous seq values.
+// It returns the first allocated seq. All events share the same sessionID and
+// orgID; each draft carries its own Type and Payload.
+//
+// If drafts is empty the call is a no-op and returns 0, nil.
+func (l *Log) EmitBatch(ctx context.Context, orgID, sessionID string, drafts []DraftEvent) (int64, error) {
+	if len(drafts) == 0 {
+		return 0, nil
+	}
+	firstSeq, _, _, err := l.insertAndPublish(ctx, orgID, sessionID, drafts)
+	if err != nil {
+		return 0, err
 	}
 	if l.metrics != nil {
 		l.metrics.EventLogEmitTotal.Add(float64(len(drafts)))

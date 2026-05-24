@@ -1,7 +1,7 @@
 ---
 id: story-refactor-events-log-emit-batch-shared-helper
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -55,3 +55,17 @@ strictly outside the transaction.
 
 Behavior-preserving — same event payload shape, same fan-out timing,
 same error-return shape on either entry point.
+
+## Implementation notes
+
+**Approach:** Extracted `(l *Log) insertAndPublish(ctx, orgID, sessionID, drafts []DraftEvent) (firstSeq int64, ids []string, emittedAt time.Time, err error)` as the shared core. The helper owns the full tx-emit-then-fanout lifecycle: opens the transaction, allocates seqs, inserts rows, commits, then fans out to subscribers. Fan-out is explicitly outside the `WithTx` closure, making the discipline visible by construction.
+
+**AllocateNextSeq vs AllocateNextSeqN:** The helper uses `AllocateNextSeqN` for both the single and batch cases. SQL confirms both methods are identical for n=1 (`UPDATE event_seq SET next = next + ? RETURNING next`). Using `AllocateNextSeqN(ctx, sessionID, 1)` is semantically equivalent to `AllocateNextSeq` — no branch needed.
+
+**UpdatePresence decision:** Left untouched. `UpdatePresence` has a `UpsertPresence` step inside the tx that is not shared with `Emit`/`EmitBatch`, and folding it through `insertAndPublish` would require passing a pre-tx callback or splitting the helper into two halves — neither improves readability. Decision documented; `UpdatePresence` continues its current implementation.
+
+**Metrics:** Both `Emit` (`.Inc()`) and `EmitBatch` (`.Add(float64(n))`) still increment `EventLogEmitTotal` in their own bodies after calling `insertAndPublish`, preserving the existing per-caller count behavior.
+
+**Verification:** `go build ./...`, `go test ./internal/portal/events/...`, and `go test ./...` all pass clean. No tests modified.
+
+**LoC delta:** Removed ~50 lines of duplicated logic from `Emit` + `EmitBatch`; added ~65 lines for `insertAndPublish` + slimmed callers. Net: `log.go` went from 353 to ~370 lines (helper is slightly longer than either individual method it replaces, but the callers are each 5–7 lines vs 40–50 lines).
