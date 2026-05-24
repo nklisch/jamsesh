@@ -1,7 +1,7 @@
 ---
 id: story-refactor-frontend-god-components-session-attach-walkthrough
 kind: story
-stage: implementing
+stage: review
 tags: [ui, refactor]
 parent: feature-refactor-frontend-god-components
 depends_on: []
@@ -65,3 +65,24 @@ boundaries are obvious once the file is read.
 ## Rollback
 
 `git revert` the commit.
+
+## Implementation notes
+
+The file was a two-mode modal (`full` / `compact`), not a multi-step
+wizard as the story template assumed. The actual extraction split was:
+
+- `walkthrough/CcPane.svelte` (199 LoC) — shared Claude Code prompt
+  pane used in both modes
+- `walkthrough/FullCard.svelte` (368 LoC) — first-time ceremonial card
+  (terminal + CC pane + dismiss checkbox)
+- `walkthrough/CompactCard.svelte` (161 LoC) — returning-user compact
+  card (CC pane only + reopen link)
+
+Parent `SessionAttachWalkthrough.svelte` reduced from 747 → 163 LoC.
+
+`view-state-union-machine` pattern applied: `type Mode = 'full' | 'compact'`
+drives template branching in parent. `$bindable()` used on `closeBtnRef`
+prop in both card components so parent's focus-management `$effect` can
+still call `.focus()` on the close button after mode switch.
+
+All 624 tests pass; `npm run check` 0 errors; `npm run build` clean.
