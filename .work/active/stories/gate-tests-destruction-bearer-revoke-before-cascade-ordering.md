@@ -1,7 +1,7 @@
 ---
 id: gate-tests-destruction-bearer-revoke-before-cascade-ordering
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -34,3 +34,20 @@ func TestDestruction_BearerRevokedBeforeSessionDelete(t *testing.T) {
 
 ## Test location (suggested)
 `internal/portal/playground/destruction_test.go`
+
+## Implementation notes
+
+Added `TestDestruction_BearerRevokedBeforeSessionDelete` to
+`internal/portal/playground/destruction_test.go`.
+
+The test injects an `orderCapturingStore` wrapper around the real SQLite store.
+The wrapper intercepts `RevokeBearersForSession` and `DeleteSession`, appending
+`"revoke"` or `"delete"` to a slice on each call. After `Destroy` returns, the
+test asserts that the first `"revoke"` entry appears at a lower index than the
+first `"delete"` entry, verifying the step-4-before-step-6 invariant.
+
+Using a real store (rather than a pure mock) means the test exercises the full
+cascade path: the tombstone is inserted, bearers are revoked, the session row is
+deleted with FK cascade, and the anon account is cleaned up. The ordering
+assertion is purely additive — it does not interfere with the existing
+correctness assertions in the file.

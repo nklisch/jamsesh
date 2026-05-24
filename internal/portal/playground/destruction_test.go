@@ -609,6 +609,92 @@ func TestDestruction_ConcurrentDestroyCallsForSameSession_NoCorruption(t *testin
 // TestDestruction_AdvisoryLock_SecondDestroyIsNoOp
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// TestDestruction_BearerRevokedBeforeSessionDelete
+// ---------------------------------------------------------------------------
+
+// orderCapturingStore wraps a store.Store and records the sequence of
+// RevokeBearersForSession and DeleteSession calls so that the ordering
+// invariant (step 4 before step 6) can be asserted.
+type orderCapturingStore struct {
+	store.Store
+	mu  sync.Mutex
+	seq []string // "revoke" or "delete" appended on each call
+}
+
+func (s *orderCapturingStore) RevokeBearersForSession(ctx context.Context, p store.RevokeBearersForSessionParams) error {
+	s.mu.Lock()
+	s.seq = append(s.seq, "revoke")
+	s.mu.Unlock()
+	return s.Store.RevokeBearersForSession(ctx, p)
+}
+
+func (s *orderCapturingStore) DeleteSession(ctx context.Context, p store.DeleteSessionParams) error {
+	s.mu.Lock()
+	s.seq = append(s.seq, "delete")
+	s.mu.Unlock()
+	return s.Store.DeleteSession(ctx, p)
+}
+
+// TestDestruction_BearerRevokedBeforeSessionDelete verifies the defense-in-depth
+// ordering: RevokeBearersForSession (step 4) MUST be called before DeleteSession
+// (step 6). An in-flight request from an anonymous user that races between these
+// two steps would use a revoked-but-not-yet-cascade-deleted bearer — which is
+// correctly rejected by the auth middleware. If the order were reversed (delete
+// then revoke), the cascade would have already removed the bearer row making the
+// revoke a no-op, but any request that slipped in between the two steps would
+// hit a dangling bearer that was neither revoked nor deleted yet.
+func TestDestruction_BearerRevokedBeforeSessionDelete(t *testing.T) {
+	ctx := context.Background()
+	env := newTestEnvSQLite(t, defaultCfg())
+
+	sess, _ := setupDestructionSession(t, ctx, env)
+
+	capturing := &orderCapturingStore{Store: env.s}
+	d := &playground.Destruction{
+		Store:        capturing,
+		Storage:      env.stor,
+		Clock:        env.clock,
+		Logger:       noopLogger(),
+		TombstoneTTL: 30 * 24 * time.Hour,
+	}
+
+	if err := d.Destroy(ctx, sess, "hard_cap"); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+
+	capturing.mu.Lock()
+	seq := append([]string(nil), capturing.seq...)
+	capturing.mu.Unlock()
+
+	// Both operations must have been called.
+	revokeIdx := -1
+	deleteIdx := -1
+	for i, op := range seq {
+		switch op {
+		case "revoke":
+			if revokeIdx == -1 {
+				revokeIdx = i
+			}
+		case "delete":
+			if deleteIdx == -1 {
+				deleteIdx = i
+			}
+		}
+	}
+
+	if revokeIdx == -1 {
+		t.Fatal("RevokeBearersForSession was never called")
+	}
+	if deleteIdx == -1 {
+		t.Fatal("DeleteSession was never called")
+	}
+	if revokeIdx >= deleteIdx {
+		t.Errorf("ordering violation: RevokeBearersForSession (pos %d) must be called BEFORE DeleteSession (pos %d); seq=%v",
+			revokeIdx, deleteIdx, seq)
+	}
+}
+
 // TestDestruction_AdvisoryLock_SecondDestroyIsNoOp verifies that when two
 // Destruction instances race to destroy the same session and only one can
 // acquire the per-session lock (stubLeaseManager enforces mutual exclusion),
