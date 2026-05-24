@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-plugin-skills-jam-consolidation
 kind: story
-stage: review
+stage: done
 tags: [plugin, playground]
 parent: feature-epic-ephemeral-playground-plugin-skills
 depends_on: []
@@ -80,3 +80,17 @@ inequality to prevent future regressions.
 - `jamsesh --help` — shows `jam` alongside all existing commands
 - `jamsesh jam --help` — lists `new` and `join` sub-subcommands
 - `ls plugins/jamsesh/skills/` — no `join/` directory
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none worth surfacing — the implementation matches the design spec, all acceptance criteria pass, urfave/cli v3 aliasing was correctly diagnosed and guarded by `TestJamCommand_IndependentInstances`.
+
+**Notes**:
+- Verified `go build ./cmd/jamsesh/...` clean and `go test ./cmd/jamsesh/jamcmd/...` passes (cached).
+- Confirmed `plugins/jamsesh/skills/join/SKILL.md` is deleted; `plugins/jamsesh/skills/jam/SKILL.md` body matches the intent-vocabulary + destruction-warning protocol spec.
+- Factory functions `sessioncmd.NewCommand()` and `sessioncmd.JoinCommand()` each return `&cli.Command{...}` literals, so the pointer-distinct contract holds structurally.
+- Top-level `jamsesh new` / `jamsesh join` preserved alongside `jamsesh jam new` / `jamsesh jam join` per the locked decision.
