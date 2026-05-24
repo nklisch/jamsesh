@@ -63,40 +63,6 @@ func mapPostgresErr(err error) error {
 	return err
 }
 
-// pgTextToPtr converts pgtype.Text to *string for domain types.
-func pgTextToPtr(t pgtype.Text) *string {
-	if !t.Valid {
-		return nil
-	}
-	s := t.String
-	return &s
-}
-
-// ptrToPgText converts *string to pgtype.Text for query params.
-func ptrToPgText(s *string) pgtype.Text {
-	if s == nil {
-		return pgtype.Text{}
-	}
-	return pgtype.Text{String: *s, Valid: true}
-}
-
-// pgTimestamptzToPtr converts pgtype.Timestamptz to *time.Time for domain types.
-func pgTimestamptzToPtr(ts pgtype.Timestamptz) *time.Time {
-	if !ts.Valid {
-		return nil
-	}
-	t := ts.Time
-	return &t
-}
-
-// ptrToPgTimestamptz converts *time.Time to pgtype.Timestamptz for query params.
-func ptrToPgTimestamptz(t *time.Time) pgtype.Timestamptz {
-	if t == nil {
-		return pgtype.Timestamptz{}
-	}
-	return pgtype.Timestamptz{Time: *t, Valid: true}
-}
-
 // ---------------------------------------------------------------------------
 // Row mappers
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 ---
 id: story-refactor-adapter-dialect-dedup-colocate-null-converters
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: feature-refactor-adapter-dialect-dedup
 depends_on: []
@@ -113,3 +113,23 @@ changes, single Go package.
 ## Rollback
 
 `git revert` the commit.
+
+## Implementation notes
+
+Moved all 8 functions verbatim with no signature or logic changes.
+
+- `internal/db/store/nullable_converters.go` — new file, all 8 helpers,
+  package-level comment documenting the co-location rationale and deferred
+  generics/code-gen next step.
+- `internal/db/store/sqlite_adapter.go` — removed lines 67–99 (4 helpers).
+  `database/sql` and `time` imports retained: both are still used by
+  `mapSQLiteErr` (`sql.ErrNoRows`), the `sqliteAdapter` struct (`*sql.DB`),
+  and `sqliteArchivedSession` (`var endedAt time.Time`).
+- `internal/db/store/postgres_adapter.go` — removed lines 66–98 (4 helpers).
+  `pgtype` and `time` imports retained: `pgtype` is used in
+  `pgArchivedSession` (`row.ArchivedAt.Valid` / `.Time` on a
+  `pgtype.Timestamptz`); `time` is used for the `endedAt`/`archivedAt`
+  local variables in the same mapper.
+
+Build: `go build ./...` clean.
+Tests: `go test ./...` — all packages pass (57 packages, 0 failures).

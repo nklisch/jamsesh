@@ -64,40 +64,6 @@ func mapSQLiteErr(err error) error {
 	return err
 }
 
-// nullStringToPtr converts sql.NullString to *string for domain types.
-func nullStringToPtr(ns sql.NullString) *string {
-	if !ns.Valid {
-		return nil
-	}
-	s := ns.String
-	return &s
-}
-
-// ptrToNullString converts *string to sql.NullString for query params.
-func ptrToNullString(s *string) sql.NullString {
-	if s == nil {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: *s, Valid: true}
-}
-
-// nullTimeToPtr converts sql.NullTime to *time.Time for domain types.
-func nullTimeToPtr(nt sql.NullTime) *time.Time {
-	if !nt.Valid {
-		return nil
-	}
-	t := nt.Time
-	return &t
-}
-
-// ptrToNullTime converts *time.Time to sql.NullTime for query params.
-func ptrToNullTime(t *time.Time) sql.NullTime {
-	if t == nil {
-		return sql.NullTime{}
-	}
-	return sql.NullTime{Time: *t, Valid: true}
-}
-
 // ---------------------------------------------------------------------------
 // Row mappers
 // ---------------------------------------------------------------------------
