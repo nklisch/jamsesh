@@ -1,7 +1,7 @@
 ---
 id: bug-playground-destruction-clustered-advisory-lock
 kind: story
-stage: review
+stage: done
 tags: [portal, playground, clustered, bug]
 parent: null
 depends_on: []
@@ -111,3 +111,41 @@ winner pod, calls `loser.Destroy` while the lock is held (asserting nil
 return and that the session row still exists), then releases the lock and
 confirms the winner's `Destroy` runs the full cascade (session gone, tombstone
 present).
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Notes**:
+
+All 5 acceptance criteria met:
+- ✓ `Destruction.Destroy` wraps cascade in per-session advisory lock
+  via the existing `lease.Manager` interface
+- ✓ Lock key is `sess.ID` string (PostgresManager hashes it to int32
+  internally via `hashtext($1)`)
+- ✓ `NoopManager` is the nil-safe default via the `leases()` helper —
+  single-instance behavior preserved exactly
+- ✓ `ErrAlreadyHeld` → `Destroy` returns nil (other pod owns this
+  destruction; this pod will retry next sweep)
+- ✓ `TestDestruction_AdvisoryLock_SecondDestroyIsNoOp` asserts on
+  user-visible state (session row still present after losing-pod's
+  Destroy returned, then deleted after winning-pod's Destroy ran)
+
+Smart design choices:
+- No interface extension required (`Manager.Acquire` already has the
+  right non-blocking semantics via `pg_try_advisory_lock`).
+- `Leases: nil` is safe in both `Destruction` and `Worker` — the helper
+  fallback to `NoopManager{}` means existing code paths that don't
+  wire Leases stay correct without explicit migration.
+- Test uses a single-holder in-process `stubLeaseManager` that
+  faithfully models the contention scenario, not a mock-spy.
+
+Wiring change in `cmd/portal/main.go` is one line (`Leases: leaseMgr`).
+The same `leaseMgr` instance the rest of the portal uses flows through
+naturally — no new construction.
+
+Verification: `go test ./internal/portal/playground/ -count=1` (0.557s) +
+`go test ./internal/portal/lease/ -count=1` (10.174s) both green;
+`go build ./...` clean across all build tags.
+
+Advanced `stage: review → done`.
