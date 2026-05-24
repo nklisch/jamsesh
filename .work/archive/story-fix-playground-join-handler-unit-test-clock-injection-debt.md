@@ -1,7 +1,7 @@
 ---
 id: story-fix-playground-join-handler-unit-test-clock-injection-debt
 kind: story
-stage: review
+stage: done
 tags: [bug, testing, portal, playground]
 parent: null
 depends_on: []
@@ -174,3 +174,37 @@ once real wall time advances past the frozen `HardCapAt`.
 
 **Full suite**: `go test ./internal/portal/playground/... -count=1` passes
 green after the fix.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Notes**:
+
+Hypothesis 1 confirmed: `time.Until(*sess.HardCapAt)` at handler.go:272
+bypassed the injected clock. With the test's `fixedClock` frozen at
+`2026-05-23 12:00 UTC` and real wall time at `2026-05-24 16:18 UTC`, the
+outer hard-cap guard at line 225 (correctly using `h.Clock.Now()`)
+let the session through, but the TTL math at line 272 returned a
+negative duration via real-time `time.Until`, hitting the `ttl <= 0`
+guard at line 277 → 410.
+
+One-line fix:
+```go
+// Before:
+ttl = time.Until(*sess.HardCapAt)
+// After:
+ttl = sess.HardCapAt.Sub(h.Clock.Now().UTC())
+```
+
+Both failing tests now pass; full `internal/portal/playground/...`
+package green (0.554s). No new regression test needed — the existing
+two tests serve as the pin (any reversion to `time.Until` will
+deterministically fail again as wall time advances past the frozen
+`HardCapAt`).
+
+The fix preserves the e2e contract (verified by
+`TestPlayground_TwoParticipantJoinMerge` still passing) and is narrow
+to the single drift site — no other handlers' clock injection touched.
+
+Advanced `stage: review → done`.
