@@ -1,9 +1,9 @@
 ---
-id: anon-bearer-migration-updownup-test-coverage
+id: story-anon-bearer-test-integrity-migration-updownup
 kind: story
 stage: implementing
 tags: [testing, migrations]
-parent: null
+parent: feature-anon-bearer-test-integrity
 depends_on: []
 release_binding: null
 gate_origin: null

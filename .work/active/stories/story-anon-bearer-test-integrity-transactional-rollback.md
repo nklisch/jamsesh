@@ -1,9 +1,9 @@
 ---
-id: anon-bearer-transactional-rollback-test-coverage
+id: story-anon-bearer-test-integrity-transactional-rollback
 kind: story
 stage: implementing
 tags: [testing, tokens]
-parent: null
+parent: feature-anon-bearer-test-integrity
 depends_on: []
 release_binding: null
 gate_origin: null
