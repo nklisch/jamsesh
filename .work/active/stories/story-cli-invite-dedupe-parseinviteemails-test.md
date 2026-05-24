@@ -1,5 +1,5 @@
 ---
-id: cli-invite-dedupe-parseinviteemails-test
+id: story-cli-invite-dedupe-parseinviteemails-test
 kind: story
 stage: implementing
 tags: [cleanup, test-debt]
