@@ -1,7 +1,7 @@
 ---
 id: story-epic-ephemeral-playground-plugin-skills-jam-consolidation
 kind: story
-stage: implementing
+stage: review
 tags: [plugin, playground]
 parent: feature-epic-ephemeral-playground-plugin-skills
 depends_on: []
@@ -47,3 +47,36 @@ See parent feature body's "Story 1 acceptance criteria" section.
 - The SKILL.md body content (see parent feature body) teaches the
   agent the intent vocabulary AND the destruction-warning response
   protocol — keep both sections present.
+
+## Implementation notes
+
+**Design discovery: urfave/cli v3 parent-pointer aliasing.**
+urfave/cli v3 sets `subCmd.parent = cmd` on every command during setup
+(see `command_setup.go`). Registering the same `*cli.Command` instance
+under two parents would cause the parent pointer to be overwritten by
+whichever parent processes it last, silently breaking help text and flag
+inheritance for the earlier registration.
+
+**Resolution:** `JamCommand()` calls `sessioncmd.NewCommand()` and
+`sessioncmd.JoinCommand()` again to obtain fresh instances. These
+factory functions return `&cli.Command{...}` each time, so the resulting
+values are pointer-distinct but semantically identical (same Name, Flags,
+Action). This is safe: the two registrations share no mutable state.
+`TestJamCommand_IndependentInstances` explicitly asserts pointer
+inequality to prevent future regressions.
+
+**Files delivered:**
+- `plugins/jamsesh/skills/jam/SKILL.md` — intent-vocabulary skill body
+- `cmd/jamsesh/jamcmd/jam.go` — jam parent subcommand dispatcher
+- `cmd/jamsesh/jamcmd/jam_test.go` — 5 tests covering help structure,
+  dispatch errors, top-level preservation, and pointer independence
+- `cmd/jamsesh/main.go` — registered `jamcmd.JamCommand()`
+- `plugins/jamsesh/skills/join/SKILL.md` — deleted via `git rm`
+
+**Verification:**
+- `go build ./cmd/jamsesh/...` — passes
+- `go test ./cmd/jamsesh/jamcmd/...` — passes (ok 0.003s)
+- `go vet ./...` — passes
+- `jamsesh --help` — shows `jam` alongside all existing commands
+- `jamsesh jam --help` — lists `new` and `join` sub-subcommands
+- `ls plugins/jamsesh/skills/` — no `join/` directory

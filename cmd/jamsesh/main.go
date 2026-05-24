@@ -11,6 +11,7 @@ import (
 	"jamsesh/cmd/jamsesh/auth"
 	"jamsesh/cmd/jamsesh/finalizecmd"
 	"jamsesh/cmd/jamsesh/hooks"
+	"jamsesh/cmd/jamsesh/jamcmd"
 	"jamsesh/cmd/jamsesh/mcpheaders"
 	"jamsesh/cmd/jamsesh/sessioncmd"
 	"jamsesh/cmd/jamsesh/state"
@@ -53,6 +54,7 @@ func main() {
 			sessioncmd.ModeCommand(),
 			finalizecmd.FinalizeCommand(),
 			finalizecmd.FinalizeRunCommand(),
+			jamcmd.JamCommand(),
 		},
 	}
 
