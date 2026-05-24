@@ -30,6 +30,15 @@ type Clock interface {
 	Now() time.Time
 }
 
+// mcpStore is the minimal store interface consumed by Endpoint.
+type mcpStore interface {
+	store.SessionMemberStore
+	store.SessionStore
+	store.AccountStore
+	store.RefModeStore
+	store.ConflictEventStore
+}
+
 // Endpoint is the MCP endpoint for the jamsesh portal. Construct it once and
 // call Handler to get the http.Handler ready for mounting.
 //
@@ -38,7 +47,7 @@ type Clock interface {
 // helper. This preserves backwards compatibility with tests that construct
 // Endpoint directly without setting Clock.
 type Endpoint struct {
-	Store    store.Store
+	Store    mcpStore
 	Tokens   tokens.Service
 	Storage  storage.Service
 	Log      *events.Log

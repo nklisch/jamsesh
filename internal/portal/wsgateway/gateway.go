@@ -31,12 +31,17 @@ import (
 	"jamsesh/internal/portal/events"
 )
 
+// wsgatewayStore is the minimal store interface consumed by Gateway.
+type wsgatewayStore interface {
+	store.SessionMemberStore
+}
+
 // Gateway is the WebSocket fan-out hub. Construct it with all exported fields
 // populated and call Start(ctx) before registering Handler() on a router.
 // Call Stop() (or cancel the Start context) during graceful shutdown.
 type Gateway struct {
 	// Store is used for membership checks at upgrade time.
-	Store store.Store
+	Store wsgatewayStore
 	// Tickets is the short-lived ticket store. The handler consumes a ticket
 	// from the Sec-WebSocket-Protocol header to authenticate the upgrade.
 	Tickets *TicketStore

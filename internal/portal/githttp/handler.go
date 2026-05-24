@@ -32,10 +32,17 @@ type lifecycleAcquirer interface {
 	AcquireForRequest(ctx context.Context, sessionID string) (lease.Handle, error)
 }
 
+// githttpStore is the minimal store interface consumed by Handler.
+type githttpStore interface {
+	store.SessionStore
+	store.SessionMemberStore
+	store.PlaygroundSessionStore
+}
+
 // Handler is the git smart-HTTP handler. Construct with all fields set and
 // call Mount to register routes on a chi router.
 type Handler struct {
-	Store     store.Store
+	Store     githttpStore
 	Tokens    tokens.Service
 	Storage   storage.Service
 	Validator *prereceive.Validator
