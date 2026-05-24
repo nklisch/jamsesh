@@ -1,14 +1,14 @@
 ---
 id: feature-epic-ephemeral-playground-skill-consolidation
 kind: feature
-stage: implementing
+stage: review
 tags: [plugin]
 parent: epic-ephemeral-playground
 depends_on: [feature-epic-ephemeral-playground-plugin-skills]
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Skill surface consolidation audit + implementation
@@ -464,3 +464,15 @@ sessions" section at the bottom is unchanged.
   `go test ./cmd/jamsesh/...` passes.
 - The two blocker stories can be batched into a single follow-up PR — they
   share a common cleanup theme. Re-review after they land.
+
+## Implementation summary (orchestrator, autopilot pass)
+
+All 3 child stories advanced to `stage: review`:
+
+- `story-skill-consolidation-primer-stale-slash-refs` — corrected 7 stale slash refs in `plugins/jamsesh/skills/jamsesh/SKILL.md`. Replacement pattern: `/jamsesh:status` → `jamsesh status` (binary), `/jamsesh:mode` → `jamsesh mode` (binary, with `/jamsesh:jam` as the skill entry point where context warrants).
+- `story-skill-consolidation-references-stale-slash-refs` — corrected 5 stale slash refs across `references/conflicts.md` (3) and `references/mcp-tools.md` (2), following the same replacement pattern.
+- `story-skill-consolidation-rollforward-foundation-docs` — rolled `docs/ARCHITECTURE.md` and `docs/UX.md` forward to reflect the consolidated `/jamsesh:jam` + `/jamsesh:finalize` skill surface. Multiple stale `/jamsesh:join`, `/jamsesh:new`, `/jamsesh:mode`, `/jamsesh:status` refs replaced with the intent-dispatch pattern.
+
+**Verification**: `npm run check` 0 errors, `npm run test` 635/635 passing, `npm run build` clean.
+
+The consolidated skill surface (`jam` + `finalize` + the auto-loaded `jamsesh` primer) is now consistently documented across the foundation docs, the auto-loaded primer, and the reference docs the primer points at.
