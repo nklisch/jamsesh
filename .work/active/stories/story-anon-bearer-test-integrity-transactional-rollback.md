@@ -1,7 +1,7 @@
 ---
 id: story-anon-bearer-test-integrity-transactional-rollback
 kind: story
-stage: review
+stage: done
 tags: [testing, tokens]
 parent: feature-anon-bearer-test-integrity
 depends_on: []
@@ -172,3 +172,33 @@ The renamed `_EmptySessionID_NoDBCalls` and the pre-existing
 the error surface only; `_NoDBCalls` additionally asserts that the empty
 sessionID short-circuits BEFORE any DB write occurs. Two invariants, two
 tests, both kept.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `openStoreAndSQLWithSession` near-duplicates `openStoreWithSession`'s
+  org+session seeding (different IDs only). Parent feature design
+  explicitly chose to keep helpers test-local rather than promote a shared
+  variant, so this is consistent with that choice; mentioning for future
+  refactor if a third caller appears.
+
+**Notes**:
+- Acceptance criteria all met: real rollback test exists and uses the
+  embedded-store override pattern, `errors.Is` propagation asserted, zero
+  `accounts` rows with `display_name='fern-moth'` asserted post-rollback,
+  `_EmptySessionID_NoDBCalls` rename preserves the no-DB-calls invariant,
+  `_EmptySessionID_Rejected` untouched.
+- Manual smoke confirmed during review: flipping `service_impl.go:240`
+  from `%w` to `%v` causes
+  `TestIssueAnonymousSessionBearer_TransactionalRollback` to fail with
+  `expected wrapped synthetic bearer-insert failure (via errors.Is), got
+  create anon bearer: synthetic bearer-insert failure` — confirming the
+  test exercises real wrap-chain propagation through `WithTx`.
+- `go test ./internal/portal/tokens/...` green; `go vet` clean.
+- Test-integrity discipline satisfied: no test name in the package lies
+  about what it asserts. Three distinct empty-/rollback-related invariants
+  now have three distinct tests with names that match their bodies.
