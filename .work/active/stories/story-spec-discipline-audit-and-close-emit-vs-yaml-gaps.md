@@ -1,7 +1,7 @@
 ---
 id: story-spec-discipline-audit-and-close-emit-vs-yaml-gaps
 kind: story
-stage: review
+stage: done
 tags: [portal, ui]
 parent: feature-spec-discipline
 depends_on: []
@@ -176,3 +176,13 @@ Added to:
 - `npm run check` — 0 errors, 2 pre-existing warnings (unrelated)
 - `npm run test` — 50 test files, 635 tests, all passing
 - `npm run build` — clean production build
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Thorough audit — agent catalogued all 13 server-emitted event-type strings and verified each against the YAML. One real gap closed (`session.created` schema added), one stale-codegen issue resolved (`PlaygroundDestructionWarningPayload` now in `types.gen.ts`). Verification: `go build ./...` clean, `go test ./...` 58 packages pass, `npm run check` clean, `npm run test` 635/635, `npm run build` clean. Audit table in the implementation notes serves as documentation of the current spec-emit alignment.
