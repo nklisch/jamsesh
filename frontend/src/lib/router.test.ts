@@ -1,7 +1,7 @@
 // Tests for the History-API router.
 // Vitest runs with jsdom (globals: true) so window and history are available.
 
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, beforeEach } from 'vitest';
 
 // The router module uses module-level $state / $derived runes which means
 // we need to import it as an ES module and work with the exported values.
@@ -99,5 +99,52 @@ describe('router — popstate', () => {
     });
     window.dispatchEvent(new PopStateEvent('popstate', {}));
     expect(current.name).toBe('login');
+  });
+});
+
+describe('router — requiresAuth flag', () => {
+  // Declarative auth flag: each route in the registry declares whether it
+  // requires authentication. The auth gate in App.svelte reads this flag
+  // rather than maintaining a separate name-based allowlist.
+
+  test('public routes expose requiresAuth: false', async () => {
+    const { navigate, current } = await import('./router.svelte');
+
+    navigate('/login');
+    expect(current.requiresAuth).toBe(false);
+
+    navigate('/auth/magic-link');
+    expect(current.requiresAuth).toBe(false);
+
+    navigate('/auth/oauth/callback');
+    expect(current.requiresAuth).toBe(false);
+  });
+
+  test('protected routes expose requiresAuth: true', async () => {
+    const { navigate, current } = await import('./router.svelte');
+
+    navigate('/');
+    expect(current.requiresAuth).toBe(true);
+
+    navigate('/orgs/acme/sessions');
+    expect(current.requiresAuth).toBe(true);
+
+    navigate('/orgs/acme/sessions/sess-1');
+    expect(current.requiresAuth).toBe(true);
+
+    navigate('/orgs/acme/sessions/sess-1/finalize');
+    expect(current.requiresAuth).toBe(true);
+
+    navigate('/orgs/acme/sessions/sess-1/invites/inv-1/accept');
+    expect(current.requiresAuth).toBe(true);
+
+    navigate('/orgs/acme/settings');
+    expect(current.requiresAuth).toBe(true);
+  });
+
+  test('not-found routes default to requiresAuth: true (unknown surfaces are protected)', async () => {
+    const { navigate, current } = await import('./router.svelte');
+    navigate('/does/not/exist');
+    expect(current.requiresAuth).toBe(true);
   });
 });

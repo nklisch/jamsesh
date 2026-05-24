@@ -391,6 +391,78 @@ describe('auth store', () => {
     });
   });
 
+  // --- playgroundContext ---
+
+  test('playgroundContext starts null', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    expect(auth.playgroundContext).toBeNull();
+  });
+
+  test('setPlaygroundContext populates playgroundContext', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+
+    auth.setPlaygroundContext({
+      sessionId: 'sess-pg-1',
+      bearer: 'anon-bearer-abc',
+      nickname: 'swift-fox',
+    });
+
+    expect(auth.playgroundContext).toEqual({
+      sessionId: 'sess-pg-1',
+      bearer: 'anon-bearer-abc',
+      nickname: 'swift-fox',
+    });
+  });
+
+  test('setPlaygroundContext(null) clears the context', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+
+    auth.setPlaygroundContext({
+      sessionId: 'sess-pg-2',
+      bearer: 'anon-bearer-xyz',
+      nickname: 'bold-hawk',
+    });
+    expect(auth.playgroundContext).not.toBeNull();
+
+    auth.setPlaygroundContext(null);
+    expect(auth.playgroundContext).toBeNull();
+  });
+
+  test('setting playgroundContext does not affect isAuthenticated (orthogonal states)', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+
+    // Start unauthenticated.
+    expect(auth.isAuthenticated).toBe(false);
+
+    auth.setPlaygroundContext({
+      sessionId: 'sess-pg-3',
+      bearer: 'anon-bearer-456',
+      nickname: 'calm-river',
+    });
+
+    // playgroundContext populated — isAuthenticated must remain false.
+    expect(auth.playgroundContext).not.toBeNull();
+    expect(auth.isAuthenticated).toBe(false);
+  });
+
+  test('isAuthenticated true and playgroundContext non-null can coexist', async () => {
+    // A signed-in user clicking a playground share link: both states are set.
+    const { auth } = await import('$lib/auth.svelte');
+
+    auth.setTokens('real-access-token', 'real-refresh-token');
+    expect(auth.isAuthenticated).toBe(true);
+
+    auth.setPlaygroundContext({
+      sessionId: 'sess-pg-4',
+      bearer: 'anon-bearer-789',
+      nickname: 'quick-storm',
+    });
+
+    expect(auth.isAuthenticated).toBe(true);
+    expect(auth.playgroundContext).not.toBeNull();
+    expect(auth.playgroundContext?.sessionId).toBe('sess-pg-4');
+  });
+
   // --- stale-write race guard ---
 
   test('discards stale /api/me response when signOut raced the in-flight call', async () => {

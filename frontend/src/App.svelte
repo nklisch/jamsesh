@@ -12,16 +12,14 @@
   import InviteAccept from '$lib/screens/InviteAccept.svelte';
   import NotFound from '$lib/screens/NotFound.svelte';
 
-  // Auth gate: any non-login route requires authentication.
-  // Runs reactively on every route change.
+  // Auth gate: routes that declare `requiresAuth: true` (the default) require
+  // an authenticated session. Routes that declare `requiresAuth: false` are
+  // public and the gate leaves them alone.
   //
   // Invite-accept gets special treatment: we preserve the full invite URL as
   // `?return_to=<original>` so that after the user logs in they land back on
   // the invite page rather than the generic session list.  All other routes
   // continue to lose context on redirect (existing behavior).
-  //
-  // magic-link is excluded from the auth gate — it is the unauthenticated
-  // landing page for magic-link token exchange.
   $effect(() => {
     // Authed user landed on /login (direct visit, back button, etc.) — bounce to home.
     // Skip oauth-callback (it does its own post-exchange navigation) and magic-link
@@ -31,8 +29,11 @@
       return;
     }
 
-    // Existing: unauthed user on protected route -> /login (UNCHANGED behavior).
-    if (current.name !== 'login' && current.name !== 'magic-link' && current.name !== 'oauth-callback' && !auth.isAuthenticated) {
+    // Unauthed user on a protected route → /login.
+    // Whether a route is protected is declared on the route itself via
+    // `requiresAuth: true` (the default). The old hardcoded name-based
+    // allowlist is gone; the route registry is the single source of truth.
+    if (current.requiresAuth && !auth.isAuthenticated) {
       if (current.name === 'invite-accept') {
         const returnTo = window.location.pathname + window.location.search;
         navigate('/login?return_to=' + encodeURIComponent(returnTo));

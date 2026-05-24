@@ -10,6 +10,16 @@ import { client } from '$lib/api/client';
 
 type MeOrgMembership = components['schemas']['MeOrgMembership'];
 
+// PlaygroundContext is the anonymous-mode identity for a playground session.
+// Intentionally separate from the authenticated-user identity (_currentUser /
+// _orgs) — the two states are orthogonal and can coexist (e.g. a signed-in
+// user clicks a playground share link).
+export type PlaygroundContext = {
+  sessionId: string;
+  bearer: string;
+  nickname: string;
+};
+
 const TOKEN_KEY = 'jamsesh.token';
 const REFRESH_KEY = 'jamsesh.refresh';
 
@@ -21,6 +31,10 @@ let _refresh = $state<string | null>(
 );
 let _currentUser = $state<{ id: string; email: string; displayName: string } | null>(null);
 let _orgs = $state<MeOrgMembership[] | null>(null);
+
+// _playgroundContext tracks the anonymous-mode bearer for a single playground
+// session. null means the current view is not in playground/anonymous mode.
+let _playgroundContext = $state<PlaygroundContext | null>(null);
 
 // Guards a single in-flight /api/me call. Concurrent callers await the
 // same promise; resolved-state callers return immediately.
@@ -41,6 +55,17 @@ export const auth = {
   },
   get isAuthenticated(): boolean {
     return _token !== null;
+  },
+
+  // playgroundContext — null when not in playground/anonymous mode; populated
+  // when a joiner has exchanged a nickname for an anonymous bearer. Reading
+  // this does NOT imply isAuthenticated is true; both states are independent.
+  get playgroundContext(): PlaygroundContext | null {
+    return _playgroundContext;
+  },
+
+  setPlaygroundContext(ctx: PlaygroundContext | null): void {
+    _playgroundContext = ctx;
   },
 
   setTokens(access: string, refreshTok: string): void {

@@ -51,7 +51,11 @@ vi.mock('$lib/screens/NotFound.svelte', () => ({
 // `navigate` is a plain spy.
 
 const mockNavigate = vi.fn();
-const mockRouterCurrent = { name: 'home', params: {} as Record<string, string> };
+const mockRouterCurrent = {
+  name: 'home',
+  params: {} as Record<string, string>,
+  requiresAuth: true,
+};
 
 vi.mock('$lib/router.svelte', () => ({
   navigate: (...args: unknown[]) => mockNavigate(...args),
@@ -95,11 +99,12 @@ function setLocation(pathname: string, search: string = '') {
 describe('App — auth-gate $effect', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Safe defaults: unauthed user on the home route.
+    // Safe defaults: unauthed user on the home route (protected).
     mockAuth.isAuthenticated = false;
     mockAuth.orgs = null;
     mockRouterCurrent.name = 'home';
     mockRouterCurrent.params = {};
+    mockRouterCurrent.requiresAuth = true;
     setLocation('/');
   });
 
@@ -112,6 +117,7 @@ describe('App — auth-gate $effect', () => {
     // from the login screen independently of Login.svelte's effect.
     mockAuth.isAuthenticated = true;
     mockRouterCurrent.name = 'login';
+    mockRouterCurrent.requiresAuth = false; // /login is a public route
 
     render(App);
 
@@ -122,6 +128,7 @@ describe('App — auth-gate $effect', () => {
     mockAuth.isAuthenticated = false;
     mockRouterCurrent.name = 'sessions';
     mockRouterCurrent.params = { orgId: 'org-1' };
+    mockRouterCurrent.requiresAuth = true; // sessions requires auth
 
     render(App);
 
@@ -134,6 +141,7 @@ describe('App — auth-gate $effect', () => {
     mockAuth.isAuthenticated = false;
     mockRouterCurrent.name = 'invite-accept';
     mockRouterCurrent.params = { orgId: 'org-1', sessionId: 'sess-2', inviteId: 'inv-3' };
+    mockRouterCurrent.requiresAuth = true; // invite-accept requires auth
 
     const invitePath = '/orgs/org-1/sessions/sess-2/invites/inv-3/accept';
     setLocation(invitePath, '');
@@ -147,10 +155,11 @@ describe('App — auth-gate $effect', () => {
   });
 
   it('does NOT redirect an unauthed user on the login route', async () => {
-    // /login is explicitly excluded from the guard; an unauthed visit must not
+    // /login declares requiresAuth: false — an unauthed visit must not
     // bounce to /login again (infinite redirect loop).
     mockAuth.isAuthenticated = false;
     mockRouterCurrent.name = 'login';
+    mockRouterCurrent.requiresAuth = false; // public route
 
     render(App);
 
@@ -160,10 +169,11 @@ describe('App — auth-gate $effect', () => {
   });
 
   it('does NOT redirect an unauthed user arriving via the magic-link exchange route', async () => {
-    // magic-link completes an unauthenticated token exchange; the gate must
-    // leave it alone or the exchange flow can never finish.
+    // magic-link declares requiresAuth: false — the gate must leave it alone
+    // or the unauthenticated token-exchange flow can never complete.
     mockAuth.isAuthenticated = false;
     mockRouterCurrent.name = 'magic-link';
+    mockRouterCurrent.requiresAuth = false; // public route
 
     render(App);
 
@@ -172,10 +182,11 @@ describe('App — auth-gate $effect', () => {
   });
 
   it('does NOT redirect an unauthed user on the oauth-callback route', async () => {
-    // oauth-callback does its own post-exchange navigation; App.svelte must
-    // stay out of its way.
+    // oauth-callback declares requiresAuth: false — it does its own post-
+    // exchange navigation; App.svelte must stay out of its way.
     mockAuth.isAuthenticated = false;
     mockRouterCurrent.name = 'oauth-callback';
+    mockRouterCurrent.requiresAuth = false; // public route
 
     render(App);
 
@@ -187,9 +198,10 @@ describe('App — auth-gate $effect', () => {
 describe('App — bootstrap $effect', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Start on home so the auth-gate does not fire and confound counts.
+    // Start on home (protected) so the auth-gate does not fire and confound counts.
     mockRouterCurrent.name = 'home';
     mockRouterCurrent.params = {};
+    mockRouterCurrent.requiresAuth = true;
     setLocation('/');
   });
 
