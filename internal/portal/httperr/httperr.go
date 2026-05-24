@@ -170,6 +170,17 @@ func ErrMagicLinkNotEnabled() *Error {
 	}
 }
 
+// ErrReservedDomain is emitted when a magic-link request uses an email
+// address in a domain reserved for internal use (e.g. @playground.local,
+// which is synthesised for anonymous playground accounts). Returns 400.
+func ErrReservedDomain() *Error {
+	return &Error{
+		Code:       "magic_link.reserved_domain",
+		Message:    "email domain is reserved and cannot be used for magic-link sign-in",
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
 // ErrBadRequest is emitted when oapi-codegen's strict handler fails to
 // decode a request body or path/query parameters. Replaces the default
 // plain-text 400 with the standard envelope so every error response

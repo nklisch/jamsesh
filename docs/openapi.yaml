@@ -1858,6 +1858,15 @@ paths:
       responses:
         '204':
           description: Magic link email sent (or silently accepted if address unknown)
+        '400':
+          description: |
+            Bad request. Possible error codes:
+            - `magic_link.reserved_domain` — email domain is reserved for internal use (e.g. @playground.local synthetic accounts).
+            - `auth.magic_link_not_enabled` — portal has no email provider configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '500':
           description: Internal server error (email delivery failure)
           content:

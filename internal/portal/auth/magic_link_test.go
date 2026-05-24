@@ -394,6 +394,31 @@ func TestRequestMagicLink_DisabledSender_Returns400MagicLinkNotEnabled(t *testin
 	}
 }
 
+// TestRequestMagicLink_ReservedPlaygroundDomain_Rejected verifies that a
+// magic-link request for an email ending in @playground.local is rejected
+// with 400 and error code "magic_link.reserved_domain". The @playground.local
+// domain is reserved for synthetic anonymous-account emails
+// (anon_<id>@playground.local); allowing a real magic-link registration with
+// that suffix could collide with an existing anonymous identity.
+func TestRequestMagicLink_ReservedPlaygroundDomain_Rejected(t *testing.T) {
+	env := newMagicLinkTestEnv(t)
+
+	resp := postJSONBody(t, env.srv, "/api/auth/magic-link/request",
+		map[string]string{"email": "user@playground.local"})
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400 for reserved domain, got %d", resp.StatusCode)
+	}
+	body := decodeJSONResponse(t, resp)
+	if code, _ := body["error"].(string); code != "magic_link.reserved_domain" {
+		t.Errorf("error code: want magic_link.reserved_domain, got %q", code)
+	}
+	// Confirm no email was sent (rejected before reaching the sender).
+	if env.sender.calls != 0 {
+		t.Errorf("want 0 email sends for reserved domain, got %d", env.sender.calls)
+	}
+}
+
 func TestRequestMagicLink_SubjectIsCorrect(t *testing.T) {
 	env := newMagicLinkTestEnv(t)
 	_ = requestAndExtractToken(t, env, "subj@example.com")

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,14 @@ import (
 	"jamsesh/internal/portal/senders"
 	"jamsesh/internal/portal/tokens"
 )
+
+// reservedMagicLinkDomains lists email domain suffixes that are reserved for
+// internal synthetic addresses (e.g. anonymous playground accounts). Magic-link
+// requests using these domains are rejected with 400 magic_link.reserved_domain
+// to prevent a user from colliding with a synthetically-issued identity.
+var reservedMagicLinkDomains = []string{
+	"@playground.local",
+}
 
 const (
 	magicLinkTTL        = 15 * time.Minute
@@ -94,6 +103,16 @@ func (h *MagicLinkHandler) RequestMagicLink(
 
 	now := h.clock.Now()
 	email := string(req.Body.Email)
+
+	// Reject emails in reserved internal domains to prevent synthetic-account
+	// collisions (e.g. anonymous playground accounts use @playground.local).
+	emailLower := strings.ToLower(email)
+	for _, domain := range reservedMagicLinkDomains {
+		if strings.HasSuffix(emailLower, domain) {
+			return nil, httperr.ErrReservedDomain()
+		}
+	}
+
 	if _, err := h.store.CreateMagicLinkToken(ctx, store.CreateMagicLinkTokenParams{
 		ID:        uuid.New().String(),
 		TokenHash: hash,

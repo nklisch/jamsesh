@@ -1,7 +1,7 @@
 ---
 id: gate-tests-magic-link-playground-domain-collision
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, security, auth]
 parent: null
 depends_on: []
@@ -39,3 +39,15 @@ failing test to document the bug.
 
 ## Test location (suggested)
 `internal/portal/auth/magic_link_test.go`
+
+## Implementation notes
+
+Took **Path A** (fix the bug, add a passing test).
+
+**What changed:**
+- `internal/portal/auth/magic_link.go`: Added `reservedMagicLinkDomains` slice (`["@playground.local"]`) and a pre-store check in `RequestMagicLink` that calls `httperr.ErrReservedDomain()` and returns early if the submitted email ends in any reserved domain (case-insensitive via `strings.ToLower`). Added `"strings"` to imports.
+- `internal/portal/httperr/httperr.go`: Added `ErrReservedDomain()` constructor returning HTTP 400 with code `magic_link.reserved_domain`.
+- `docs/openapi.yaml`: Documented the `400` response on `POST /api/auth/magic-link/request` with both `magic_link.reserved_domain` and `auth.magic_link_not_enabled` error codes (previously the 400 path was undocumented).
+- `internal/portal/auth/magic_link_test.go`: Added `TestRequestMagicLink_ReservedPlaygroundDomain_Rejected` — asserts 400 + `magic_link.reserved_domain` code + zero sender calls for `user@playground.local`.
+
+All portal/auth tests green (`go test ./internal/portal/auth/... -count=1`).
