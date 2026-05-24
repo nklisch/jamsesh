@@ -47,11 +47,17 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now().UTC() }
 
+// magicLinkHandlerStore is the minimal store interface consumed by MagicLinkHandler.
+type magicLinkHandlerStore interface {
+	store.MagicLinkTokenStore
+	provisionStore
+}
+
 // MagicLinkHandler handles the magic-link request and exchange endpoints.
 // It satisfies the oapi-codegen StrictServerInterface methods for those two
 // operations; main.go mixes it into the shared strict handler.
 type MagicLinkHandler struct {
-	store     store.Store
+	store     magicLinkHandlerStore
 	tokensSvc tokens.Service
 	sender    senders.Sender
 	portalURL string // e.g. "https://example.com"
@@ -61,7 +67,7 @@ type MagicLinkHandler struct {
 // NewMagicLinkHandler constructs a MagicLinkHandler with the real system
 // clock. Production callers use this.
 func NewMagicLinkHandler(
-	s store.Store,
+	s magicLinkHandlerStore,
 	tokensSvc tokens.Service,
 	sender senders.Sender,
 	portalURL string,
@@ -73,7 +79,7 @@ func NewMagicLinkHandler(
 // clock. Used by unit tests (fakeClock) and the e2etest-tagged binary
 // (testclock.AdvanceableClock).
 func NewMagicLinkHandlerWithClock(
-	s store.Store,
+	s magicLinkHandlerStore,
 	tokensSvc tokens.Service,
 	sender senders.Sender,
 	portalURL string,

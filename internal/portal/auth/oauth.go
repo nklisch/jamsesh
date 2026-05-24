@@ -12,12 +12,18 @@ import (
 	"jamsesh/internal/portal/tokens"
 )
 
+// oauthHandlerStore is the minimal store interface consumed by OAuthHandler.
+type oauthHandlerStore interface {
+	store.OAuthStateStore
+	provisionStore
+}
+
 // OAuthHandler implements the StartOAuth and OauthCallback endpoints.
 // It satisfies the oapi-codegen StrictServerInterface methods for those two
 // operations; main.go mixes it into the shared strict handler.
 type OAuthHandler struct {
 	providers map[string]portaloauth.Provider
-	store     store.Store
+	store     oauthHandlerStore
 	tokensSvc tokens.Service
 	portalURL string // e.g. "https://example.com"
 	clock     Clock
@@ -28,7 +34,7 @@ type OAuthHandler struct {
 // Provider implementation. For v1 this is {"github": ...}.
 func NewOAuthHandler(
 	providers map[string]portaloauth.Provider,
-	s store.Store,
+	s oauthHandlerStore,
 	tokensSvc tokens.Service,
 	portalURL string,
 ) *OAuthHandler {
@@ -40,7 +46,7 @@ func NewOAuthHandler(
 // (testclock.AdvanceableClock).
 func NewOAuthHandlerWithClock(
 	providers map[string]portaloauth.Provider,
-	s store.Store,
+	s oauthHandlerStore,
 	tokensSvc tokens.Service,
 	portalURL string,
 	clock Clock,

@@ -13,6 +13,14 @@ import (
 	"jamsesh/internal/db/store"
 )
 
+// provisionStore is the minimal store interface required by FindOrProvision,
+// FindOrProvisionAt, and their internal helpers.
+type provisionStore interface {
+	store.AccountStore
+	store.OrgStore
+	store.OrgMemberStore
+}
+
 // Identity describes a user's identity as provided by an auth flow.
 type Identity struct {
 	// Provider is "magic-link" or "github".
@@ -39,7 +47,7 @@ type Identity struct {
 //  3. If not found: create account (UUID id), create org (slug from email
 //     prefix, suffix with 6 random alphanum chars on slug collision), insert
 //     org_member with role "creator", return both.
-func FindOrProvision(ctx context.Context, s store.Store, id Identity) (store.Account, store.Org, error) {
+func FindOrProvision(ctx context.Context, s provisionStore, id Identity) (store.Account, store.Org, error) {
 	return FindOrProvisionAt(ctx, s, id, time.Now().UTC())
 }
 
@@ -47,7 +55,7 @@ func FindOrProvision(ctx context.Context, s store.Store, id Identity) (store.Acc
 // Callers (e.g. MagicLinkHandler with an injectable Clock) pass their
 // clock's Now() so test-clock advancement is observable in the resulting
 // CreatedAt fields. See FindOrProvision for the algorithm.
-func FindOrProvisionAt(ctx context.Context, s store.Store, id Identity, now time.Time) (store.Account, store.Org, error) {
+func FindOrProvisionAt(ctx context.Context, s provisionStore, id Identity, now time.Time) (store.Account, store.Org, error) {
 	// Step 1: look up existing account.
 	acc, err := lookupAccount(ctx, s, id)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -69,7 +77,7 @@ func FindOrProvisionAt(ctx context.Context, s store.Store, id Identity, now time
 
 // lookupAccount attempts to find an existing account by the most specific
 // identifier available for the provider.
-func lookupAccount(ctx context.Context, s store.Store, id Identity) (store.Account, error) {
+func lookupAccount(ctx context.Context, s provisionStore, id Identity) (store.Account, error) {
 	if id.Provider == "github" && id.ProviderID != "" {
 		return s.GetAccountByGitHubUserID(ctx, &id.ProviderID)
 	}
@@ -78,7 +86,7 @@ func lookupAccount(ctx context.Context, s store.Store, id Identity) (store.Accou
 
 // primaryOrg returns the first org the account belongs to. Every provisioned
 // account has exactly one org (their personal org created at sign-up).
-func primaryOrg(ctx context.Context, s store.Store, accountID string) (store.Org, error) {
+func primaryOrg(ctx context.Context, s provisionStore, accountID string) (store.Org, error) {
 	orgs, err := s.ListOrgsForAccount(ctx, accountID)
 	if err != nil {
 		return store.Org{}, fmt.Errorf("list orgs: %w", err)
@@ -93,7 +101,7 @@ func primaryOrg(ctx context.Context, s store.Store, accountID string) (store.Org
 // them with an org_member row (role=creator). Returns both. The now
 // parameter stamps CreatedAt on every inserted row so a single instant
 // is shared across account, org, and org_member.
-func createAccountAndOrg(ctx context.Context, s store.Store, id Identity, now time.Time) (store.Account, store.Org, error) {
+func createAccountAndOrg(ctx context.Context, s provisionStore, id Identity, now time.Time) (store.Account, store.Org, error) {
 	accountID := uuid.New().String()
 
 	displayName := id.DisplayName

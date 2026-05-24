@@ -27,7 +27,7 @@ func SlugFromName(name string) string {
 // random 6-char suffix on unique-constraint violations. It is shared by the
 // auto-provisioning path (provision.go) and the manual org-creation handler
 // (accounts/handlers.go).
-func CreateOrgWithSlug(ctx context.Context, s store.Store, name string, now time.Time) (store.Org, error) {
+func CreateOrgWithSlug(ctx context.Context, s store.OrgStore, name string, now time.Time) (store.Org, error) {
 	baseSlug := SlugFromName(name)
 
 	// First attempt: clean slug.

@@ -30,7 +30,7 @@ func orgMemberFromContext(ctx context.Context) (*store.OrgMember, bool) {
 // On failure it writes the canonical auth.insufficient_permission 403 envelope
 // and halts the handler chain. On success the resolved OrgMember is injected
 // into the context (accessible via orgMemberFromContext).
-func RequireOrgRole(s store.Store, roles ...string) func(http.Handler) http.Handler {
+func RequireOrgRole(s store.OrgMemberStore, roles ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]struct{}, len(roles))
 	for _, r := range roles {
 		allowed[r] = struct{}{}
