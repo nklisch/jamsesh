@@ -191,6 +191,42 @@ func (h *playgroundOnlyStrict) ListSessionRefs(_ context.Context, _ openapi.List
 var _ openapi.StrictServerInterface = (*playgroundOnlyStrict)(nil)
 
 // ---------------------------------------------------------------------------
+// Tokens stubs
+// ---------------------------------------------------------------------------
+
+// failingTokensService wraps a real tokens.Service and overrides
+// IssueAnonymousSessionBearer to return an injected error. All other methods
+// delegate to the underlying service unchanged.
+type failingTokensService struct {
+	real          tokens.Service
+	issueErr      error
+	lastSessionID string // captures the sessionID arg on every call
+}
+
+func (s *failingTokensService) Issue(ctx context.Context, accountID string) (tokens.Pair, error) {
+	return s.real.Issue(ctx, accountID)
+}
+func (s *failingTokensService) IssueShortLived(ctx context.Context, accountID string, ttl time.Duration) (string, time.Time, error) {
+	return s.real.IssueShortLived(ctx, accountID, ttl)
+}
+func (s *failingTokensService) IssueAnonymousSessionBearer(ctx context.Context, sessionID, nickname string, ttl time.Duration) (string, string, time.Time, error) {
+	s.lastSessionID = sessionID
+	if s.issueErr != nil {
+		return "", "", time.Time{}, s.issueErr
+	}
+	return s.real.IssueAnonymousSessionBearer(ctx, sessionID, nickname, ttl)
+}
+func (s *failingTokensService) Validate(ctx context.Context, rawToken string) (*store.Account, error) {
+	return s.real.Validate(ctx, rawToken)
+}
+func (s *failingTokensService) Refresh(ctx context.Context, refreshToken string) (tokens.Pair, error) {
+	return s.real.Refresh(ctx, refreshToken)
+}
+func (s *failingTokensService) Revoke(ctx context.Context, callerAccountID string, rawToken string, revokeAll bool) error {
+	return s.real.Revoke(ctx, callerAccountID, rawToken, revokeAll)
+}
+
+// ---------------------------------------------------------------------------
 // Test environment
 // ---------------------------------------------------------------------------
 
@@ -217,9 +253,22 @@ func newTestEnvSQLite(t *testing.T, cfg playground.Config) *testEnv {
 	return newTestEnv(t, s, cfg)
 }
 
+// newTestEnvWithTokens is like newTestEnvWithClock but accepts an explicit
+// tokens.Service, allowing tests to inject a stub that fails at a specific
+// point in the CreatePlaygroundSession 3-step sequence.
+func newTestEnvWithTokens(t *testing.T, s store.Store, cfg playground.Config, svc tokens.Service) *testEnv {
+	t.Helper()
+	return newTestEnvWithClockAndTokens(t, s, cfg, fixedClock{t: time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)}, svc)
+}
+
 func newTestEnvWithClock(t *testing.T, s store.Store, cfg playground.Config, clk playground.Clock) *testEnv {
 	t.Helper()
 	svc := tokens.New(s)
+	return newTestEnvWithClockAndTokens(t, s, cfg, clk, svc)
+}
+
+func newTestEnvWithClockAndTokens(t *testing.T, s store.Store, cfg playground.Config, clk playground.Clock, svc tokens.Service) *testEnv {
+	t.Helper()
 	stor := newStubStorage()
 
 	// Provision the reserved playground org row so FK constraints pass.
@@ -954,6 +1003,118 @@ func TestCreatePlaygroundSession_RepoCreateFails_ReturnsError(t *testing.T) {
 			}
 			if len(sessions) == 0 {
 				t.Error("expected orphaned session row to remain after CreateRepo failure, got none")
+			}
+		})
+	}
+}
+
+// TestCreatePlaygroundSession_BearerIssuanceFails_OrphanRecovered covers the
+// partial-failure window at handler.go:150-156: the session TX commits (step 1
+// succeeds) but IssueAnonymousSessionBearer returns an error (step 2 fails),
+// so step 3 (AddSessionMember) is never reached. The session row is left as an
+// orphan with zero members and no bearer — the destruction sweep must clean it.
+//
+// Flow:
+//
+//  1. Arm failingTokensService so IssueAnonymousSessionBearer errors.
+//  2. POST CreatePlaygroundSession — handler returns an error (5xx).
+//  3. Assert: session row persists in the store (orphan present).
+//  4. Assert: creator member count is 0 (step 3 never executed).
+//  5. Run Destruction.Destroy on the orphaned session.
+//  6. Assert: session row gone, no anon accounts remain.
+func TestCreatePlaygroundSession_BearerIssuanceFails_OrphanRecovered(t *testing.T) {
+	for _, h := range stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			ctx := context.Background()
+			s := h.Open(t)
+
+			// Build a failingTokensService that errors on IssueAnonymousSessionBearer
+			// but also captures the sessionID the handler generated (step 1 committed
+			// it to the DB before calling step 2).
+			realSvc := tokens.New(s)
+			fts := &failingTokensService{
+				real:     realSvc,
+				issueErr: errors.New("synthetic bearer-issuance failure"),
+			}
+
+			env := newTestEnvWithTokens(t, s, defaultCfg(), fts)
+
+			// Step 1+2: trigger the failure path.
+			resp := postJSON(t, env.srv, "/api/playground/sessions", "", nil)
+			if resp.StatusCode < 500 {
+				t.Fatalf("want 5xx after bearer-issuance failure, got %d", resp.StatusCode)
+			}
+
+			// The handler must have called IssueAnonymousSessionBearer with a
+			// generated session ID — capture it via the spy field.
+			capturedID := fts.lastSessionID
+			if capturedID == "" {
+				t.Fatal("failingTokensService.lastSessionID is empty — IssueAnonymousSessionBearer was never called")
+			}
+
+			// Step 3: assert the orphaned session row exists.
+			sess, err := s.GetSession(ctx, playground.ReservedOrgID, capturedID)
+			if err != nil {
+				t.Fatalf("session row should persist after bearer-issuance failure; GetSession: %v", err)
+			}
+
+			// Step 4: assert zero members — step 3 (AddSessionMember) was never reached.
+			memberCount, err := s.CountSessionMembers(ctx, store.CountSessionMembersParams{
+				OrgID:     playground.ReservedOrgID,
+				SessionID: capturedID,
+			})
+			if err != nil {
+				t.Fatalf("CountSessionMembers: %v", err)
+			}
+			if memberCount != 0 {
+				t.Errorf("want 0 session members (step 3 skipped), got %d", memberCount)
+			}
+
+			// Bare repo must NOT exist — CreateRepo (step after bearer) was never
+			// attempted because the handler returned early on step-2 failure.
+			repoExists, err := env.stor.RepoExists(playground.ReservedOrgID, capturedID)
+			if err != nil {
+				t.Fatalf("RepoExists: %v", err)
+			}
+			if repoExists {
+				t.Error("bare repo should not exist after a step-2 (bearer) failure")
+			}
+
+			// Step 5: run the destruction cascade directly on the orphaned session.
+			d := &playground.Destruction{
+				Store:        s,
+				Storage:      env.stor,
+				Clock:        env.clock,
+				Logger:       noopLogger(),
+				TombstoneTTL: 30 * 24 * time.Hour,
+			}
+			if err := d.Destroy(ctx, sess, "orphan_recovery"); err != nil {
+				t.Fatalf("Destroy: %v", err)
+			}
+
+			// Step 6: assert full cleanup.
+
+			// Session row must be gone.
+			_, err = s.GetSession(ctx, playground.ReservedOrgID, capturedID)
+			if !errors.Is(err, store.ErrNotFound) {
+				t.Errorf("session row: want ErrNotFound after Destroy, got %v", err)
+			}
+
+			// No anon accounts should have been created (IssueAnonymousSessionBearer
+			// failed before creating any), so ListAnonymousSessionMemberIDs should
+			// return empty — but if the session-row cascade happened and the anon
+			// account list was empty, Destroy should have skipped step 7 gracefully.
+			// Assert member count is still 0 post-destroy (FK cascade).
+			postCount, err := s.CountSessionMembers(ctx, store.CountSessionMembersParams{
+				OrgID:     playground.ReservedOrgID,
+				SessionID: capturedID,
+			})
+			if err != nil {
+				t.Fatalf("CountSessionMembers after Destroy: %v", err)
+			}
+			if postCount != 0 {
+				t.Errorf("member rows: want 0 after Destroy, got %d", postCount)
 			}
 		})
 	}
