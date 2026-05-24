@@ -1,7 +1,7 @@
 ---
 id: story-refactor-automerger-decomposition-flatten-submodule-extract
 kind: story
-stage: implementing
+stage: review
 tags: [portal, refactor]
 parent: feature-refactor-automerger-decomposition
 depends_on: [story-refactor-automerger-decomposition-merge-file-split]
@@ -106,3 +106,33 @@ func flattenSubmodule(e object.TreeEntry, path string, into map[string]treeEntry
 `depends_on: [story-refactor-automerger-decomposition-merge-file-split]`
 — serial chain across all four steps to avoid concurrent edits to
 `merge.go`.
+
+## Implementation discovery — no-op
+
+**Outcome: no extraction performed. Story closed as no-op.**
+
+The story anticipated a `case filemode.Submodule:` arm in a `switch` statement
+with its own inline recursive walk. The actual code at
+`internal/portal/automerger/merge.go` lines 435–454 does not match that
+premise.
+
+`flattenTreeInto` uses a plain `if/else`, not a `switch`. The condition on
+line 441 is:
+
+```go
+if entry.Mode == filemode.Dir || entry.Mode == filemode.Submodule {
+```
+
+Both modes share **one identical 3-line body** (resolve sub-tree, propagate
+error, recurse). There is no separate submodule-specific logic to extract.
+Extracting a `flattenSubmodule` helper would require either:
+
+- splitting the two modes into separate branches (adding divergence that does
+  not exist in the code), or
+- extracting the shared body into a helper that handles both — which belongs
+  to a different story (e.g. `flattenDir`/`flattenSubtree`).
+
+**Submodule-specific LoC: 0.** The shared body is 3 LoC, well under the 5 LoC
+threshold. Per the story's own decision rule, no extraction is warranted.
+
+`merge.go` is left unchanged.
