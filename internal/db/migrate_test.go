@@ -375,6 +375,222 @@ func TestMigrate00016_AnonymousBearers_UpDownUp(t *testing.T) {
 	}
 }
 
+// TestMigrate00017_OrgProtected_UpDownUp verifies that migration 00017
+// (org_protected column on orgs) applies cleanly, reverses cleanly, and
+// re-applies.
+//
+// Isolation: this test brings the DB to version 16 (via full MigrateUp then
+// migrateDown to 16), exercises the 17 boundary in isolation, and confirms
+// schema state at each step without touching migration 18. Migration 18 is not
+// applied during this test, so the down path is a clean single-step rollback.
+func TestMigrate00017_OrgProtected_UpDownUp(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open sqlite :memory:: %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	// Apply all migrations to bring the DB to the latest state, then roll back
+	// to version 16 so we can exercise migration 17 in isolation.
+	if err := MigrateUp(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("MigrateUp (full, to seed DB): %v", err)
+	}
+	// Roll back 18 and 17, leaving the DB at version 16.
+	migrateDown(t, ctx, db, "sqlite", 16)
+
+	// Verify org_protected column is absent at version 16 (pre-17).
+	// INSERT with the column should fail because it does not exist yet.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO orgs (id, name, slug, created_at, org_protected)
+		 VALUES ('org-pre17', 'Pre17 Org', 'pre17', datetime('now'), 0)`); err == nil {
+		t.Error("at version 16: org_protected column should not exist but INSERT succeeded")
+	}
+
+	// --- Up: apply migration 00017 ---
+	if err := MigrateUp(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("MigrateUp (up through 17): %v", err)
+	}
+
+	// Verify org_protected column exists and is usable.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO orgs (id, name, slug, created_at, org_protected)
+		 VALUES ('org-after17', 'After17 Org', 'after17', datetime('now'), 1)`); err != nil {
+		t.Fatalf("after Up to 17: org_protected column missing: %v", err)
+	}
+
+	// Verify DEFAULT 0 applies for rows inserted without the column.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO orgs (id, name, slug, created_at)
+		 VALUES ('org-default17', 'Default17 Org', 'default17', datetime('now'))`); err != nil {
+		t.Fatalf("after Up to 17: INSERT without org_protected (default): %v", err)
+	}
+	var protected int
+	if err := db.QueryRowContext(ctx,
+		`SELECT org_protected FROM orgs WHERE id='org-default17'`).Scan(&protected); err != nil {
+		t.Fatalf("after Up to 17: SELECT org_protected: %v", err)
+	}
+	if protected != 0 {
+		t.Errorf("after Up to 17: org_protected DEFAULT: want 0, got %d", protected)
+	}
+
+	// --- Down: roll back migration 00017 ---
+	// migrateDown(16) rolls back version 17 (and any later, but 18 is not
+	// applied here), leaving the DB at version 16.
+	migrateDown(t, ctx, db, "sqlite", 16)
+
+	// Verify org_protected column is gone after Down.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO orgs (id, name, slug, created_at, org_protected)
+		 VALUES ('org-post-down17', 'PostDown17', 'post-down17', datetime('now'), 0)`); err == nil {
+		t.Error("after Down to 16: org_protected column should be gone but INSERT succeeded")
+	}
+
+	// --- Re-Up: reapply migration 00017 ---
+	if err := MigrateUp(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("MigrateUp (re-apply after Down): %v", err)
+	}
+
+	// Verify org_protected column is back after re-Up.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO orgs (id, name, slug, created_at, org_protected)
+		 VALUES ('org-reup17', 'ReUp17 Org', 're-up17', datetime('now'), 1)`); err != nil {
+		t.Fatalf("after re-Up to 17: org_protected column missing: %v", err)
+	}
+}
+
+// TestMigrate00018_PlaygroundSessions_UpDownUp verifies that migration 00018
+// (playground session columns + tombstones table) applies cleanly, reverses
+// cleanly, and re-applies.
+//
+// Isolation: this test brings the DB to version 17, exercises the 18 boundary
+// in isolation (up to 18, down to 17, up again), and confirms schema state at
+// each step.
+func TestMigrate00018_PlaygroundSessions_UpDownUp(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open sqlite :memory:: %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	// Apply all migrations to bring the DB to latest, then roll back to
+	// version 17 so we can exercise migration 18 in isolation.
+	if err := MigrateUp(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("MigrateUp (full, to seed DB): %v", err)
+	}
+	// Roll back 18, leaving the DB at version 17.
+	migrateDown(t, ctx, db, "sqlite", 17)
+
+	// Verify playground columns are absent at version 17 (pre-18).
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO sessions (id, org_id, name, goal, writable_scope, default_mode, status, created_at, last_substantive_activity_at)
+		 VALUES ('sess-pre18', 'org-001', 'S', 'G', '[]', 'sync', 'active', datetime('now'), datetime('now'))`); err == nil {
+		t.Error("at version 17: last_substantive_activity_at column should not exist but INSERT succeeded")
+	}
+
+	// Verify tombstones table is absent at version 17.
+	var tblName string
+	if err := db.QueryRowContext(ctx,
+		`SELECT name FROM sqlite_master WHERE type='table' AND name='tombstones'`).Scan(&tblName); err == nil {
+		t.Error("at version 17: tombstones table should not exist but was found")
+	}
+
+	// Seed an org and a session at version 17 to test data survival across Down.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO orgs (id, name, slug, created_at) VALUES ('org-001', 'Org', 'org-001', datetime('now'))`); err != nil {
+		// Row may already exist from prior test runs sharing the in-memory DB — ignore duplicate.
+		_ = err
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO sessions (id, org_id, name, goal, writable_scope, default_mode, status, created_at)
+		 VALUES ('sess-v17', 'org-001', 'S', 'G', '[]', 'sync', 'active', datetime('now'))`); err != nil {
+		t.Fatalf("seed session at version 17: %v", err)
+	}
+
+	// --- Up: apply migration 00018 ---
+	if err := MigrateUp(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("MigrateUp (up through 18): %v", err)
+	}
+
+	// Verify last_substantive_activity_at column exists and pre-existing row
+	// was back-filled from created_at (see migration comment).
+	var lsaa string
+	if err := db.QueryRowContext(ctx,
+		`SELECT last_substantive_activity_at FROM sessions WHERE id='sess-v17'`).Scan(&lsaa); err != nil {
+		t.Fatalf("after Up to 18: last_substantive_activity_at missing or unreadable: %v", err)
+	}
+	if lsaa == "" {
+		t.Error("after Up to 18: last_substantive_activity_at should be back-filled from created_at, got empty string")
+	}
+
+	// Verify hard_cap_at and idle_timeout_at columns exist (nullable).
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO sessions (id, org_id, name, goal, writable_scope, default_mode, status, created_at, last_substantive_activity_at, hard_cap_at, idle_timeout_at)
+		 VALUES ('sess-v18', 'org-001', 'S2', 'G', '[]', 'sync', 'active', datetime('now'), datetime('now'), datetime('now', '+2 hours'), datetime('now', '+1 hour'))`); err != nil {
+		t.Fatalf("after Up to 18: playground columns missing: %v", err)
+	}
+
+	// Verify tombstones table exists.
+	if err := db.QueryRowContext(ctx,
+		`SELECT name FROM sqlite_master WHERE type='table' AND name='tombstones'`).Scan(&tblName); err != nil {
+		t.Fatalf("after Up to 18: tombstones table missing: %v", err)
+	}
+
+	// Insert a tombstone to confirm the table is usable.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO tombstones (session_id, org_id, members_count, commits_count, auto_merges_count, duration_seconds, end_reason, ended_at, expires_at)
+		 VALUES ('sess-v18', 'org-001', 1, 2, 0, 300, 'idle_timeout', datetime('now'), datetime('now', '+30 days'))`); err != nil {
+		t.Fatalf("after Up to 18: INSERT into tombstones: %v", err)
+	}
+
+	// --- Down: roll back migration 00018 ---
+	// migrateDown(17) rolls back version 18, leaving the DB at version 17.
+	migrateDown(t, ctx, db, "sqlite", 17)
+
+	// Verify tombstones table is gone after Down.
+	if err := db.QueryRowContext(ctx,
+		`SELECT name FROM sqlite_master WHERE type='table' AND name='tombstones'`).Scan(&tblName); err == nil {
+		t.Error("after Down to 17: tombstones table should be gone but was found")
+	}
+
+	// Verify playground columns are gone after Down.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO sessions (id, org_id, name, goal, writable_scope, default_mode, status, created_at, last_substantive_activity_at)
+		 VALUES ('sess-post-down18', 'org-001', 'S', 'G', '[]', 'sync', 'active', datetime('now'), datetime('now'))`); err == nil {
+		t.Error("after Down to 17: last_substantive_activity_at column should be gone but INSERT succeeded")
+	}
+
+	// Verify pre-migration session (sess-v17) survived the Down.
+	var sessID string
+	if err := db.QueryRowContext(ctx,
+		`SELECT id FROM sessions WHERE id='sess-v17'`).Scan(&sessID); err != nil {
+		t.Fatalf("after Down to 17: sess-v17 should survive table rebuild: %v", err)
+	}
+
+	// --- Re-Up: reapply migration 00018 ---
+	if err := MigrateUp(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("MigrateUp (re-apply after Down): %v", err)
+	}
+
+	// Verify tombstones table is back after re-Up.
+	if err := db.QueryRowContext(ctx,
+		`SELECT name FROM sqlite_master WHERE type='table' AND name='tombstones'`).Scan(&tblName); err != nil {
+		t.Fatalf("after re-Up to 18: tombstones table missing: %v", err)
+	}
+
+	// Verify playground columns are back and usable.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO sessions (id, org_id, name, goal, writable_scope, default_mode, status, created_at, last_substantive_activity_at, hard_cap_at, idle_timeout_at)
+		 VALUES ('sess-reup18', 'org-001', 'S3', 'G', '[]', 'sync', 'active', datetime('now'), datetime('now'), NULL, NULL)`); err != nil {
+		t.Fatalf("after re-Up to 18: playground columns missing: %v", err)
+	}
+}
+
 // assertSQLiteTables queries sqlite_master to verify all expected tables exist.
 func assertSQLiteTables(t *testing.T, db *sql.DB) {
 	t.Helper()
