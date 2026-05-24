@@ -1,14 +1,14 @@
 ---
 id: story-comments-service-use-slog-not-stdlib-log
 kind: story
-stage: implementing
+stage: review
 tags: [portal, cleanup, logging]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Switch comments.Service activity-reset warning from stdlib log to slog
@@ -60,3 +60,17 @@ explicit-logger pattern used in `Validator` (`Logger *slog.Logger`).
   `err`) matching the pattern in `receive_pack.go` and
   `sessions/handler.go`.
 - Existing comments tests still pass.
+
+## Implementation notes
+
+Option A applied: replaced `log.Printf` with `slog.WarnContext(ctx, ...)` and
+swapped the `"log"` import for `"log/slog"`. No new struct fields needed.
+
+Field names mirror the two sibling activity-reset sites exactly:
+`"org", p.OrgID, "session", p.SessionID, "err", resetErr`
+(matching `receive_pack.go:345` and `sessions/handler.go:331`).
+
+Comment text updated from "the push itself succeeded" to "the comment itself
+succeeded" — the stale wording was copy-pasted from `receive_pack.go`.
+
+`go build ./...` and `go test ./...` green with no stale fixtures.

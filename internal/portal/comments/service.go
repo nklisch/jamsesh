@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -220,10 +220,9 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (store.Comment, er
 			IdleTimeoutAt:             resetAt.Add(s.PlaygroundIdleTimeout),
 		}); resetErr != nil {
 			// Best-effort: log and continue. The session may die slightly
-			// early (original idle_timeout_at), but the push itself succeeded.
-			// slog.Default() avoids importing log/slog as a Service dep.
-			log.Printf("comments: reset idle timer failed (best-effort): session=%s err=%v",
-				p.SessionID, resetErr)
+			// early (original idle_timeout_at), but the comment itself succeeded.
+			slog.WarnContext(ctx, "comments: reset idle timer failed (best-effort)",
+				"org", p.OrgID, "session", p.SessionID, "err", resetErr)
 		}
 	}
 
