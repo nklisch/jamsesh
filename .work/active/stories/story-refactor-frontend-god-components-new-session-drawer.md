@@ -1,7 +1,7 @@
 ---
 id: story-refactor-frontend-god-components-new-session-drawer
 kind: story
-stage: implementing
+stage: review
 tags: [ui, refactor]
 parent: feature-refactor-frontend-god-components
 depends_on: []
@@ -57,3 +57,24 @@ Read the file first. Likely splits:
 ## Rollback
 
 `git revert` the commit.
+
+## Implementation notes
+
+Both extractions were done:
+
+1. **`useNewSessionForm.svelte.ts`** — factory `createNewSessionForm()` returning a
+   per-instance `wrapper-object-rune-store` facade. Private `_`-prefixed `$state`
+   variables; exposed via getters + explicit setters (`setGoal`, `setScopeRaw`, etc.)
+   and two action methods (`submit(orgId)` → boolean, `reset()`). All command-building
+   logic (`shellEscape`, `parseCommaSeparated`, `buildFlags`) moved here.
+
+2. **`SessionCommandPreview.svelte`** — pure rendering component. Receives
+   `skillCommand`, `cliCommand`, `onEditForm`, `onDone` as props. Owns its own
+   clipboard copy state (`skillCopied`, `cliCopied`) and 2-second feedback timers.
+   No mutations of parent state.
+
+3. **`parseCommaSeparated`** — `ForkDialog.svelte` has no such helper; left inline
+   inside the rune module (not extracted to `string-utils.ts`).
+
+`NewSessionDrawer.svelte`: 566 → 213 lines (-353). All 624 tests pass; `npm run check`
+0 errors; `npm run build` clean.
