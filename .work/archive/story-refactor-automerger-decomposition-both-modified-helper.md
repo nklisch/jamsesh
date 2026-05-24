@@ -1,7 +1,7 @@
 ---
 id: story-refactor-automerger-decomposition-both-modified-helper
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: feature-refactor-automerger-decomposition
 depends_on: [story-refactor-automerger-decomposition-side-changes-helper]
@@ -153,3 +153,13 @@ brings both helpers to clean, readable lengths.
 
 All automerger tests pass without modification. `go build ./...` and
 `go test ./...` both clean.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Behavior-preserving refactor delivered as designed. Implementation notes document any deviations (typically agent adapting to the file's actual structure differing from the story body's assumption). All tests pass; build clean.

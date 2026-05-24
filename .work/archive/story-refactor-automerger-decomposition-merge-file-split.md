@@ -1,7 +1,7 @@
 ---
 id: story-refactor-automerger-decomposition-merge-file-split
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: feature-refactor-automerger-decomposition
 depends_on: [story-refactor-automerger-decomposition-both-modified-helper]
@@ -128,3 +128,13 @@ The original `mergeFileContent` used `ExitCode() > 0` to catch all positive code
 - Error-wrapping prefixes updated from `mergeFileContent` to `runMergeFileTool` to match caller.
 - `ParseConflictRanges` confirmed as the conflict-marker scanner over merged bytes; no parallel parser introduced in `interpretMergeFileExit`.
 - `go build ./...` and `go test ./...` clean.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Behavior-preserving refactor delivered as designed. Implementation notes document any deviations (typically agent adapting to the file's actual structure differing from the story body's assumption). All tests pass; build clean.

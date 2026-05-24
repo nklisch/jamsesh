@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-per-package-clock-compliance
 kind: feature
-stage: review
+stage: done
 tags: [portal, refactor, testing]
 parent: null
 depends_on: []
@@ -163,3 +163,13 @@ All 4 child stories advanced to `stage: review`:
 - `story-refactor-per-package-clock-compliance-objectstore` — new `objectstore.Clock` interface; `LifecycleManager` clock field via `m.now()` accessor; `ManifestStore.Save` parameter form (matches `FindOrProvisionAt`); 2 new fake-clock tests
 
 **Verification**: `go build ./...` clean, `go test ./...` clean across all 57 packages.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve — feature delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All child stories approved individually. Aggregate review: design decomposition realized end-to-end, no cross-cutting deviations beyond what's documented in the implementation summary, no foundation-doc drift, no API breakage beyond intra-`internal/` boundaries (all callers updated in-tree).

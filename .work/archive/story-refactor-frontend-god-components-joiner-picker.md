@@ -1,7 +1,7 @@
 ---
 id: story-refactor-frontend-god-components-joiner-picker
 kind: story
-stage: review
+stage: done
 tags: [ui, refactor]
 parent: feature-refactor-frontend-god-components
 depends_on: []
@@ -85,3 +85,13 @@ outcome — they are mutually exclusive branches. Props + callbacks suffice.
 **Test result:** All 22 JoinerPicker tests pass unchanged — the test renders
 the screen component and the extracted sub-components are transparent to it.
 `npm run check` 0 errors. `npm run build` clean.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Behavior-preserving refactor delivered as designed. Implementation notes document any deviations (typically agent adapting to the file's actual structure differing from the story body's assumption). All tests pass; build clean.

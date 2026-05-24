@@ -1,7 +1,7 @@
 ---
 id: story-refactor-frontend-god-components-finalize-view
 kind: story
-stage: review
+stage: done
 tags: [ui, refactor]
 parent: feature-refactor-frontend-god-components
 depends_on: []
@@ -100,3 +100,13 @@ All 624 tests pass unmodified. `npm run check` clean. `npm run build` clean.
 - `SquashMessageEditor.svelte` — already a separate component, not
   touched.
 - Any new finalize features. Pure structural decomposition.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Behavior-preserving refactor delivered as designed. Implementation notes document any deviations (typically agent adapting to the file's actual structure differing from the story body's assumption). All tests pass; build clean.

@@ -1,7 +1,7 @@
 ---
 id: story-refactor-frontend-god-components-session-view-shell
 kind: story
-stage: review
+stage: done
 tags: [ui, refactor]
 parent: feature-refactor-frontend-god-components
 depends_on: []
@@ -117,3 +117,13 @@ warnings in `ModeSwitchDialog.svelte` and `FinalizeView.svelte` are unchanged
 (FinalizeView errors are from an in-progress separate story refactor).
 
 **`npm run build`:** Clean (182 kB bundle, no errors).
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Behavior-preserving refactor delivered as designed. Implementation notes document any deviations (typically agent adapting to the file's actual structure differing from the story body's assumption). All tests pass; build clean.

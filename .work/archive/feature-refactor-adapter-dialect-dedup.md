@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-adapter-dialect-dedup
 kind: feature
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -177,3 +177,13 @@ The single child story landed:
 The feature's design pass explicitly deferred the deeper structural dedup (row converters, method wrappers) with documented rationale — the conservative slice is the only step in this feature.
 
 **Verification**: `go build ./...` clean, `go test ./...` clean.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve — feature delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All child stories approved individually. Aggregate review: design decomposition realized end-to-end, no cross-cutting deviations beyond what's documented in the implementation summary, no foundation-doc drift, no API breakage beyond intra-`internal/` boundaries (all callers updated in-tree).

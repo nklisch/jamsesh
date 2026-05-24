@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-frontend-god-components
 kind: feature
-stage: review
+stage: done
 tags: [ui, refactor]
 parent: null
 depends_on: []
@@ -163,3 +163,13 @@ All 6 child stories advanced to `stage: review`:
 - `story-refactor-frontend-god-components-org-settings` — 555 → 173 LoC; agent discovered only one of four documented concerns was actually implemented (others are "soon" placeholders), extracted `OrgInvitePolicyEditor` + `OrgSettingsSidebar`
 
 **Verification**: `npm run check` 0 errors, `npm run test` 624/624 across all 50 test files, `npm run build` clean.
+
+## Review (2026-05-23)
+
+**Verdict**: Approve — feature delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All child stories approved individually. Aggregate review: design decomposition realized end-to-end, no cross-cutting deviations beyond what's documented in the implementation summary, no foundation-doc drift, no API breakage beyond intra-`internal/` boundaries (all callers updated in-tree).

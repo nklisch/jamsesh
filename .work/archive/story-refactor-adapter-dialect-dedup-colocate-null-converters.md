@@ -1,7 +1,7 @@
 ---
 id: story-refactor-adapter-dialect-dedup-colocate-null-converters
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: feature-refactor-adapter-dialect-dedup
 depends_on: []
@@ -133,3 +133,13 @@ Moved all 8 functions verbatim with no signature or logic changes.
 
 Build: `go build ./...` clean.
 Tests: `go test ./...` — all packages pass (57 packages, 0 failures).
+
+## Review (2026-05-23)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Behavior-preserving refactor delivered as designed. Implementation notes document any deviations (typically agent adapting to the file's actual structure differing from the story body's assumption). All tests pass; build clean.

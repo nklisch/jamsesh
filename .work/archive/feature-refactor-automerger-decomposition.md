@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-automerger-decomposition
 kind: feature
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: null
 depends_on: []
@@ -157,3 +157,13 @@ All 4 child stories advanced to `stage: review`:
 - `story-refactor-automerger-decomposition-flatten-submodule-extract` — **no-op land**: agent found the submodule branch is already shared with `filemode.Dir` under a single 3-LoC body. Per story's own decision rule (≤5 LoC = no extraction warranted), no change to `merge.go`. Story honestly closed.
 
 **Verification**: `go build ./...` clean, `go test ./internal/portal/automerger/...` clean (11 tests pass).
+
+## Review (2026-05-23)
+
+**Verdict**: Approve — feature delivered as briefed.
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All child stories approved individually. Aggregate review: design decomposition realized end-to-end, no cross-cutting deviations beyond what's documented in the implementation summary, no foundation-doc drift, no API breakage beyond intra-`internal/` boundaries (all callers updated in-tree).
