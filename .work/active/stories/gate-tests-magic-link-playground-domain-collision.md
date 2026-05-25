@@ -1,7 +1,7 @@
 ---
 id: gate-tests-magic-link-playground-domain-collision
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, security, auth]
 parent: null
 depends_on: []
@@ -51,3 +51,10 @@ Took **Path A** (fix the bug, add a passing test).
 - `internal/portal/auth/magic_link_test.go`: Added `TestRequestMagicLink_ReservedPlaygroundDomain_Rejected` — asserts 400 + `magic_link.reserved_domain` code + zero sender calls for `user@playground.local`.
 
 All portal/auth tests green (`go test ./internal/portal/auth/... -count=1`).
+
+## Review notes
+
+Approve. Took Path A (fix bug + add test). Test asserts 400 +
+`magic_link.reserved_domain` error code + zero sender calls (proves
+rejection happens before side-effects). Production change (openapi.yaml,
+magic_link.go, httperr.go) is in scope and minimal. Test passes.
