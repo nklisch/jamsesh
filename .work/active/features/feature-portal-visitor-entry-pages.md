@@ -1,7 +1,7 @@
 ---
 id: feature-portal-visitor-entry-pages
 kind: feature
-stage: implementing
+stage: review
 tags: [ui, portal]
 parent: null
 depends_on: []
@@ -395,3 +395,28 @@ handler test vs. frontend component test).
   it's a deploy-time env var, restart required.
 - Email-capture, analytics, or marketing pixels on the project
   landing.
+
+## Children complete (2026-05-24)
+
+Both child stories implemented and advanced to terminal-or-review:
+
+- `story-portal-visitor-entry-pages-info-endpoint` → `stage: done`
+  (reviewed; one inline nit re: release-notes call-out for the
+  intentional behavior change on upgrade).
+- `story-portal-visitor-entry-pages-spa-landing` → `stage: review`
+  (just landed; 723/723 frontend tests + Go build clean).
+
+**Cross-cutting verification**: `go build ./...` clean,
+`pnpm test` in `frontend/` shows 723/723 green across 60 files,
+`go test ./...` clean (verified after wave 1).
+
+**No cross-cutting deviations**. The chosen Option 1 mockup
+(`.mockups/screens/feature-portal-visitor-entry-pages/option-1.html`)
+is mirrored by `frontend/src/lib/screens/ProjectLanding.svelte`; the
+new public endpoint exposed by Unit 1 is consumed by the portalInfo
+store in Unit 2 exactly as designed; the auth-gate special-case for
+the `project` variant lives in `App.svelte`'s existing gate effect
+(no new route registration), as specified.
+
+Advancing feature to `stage: review` — both children meet the
+terminal-or-review bar.
