@@ -3,11 +3,11 @@ id: bug-csp-report-endpoint-not-wired
 kind: story
 stage: drafting
 tags: [security, portal, csp]
-parent: null
+parent: feature-spa-bootstrap-hygiene
 depends_on: []
 release_binding: null
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # CSP report-uri `/_csp-report` endpoint is not wired to a real receiver

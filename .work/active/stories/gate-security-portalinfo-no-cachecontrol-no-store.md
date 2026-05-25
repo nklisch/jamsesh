@@ -3,7 +3,7 @@ id: gate-security-portalinfo-no-cachecontrol-no-store
 kind: story
 stage: drafting
 tags: [security, portal, http]
-parent: null
+parent: feature-spa-bootstrap-hygiene
 depends_on: []
 release_binding: null
 gate_origin: security

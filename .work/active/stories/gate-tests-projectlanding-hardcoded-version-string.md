@@ -3,7 +3,7 @@ id: gate-tests-projectlanding-hardcoded-version-string
 kind: story
 stage: drafting
 tags: [testing, ui, cleanup]
-parent: null
+parent: feature-spa-bootstrap-hygiene
 depends_on: []
 release_binding: null
 gate_origin: tests
