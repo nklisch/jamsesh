@@ -1,7 +1,7 @@
 ---
 id: gate-tests-sessionviewshell-hard-cap-reason-branch
 kind: story
-stage: review
+stage: done
 tags: [testing, ui, playground]
 parent: null
 depends_on: []
@@ -42,3 +42,10 @@ Added test `'updates hard-cap timer when playground.destruction_warning fires wi
 The test fires a `playground.destruction_warning` WS event with `reason=hard_cap` and `ends_at` set 3 minutes in the future, then asserts the countdown badge acquires the `urgent` CSS class. This confirms the `hard_cap` branch in `usePlaygroundCountdown.mountSubscriptions()` updates `_hardCapAt`, which CountdownBadge converts to `hardCapRemainingMs < WARN_THRESHOLD_MS` → `isUrgent`.
 
 The idle fixture timer stays at 24h (from `makePlaygroundSession`), so only the hard-cap branch drives urgency — the test is partition-exclusive for the `hard_cap` reason. SessionViewShell now has 23 tests (was 22).
+
+## Review notes
+
+Approve. Fires real `playground.destruction_warning` event through the
+production WS handler, asserts the `urgent` class on the rendered
+CountdownBadge. Idle timer left at 24h means only the hard-cap branch can
+drive urgency — partition-exclusive coverage. Test passes.
