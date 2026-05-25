@@ -1,7 +1,7 @@
 ---
 id: review-per-package-clock-rolling-foundation-prose
 kind: story
-stage: review
+stage: done
 tags: [documentation, cleanup]
 parent: null
 depends_on: []
