@@ -10,6 +10,12 @@ argument-hint: "[--local]"
 
 # Finalize the session
 
+> **First-time setup gate.** Before invoking `jamsesh` for the first
+> time in a session, check `JAMSESH_PORTAL_URL` is set. If unset, run
+> the one-time setup flow in the root `jamsesh` skill (section 0,
+> "Pre-flight — portal URL must be configured") *before* the command
+> below.
+
 Finalize is the end-of-jam curation step run by a human. It produces a
 final commit sequence the human can cherry-pick into their source repo
 of record.

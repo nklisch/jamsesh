@@ -26,6 +26,63 @@ lives in the reference files listed in section 9, loaded on demand.
 
 ---
 
+## 0. Pre-flight — portal URL must be configured
+
+Before invoking **any** `jamsesh ...` command (including `jam`, `join`,
+`status`, `finalize`, etc.), confirm `JAMSESH_PORTAL_URL` is set in the
+environment Bash sees:
+
+```bash
+test -n "${JAMSESH_PORTAL_URL:-}" && echo set || echo unset
+```
+
+If unset, the binary falls back to the placeholder
+`https://jamsesh.example.com` and every API call fails with a DNS
+error (`dial tcp: lookup jamsesh.example.com on …: no such host`).
+
+**On the first jamsesh invocation per session where the var is unset,**
+walk the user through one-time setup *before* running their requested
+command:
+
+1. **Ask which portal to point at** via AskUserQuestion. Offer these
+   options — do NOT silently default, since the user may be
+   self-hosting:
+   - `Official portal — https://jamsesh.dev`
+   - `Self-hosted — I'll provide the URL`
+   - `Skip for now (commands will fail until set)`
+
+2. **Persist for future sessions.** Merge the chosen value into
+   `~/.claude/settings.json` under the top-level `env` key, preserving
+   existing keys:
+
+   ```json
+   {
+     "env": {
+       "JAMSESH_PORTAL_URL": "<chosen-url>"
+     }
+   }
+   ```
+
+   Read the file first, merge with `jq` (or Read + Edit), then write —
+   never clobber unrelated settings.
+
+3. **Use it in the current session too.** Settings.json `env` only
+   applies to *new* CC sessions, and `export` does not persist across
+   Bash tool calls. So inline the variable on every jamsesh invocation
+   for the rest of this session:
+
+   ```bash
+   JAMSESH_PORTAL_URL=<chosen-url> jamsesh jam new ...
+   ```
+
+   Tell the user once that the new value is now sticky for future
+   sessions but you'll be prefixing it inline for the rest of this one.
+
+If the user picked **Skip**, do not invoke the command — say so and
+wait for further direction.
+
+---
+
 ## Skill surface
 
 This plugin exposes two top-level skills:

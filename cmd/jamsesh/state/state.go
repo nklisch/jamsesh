@@ -13,8 +13,11 @@ import (
 )
 
 // DefaultPortalURL is the fallback portal URL when neither the env var nor
-// the portal_url file is present.
-const DefaultPortalURL = "https://jamsesh.example.com"
+// the portal_url file is present. Points at the official hosted portal so
+// out-of-the-box use works; self-hosters override via JAMSESH_PORTAL_URL
+// or the portal_url state file. The /jamsesh:* skills still prompt for
+// explicit configuration on first use so the choice is conscious.
+const DefaultPortalURL = "https://jamsesh.dev"
 
 // PluginDataDir returns the value of CLAUDE_PLUGIN_DATA, or an error if
 // the environment variable is unset or empty.

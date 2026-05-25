@@ -6,6 +6,12 @@ argument-hint: "[new|join] [flags]"
 
 # /jamsesh:jam
 
+> **First-time setup gate.** Before invoking `jamsesh` for the first
+> time in a session, check `JAMSESH_PORTAL_URL` is set. If unset, run
+> the one-time setup flow in the root `jamsesh` skill (section 0,
+> "Pre-flight — portal URL must be configured") *before* the command
+> below. Without it the binary hits a placeholder URL and fails.
+
 When the user wants to start, create, or join a jam session in any form —
 durable or playground, new or existing — invoke `jamsesh jam $ARGUMENTS`.
 The binary's `jam` subcommand routes to the right underlying operation
