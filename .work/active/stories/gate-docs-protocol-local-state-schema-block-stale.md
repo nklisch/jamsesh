@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-local-state-schema-block-stale
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
