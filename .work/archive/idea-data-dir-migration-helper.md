@@ -1,7 +1,7 @@
 ---
 id: idea-data-dir-migration-helper
 kind: story
-stage: review
+stage: done
 tags: [plugin, migration, release-notes]
 parent: null
 depends_on: []
@@ -52,3 +52,13 @@ release notes for the version that ships this rename must call this
 out explicitly, and we should consider shipping a one-time auto-migrate
 helper (detect the old CC-managed path on first run after upgrade,
 prompt the user, `mv` on confirmation) to reduce the upgrade burden.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Best-effort detector with idempotent guards, structured logging, and a copy-paste `mv` command. The "no auto-move" deviation is appropriately documented — silent moves on shared/operator-managed dirs would be worse than the one-time UX cost. Six tests cover the relevant matrix (no env, empty old, token-only, sessions-only, both populated, same-path). Release-notes call-out is the responsibility of the release-deploy stride.
