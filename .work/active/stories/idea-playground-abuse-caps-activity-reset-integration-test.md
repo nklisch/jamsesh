@@ -1,7 +1,7 @@
 ---
 id: idea-playground-abuse-caps-activity-reset-integration-test
 kind: story
-stage: review
+stage: done
 tags: [portal, playground, testing]
 parent: feature-playground-hardening
 depends_on: [gate-security-githttp-receivepack-wallclock-not-injected]
@@ -94,3 +94,13 @@ have at least one test pinning the activity-reset behaviour; the push path
 gets the full integration sequence per the original story scope.
 
 Verified: `go test ./internal/portal/githttp/... -count 1 -run SecondPushExtendsBeyondOriginalDeadline` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Test exercises the full abuse-cap invariant — push within window extends deadline past original threshold; sweep at original threshold doesn't pick it up. Uses real bare repo + real git subprocess + injected clock. Comment and finalize paths reuse pre-existing coverage (correct — don't duplicate). The (idle_timeout, hard_cap) separation is preserved by checking only the idle expiration list, which is the correct abuse-cap target.
