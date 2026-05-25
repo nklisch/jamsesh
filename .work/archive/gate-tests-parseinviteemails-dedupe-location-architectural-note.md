@@ -5,7 +5,7 @@ stage: done
 tags: [testing, plugin]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.4.1
 gate_origin: tests
 created: 2026-05-24
 updated: 2026-05-24

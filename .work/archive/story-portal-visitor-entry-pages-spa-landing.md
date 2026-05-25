@@ -5,7 +5,7 @@ stage: done
 tags: [ui, portal]
 parent: feature-portal-visitor-entry-pages
 depends_on: [story-portal-visitor-entry-pages-info-endpoint]
-release_binding: null
+release_binding: v0.4.1
 gate_origin: null
 created: 2026-05-24
 updated: 2026-05-24
