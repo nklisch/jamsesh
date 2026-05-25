@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import { fileURLToPath, URL } from 'url';
+import pkg from './package.json' with { type: 'json' };
 
 export default defineConfig({
   plugins: [
@@ -11,6 +12,14 @@ export default defineConfig({
     // build. Without this, mount() throws lifecycle_function_unavailable.
     svelteTesting(),
   ],
+
+  // Build-time constants substituted into source at bundle/test time.
+  // `__APP_VERSION__` lets ProjectLanding render the canonical version
+  // string without a release-coupled literal in source.
+  // (gate-tests-projectlanding-hardcoded-version-string)
+  define: {
+    __APP_VERSION__: JSON.stringify(`v${pkg.version}`),
+  },
 
   resolve: {
     alias: {

@@ -115,7 +115,10 @@
 <!-- Colophon -->
 <section class="colophon-sec">
   <div class="grid">
-    <div class="colophon-meta">jamsesh / Apache-2.0 / v0.4.0 / 2026</div>
+    <!-- __APP_VERSION__ is replaced at build time by Vite's `define` block
+         from frontend/package.json. See vite.config.ts.
+         (gate-tests-projectlanding-hardcoded-version-string) -->
+    <div class="colophon-meta">jamsesh / Apache-2.0 / {__APP_VERSION__} / 2026</div>
     <div class="links">
       <a href="https://github.com/nklisch/jamsesh" target="_blank" rel="noopener noreferrer">GitHub</a>
       <a href="#docs">Docs</a>

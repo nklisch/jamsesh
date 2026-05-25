@@ -93,8 +93,14 @@ describe('ProjectLanding', () => {
   });
 
   it('renders the colophon with version and license', () => {
+    // Version is sourced from __APP_VERSION__ (Vite `define` → package.json),
+    // so the assertion uses a semver-ish regex rather than the literal —
+    // future package.json bumps don't require a test edit.
+    // (gate-tests-projectlanding-hardcoded-version-string)
     render(ProjectLanding);
-    expect(screen.getByText(/jamsesh \/ Apache-2\.0 \/ v0\.4\.0 \/ 2026/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/jamsesh \/ Apache-2\.0 \/ v?\d+\.\d+\.\d+ \/ 2026/i),
+    ).toBeInTheDocument();
   });
 
   // ── Internal navigation ────────────────────────────────────────────────────
