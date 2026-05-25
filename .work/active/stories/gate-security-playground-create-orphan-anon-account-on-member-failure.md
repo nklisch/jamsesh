@@ -1,7 +1,7 @@
 ---
 id: gate-security-playground-create-orphan-anon-account-on-member-failure
 kind: story
-stage: review
+stage: done
 tags: [security, portal, playground, data-protection]
 parent: feature-playground-hardening
 depends_on: []
@@ -77,3 +77,13 @@ up the session row too.
   path so the create-path test is sufficient verification.
 
 Verified: `go test ./internal/portal/playground/... ./internal/portal/tokens/... -count 1` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Compensation is best-effort, idempotent (`ErrNotFound` → nil), and never overrides the primary 5xx error return — exactly the right contract for cleanup-on-failure. Both the creator and joiner paths use the same helper. Test pattern with `failingAddSessionMemberStore` (narrow store delegation) is on-pattern. Joiner-side parallel test deferred is acceptable since the same shared helper is exercised.
