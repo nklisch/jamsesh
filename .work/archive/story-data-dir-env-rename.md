@@ -1,7 +1,7 @@
 ---
 id: story-data-dir-env-rename
 kind: story
-stage: review
+stage: done
 tags: [refactor, plugin, documentation]
 parent: null
 depends_on: []
@@ -78,3 +78,45 @@ canonical location everywhere.
   `${XDG_CACHE_HOME}/jamsesh/bin/`.
 - Acceptance grep `grep -rn 'CLAUDE_PLUGIN_DATA' cmd/ internal/ docs/ plugins/ tests/`
   returns empty.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none
+**Important**:
+- **Breaking change without user-facing migration documentation**: users
+  whose CC plugin runtime previously set `CLAUDE_PLUGIN_DATA` to a
+  CC-managed directory will find their state orphaned at the old location
+  post-upgrade. The story's "strict cutover, no back-compat" decision is
+  honored in code, but the user-facing migration story needs release-notes
+  language and possibly an auto-migrate helper.
+  → Item: `idea-data-dir-migration-helper` (parked in backlog)
+
+**Nits**:
+- The "warning: token migration encountered errors" branch at
+  `cmd/jamsesh/main.go:39` was not literally dropped per the story
+  instruction, but the agent's judgment is sound — the *probe* on missing
+  env var is gone (DataDir() self-defaults), and the warning now serves
+  the different purpose of logging actual per-session-token migration
+  failures. Acceptable.
+- Wrapper binary cache moved from `${CLAUDE_PLUGIN_DATA:-$HOME/.cache/jamsesh}/bin`
+  to `${XDG_CACHE_HOME:-$HOME/.cache}/jamsesh/bin`. For users whose CC
+  runtime set CLAUDE_PLUGIN_DATA, the cached binary now lives elsewhere
+  post-upgrade and re-downloads on first invocation. Minor.
+
+**Notes**:
+- Comprehensive rename across 47 files: Go source + tests + wrapper +
+  bats tests + 5 foundation docs. Acceptance grep clean.
+- New `DataDir()` correctly implements XDG resolution order:
+  `JAMSESH_DATA_DIR` → `${XDG_DATA_HOME}/jamsesh` → `${HOME}/.local/share/jamsesh`.
+  `os.MkdirAll(dir, 0o700)` ensures directory exists with appropriate mode.
+- Wrapper change cleanly separates cache (XDG_CACHE_HOME) from data (XDG_DATA_HOME)
+  tiers — old code conflated them by reading CLAUDE_PLUGIN_DATA for both.
+- Foundation docs rolled forward in place (PROTOCOL, SPEC, ARCH, UX, RELEASING).
+  No "previously" prose. ARCHITECTURE.md "Local state layout" path updated
+  correctly.
+- Full Go suite green; bats wrapper tests updated to use XDG_CACHE_HOME.
+
+**Next**: Release notes for the next version (v0.5.0 likely) need to
+prominently call out the env var rename + state-location change.
