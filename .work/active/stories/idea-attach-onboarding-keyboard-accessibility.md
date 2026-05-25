@@ -1,7 +1,7 @@
 ---
 id: idea-attach-onboarding-keyboard-accessibility
 kind: story
-stage: review
+stage: done
 tags: [ui, a11y]
 parent: feature-attach-onboarding-a11y-robustness
 depends_on: []
@@ -164,3 +164,13 @@ right; add button resets:
   `reopen-link is a <button> in compact mode`.
 
 Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 31 passed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All three click-only surfaces converted to native `<button type="button">` per design. Decorative spans correctly marked `aria-hidden="true"`; copy buttons carry `aria-label="Copy: <command>"`. CSS resets preserve the visual identity. All `svelte-ignore` comments for `a11y_click_events_have_key_events` and `a11y_no_static_element_interactions` removed from the converted elements. Tests pin button presence and Enter activation.
