@@ -1,7 +1,7 @@
 ---
 id: bug-csp-report-endpoint-not-wired
 kind: story
-stage: review
+stage: done
 tags: [security, portal, csp]
 parent: feature-spa-bootstrap-hygiene
 depends_on: []
@@ -62,3 +62,13 @@ without credentials.
     truncates → 204)
 
 Verified: `go test ./internal/portal/router/... -count 1` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: `http.MaxBytesReader` bounds memory; 64 KiB cap matches the comment's rationale. Always-204 prevents retry storms from misbehaving browsers/scanners; parse-error path still logs the `parse_err` for operator diagnosis. Public/unauthenticated is correct (browsers post without credentials). Tests cover valid, malformed, wrong-method, no-auth, and oversized-body cases.
