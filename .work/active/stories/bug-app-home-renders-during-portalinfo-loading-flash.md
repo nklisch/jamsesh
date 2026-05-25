@@ -1,7 +1,7 @@
 ---
 id: bug-app-home-renders-during-portalinfo-loading-flash
 kind: story
-stage: implementing
+stage: review
 tags: [bug, ui, regression, flash, a11y]
 parent: null
 depends_on: []
@@ -136,3 +136,25 @@ The sentinel test already exists. After the fix:
 
 - `frontend/src/App.svelte` — one-clause edit at line 92
 - `frontend/src/App.test.ts` — remove `.skip` + the `// Skipped: ...` comment on lines ~321-326
+
+## Implementation notes
+
+- `frontend/src/App.svelte:92` — the generic home branch was tightened from
+  `{:else if current.name === 'home'}` to
+  `{:else if current.name === 'home' && (auth.isAuthenticated || portalInfo.loaded)}`.
+  No new branch, no new element, no spinner — the implicit empty render covers
+  the flash window exactly as the spec's "transparent loading shell" promised.
+- `frontend/src/App.test.ts` — the `it.skip('unauthed + portalInfo.loaded=false …`
+  sentinel was un-skipped and its multi-line skip-comment naming this bug id was
+  deleted. The test now exercises the fix directly: both `mockHomeStub` and
+  `mockProjectLandingStub` are asserted not-called when `loaded=false` and the
+  user is unauthed.
+- Auth-gate `$effect` left untouched — the fix is template-only as the design
+  specified.
+
+### Verification
+
+- `cd frontend && npm test -- --run App.test.ts` → 16/16 passing (was 15 +
+  1 skipped).
+- `cd frontend && npm run check` → 0 errors. The single warning is the
+  pre-existing one in `ModeSwitchDialog.svelte` unrelated to this fix.

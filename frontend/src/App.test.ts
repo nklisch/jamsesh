@@ -318,13 +318,7 @@ describe('App — auth-gate $effect', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  // Skipped: known production bug `bug-app-home-renders-during-portalinfo-loading-flash`.
-  // The spec promised a transparent loading shell while portalInfo.loaded === false,
-  // but App.svelte's `{:else if current.name === 'home'}` branch falls through to
-  // `<Home/>` (the org picker) when no other branch matches. Un-skip this test
-  // when the bug is fixed (route gate must check portalInfo.loaded for the generic
-  // home branch).
-  it.skip('unauthed + portalInfo.loaded=false → neither Home nor ProjectLanding mounts (flash gate)', async () => {
+  it('unauthed + portalInfo.loaded=false → neither Home nor ProjectLanding mounts (flash gate)', async () => {
     mockAuth.isAuthenticated = false;
     mockRouterCurrent.name = 'home';
     mockRouterCurrent.requiresAuth = true;

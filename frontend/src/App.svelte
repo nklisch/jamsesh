@@ -89,7 +89,7 @@
   <Login />
 {:else if current.name === 'home' && !auth.isAuthenticated && portalInfo.loaded && portalInfo.landingVariant === 'project'}
   <ProjectLanding />
-{:else if current.name === 'home'}
+{:else if current.name === 'home' && (auth.isAuthenticated || portalInfo.loaded)}
   <Home />
 {:else if current.name === 'magic-link'}
   <MagicLinkExchange />
