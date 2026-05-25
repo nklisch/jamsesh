@@ -1,7 +1,7 @@
 ---
 id: gate-tests-status-cmd-playground-no-nickname-sidecar
 kind: story
-stage: review
+stage: done
 tags: [testing, plugin, cli, playground]
 parent: null
 depends_on: []
@@ -80,3 +80,13 @@ pre-fix on-disk state without extra helper code.
   rather than silently returning "")
 
 Both variants pass; `go vet` is clean.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: assertion on empty stderr is the right trip-wire — if `readNickname` ever changed from silent-empty-return to logging a warning, this catches it. The implementation notes' design-flaw check (re-reading `readNickname` to confirm graceful handling) is the right level of due diligence.
+
+**Notes**: Clean addition. Uses the existing `setupPlaygroundSession` helper exactly as intended (empty-nickname skips sidecar write), no new helper bloat.
