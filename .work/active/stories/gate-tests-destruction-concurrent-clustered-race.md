@@ -1,7 +1,7 @@
 ---
 id: gate-tests-destruction-concurrent-clustered-race
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground, concurrency]
 parent: null
 depends_on: []
@@ -60,3 +60,12 @@ DO NOTHING for tombstone, ErrNotFound tolerance for DeleteSession) hold under
 concurrent invocation. No race conditions detected. The broader clustered-mode
 risk (two pods, no advisory lock) remains documented in
 `bug-playground-destruction-clustered-advisory-lock`.
+
+## Review notes
+
+Approve. Barrier-released goroutines force real overlap; SetMaxOpenConns(1)
+pins to the shared in-memory SQLite db. Asserts no errors from either
+goroutine, exactly-one tombstone, session ErrNotFound, account ErrNotFound,
+repo gone. Passes with -race. Test is honest about scope: it pins the
+in-process idempotency contract, not cross-pod (clustered) safety which is
+tracked separately.
