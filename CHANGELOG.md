@@ -1,5 +1,85 @@
 # Changelog
 
+## v0.4.1
+
+Released 2026-05-25. Patch release introducing the **portal visitor-entry
+SPA landing surface** — an opt-in marketing landing for anonymous root
+hits, gated by a new public `/api/portal/info` bootstrap endpoint and a
+`JAMSESH_LANDING_VARIANT` config knob (`login` | `project` | `playground`).
+Alongside the new surface, three CLI fixes: the playground share URL now
+points at the canonical `/playground/s/<id>/join` SPA route the joiner
+picker actually expects, `jamsesh status` no longer renders a blank
+nickname row for playground sessions, and the plugin wrapper's data
+directory env var got renamed (`CLAUDE_PLUGIN_DATA` →
+`JAMSESH_DATA_DIR`) with `XDG_CACHE_HOME`-respecting defaults. Quality
+gates security + tests ran on the bundle; cruft/docs/patterns gates were
+deferred (patch-release scope). Fourteen gate findings were filed as
+substrate items; one Critical was drained inline.
+
+### Features
+
+- **Portal visitor-entry pages** — anonymous `/` now renders either the
+  legacy login screen, a project marketing landing (`ProjectLanding`
+  Svelte component with hero, value props, footer colophon), or the
+  playground hero, selected by the operator-set
+  `JAMSESH_LANDING_VARIANT` env (`login` default; `project` or
+  `playground` opt in). A new public unauthenticated
+  `GET /api/portal/info` endpoint returns
+  `{ playground_enabled, landing_variant }` so the SPA can bootstrap
+  before the auth flow completes, and a `portalInfo.svelte.ts` rune
+  store gates `App.svelte`'s home branch until both `auth.init()` and
+  `portalInfo.init()` resolve (fails closed to login on fetch error).
+
+### Fixes
+
+- **CLI playground share URL** — `jamsesh jam` now prints
+  `<base>/playground/s/<id>/join` instead of `<base>/playground/<id>`;
+  the printed link matches the SPA joiner-picker route so visitors land
+  on the join screen rather than a 404. Plus an e2e extractor fix to
+  match the new shape.
+- **`jamsesh status` nickname row blank for playground sessions** —
+  status now reads the per-session nickname sidecar and renders it
+  alongside the org/session id; backward-compatible with pre-fix
+  sessions that have no sidecar (empty nickname, no error).
+
+### Refactor
+
+- **Data-dir env var rename** — `CLAUDE_PLUGIN_DATA` →
+  `JAMSESH_DATA_DIR` across plugin code, hooks, wrapper, tests, and
+  docs. Plugin wrapper cache path moved from
+  `${CLAUDE_PLUGIN_DATA:-$HOME/.cache/jamsesh}/bin` to
+  `${XDG_CACHE_HOME:-$HOME/.cache}/jamsesh/bin` (XDG-compliant default).
+
+### Documentation
+
+- ARCHITECTURE / PROTOCOL / SELF_HOST / SPEC / UX / RELEASING refreshed
+  for the new visitor-entry surface and data-dir env rename.
+- Branding pass: "agent-in-the-loop human jam sessions" tagline rolled
+  across README, VISION, plugin manifests, mockups, and the GitHub repo
+  description.
+
+### Internal
+
+- Plugin `hooks.json` migrated to the current Claude Code schema
+  (array of matcher-group objects).
+- Mockup-first design for the project-landing screen: 4 single-screen
+  options explored, Option 1 (Swiss/ITS) selected.
+- Idle-timeout activity reset pattern documented at
+  `.claude/skills/patterns/playground-activity-reset.md` (added via
+  feature design, not a code change).
+- Triage no-op: `parseInviteEmails` dedupe architectural note —
+  evaluated, archived without code change.
+
+### Quality gates
+
+- gate-security: 5 findings filed (0 critical, 0 high, 1 medium, 4 low).
+- gate-tests: 9 findings filed (2 critical, 2 high, 3 medium, 2 low);
+  1 Critical drained inline (e2e share-URL extractor).
+- gate-cruft, gate-docs, gate-patterns: skipped for this patch.
+
+Deferred findings remain tracked in `.work/active/stories/gate-*` and
+`.work/backlog/gate-*` for triage into a future release.
+
 ## v0.4.0
 
 Released 2026-05-24. The headline is the **ephemeral anonymous
