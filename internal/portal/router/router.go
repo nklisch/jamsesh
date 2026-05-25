@@ -6,6 +6,7 @@ package router
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -18,6 +19,13 @@ import (
 	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/portal/probes"
 )
+
+// cspReportMaxBody caps the request body size for POST /_csp-report. CSP
+// violation reports are typically 1-4 KiB; 64 KiB is generous while
+// preventing memory exhaustion from a malicious sender. The endpoint is
+// public (browsers send CSP reports without credentials) so the global
+// /api/* BodyLimit does NOT apply.
+const cspReportMaxBody = 64 * 1024
 
 // Security groups TLS posture and proxy-trust settings.
 type Security struct {
@@ -149,6 +157,12 @@ func New(d Deps) http.Handler {
 	// Public liveness probe — no auth.
 	r.Get("/healthz", healthz)
 
+	// Public CSP report sink — browsers POST violation reports here when the
+	// CSP policy includes a report-uri directive. Body is JSON; we log at
+	// warn level and always return 204 (no auth, no retry encouragement).
+	// (bug-csp-report-endpoint-not-wired)
+	r.Post("/_csp-report", cspReport)
+
 	// Public readiness probe — only registered when checks are configured.
 	if len(d.Probes.Ready) > 0 {
 		r.Get("/readyz", probes.Handler(d.Probes.Ready).ServeHTTP)
@@ -229,6 +243,32 @@ func metricsTokenMiddleware(wantToken string, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// cspReport handles POST /_csp-report. Browsers POST CSP violation reports
+// here when the Report-Only or enforced CSP policy includes a report-uri
+// directive. We decode the JSON body, log it at warn level with the key
+// "csp_violation", and return 204 — browsers do not consume the response
+// body. The endpoint is unauthenticated by design (browsers send reports
+// without credentials).
+//
+// Body is capped at cspReportMaxBody via http.MaxBytesReader to bound
+// memory under a malicious or buggy sender. A parse error (malformed JSON,
+// body too large) still returns 204 so misbehaving senders are not
+// encouraged to retry; the structured log captures the parse_err for
+// operator diagnosis.
+func cspReport(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, cspReportMaxBody)
+	var report map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
+		slog.WarnContext(r.Context(), "csp_violation",
+			"parse_err", err.Error(),
+		)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	slog.WarnContext(r.Context(), "csp_violation", "report", report)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func healthz(w http.ResponseWriter, _ *http.Request) {

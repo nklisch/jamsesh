@@ -1,7 +1,7 @@
 ---
 id: bug-csp-report-endpoint-not-wired
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal, csp]
 parent: feature-spa-bootstrap-hygiene
 depends_on: []
@@ -40,3 +40,25 @@ a structured log collector, etc.) once basic wiring is confirmed.
 
 The endpoint should not require authentication — browsers POST CSP reports
 without credentials.
+
+## Implementation notes
+
+- `internal/portal/router/router.go`:
+  - Added `log/slog` import and `cspReportMaxBody = 64 * 1024` constant.
+  - Registered `r.Post("/_csp-report", cspReport)` immediately after
+    `/healthz` (public, unauthenticated, top-level).
+  - Added package-private `cspReport` handler:
+    - Wraps `r.Body` in `http.MaxBytesReader(w, r.Body, cspReportMaxBody)`.
+    - Decodes JSON; on parse error, logs `csp_violation` with `parse_err`
+      and returns 204 (no 4xx — browsers should not retry).
+    - On success, logs `csp_violation` with the full `report` payload at
+      WARN level and returns 204.
+- Five new tests in `internal/portal/router/router_test.go`:
+  - `TestCSPReport_ValidJSON_Returns204` (also verifies the slog line)
+  - `TestCSPReport_MalformedBody_Still204`
+  - `TestCSPReport_WrongMethodReturns405` (chi MethodNotAllowed envelope)
+  - `TestCSPReport_NoAuthHeader_Returns204`
+  - `TestCSPReport_OversizedBody_Returns204` (128 KiB body → MaxBytesReader
+    truncates → 204)
+
+Verified: `go test ./internal/portal/router/... -count 1` passes.

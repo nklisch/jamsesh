@@ -1,7 +1,9 @@
 package router_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,6 +49,93 @@ func TestHealthz(t *testing.T) {
 	}
 	if body["version"] == "" {
 		t.Errorf("want non-empty version field in /healthz response")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// bug-csp-report-endpoint-not-wired
+// ---------------------------------------------------------------------------
+
+func TestCSPReport_ValidJSON_Returns204(t *testing.T) {
+	// Capture slog output to verify the csp_violation key is logged.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	h := router.New(router.Deps{})
+	body := strings.NewReader(`{"csp-report":{"violated-directive":"script-src 'self'","blocked-uri":"https://evil.example.com"}}`)
+	r := httptest.NewRequest(http.MethodPost, "/_csp-report", body)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("want 204, got %d", w.Code)
+	}
+	// Body must be empty (204 spec).
+	if w.Body.Len() != 0 {
+		t.Errorf("want empty body, got %q", w.Body.String())
+	}
+	// Log line must include csp_violation key.
+	if !strings.Contains(buf.String(), `"msg":"csp_violation"`) {
+		t.Errorf("log line missing csp_violation msg: %s", buf.String())
+	}
+}
+
+func TestCSPReport_MalformedBody_Still204(t *testing.T) {
+	h := router.New(router.Deps{})
+	r := httptest.NewRequest(http.MethodPost, "/_csp-report", strings.NewReader(`{bad json`))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("malformed body: want 204 (no 400), got %d", w.Code)
+	}
+}
+
+func TestCSPReport_WrongMethodReturns405(t *testing.T) {
+	h := router.New(router.Deps{})
+	r := httptest.NewRequest(http.MethodGet, "/_csp-report", nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("want 405, got %d", w.Code)
+	}
+	// chi's MethodNotAllowed renders the JSON envelope.
+	got := decodeEnvelope(t, w.Body.String())
+	if got.Error == "" {
+		t.Errorf("want non-empty error code, got %+v", got)
+	}
+}
+
+func TestCSPReport_NoAuthHeader_Returns204(t *testing.T) {
+	// The endpoint must accept unauthenticated POSTs — browsers send CSP
+	// reports without credentials.
+	h := router.New(router.Deps{})
+	r := httptest.NewRequest(http.MethodPost, "/_csp-report", strings.NewReader(`{}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("want 204 with no auth header, got %d", w.Code)
+	}
+}
+
+func TestCSPReport_OversizedBody_Returns204(t *testing.T) {
+	// 128 KiB > 64 KiB MaxBytesReader cap; the decoder returns an error and
+	// the handler returns 204 (no 4xx). Body content is not echoed.
+	h := router.New(router.Deps{})
+	huge := strings.Repeat("a", 128*1024)
+	r := httptest.NewRequest(http.MethodPost, "/_csp-report", strings.NewReader(huge))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("oversized body: want 204, got %d", w.Code)
 	}
 }
 
