@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-dual-dialect-stale-createsession-columns
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
