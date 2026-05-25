@@ -711,6 +711,42 @@ func TestPlaygroundAction_happyPath(t *testing.T) {
 	}
 }
 
+// TestPlaygroundAction_shareURLShape verifies that the share URL printed to
+// stdout by "jamsesh new --playground" has the correct portal path format:
+// <baseURL>/playground/s/<sessionID>/join
+func TestPlaygroundAction_shareURLShape(t *testing.T) {
+	const sessionID = "sess-pg-url-001"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writePlaygroundJSON(w, samplePlaygroundResp(sessionID))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupPlaygroundEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+
+	app := buildCLIApp()
+	var output string
+	output = captureStdout(t, func() {
+		if err := app.Run(context.Background(), []string{"jamsesh", "new", "--playground"}); err != nil {
+			t.Fatalf("new --playground returned error: %v", err)
+		}
+	})
+
+	expectedURL := srv.URL + "/playground/s/" + sessionID + "/join"
+	if !strings.Contains(output, expectedURL) {
+		t.Errorf("share URL %q not found in output; got:\n%s", expectedURL, output)
+	}
+	// Confirm the old bare-session-id form is absent.
+	oldURL := srv.URL + "/playground/" + sessionID
+	if strings.Contains(output, oldURL) && !strings.Contains(output, "/playground/s/") {
+		t.Errorf("old share URL form %q should not appear in output; got:\n%s", oldURL, output)
+	}
+}
+
 // TestPlaygroundAction_nicknameWritten verifies that the server-minted nickname
 // from the PlaygroundSessionCreated response is persisted to the per-session
 // nickname sidecar file so "jamsesh status" can display it without re-fetching

@@ -1,7 +1,7 @@
 ---
 id: story-fix-cli-playground-share-url
 kind: story
-stage: implementing
+stage: review
 tags: [bug, cli, plugin]
 parent: null
 depends_on: []

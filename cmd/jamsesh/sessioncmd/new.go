@@ -509,7 +509,7 @@ func wrapPlaygroundPushError(pushErr error, session openapi.PlaygroundSessionSum
 // printPlaygroundSummary prints a human-readable summary for a newly created
 // playground session, highlighting the share URL, nickname, and expiry.
 func printPlaygroundSummary(resp openapi.PlaygroundSessionCreated, baseURL string) {
-	shareURL := strings.TrimRight(baseURL, "/") + "/playground/" + resp.Session.Id
+	shareURL := strings.TrimRight(baseURL, "/") + "/playground/s/" + resp.Session.Id + "/join"
 	expiresIn := time.Until(resp.ExpiresAt).Round(time.Minute)
 
 	fmt.Printf("Playground session created!\n")
