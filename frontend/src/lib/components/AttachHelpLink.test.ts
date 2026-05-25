@@ -78,9 +78,14 @@ describe('AttachHelpLink', () => {
     const btn = screen.getByRole('button', { name: /setup help/i });
     await fireEvent.click(btn);
 
-    const backdrop = document.querySelector('[role="dialog"]') as HTMLElement;
+    // The dialog landmark is now on the inner <article class="modal-card">;
+    // .modal-backdrop is the click-to-dismiss scrim
+    // (idea-attach-onboarding-dialog-role-on-card). Test the scrim click.
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    const backdrop = document.querySelector('.modal-backdrop') as HTMLElement | null;
     expect(backdrop).not.toBeNull();
-    await fireEvent.click(backdrop);
+    await fireEvent.click(backdrop!);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
