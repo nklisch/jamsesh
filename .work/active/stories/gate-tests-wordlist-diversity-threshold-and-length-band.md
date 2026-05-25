@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wordlist-diversity-threshold-and-length-band
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -83,3 +83,13 @@ Do NOT change `TestPick_Diversity`'s 900/1000 threshold.
 
 Verified: `go test ./internal/portal/playground/wordlist/... -count 1 -v` →
 all tests pass (current state: 239 adjectives, 182 animals).
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: 150 floor (~85% of the smaller list) is the right calibration — guards against truncation without breaking on small editorial trims. Error messages name the likely cause ("accidental truncation?") which speeds future diagnosis. Two-line public-API accessor addition is minimal and well-documented.
