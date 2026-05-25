@@ -1,7 +1,7 @@
 ---
 id: gate-tests-joinerpicker-410-race-recovery
 kind: story
-stage: implementing
+stage: review
 tags: [testing, ui, playground]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -76,3 +76,22 @@ branch calls `navigate()` and returns without setting an error state.
 
 File: `frontend/src/lib/screens/JoinerPicker.test.ts` — the Guards section
 starts around line 331 in the existing file.
+
+## Implementation notes
+
+- Added one test case to `frontend/src/lib/screens/JoinerPicker.test.ts`
+  in the Guards section: `on 410 racing a double-click: fires POST only
+  once and redirects`.
+- Test methodology:
+  - Mock POST to return a hand-controlled promise.
+  - Double `fireEvent.submit(form)` while the first request is in-flight.
+  - Assert `mockPOST` is called exactly once (the viewState guard).
+  - Resolve the in-flight promise with a 410 envelope.
+  - Assert `mockNavigate` is called with the tombstone URL.
+  - Assert `screen.queryByRole('alert')` is null — the 410 path
+    navigates rather than reverts to an error UI.
+- Combines the existing double-submit guard test (which used a 200) with
+  the existing 410-redirect test (which used a single submit). The race
+  combination was the actual story gap.
+
+Verified: `npm test -- --run JoinerPicker.test.ts` → 23 passed.

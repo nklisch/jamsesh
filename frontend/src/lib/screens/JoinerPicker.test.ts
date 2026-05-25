@@ -345,4 +345,39 @@ describe('JoinerPicker', () => {
 
     resolve({ data: makeJoinResult(), error: undefined, response: { status: 200 } });
   });
+
+  // (gate-tests-joinerpicker-410-race-recovery)
+  // The classic race: user double-clicks; the first request comes back 410
+  // (session ended while they were thinking). The view-state guard must
+  // ensure only ONE POST goes out, AND the 410 path must navigate to the
+  // tombstone (not re-render an error or revert to idle).
+  it('on 410 racing a double-click: fires POST only once and redirects', async () => {
+    let resolve410: (v: unknown) => void = () => {};
+    mockPOST.mockReturnValue(new Promise((r) => { resolve410 = r; }));
+
+    render(JoinerPicker, { props: DEFAULT_PROPS });
+    const form = document.querySelector('form')!;
+
+    // Double-click while the first request is in-flight.
+    void fireEvent.submit(form);
+    void fireEvent.submit(form);
+
+    // The viewState guard prevents the second submit from firing a POST.
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledTimes(1);
+    });
+
+    // Resolve the in-flight request with a 410 envelope.
+    resolve410({
+      data: undefined,
+      error: { error: 'playground.session_ended', message: 'session ended' },
+      response: { status: 410 },
+    });
+
+    // The component navigates to the tombstone; no error alert renders.
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/playground/s/sess-pg-1/ended');
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });
