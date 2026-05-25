@@ -583,10 +583,8 @@ func TestReadSessionState_readsRefAndOrgID(t *testing.T) {
 	}
 }
 
-// setupStatusEnv is kept for backward compat with any tests that still need it
-// (e.g. tests in the fork/mode files that call into setupStatusEnv via
-// cross-file sharing). It creates both the legacy token file and a per-session
-// token so both old-style and new-style status work in tests.
+// setupStatusEnv writes both the legacy token file and a per-session token
+// into a temp CLAUDE_PLUGIN_DATA dir so status tests cover both lookup paths.
 func setupStatusEnv(t *testing.T, srvURL, sessionID, orgID, yourRef string) string {
 	t.Helper()
 	dir := t.TempDir()

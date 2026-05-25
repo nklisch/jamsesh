@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-status-test-stale-setupstatusenv-comment
 kind: story
-stage: drafting
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -42,3 +42,6 @@ Replace the four-line comment (lines 586-589) with a concise one-liner reflectin
 ```
 
 No code changes — just the comment. Run `go vet ./cmd/jamsesh/sessioncmd/...` to confirm.
+
+## Implementation notes
+Replaced the four-line stale "backward compat" comment on `setupStatusEnv` in `cmd/jamsesh/sessioncmd/status_test.go` with the accurate two-line description. No code changes. `go test ./cmd/jamsesh/sessioncmd/...` passes.
