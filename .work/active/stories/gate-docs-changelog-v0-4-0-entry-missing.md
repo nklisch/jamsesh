@@ -1,7 +1,7 @@
 ---
 id: gate-docs-changelog-v0-4-0-entry-missing
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
