@@ -1,7 +1,7 @@
 ---
 id: review-csp-report-only-header-test-coverage
 kind: story
-stage: review
+stage: done
 tags: [testing, security]
 parent: null
 depends_on: []
