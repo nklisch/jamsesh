@@ -34,8 +34,7 @@ func StatusCommand() *cli.Command {
 	}
 }
 
-// durableStatusOutput is the per-session entry in --json "durable" array.
-// Fields match the former single-session statusOutput for backward compat.
+// durableStatusOutput is the per-session entry in the --json "durable" array.
 type durableStatusOutput struct {
 	SessionID string            `json:"session_id"`
 	OrgID     string            `json:"org_id"`
@@ -65,10 +64,6 @@ type statusJSONOutput struct {
 	Durable    []durableStatusOutput    `json:"durable"`
 	Playground []playgroundStatusOutput `json:"playground"`
 }
-
-// statusOutput is kept for --json backward compat in single-session tests only.
-// The new public JSON shape is statusJSONOutput.
-type statusOutput = durableStatusOutput
 
 func statusAction(ctx context.Context, cmd *cli.Command) error {
 	asJSON := cmd.Bool("json")

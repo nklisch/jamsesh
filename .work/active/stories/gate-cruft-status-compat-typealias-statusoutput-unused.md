@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-status-compat-typealias-statusoutput-unused
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -36,3 +36,6 @@ type statusOutput = durableStatusOutput
 2. Strip the stale reference on line 38 (`// Fields match the former single-session statusOutput for backward compat.`) — replace with a one-line description of `durableStatusOutput`'s purpose ("Per-session entry in the --json `durable` array.") or drop the line entirely.
 
 Run `go build ./... && go test ./cmd/jamsesh/sessioncmd/...` to confirm no fallout.
+
+## Implementation notes
+Deleted `type statusOutput = durableStatusOutput` and its docstring. Replaced the two-line `durableStatusOutput` comment with a single accurate one-liner. `go build ./...` and `go test ./cmd/jamsesh/sessioncmd/...` pass.
