@@ -807,6 +807,7 @@ func main() {
 		Metrics:               metricsReg,
 		ReceivePackSem:        receivePackSem,
 		PlaygroundIdleTimeout: pgCfg.IdleTimeout,
+		Clock:                 githttp.RealClock(),
 	}
 	// Set Lifecycle only when objLifecycle is non-nil. Assigning a
 	// typed nil *LifecycleManager to the lifecycleAcquirer interface field

@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	git "github.com/go-git/go-git/v5"
@@ -351,7 +350,11 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	// so the activity timestamp reflects genuinely committed work. Presence
 	// pings, page loads, and other non-substantive events do NOT call this.
 	if orgID == playgroundOrgID && h.PlaygroundIdleTimeout > 0 {
-		now := time.Now().UTC()
+		clk := h.Clock
+		if clk == nil {
+			clk = RealClock()
+		}
+		now := clk.Now().UTC()
 		resetErr := h.Store.ResetSessionIdleTimer(r.Context(), store.ResetSessionIdleTimerParams{
 			OrgID:                     orgID,
 			SessionID:                 sessionID,

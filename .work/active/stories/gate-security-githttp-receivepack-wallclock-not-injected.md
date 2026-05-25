@@ -1,7 +1,7 @@
 ---
 id: gate-security-githttp-receivepack-wallclock-not-injected
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal, refactor, testing]
 parent: feature-playground-hardening
 depends_on: []
@@ -46,3 +46,22 @@ untestable via the established clock-injection contract.
 ## Remediation direction
 Inject a `Clock` into `githttp.Handler` (mirror the playground package shape)
 and use `h.Clock.Now().UTC()` for the timestamp.
+
+## Implementation notes
+
+- Added `internal/portal/githttp/clock.go` with `Clock interface{ Now() time.Time }`,
+  `realClock{}`, and `RealClock() Clock`. Matches the `per-package-clock-interface`
+  pattern — no import coupling with the `playground` package; `*testclock.AdvanceableClock`
+  satisfies both structurally.
+- `githttp.Handler` gains a `Clock Clock` field. When nil, `receive_pack.go` falls
+  back to `RealClock()` (no panic on stale wiring).
+- `receive_pack.go` activity-reset block now uses `clk := h.Clock; if clk == nil { clk = RealClock() }; now := clk.Now().UTC()`.
+- `cmd/portal/main.go` passes `Clock: githttp.RealClock()` at handler construction.
+- `TestPostReceive_PlaygroundActivityResetsIdleTimer` rewritten to use a
+  `fixedGitHTTPClock` and assert exact-time equality (`TPush` and `TPush+idleTimeout`),
+  replacing the `> beforePush` wall-clock heuristic.
+- New `TestPostReceive_PlaygroundActivityReset_NilClockFallsBackToRealClock`
+  exercises the nil-Clock fallback path so a future refactor cannot accidentally
+  break the no-panic guarantee.
+
+Verified: `go test ./internal/portal/githttp/... -count 1` passes.

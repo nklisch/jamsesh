@@ -1187,6 +1187,15 @@ func (e *pushEnv) mustCreatePlaygroundSession(
 	return sessionID
 }
 
+// fixedGitHTTPClock is a deterministic githttp.Clock for tests. Each call to
+// Now() returns the same instant; tests can replace the field on the Handler
+// between operations to step the clock forward.
+type fixedGitHTTPClock struct {
+	t time.Time
+}
+
+func (c *fixedGitHTTPClock) Now() time.Time { return c.t }
+
 // TestPostReceive_PlaygroundActivityResetsIdleTimer verifies end-to-end that
 // a successful git push to a playground session (orgID == "org_playground" and
 // PlaygroundIdleTimeout > 0) calls store.ResetSessionIdleTimer, advancing both
@@ -1194,19 +1203,24 @@ func (e *pushEnv) mustCreatePlaygroundSession(
 //
 // Negative control: same flow on a durable (non-playground) session must leave
 // the timer fields UNCHANGED.
+//
+// The handler runs under an injected fixed clock so the reset timestamps are
+// exact, not wall-clock-bounded. (gate-security-githttp-receivepack-wallclock-not-injected)
 func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
 	const playgroundOrgID = "org_playground"
 	const idleTimeout = 30 * time.Minute
 
-	// T0 is a fixed time well in the past. The session is seeded with timer
-	// fields anchored at T0; after a successful push the handler calls
-	// time.Now().UTC() (real wall clock), advancing both fields past T0.
-	// We assert > T0 rather than an exact value to stay independent of speed.
+	// T0 is the seeded creation time; TPush is the clock instant the injected
+	// clock returns during the push. Both fields after the push must equal
+	// TPush / TPush+idleTimeout exactly.
 	T0 := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	idleTimeoutAt0 := T0.Add(idleTimeout)
+	TPush := T0.Add(5 * time.Minute) // arbitrary advance; exact-time assert.
+	expectedIdleAfter := TPush.Add(idleTimeout)
 
-	// newPlaygroundPushEnv builds a githttp pushEnv with PlaygroundIdleTimeout set.
-	newPlaygroundPushEnv := func(t *testing.T) *pushEnv {
+	// newPlaygroundPushEnv builds a githttp pushEnv with PlaygroundIdleTimeout
+	// set and a fixed clock pre-installed at TPush.
+	newPlaygroundPushEnv := func(t *testing.T) (*pushEnv, *githttp.Handler) {
 		t.Helper()
 		ctx := context.Background()
 		storageRoot := t.TempDir()
@@ -1228,6 +1242,7 @@ func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
 			Validator:             &prereceive.Validator{MaxPackBytes: 50 * 1024 * 1024},
 			Emitter:               &postreceive.Emitter{Log: eventLog},
 			PlaygroundIdleTimeout: idleTimeout,
+			Clock:                 &fixedGitHTTPClock{t: TPush},
 		}
 
 		r := chi.NewRouter()
@@ -1243,11 +1258,11 @@ func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
 			storageRoot: storageRoot,
 			eventLog:    eventLog,
 			server:      srv,
-		}
+		}, h
 	}
 
 	t.Run("playground session resets idle timer", func(t *testing.T) {
-		env := newPlaygroundPushEnv(t)
+		env, _ := newPlaygroundPushEnv(t)
 		acc, token := env.mustIssueToken(t, "pg-push@example.com")
 
 		sessionID := env.mustCreatePlaygroundSession(t, acc, playgroundOrgID, T0, idleTimeout)
@@ -1257,10 +1272,6 @@ func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
 		workDir := initBareRepo(t, bareDir)
 
 		makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "src/hello.go", "package main")
-
-		// Record time just before the push so we can assert the reset moved
-		// the fields forward past the pre-push wall clock.
-		beforePush := time.Now().UTC()
 
 		refName := fmt.Sprintf("refs/heads/jam/%s/%s/main", sessionID, acc.ID)
 		pushURLStr := env.pushURL(token, playgroundOrgID, sessionID)
@@ -1272,7 +1283,7 @@ func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
 			t.Fatalf("git push to playground session failed: %v\n%s", err, out)
 		}
 
-		// SELECT and assert both timer fields moved forward.
+		// SELECT and assert both timer fields equal the injected clock values.
 		ctx := context.Background()
 		sess, err := env.store.GetSession(ctx, playgroundOrgID, sessionID)
 		if err != nil {
@@ -1281,19 +1292,18 @@ func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
 		if sess.LastSubstantiveActivityAt == nil {
 			t.Fatal("last_substantive_activity_at is nil after playground push")
 		}
-		// The reset sets the timestamp to time.Now() inside the handler, so it
-		// must be at or after beforePush and strictly after T0.
-		if !sess.LastSubstantiveActivityAt.After(T0) {
-			t.Errorf("last_substantive_activity_at should have advanced past T0 (%v), got %v",
-				T0, *sess.LastSubstantiveActivityAt)
-		}
-		if sess.LastSubstantiveActivityAt.Before(beforePush) {
-			t.Errorf("last_substantive_activity_at (%v) is before pre-push wall time (%v)",
-				*sess.LastSubstantiveActivityAt, beforePush)
+		if !sess.LastSubstantiveActivityAt.Equal(TPush) {
+			t.Errorf("last_substantive_activity_at = %v; want %v (injected clock)",
+				*sess.LastSubstantiveActivityAt, TPush)
 		}
 		if sess.IdleTimeoutAt == nil {
 			t.Fatal("idle_timeout_at is nil after playground push")
 		}
+		if !sess.IdleTimeoutAt.Equal(expectedIdleAfter) {
+			t.Errorf("idle_timeout_at = %v; want %v (TPush+idleTimeout)",
+				*sess.IdleTimeoutAt, expectedIdleAfter)
+		}
+		// Sanity: pre-push idleTimeoutAt0 must have advanced.
 		if !sess.IdleTimeoutAt.After(idleTimeoutAt0) {
 			t.Errorf("idle_timeout_at should have advanced past original T0+30m (%v), got %v",
 				idleTimeoutAt0, *sess.IdleTimeoutAt)
@@ -1301,7 +1311,7 @@ func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
 	})
 
 	t.Run("durable session idle timer unchanged", func(t *testing.T) {
-		env := newPlaygroundPushEnv(t)
+		env, _ := newPlaygroundPushEnv(t)
 		acc, token := env.mustIssueToken(t, "durable-push@example.com")
 
 		// Use a distinct orgID that is NOT "org_playground".
@@ -1338,6 +1348,80 @@ func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
 				idleTimeoutAt0, sess.IdleTimeoutAt)
 		}
 	})
+}
+
+// TestPostReceive_PlaygroundActivityReset_NilClockFallsBackToRealClock
+// confirms that leaving Handler.Clock nil falls back to the real wall clock
+// rather than panicking. We seed the session in the past, push, and assert the
+// reset moved both timer fields forward.
+func TestPostReceive_PlaygroundActivityReset_NilClockFallsBackToRealClock(t *testing.T) {
+	const playgroundOrgID = "org_playground"
+	const idleTimeout = 30 * time.Minute
+	T0 := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	ctx := context.Background()
+	storageRoot := t.TempDir()
+
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	tokenSvc := tokens.New(s)
+	storageSvc := storage.New(storageRoot, s)
+	eventLog := events.New(s)
+
+	// Clock intentionally left nil — must fall back to RealClock().
+	h := &githttp.Handler{
+		Store:                 s,
+		Tokens:                tokenSvc,
+		Storage:               storageSvc,
+		Validator:             &prereceive.Validator{MaxPackBytes: 50 * 1024 * 1024},
+		Emitter:               &postreceive.Emitter{Log: eventLog},
+		PlaygroundIdleTimeout: idleTimeout,
+	}
+	r := chi.NewRouter()
+	h.Mount(r)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	env := &pushEnv{
+		store:       s,
+		tokenSvc:    tokenSvc,
+		storageSvc:  storageSvc,
+		storageRoot: storageRoot,
+		eventLog:    eventLog,
+		server:      srv,
+	}
+	acc, token := env.mustIssueToken(t, "nilclock@example.com")
+	sessionID := env.mustCreatePlaygroundSession(t, acc, playgroundOrgID, T0, idleTimeout)
+
+	bareDir := filepath.Join(env.storageRoot, "orgs", playgroundOrgID, "sessions", sessionID+".git")
+	workDir := initBareRepo(t, bareDir)
+	makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "src/hello.go", "package main")
+
+	refName := fmt.Sprintf("refs/heads/jam/%s/%s/main", sessionID, acc.ID)
+	pushURLStr := env.pushURL(token, playgroundOrgID, sessionID)
+	pushCmd := exec.Command("git", "push", pushURLStr, fmt.Sprintf("HEAD:%s", refName))
+	pushCmd.Dir = workDir
+	pushCmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := pushCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git push with nil Clock: %v\n%s", err, out)
+	}
+
+	sess, err := env.store.GetSession(ctx, playgroundOrgID, sessionID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if sess.LastSubstantiveActivityAt == nil || !sess.LastSubstantiveActivityAt.After(T0) {
+		t.Errorf("nil Clock fallback: last_substantive_activity_at did not advance past T0; got %v",
+			sess.LastSubstantiveActivityAt)
+	}
+	if sess.IdleTimeoutAt == nil || !sess.IdleTimeoutAt.After(T0.Add(idleTimeout)) {
+		t.Errorf("nil Clock fallback: idle_timeout_at did not advance past T0+30m; got %v",
+			sess.IdleTimeoutAt)
+	}
 }
 
 // TestPostReceive_SetBaseSHAFailureIsNonFatal verifies the non-fatal

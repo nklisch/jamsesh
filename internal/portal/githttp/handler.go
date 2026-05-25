@@ -67,6 +67,10 @@ type Handler struct {
 	// disables the activity-reset call — the session's destruction sweep will
 	// still work but will use the original idle_timeout_at.
 	PlaygroundIdleTimeout time.Duration
+	// Clock is the injectable time source used for playground activity-reset
+	// timestamps. When nil, RealClock() is used automatically. Tests inject a
+	// deterministic clock so the reset timestamps are reproducible.
+	Clock Clock
 }
 
 // acquireForGitRequest invokes LifecycleManager.AcquireForRequest in
