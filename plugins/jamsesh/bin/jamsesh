@@ -55,12 +55,43 @@ esac
 
 binary_name="jamsesh-${os}-${arch}${ext}"
 
-# ── 4. Cache hit? ────────────────────────────────────────────────────────────
+# sha256 verify — defined here (before the cache-hit check) so the re-verify
+# block below can call it. Same body as the original; moved up.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    die "neither sha256sum nor shasum found on PATH"
+  fi
+}
+
+# ── 4. Cache hit? Re-verify sha256 sidecar before exec. ──────────────────────
+# (gate-security-wrapper-cache-hit-no-resig-verify) Catches tampered cached
+# binaries without paying the ~200ms checksums.txt re-download per
+# invocation. The sidecar `<cached>.sha256` is written at install time by the
+# cache-miss path below; an absent or mismatched sidecar triggers a full
+# re-download + re-verify rather than a die — the recovery is the
+# remediation, and the operator sees a single security-warning line.
 cache_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/jamsesh/bin"
 cached="${cache_dir}/jamsesh-${version}-${os}-${arch}${ext}"
 if [[ -x "${cached}" ]]; then
-  log "cache hit: ${cached}"
-  exec "${cached}" "$@"
+  if [[ -f "${cached}.sha256" ]]; then
+    cached_expected=$(cat "${cached}.sha256")
+    cached_actual=$(sha256_of "${cached}")
+    if [[ "${cached_expected}" == "${cached_actual}" ]]; then
+      log "cache hit verified: ${cached}"
+      exec "${cached}" "$@"
+    fi
+    # Mismatch is a security signal — emit unconditionally, not gated by
+    # JAMSESH_PLUGIN_VERBOSE. Fall through to re-download path.
+    printf 'jamsesh-wrapper: WARNING: cached binary sha256 mismatch — re-downloading from upstream\n' >&2
+  else
+    log "cache hit missing sidecar — re-downloading"
+  fi
+  # Fall through to download path; the existing install will overwrite the
+  # cached binary and write a fresh sidecar.
 fi
 
 # ── 5. Cache miss — download, verify, install ────────────────────────────────
@@ -82,17 +113,6 @@ curl -fsSL "${release_url}/${binary_name}" \
 curl -fsSL "${release_url}/checksums.txt" \
   -o "${tmpdir}/checksums.txt" \
   || die "download failed: ${release_url}/checksums.txt"
-
-# sha256 verify
-sha256_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$1" | awk '{print $1}'
-  else
-    die "neither sha256sum nor shasum found on PATH"
-  fi
-}
 
 # checksums.txt uses GNU sha256sum format: "<hash>  <file>" or "<hash>  *<file>"
 # The awk pattern handles both GNU (space-prefix) and BSD (asterisk-prefix) forms.
@@ -121,9 +141,16 @@ if command -v cosign >/dev/null 2>&1; then
   fi
 fi
 
+# Write the sha256 sidecar alongside the binary so future invocations can
+# re-verify integrity without re-downloading checksums.txt. The sidecar is a
+# plain hex string (no filename, no newline).
+# (gate-security-wrapper-cache-hit-no-resig-verify)
+printf '%s' "${actual}" > "${tmpdir}/${binary_name}.sha256"
+
 # Atomic install — mv within the same filesystem as the cache dir
 chmod +x "${tmpdir}/${binary_name}"
 mv "${tmpdir}/${binary_name}" "${cached}"
+mv "${tmpdir}/${binary_name}.sha256" "${cached}.sha256"
 log "installed at ${cached}"
 
 # Clean up tmpdir before exec: exec replaces this process, so the EXIT

@@ -50,6 +50,80 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
+@test "cold install writes a .sha256 sidecar alongside the cached binary" {
+  # gate-security-wrapper-cache-hit-no-resig-verify: every fresh install
+  # must drop a hex sha256 sidecar so subsequent invocations can re-verify
+  # cache integrity without a network round-trip.
+  run "$(wrapper_bin)"
+  [ "$status" -eq 0 ]
+
+  local wrapper_version
+  wrapper_version=$(grep -E '^readonly JAMSESH_PLUGIN_VERSION=' "$(wrapper_bin)" \
+    | sed 's/^readonly JAMSESH_PLUGIN_VERSION="\(.*\)"/\1/')
+  local cached="${XDG_CACHE_HOME}/jamsesh/bin/jamsesh-${wrapper_version}-${_os}-${_arch}"
+  [ -f "${cached}.sha256" ]
+
+  # Sidecar must be plain hex (64 chars for sha256), no whitespace.
+  local sidecar_contents
+  sidecar_contents=$(cat "${cached}.sha256")
+  [[ "${sidecar_contents}" =~ ^[0-9a-f]{64}$ ]]
+}
+
+# ---------------------------------------------------------------------------
+@test "warm cache with tampered binary: re-downloads and re-verifies" {
+  # gate-security-wrapper-cache-hit-no-resig-verify: a binary whose hash
+  # diverges from its sidecar must trigger a re-download (the sidecar may
+  # itself be stale; either way we don't exec the tampered bytes).
+  run "$(wrapper_bin)"
+  [ "$status" -eq 0 ]
+
+  local wrapper_version
+  wrapper_version=$(grep -E '^readonly JAMSESH_PLUGIN_VERSION=' "$(wrapper_bin)" \
+    | sed 's/^readonly JAMSESH_PLUGIN_VERSION="\(.*\)"/\1/')
+  local cached="${XDG_CACHE_HOME}/jamsesh/bin/jamsesh-${wrapper_version}-${_os}-${_arch}"
+
+  # Tamper the cached binary so its sha256 no longer matches the sidecar.
+  printf 'evil-bytes' >> "${cached}"
+
+  # Re-invoke the wrapper. The mock server is still serving the good binary,
+  # so a re-download recovers automatically; the wrapper warns to stderr but
+  # exits 0 after re-installing.
+  run "$(wrapper_bin)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"test-sentinel"* ]]
+  # The cached binary is now the freshly-downloaded one — running it again
+  # should hit the warm-cache verified path.
+  run "$(wrapper_bin)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "test-sentinel" ]]
+}
+
+# ---------------------------------------------------------------------------
+@test "warm cache with missing sidecar: re-downloads" {
+  # gate-security-wrapper-cache-hit-no-resig-verify: legacy installs that
+  # pre-date the sidecar feature have no sidecar file. Wrapper falls through
+  # to the re-download path rather than exec'ing an unverified cached binary.
+  run "$(wrapper_bin)"
+  [ "$status" -eq 0 ]
+
+  local wrapper_version
+  wrapper_version=$(grep -E '^readonly JAMSESH_PLUGIN_VERSION=' "$(wrapper_bin)" \
+    | sed 's/^readonly JAMSESH_PLUGIN_VERSION="\(.*\)"/\1/')
+  local cached="${XDG_CACHE_HOME}/jamsesh/bin/jamsesh-${wrapper_version}-${_os}-${_arch}"
+
+  # Simulate a pre-sidecar install: remove the sidecar but keep the binary.
+  rm -f "${cached}.sha256"
+
+  # Re-invoke; expect a successful exec via re-download path. The mock server
+  # is still up and serves the good binary.
+  run "$(wrapper_bin)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "test-sentinel" ]]
+  # Re-installed binary has the sidecar back.
+  [ -f "${cached}.sha256" ]
+}
+
+# ---------------------------------------------------------------------------
 @test "warm cache: second invocation execs from cache without network" {
   # Prime the cache with the first invocation.
   run "$(wrapper_bin)"

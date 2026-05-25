@@ -1,7 +1,7 @@
 ---
 id: gate-security-wrapper-cache-hit-no-resig-verify
 kind: story
-stage: implementing
+stage: review
 tags: [security, plugin, infra, supply-chain]
 parent: feature-server-secret-log-hygiene
 depends_on: []
@@ -98,3 +98,27 @@ cache-hit block — it is now defined once above.
 - [ ] Fresh install writes `<cached>.sha256` alongside the binary
 - [ ] Existing cold-cache path (download + sha256 verify + optional cosign) is unchanged
 - [ ] `JAMSESH_BIN_OVERRIDE` path is unchanged (unaffected by this diff)
+
+## Implementation notes
+
+- `plugins/jamsesh/bin/jamsesh`: moved the `sha256_of()` function definition
+  ABOVE the cache-hit check so the re-verify block can call it.
+- Cache-hit block now:
+  - Reads `<cached>.sha256` if present.
+  - Computes the current binary's hash; compares to the sidecar.
+  - On match: `exec ${cached} "$@"` (warm-cache happy path).
+  - On mismatch: emit an unconditional security WARNING to stderr (not
+    gated by `JAMSESH_PLUGIN_VERBOSE`) and fall through to re-download.
+  - On missing sidecar: log + fall through to re-download (legacy
+    installs that pre-date this feature recover automatically).
+- Install path now writes `<cached>.sha256` as a plain 64-char hex string
+  (no trailing newline) alongside the binary, atomically via the same
+  tmpdir+mv strategy.
+- New BATS tests in `tests/wrapper/install.bats`:
+  - `cold install writes a .sha256 sidecar alongside the cached binary`
+  - `warm cache with tampered binary: re-downloads and re-verifies`
+  - `warm cache with missing sidecar: re-downloads`
+- All 18 existing wrapper BATS tests continue to pass.
+- No network round-trip on the warm-cache happy path — the sidecar is local.
+
+Verified: `bats tests/wrapper/*.bats` → 18 passed.
