@@ -1,7 +1,7 @@
 ---
 id: gate-tests-playwright-landing-variant-project-spec
 kind: story
-stage: review
+stage: done
 tags: [testing, e2e-test, ui, portal]
 parent: null
 depends_on: []
@@ -100,3 +100,13 @@ Go-orchestrated fixture boot with `JAMSESH_LANDING_VARIANT=project` injected
 via `Options.ExtraEnv` is tracked separately in the ci-workflow story.  Until
 that lands, running these tests requires the manual docker invocation documented
 in the spec file's docstring.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: spec selectors verified against actual `ProjectLanding.svelte` DOM (the agent corrected the story's suggested `/jamsesh/i` heading selector after reading the component — the wordmark is a link, not a heading). The file-level docstring is unusually thorough and documents the runtime requirement + the deferred Go-orchestration cleanly.
+
+**Notes**: Full browser-run verification deferred (requires Docker + portal image with the landing-variant env var); the deferral is acceptable because the spec is the unit-of-delivery and Go-orchestration is tracked separately under ci-workflow. Spec discovery confirmed via `npx playwright test --list`.
