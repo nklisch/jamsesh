@@ -1,7 +1,7 @@
 ---
 id: idea-playground-abuse-caps-activity-reset-integration-test
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground, testing]
 parent: feature-playground-hardening
 depends_on: [gate-security-githttp-receivepack-wallclock-not-injected]
@@ -68,3 +68,29 @@ substantive-event entry point with a mock store and assert
 `ResetSessionIdleTimer` was called with the expected params. Less
 end-to-end coverage but catches "we forgot to wire the reset" regressions
 cheaply.
+
+## Implementation notes
+
+- **Push path**: Added `TestPostReceive_PlaygroundActivityReset_SecondPushExtendsBeyondOriginalDeadline`
+  in `internal/portal/githttp/receive_pack_test.go`. Sequence:
+  1. Session created at T0 with idle_timeout = 30m.
+  2. Inject clock at T0+25m; push #1 → idle_timeout_at = T0+55m.
+  3. Bump clock to T0+35m; push #2 → idle_timeout_at = T0+65m.
+  4. Assert `ListExpiredPlaygroundSessions(Now: T0+35m)` does NOT include
+     the session — the activity-reset extended the deadline past the
+     original T0+30m boundary. This is the precise abuse-cap invariant.
+  Uses the `fixedGitHTTPClock` introduced in B1.
+- **Comment path**: Pre-existing coverage in
+  `internal/portal/comments/service_test.go` already pins `ResetSessionIdleTimer`
+  is called on `Service.Create` for playground sessions (see `TestService_Create_PlaygroundSession_ResetsIdleTimer`
+  family of tests around line 934). No new test needed.
+- **Finalize path**: Pre-existing coverage in
+  `internal/portal/sessions/handler_test.go` —
+  `TestFinalizeSession_PlaygroundSession_ResetsIdleTimer` already asserts
+  both timer fields advance after a finalize call. No new test needed.
+
+All three substantive-activity surfaces (push / comment / finalize) now
+have at least one test pinning the activity-reset behaviour; the push path
+gets the full integration sequence per the original story scope.
+
+Verified: `go test ./internal/portal/githttp/... -count 1 -run SecondPushExtendsBeyondOriginalDeadline` passes.

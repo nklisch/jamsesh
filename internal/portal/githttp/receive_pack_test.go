@@ -1350,6 +1350,119 @@ func TestPostReceive_PlaygroundActivityResetsIdleTimer(t *testing.T) {
 	})
 }
 
+// TestPostReceive_PlaygroundActivityReset_SecondPushExtendsBeyondOriginalDeadline
+// is the abuse-caps integration test for the push path
+// (idea-playground-abuse-caps-activity-reset-integration-test): a push that
+// occurs within the idle-timeout window must advance the deadline past the
+// original timeout, so a sweep at the original deadline does NOT destroy
+// the session.
+//
+// Sequence:
+//  1. Session created at T0 with idle_timeout = 30m; idle_timeout_at = T0+30m.
+//  2. Inject a clock fixed at T0+25m. Push #1 → reset to T0+25m, T0+25m+30m.
+//  3. Bump the injected clock to T0+35m. Push #2 → reset to T0+35m, T0+65m.
+//  4. ListExpiredPlaygroundSessions(now=T0+35m) MUST NOT include the session.
+func TestPostReceive_PlaygroundActivityReset_SecondPushExtendsBeyondOriginalDeadline(t *testing.T) {
+	const playgroundOrgID = "org_playground"
+	const idleTimeout = 30 * time.Minute
+	T0 := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	idleTimeoutAt0 := T0.Add(idleTimeout) // T0+30m — the original deadline
+
+	ctx := context.Background()
+	storageRoot := t.TempDir()
+	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	tokenSvc := tokens.New(s)
+	storageSvc := storage.New(storageRoot, s)
+	eventLog := events.New(s)
+
+	clk := &fixedGitHTTPClock{t: T0.Add(25 * time.Minute)}
+	h := &githttp.Handler{
+		Store:                 s,
+		Tokens:                tokenSvc,
+		Storage:               storageSvc,
+		Validator:             &prereceive.Validator{MaxPackBytes: 50 * 1024 * 1024},
+		Emitter:               &postreceive.Emitter{Log: eventLog},
+		PlaygroundIdleTimeout: idleTimeout,
+		Clock:                 clk,
+	}
+	r := chi.NewRouter()
+	h.Mount(r)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	env := &pushEnv{
+		store:       s,
+		tokenSvc:    tokenSvc,
+		storageSvc:  storageSvc,
+		storageRoot: storageRoot,
+		eventLog:    eventLog,
+		server:      srv,
+	}
+	acc, token := env.mustIssueToken(t, "abuse-caps@example.com")
+	sessionID := env.mustCreatePlaygroundSession(t, acc, playgroundOrgID, T0, idleTimeout)
+
+	bareDir := filepath.Join(env.storageRoot, "orgs", playgroundOrgID, "sessions", sessionID+".git")
+	workDir := initBareRepo(t, bareDir)
+
+	push := func(file, body string) {
+		t.Helper()
+		makeCommitWithTrailers(t, workDir, sessionID, acc.ID, file, body)
+		refName := fmt.Sprintf("refs/heads/jam/%s/%s/main", sessionID, acc.ID)
+		pushURL := env.pushURL(token, playgroundOrgID, sessionID)
+		cmd := exec.Command("git", "push", pushURL, fmt.Sprintf("HEAD:%s", refName))
+		cmd.Dir = workDir
+		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git push: %v\n%s", err, out)
+		}
+	}
+
+	// Push #1 at T0+25m.
+	push("first.go", "package one")
+	row, err := s.GetSession(ctx, playgroundOrgID, sessionID)
+	if err != nil {
+		t.Fatalf("GetSession after push #1: %v", err)
+	}
+	if !row.IdleTimeoutAt.Equal(T0.Add(25*time.Minute + idleTimeout)) {
+		t.Errorf("push #1: idle_timeout_at = %v; want T0+55m (%v)",
+			*row.IdleTimeoutAt, T0.Add(25*time.Minute+idleTimeout))
+	}
+
+	// Advance clock to T0+35m (past the original deadline T0+30m). Push #2.
+	clk.t = T0.Add(35 * time.Minute)
+	push("second.go", "package two")
+	row, err = s.GetSession(ctx, playgroundOrgID, sessionID)
+	if err != nil {
+		t.Fatalf("GetSession after push #2: %v", err)
+	}
+	if !row.IdleTimeoutAt.Equal(T0.Add(35*time.Minute + idleTimeout)) {
+		t.Errorf("push #2: idle_timeout_at = %v; want T0+65m (%v)",
+			*row.IdleTimeoutAt, T0.Add(35*time.Minute+idleTimeout))
+	}
+
+	// At T0+35m (past the ORIGINAL idle deadline at T0+30m), the sweep must
+	// NOT include this session — the activity-reset extended the deadline.
+	expired, err := s.ListExpiredPlaygroundSessions(ctx, store.ListExpiredPlaygroundSessionsParams{
+		OrgID: playgroundOrgID,
+		Now:   T0.Add(35 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("ListExpiredPlaygroundSessions: %v", err)
+	}
+	for _, sess := range expired {
+		if sess.ID == sessionID {
+			t.Errorf("session %q is in the expired list at T0+35m despite activity reset; "+
+				"original deadline was %v, but reset bumped it to %v",
+				sessionID, idleTimeoutAt0, row.IdleTimeoutAt)
+		}
+	}
+}
+
 // TestPostReceive_PlaygroundActivityReset_NilClockFallsBackToRealClock
 // confirms that leaving Handler.Clock nil falls back to the real wall clock
 // rather than panicking. We seed the session in the past, push, and assert the
