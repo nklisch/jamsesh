@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -117,6 +118,39 @@ func TestRefresher_Refresh_ServerError(t *testing.T) {
 	err := r.Refresh(context.Background())
 	if err == nil {
 		t.Fatal("expected error on non-200 refresh response, got nil")
+	}
+}
+
+// TestRefresher_Refresh_LargeErrorBodyTruncated pins the body-bound
+// invariant: a misbehaving upstream that returns megabyte-scale error
+// bodies on refresh must not have those bodies surface in local error
+// strings / stderr / logs. The error message is bounded to ~maxErrBodyBytes.
+// (gate-security-refresh-error-body-leak)
+func TestRefresher_Refresh_LargeErrorBodyTruncated(t *testing.T) {
+	setupRefreshDir(t, "rt-large-err")
+
+	// 8 KiB body — well above the 512B bound.
+	huge := strings.Repeat("X", 8*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(huge))
+	}))
+	defer srv.Close()
+
+	r := &Refresher{BaseURL: srv.URL, HTTP: srv.Client()}
+	err := r.Refresh(context.Background())
+	if err == nil {
+		t.Fatal("expected error on non-200 refresh response, got nil")
+	}
+	msg := err.Error()
+	// The error must include some body content (the truncated prefix), but
+	// MUST be bounded. The full 8 KiB body must not appear.
+	if len(msg) > 2*1024 {
+		t.Errorf("refresh error message length %d > expected bound (~512B body cap + framing)", len(msg))
+	}
+	if strings.Count(msg, "X") > 600 {
+		// 512 body bytes + a handful of framing chars; > 600 means the bound failed.
+		t.Errorf("refresh error contains >600 body bytes (X count = %d); want <= ~600", strings.Count(msg, "X"))
 	}
 }
 

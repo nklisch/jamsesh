@@ -14,6 +14,22 @@ import (
 	"jamsesh/cmd/jamsesh/state"
 )
 
+// maxErrBodyBytes caps the number of response bytes included in error
+// messages on non-2xx responses. Portal error envelopes top out at ~200B
+// (`{"error":"...","message":"..."}`); 512B covers them comfortably while
+// preventing megabyte-scale provider blobs from ever appearing in local
+// stderr/logs. (gate-security-refresh-error-body-leak)
+const maxErrBodyBytes = 512
+
+// truncatedBody reads at most maxErrBodyBytes from r and returns the content
+// as a string. Used at every error-path body read to bound diagnostic memory
+// and log exposure. The caller is responsible for closing the underlying
+// reader (typically via `defer resp.Body.Close()`).
+func truncatedBody(r io.Reader) string {
+	b, _ := io.ReadAll(io.LimitReader(r, maxErrBodyBytes))
+	return string(b)
+}
+
 // Client is a thin REST client for the portal API. It reads the current
 // access token from local state on every request so token updates written
 // by Refresher.Refresh are picked up automatically.
@@ -136,8 +152,7 @@ func GetJSON[T any](ctx context.Context, c *Client, path string) (T, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return zero, fmt.Errorf("portalclient: GET %q returned %d: %s", path, resp.StatusCode, body)
+		return zero, fmt.Errorf("portalclient: GET %q returned %d: %s", path, resp.StatusCode, truncatedBody(resp.Body))
 	}
 
 	var result T
@@ -173,8 +188,7 @@ func GetJSONWithBearer[T any](ctx context.Context, httpClient *http.Client, base
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return zero, fmt.Errorf("portalclient: GET %q returned %d: %s", path, resp.StatusCode, body)
+		return zero, fmt.Errorf("portalclient: GET %q returned %d: %s", path, resp.StatusCode, truncatedBody(resp.Body))
 	}
 
 	var result T
@@ -216,8 +230,7 @@ func PostJSONAnon[T any](ctx context.Context, httpClient *http.Client, baseURL, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return zero, fmt.Errorf("portalclient: POST %q returned %d: %s", path, resp.StatusCode, respBody)
+		return zero, fmt.Errorf("portalclient: POST %q returned %d: %s", path, resp.StatusCode, truncatedBody(resp.Body))
 	}
 
 	var result T
@@ -251,8 +264,7 @@ func PostJSON[T any](ctx context.Context, c *Client, path string, body any) (T, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return zero, fmt.Errorf("portalclient: POST %q returned %d: %s", path, resp.StatusCode, respBody)
+		return zero, fmt.Errorf("portalclient: POST %q returned %d: %s", path, resp.StatusCode, truncatedBody(resp.Body))
 	}
 
 	var result T

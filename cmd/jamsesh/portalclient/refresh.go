@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -83,8 +82,7 @@ func (r *Refresher) doRefresh(ctx context.Context) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("portalclient: refresh returned %d: %s", resp.StatusCode, body)
+		return fmt.Errorf("portalclient: refresh returned %d: %s", resp.StatusCode, truncatedBody(resp.Body))
 	}
 
 	var pair tokenPair

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -317,5 +318,31 @@ func TestPostJSON(t *testing.T) {
 	}
 	if got.Echo != "hello" {
 		t.Fatalf("expected echo=hello, got %q", got.Echo)
+	}
+}
+
+// TestGetJSON_OversizedErrorBodyTruncated pins the body-bound invariant on
+// the GetJSON non-2xx path. A misbehaving server that returns megabytes of
+// error body must not have those bytes appear in the returned error string.
+// (gate-security-refresh-error-body-leak — shared truncatedBody helper)
+func TestGetJSON_OversizedErrorBodyTruncated(t *testing.T) {
+	setupTokenDir(t, "tok-large-err")
+
+	huge := strings.Repeat("Y", 8*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(huge))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	type empty struct{}
+	_, err := GetJSON[empty](context.Background(), c, "/oversized")
+	if err == nil {
+		t.Fatal("expected error on non-2xx GET, got nil")
+	}
+	msg := err.Error()
+	if strings.Count(msg, "Y") > 600 {
+		t.Errorf("GET error contains >600 body bytes (Y count = %d); want <= ~600 (bound is 512)", strings.Count(msg, "Y"))
 	}
 }

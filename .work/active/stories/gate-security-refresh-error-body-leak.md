@@ -1,7 +1,7 @@
 ---
 id: gate-security-refresh-error-body-leak
 kind: story
-stage: implementing
+stage: review
 tags: [security, plugin, logging]
 parent: feature-server-secret-log-hygiene
 depends_on: []
@@ -102,3 +102,27 @@ func truncatedBody(r io.Reader) string {
 - [ ] `TestRefresher_Refresh_ServerError` still passes
 - [ ] New test `TestRefresher_Refresh_LargeErrorBodyTruncated`: server returns 401 with 1 KB body; resulting error string's body portion is ≤ 512 bytes
 - [ ] New test `TestGetJSON_OversizedErrorBodyTruncated`: server returns 400 with 1 KB body; resulting error string's body portion is ≤ 512 bytes
+
+## Implementation notes
+
+- `cmd/jamsesh/portalclient/client.go`: added `maxErrBodyBytes = 512` and
+  `truncatedBody(r io.Reader) string` (uses `io.LimitReader`). Helper
+  intentionally does NOT close the reader — callers already have
+  `defer resp.Body.Close()`.
+- Replaced all five error-path `io.ReadAll(resp.Body)` call sites with
+  `truncatedBody(resp.Body)`:
+  - `GetJSON` (client.go)
+  - `GetJSONWithBearer` (client.go)
+  - `PostJSONAnon` (client.go)
+  - `PostJSON` (client.go)
+  - `Refresh` (refresh.go)
+- `refresh.go`: dropped now-unused `"io"` import.
+- New tests:
+  - `TestRefresher_Refresh_LargeErrorBodyTruncated` (refresh_test.go) —
+    upstream returns 8 KiB body; error message bounded.
+  - `TestGetJSON_OversizedErrorBodyTruncated` (client_test.go) —
+    same pattern via the shared `truncatedBody` helper.
+- Existing `TestRefresher_Refresh_ServerError` continues to pass (the error
+  is still returned; only the body portion is bounded).
+
+Verified: `go test ./cmd/jamsesh/portalclient/... -count 1` passes.
