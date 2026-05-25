@@ -1,7 +1,7 @@
 ---
 id: gate-tests-cli-playground-push-failure-recovery
 kind: story
-stage: review
+stage: done
 tags: [testing, plugin, playground]
 parent: null
 depends_on: []
@@ -68,3 +68,11 @@ abandon/delete calls.
 written" refers to the durable-path equivalent; for the playground path, only
 `token` is written before the push (by design — `org_id`/`ref` are written
 post-push by `writePlaygroundSessionState`). The test documents this honestly.
+
+## Review notes
+
+Approve. Test asserts (a) wrap-error sentinels (sessionID, base_sha: null),
+(b) full retry command + URL + refspec, (c) no abandon call via catch-all,
+(d) token file is written (so retry can auth), (e) org_id/ref are absent
+(pins handler ordering). Honest about the spec's "all three written" phrasing
+being durable-path-specific. Test passes.
