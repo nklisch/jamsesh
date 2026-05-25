@@ -1,7 +1,7 @@
 ---
 id: feature-auth-signout-backend-revoke-backend
 kind: story
-stage: review
+stage: done
 tags: [security, auth, tokens]
 parent: feature-auth-signout-backend-revoke
 depends_on: []
@@ -166,3 +166,13 @@ r.Post("/auth/logout", apiWrapper.Logout)
   method automatically; no shim update needed.
 
 Verified: `go test ./internal/portal/tokens/... -count 1` passes, `go build ./...` clean.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Additive context-key pattern (`rawBearerCtxKey`) keeps existing `AccountFromContext` consumers unaffected. 401-on-any-error mapping is correct (`ErrForbidden` cannot occur — caller and owner are the same account). Four tests cover the happy path, no-bearer, invalid-bearer, and idempotent-after-revoke. OpenAPI spec / codegen / route wiring all aligned.
