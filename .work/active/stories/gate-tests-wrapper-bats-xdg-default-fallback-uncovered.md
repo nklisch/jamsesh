@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wrapper-bats-xdg-default-fallback-uncovered
 kind: story
-stage: implementing
+stage: review
 tags: [testing, plugin, infra]
 parent: null
 depends_on: []
@@ -51,3 +51,23 @@ unset → `$HOME/.cache/jamsesh/bin`) has zero coverage.
 Cache path `${XDG_CACHE_HOME:-${HOME}/.cache}/jamsesh/bin` could regress
 (e.g., accidentally requiring `XDG_CACHE_HOME` to be set) and no wrapper
 test would catch it.
+
+## Implementation notes
+
+- New file `tests/wrapper/xdg_defaults.bats` covers the unset case. It does
+  not call the shared `setup_wrapper_test` helper because that helper
+  always exports `XDG_CACHE_HOME`. Instead it builds an equivalent fixture
+  inline (per-test `HOME`, shim dir, mock release server, fake binary) and
+  explicitly `unset XDG_CACHE_HOME`s before invoking the wrapper.
+- Two scenarios:
+  1. Positive: wrapper succeeds, prints `test-sentinel`, and the cached
+     binary lands at `$HOME/.cache/jamsesh/bin/jamsesh-<ver>-<os>-<arch>`
+     with a sidecar `.sha256` next to it.
+  2. Negative: no cache dir materialises at `/tmp/jamsesh/bin` (a stand-in
+     for stray paths the wrapper must not pick), and the documented
+     `$HOME/.cache/jamsesh/bin` does exist.
+- Resolves the wrapper version dynamically from the script's
+  `readonly JAMSESH_PLUGIN_VERSION=` declaration so the test does not need
+  to be edited on every release bump (same approach as `install.bats`).
+- Verification: `bats tests/wrapper/xdg_defaults.bats` → 2/2 pass;
+  `bats tests/wrapper/*.bats` → 20/20 pass (full suite unaffected).
