@@ -1,7 +1,7 @@
 ---
 id: feature-portal-visitor-entry-pages
 kind: feature
-stage: review
+stage: done
 tags: [ui, portal]
 parent: null
 depends_on: []
@@ -420,3 +420,52 @@ the `project` variant lives in `App.svelte`'s existing gate effect
 
 Advancing feature to `stage: review` — both children meet the
 terminal-or-review bar.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Release notes for the next version should bundle the call-outs noted on
+  the child reviews — the new env var `JAMSESH_LANDING_VARIANT`, the
+  behavior change for existing playground-enabled deploys (anonymous `/`
+  now redirects to `/playground` under default auto mode), and the
+  CLAUDE_PLUGIN_DATA → JAMSESH_DATA_DIR rename (tracked separately as
+  `idea-data-dir-migration-helper`).
+
+**Notes** (feature-level aggregate):
+- **Design alignment**: realized decomposition matches the brief exactly
+  — 2 child stories (backend info-endpoint + frontend spa-landing with
+  declared depends_on). All 6 locked-in strategic decisions (variant
+  strategy, flag mechanism, flag values, anonymous-only scope, hero CTA
+  shape, SPA bootstrap pattern) honored in implementation.
+- **Foundation-doc alignment (cross-cutting)**: each child rolled its
+  own docs forward (SELF_HOST.md for the env var, UX.md for the visitor
+  entry). No cumulative drift.
+- **Breaking changes (cross-cutting)**: the auto-mode behavior change
+  only manifests once both children ship together — and they did. The
+  call-out is captured on info-endpoint's review and as a release-notes
+  note above.
+- **Capability completeness — end-to-end**: operator sets the env var
+  → portal `/api/portal/info` returns config → SPA `portalInfo` store
+  fetches at bootstrap → App.svelte auth-gate dispatches by variant.
+  All 5 routing paths exercised by tests (project /
+  auto+playground-enabled / auto+playground-disabled / login /
+  fetch-failure-fallback). Acceptance criteria met.
+- **Cross-cutting verification**: `go build ./...` clean, `go test ./...`
+  clean, `pnpm test` 723/723 across 60 files.
+
+Archiving feature + both children together — none has a release_binding,
+and with the parent moving to archive the children also become eligible
+per the archive rule (no active parent).
+
+**Followups deferred to release-deploy**:
+- Release-notes language consolidating the env var renames + behavior
+  changes (see `idea-data-dir-migration-helper` for the data-dir half).
+- The chosen Option 1 (Swiss / ITS) mockup is the implementation
+  reference; alternative mockups (Neubrutalism, Provocation, Hybrid)
+  + the friendly-minimalist baseline retained in
+  `.mockups/screens/feature-portal-visitor-entry-pages/` for future
+  reference.
