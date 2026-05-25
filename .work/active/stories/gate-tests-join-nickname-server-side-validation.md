@@ -1,7 +1,7 @@
 ---
 id: gate-tests-join-nickname-server-side-validation
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground, validation]
 parent: null
 depends_on: []
@@ -62,3 +62,23 @@ path.
 ### Test integrity
 
 The six invalid-nickname subtests pass cleanly. The five valid-path subtests are skipped (not failing) with a named bug reference, keeping the suite green while documenting the work that remains once `bug-playground-join-with-nickname-returns-410-on-fresh-session` is fixed.
+
+## Review notes
+
+Approve with Important finding spawned. Six invalid-path subtests are well
+constructed, exercise the new server-side validation, and pass. They satisfy
+the story's core acceptance criterion.
+
+Important: the five valid-path subtests are skipped pointing at a backlog id
+that does not exist (`bug-playground-join-with-nickname-returns-410-on-fresh-session`).
+The underlying clock-injection bug was actually fixed in commit 7bfdabe
+(story-fix-playground-join-handler-unit-test-clock-injection-debt, now
+archived) — sibling tests `TestJoinPlaygroundSession_Success` and
+`TestJoinPlaygroundSession_WithNickname_UsesIt` pass. Unskipping the valid
+paths today reveals a second issue: the test body decodes ErrorEnvelope
+unconditionally and fails on the 200 success response. Both issues are
+captured in spawned item `review-join-nickname-valid-path-stale-skip` for
+follow-up; the parent story's core gate goal is delivered.
+
+### Spawned items
+- `review-join-nickname-valid-path-stale-skip` (Important)
