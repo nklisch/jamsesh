@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-status-compat-typealias-statusoutput-unused
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
