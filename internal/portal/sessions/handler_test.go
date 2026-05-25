@@ -786,8 +786,7 @@ func TestAbandonSession_NonCreatorForbidden(t *testing.T) {
 // per-package-clock-interface pattern).
 type sessionsFakeClock struct{ t time.Time }
 
-func (c *sessionsFakeClock) Now() time.Time          { return c.t }
-func (c *sessionsFakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
+func (c *sessionsFakeClock) Now() time.Time { return c.t }
 
 // seedPlaygroundSession inserts an org (with ID playgroundOrgID), a member
 // account, and a playground session row with timer fields pre-populated.

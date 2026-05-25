@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-sessions-handler-test-fakeclock-advance-unused
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -34,3 +34,6 @@ func (c *sessionsFakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
 
 ## Removal
 Delete the `advance` method definition (line 790). The struct and its `Now()` method remain — they're used to inject a fixed time into handler tests. After removing, `go vet ./internal/portal/sessions/...` should pass; no other edits required.
+
+## Implementation notes
+Deleted `(*sessionsFakeClock).advance` from `internal/portal/sessions/handler_test.go`. The struct and `Now()` method remain. `go test ./internal/portal/sessions/...` passes.
