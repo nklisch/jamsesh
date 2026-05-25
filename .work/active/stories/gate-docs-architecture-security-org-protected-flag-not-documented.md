@@ -1,7 +1,7 @@
 ---
 id: gate-docs-architecture-security-org-protected-flag-not-documented
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
