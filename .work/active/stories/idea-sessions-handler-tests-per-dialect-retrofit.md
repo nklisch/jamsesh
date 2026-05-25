@@ -1,14 +1,14 @@
 ---
 id: idea-sessions-handler-tests-per-dialect-retrofit
 kind: story
-stage: backlog
+stage: drafting
 tags: [portal, sessions, testing]
-parent: null
+parent: feature-test-spec-drift-and-coverage
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-25
 ---
 
 # Retrofit sessions handler tests to run under both SQLite and Postgres

@@ -3,12 +3,12 @@ id: gate-tests-spec-drift-cwd-resilience
 kind: story
 stage: drafting
 tags: [testing, portal, infra]
-parent: null
+parent: feature-test-spec-drift-and-coverage
 depends_on: []
 release_binding: null
 gate_origin: tests
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # `TestEventTypeConstants_MatchOpenAPIYAML` path-resolution under non-default cwd not asserted

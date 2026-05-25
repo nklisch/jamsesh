@@ -3,12 +3,12 @@ id: gate-tests-event-discriminator-triad-completeness
 kind: story
 stage: drafting
 tags: [testing, portal, spec]
-parent: null
+parent: feature-test-spec-drift-and-coverage
 depends_on: []
 release_binding: null
 gate_origin: tests
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # Event discriminator triad (enum / mapping / oneOf) not fully cross-checked

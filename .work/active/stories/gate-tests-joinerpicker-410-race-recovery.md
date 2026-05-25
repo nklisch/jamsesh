@@ -3,12 +3,12 @@ id: gate-tests-joinerpicker-410-race-recovery
 kind: story
 stage: drafting
 tags: [testing, ui, playground]
-parent: null
+parent: feature-test-spec-drift-and-coverage
 depends_on: []
 release_binding: null
 gate_origin: tests
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # `JoinerPicker` 410 race-recovery test missing

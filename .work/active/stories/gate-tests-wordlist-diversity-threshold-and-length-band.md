@@ -3,12 +3,12 @@ id: gate-tests-wordlist-diversity-threshold-and-length-band
 kind: story
 stage: drafting
 tags: [testing, portal, playground]
-parent: null
+parent: feature-test-spec-drift-and-coverage
 depends_on: []
 release_binding: null
 gate_origin: tests
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # `TestPick_Diversity` threshold weak — would pass with a 256→180 wordlist shrink
