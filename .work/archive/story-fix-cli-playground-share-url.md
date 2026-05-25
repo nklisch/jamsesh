@@ -1,7 +1,7 @@
 ---
 id: story-fix-cli-playground-share-url
 kind: story
-stage: review
+stage: done
 tags: [bug, cli, plugin]
 parent: null
 depends_on: []
@@ -59,3 +59,23 @@ them as a new playground participant.
   asserts the printed URL format includes the `/s/<id>/join` segments.
 - No change to the API call shape or the local state written — only
   the human-facing print line.
+
+## Implementation notes
+
+One-line change in `cmd/jamsesh/sessioncmd/new.go:512` (the line shifted
+from 502 after recent edits). New test `TestPlaygroundAction_shareURLShape`
+in `cmd/jamsesh/sessioncmd/new_test.go` asserts the printed URL contains
+`/playground/s/<id>/join` and the old bare form is absent.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: One-line fix; the test is sharp (asserts the new path plus
+anti-regression on the old). Brings code into alignment with `docs/UX.md`
+"Flow: joining a playground" which already specified `/playground/s/{id}/join`
+as the canonical share surface — no doc roll-forward needed.
