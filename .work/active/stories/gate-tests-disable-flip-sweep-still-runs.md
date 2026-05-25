@@ -1,7 +1,7 @@
 ---
 id: gate-tests-disable-flip-sweep-still-runs
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -52,3 +52,9 @@ hard_cap`. Test passes, pinning the contract.
 Also fixed a pre-existing test-debt issue: `destruction_test.go` imported the
 `sync` package but never used it, causing a build failure that blocked the
 test run. Removed the unused import.
+
+## Review notes
+
+Approve. Worker explicitly built with `Cfg.Enabled=false`, expired session
+seeded, sweep run, ErrNotFound + tombstone end_reason "hard_cap" asserted.
+Pins the SELF_HOST.md invariant cleanly. Test passes.
