@@ -7,7 +7,6 @@ import (
 
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/playground"
-	"jamsesh/internal/portal/tokens"
 )
 
 // ---------------------------------------------------------------------------
@@ -43,35 +42,6 @@ func newWorkerEnv(t *testing.T) (*testEnv, *playground.Worker, *mutableClock) {
 		Logger:   noopLogger(),
 	}
 	return env, worker, clk
-}
-
-// createPlaygroundSession is a helper that creates a playground session
-// directly in the store with configurable hard_cap_at and idle_timeout_at.
-func createPlaygroundSession(t *testing.T, ctx context.Context, s store.Store, svc tokens.Service, now time.Time, hardCap, idleTimeout time.Duration) store.Session {
-	t.Helper()
-	hardCapAt := now.Add(hardCap)
-	idleTimeoutAt := now.Add(idleTimeout)
-	sess, err := s.CreateSession(ctx, store.CreateSessionParams{
-		ID:                        "sess-" + randHexTest(6),
-		OrgID:                     playground.ReservedOrgID,
-		Name:                      "test-session",
-		Goal:                      "",
-		WritableScope:             `["**"]`,
-		DefaultMode:               "sync",
-		Status:                    "active",
-		CreatedAt:                 now,
-		LastSubstantiveActivityAt: &now,
-		HardCapAt:                 &hardCapAt,
-		IdleTimeoutAt:             &idleTimeoutAt,
-	})
-	if err != nil {
-		t.Fatalf("createPlaygroundSession: %v", err)
-	}
-	// Create a bare repo so Storage.RemoveRepo doesn't error.
-	if err := newStubStorage().CreateRepo(ctx, playground.ReservedOrgID, sess.ID); err != nil {
-		t.Logf("createPlaygroundSession: stub repo create: %v", err)
-	}
-	return sess
 }
 
 // randHexTest returns a simple deterministic hex string for test IDs.

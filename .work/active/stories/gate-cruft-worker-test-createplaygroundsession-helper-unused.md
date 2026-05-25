@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-worker-test-createplaygroundsession-helper-unused
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -38,3 +38,9 @@ Also dead: `randHexTest` (lines 77-86), which is only called by `createPlaygroun
 
 ## Removal
 Delete `createPlaygroundSession` (lines 48-75) and `randHexTest` (lines 77-86) along with their docstrings. Run `go vet ./internal/portal/playground/... && go test ./internal/portal/playground/...` to confirm no fallout. Remove any imports that become unused (likely `context`, `time`, `store`, `tokens` — check by running `goimports -l` or letting the compiler complain).
+
+## Implementation discovery
+The story evidence stated `randHexTest` is "only called by `createPlaygroundSession` and has no other callers." This was incorrect: `destruction_test.go:83` also calls `randHexTest` (same package). Removing `randHexTest` caused a build failure. Recovery: deleted `createPlaygroundSession` and the `tokens` import (which was only used by it), but kept `randHexTest` in `worker_test.go` where it serves as a shared test-package utility. The `go build ./...` and `go test ./internal/portal/playground/...` now pass.
+
+## Implementation notes
+Deleted `createPlaygroundSession` and its docstring from `internal/portal/playground/worker_test.go`. Removed the now-unused `jamsesh/internal/portal/tokens` import. Kept `randHexTest` — it is actively called by `destruction_test.go`.
