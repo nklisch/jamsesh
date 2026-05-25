@@ -1,7 +1,7 @@
 ---
 id: bug-postreceive-emits-events-for-base-ref-bootstrap-history
 kind: story
-stage: review
+stage: done
 tags: [bug, event-bus, playground, backpressure, performance]
 parent: null
 depends_on: []
@@ -245,3 +245,39 @@ Tests:
   constant is untouched; the guard now applies only when the stop set is
   empty (the pathological no-base no-OldSHA case it was always intended
   to defend).
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits** (inline only — not filed as items):
+- `findBaseRefUpdate` (`receive_pack.go:370`) — pre-existing doc drift:
+  comment says it matches base-ref *creation* but the implementation
+  matches by ref name only without checking `OldSHA`. Functionally safe
+  because pre-receive blocks force-pushes to base. Not from this change.
+- AC 6 has no dedicated unit test (push 1500+ unrelated commits, assert
+  cap fires at 1000). The constant is unchanged and reached only via the
+  pathological "no path to base" case that pre-receive normally blocks,
+  so coverage is reasonable; a defense-in-depth test wouldn't hurt.
+
+**Lenses walked**:
+- Correctness: stop-set logic correct; both early returns short-circuit
+  cleanly; multi-update receive (base + user-ref in same push) handled
+  because `findBaseRefUpdate` scans regardless of slice order and
+  `baseSHA` is computed once before the per-update loop.
+- Tests: ACs 1, 2, 4, 5 covered by the new tests; AC 3 covered by the
+  existing `TestEmitForUpdates_ThreeCommitChain`; AC 6 by inspection.
+- Design alignment: implementation matches the design verbatim.
+- Security: no auth/secrets/input changes.
+- Breaking changes: `EmitForUpdates` gained a 6th param; in-tree
+  single-binary, all callers updated — not meaningful here.
+- Foundation docs: `docs/PROTOCOL.md:400` is payload-shape only;
+  `docs/ARCHITECTURE.md:269` is generic enough to remain true. No drift.
+- Naming/comments: idiomatic; godoc updated; comments explain *why*.
+
+**Notes**: production incident that motivated this fix
+(session `01KSEKEBP2X9TVMVBEA85BENVE` on 2026-05-25T03:39:20Z) would
+now emit zero `commit.arrived` events for the same bootstrap push, and
+the 1195 WARN drops we observed would not recur.
