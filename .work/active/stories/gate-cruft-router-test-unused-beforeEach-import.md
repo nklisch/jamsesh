@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-router-test-unused-beforeEach-import
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
