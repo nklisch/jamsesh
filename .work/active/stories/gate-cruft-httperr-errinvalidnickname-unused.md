@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-httperr-errinvalidnickname-unused
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -39,3 +39,6 @@ func ErrInvalidNickname() *Error {
 
 ## Removal
 Delete the function and its docstring (lines 173-181). Verify with `go build ./...` and `go test ./...`. No other edits needed.
+
+## Implementation notes
+Deleted `ErrInvalidNickname` and its docstring from `internal/portal/httperr/httperr.go`. `go build ./...` and `go test ./internal/portal/httperr/...` pass cleanly.
