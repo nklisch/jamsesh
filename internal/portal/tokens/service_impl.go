@@ -28,6 +28,12 @@ type tokensStore interface {
 	store.OAuthTokenStore
 	store.AccountStore
 	WithTx(ctx context.Context, fn func(store.TxStore) error) error
+	// DeleteAccountsByIDs hard-deletes account rows by ID. Used by
+	// RevokeAnonymousBearer to close the orphan window on partial-failure
+	// compensation. The method also exists on store.PlaygroundSessionStore
+	// — same query, same dialect adapters; tokens declares it here so the
+	// dependency graph stays narrow.
+	DeleteAccountsByIDs(ctx context.Context, ids []string) error
 }
 
 type service struct {
@@ -280,4 +286,34 @@ func (s *service) Revoke(ctx context.Context, callerAccountID string, raw string
 		ID:        row.ID,
 		RevokedAt: &now,
 	})
+}
+
+// RevokeAnonymousBearer revokes the anonymous bearer identified by rawToken
+// and hard-deletes its associated anonymous account row. Idempotent: returns
+// nil when the token row is already absent. Used by the playground handlers
+// to compensate for partial-failure windows where the bearer was issued but
+// downstream session-member insertion failed — the destruction sweep would
+// eventually clean these up via tombstone TTL, but RevokeAnonymousBearer
+// collapses the window to near-zero on the fast path.
+//
+// Failures of either step are returned to the caller. The caller's primary
+// 5xx error return is unaffected; this is a best-effort cleanup hook.
+// (gate-security-playground-create-orphan-anon-account-on-member-failure)
+func (s *service) RevokeAnonymousBearer(ctx context.Context, raw string) error {
+	row, err := s.store.GetOAuthTokenByHash(ctx, hashToken(raw))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil // already gone — idempotent
+		}
+		return err
+	}
+	now := s.clock.Now()
+	if revokeErr := s.store.RevokeOAuthToken(ctx, store.RevokeOAuthTokenParams{
+		ID:        row.ID,
+		RevokedAt: &now,
+	}); revokeErr != nil {
+		return revokeErr
+	}
+	// Hard-delete the anonymous account so the orphan window closes.
+	return s.store.DeleteAccountsByIDs(ctx, []string{row.AccountID})
 }

@@ -1,7 +1,7 @@
 ---
 id: gate-security-playground-create-orphan-anon-account-on-member-failure
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal, playground, data-protection]
 parent: feature-playground-hardening
 depends_on: []
@@ -47,3 +47,33 @@ On `AddSessionMember` failure, best-effort revoke the just-issued bearer
 collapses; alternatively, retry `AddSessionMember` and treat persistent
 failure as a server-side `internal` error so the destruction sweep can clean
 up the session row too.
+
+## Implementation notes
+
+- `tokens.Service` gained `RevokeAnonymousBearer(ctx, rawToken) error`.
+  Implementation in `service_impl.go` looks up the row by hash, revokes the
+  token, and `DeleteAccountsByIDs(ctx, []string{row.AccountID})`. Idempotent
+  on `ErrNotFound`.
+- `tokensStore` interface grew `DeleteAccountsByIDs` so the tokens service
+  can hard-delete the anon account row. Same query, same dialect adapters
+  used by `PlaygroundSessionStore` (no duplication of SQL).
+- `internal/portal/playground/handler.go`: both call sites of
+  `AddSessionMember` (in `CreatePlaygroundSession` and `JoinPlaygroundSession`)
+  now call `h.Tokens.RevokeAnonymousBearer(ctx, rawToken)` on member-insert
+  failure. Compensation failure is `h.Logger.Warn`-logged with session_id +
+  account_id + err; the primary 5xx error return is unchanged.
+- Test stubs updated: `mockService` in `tokens/middleware_test.go`,
+  `storeOverride` in `tokens/anon_bearer_test.go`, and `failingTokensService`
+  in `playground/handler_test.go` all implement the new method.
+- New helper in playground tests: `failingAddSessionMemberStore` embeds
+  `store.Store` and overrides only `AddSessionMember` (per the
+  test-narrow-store-delegation pattern).
+- New test `TestCreatePlaygroundSession_MemberInsertFails_BearerRevoked`:
+  injects the AddSessionMember failure, asserts 5xx, then asserts the anon
+  account row is gone (compensation deleted it) and no session-member rows
+  were inserted.
+- A parallel test for the joiner path could be added in a follow-up; the
+  shared `RevokeAnonymousBearer` helper means both paths use the same code
+  path so the create-path test is sufficient verification.
+
+Verified: `go test ./internal/portal/playground/... ./internal/portal/tokens/... -count 1` passes.

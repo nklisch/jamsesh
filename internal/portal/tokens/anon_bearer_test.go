@@ -307,6 +307,10 @@ func (o *storeOverride) UpdateAccountDisplayName(ctx context.Context, p store.Up
 	return o.realStore.UpdateAccountDisplayName(ctx, p)
 }
 
+func (o *storeOverride) DeleteAccountsByIDs(ctx context.Context, ids []string) error {
+	return o.realStore.DeleteAccountsByIDs(ctx, ids)
+}
+
 // WithTx override (wraps TxStore to inject bearer error)
 func (o *storeOverride) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
 	return o.realStore.WithTx(ctx, func(tx store.TxStore) error {

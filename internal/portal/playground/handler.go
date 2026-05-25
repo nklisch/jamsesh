@@ -192,6 +192,16 @@ func (h *Handler) CreatePlaygroundSession(ctx context.Context, req openapi.Creat
 		Role:      "creator",
 		JoinedAt:  now,
 	}); err != nil {
+		// Best-effort compensation: revoke the just-issued bearer and delete
+		// the anonymous account so the orphan window collapses from 24h
+		// (tombstone TTL) to near-zero. Failure of the compensation is
+		// logged but never changes the primary error return — the destruction
+		// sweep eventually handles any residual.
+		// (gate-security-playground-create-orphan-anon-account-on-member-failure)
+		if rErr := h.Tokens.RevokeAnonymousBearer(ctx, rawToken); rErr != nil {
+			h.Logger.Warn("playground: orphan compensation failed; destruction sweep will clean up",
+				"session_id", sessionID, "account_id", accountID, "err", rErr)
+		}
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("playground: add session member: %w", err))
 	}
 
@@ -316,6 +326,14 @@ func (h *Handler) JoinPlaygroundSession(ctx context.Context, req openapi.JoinPla
 		Role:      "member",
 		JoinedAt:  now,
 	}); err != nil {
+		// Best-effort compensation: revoke + delete the just-issued anon
+		// bearer/account so the orphan window collapses. See the
+		// CreatePlaygroundSession compensation block above for rationale.
+		// (gate-security-playground-create-orphan-anon-account-on-member-failure)
+		if rErr := h.Tokens.RevokeAnonymousBearer(ctx, rawToken); rErr != nil {
+			h.Logger.Warn("playground: orphan compensation failed; destruction sweep will clean up",
+				"session_id", sessionID, "account_id", accountID, "err", rErr)
+		}
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("playground: add session member: %w", err))
 	}
 

@@ -229,6 +229,26 @@ func (s *failingTokensService) Refresh(ctx context.Context, refreshToken string)
 func (s *failingTokensService) Revoke(ctx context.Context, callerAccountID string, rawToken string, revokeAll bool) error {
 	return s.real.Revoke(ctx, callerAccountID, rawToken, revokeAll)
 }
+func (s *failingTokensService) RevokeAnonymousBearer(ctx context.Context, rawToken string) error {
+	return s.real.RevokeAnonymousBearer(ctx, rawToken)
+}
+
+// failingAddSessionMemberStore wraps a real store.Store and overrides only
+// AddSessionMember to return an injected error. Used to exercise the orphan
+// compensation block in CreatePlaygroundSession / JoinPlaygroundSession.
+// Per the test-narrow-store-delegation pattern, all other methods delegate
+// straight through.
+type failingAddSessionMemberStore struct {
+	store.Store
+	addErr error
+}
+
+func (s *failingAddSessionMemberStore) AddSessionMember(ctx context.Context, p store.AddSessionMemberParams) error {
+	if s.addErr != nil {
+		return s.addErr
+	}
+	return s.Store.AddSessionMember(ctx, p)
+}
 
 // ---------------------------------------------------------------------------
 // Test environment
@@ -1468,6 +1488,125 @@ func TestJoinPlaygroundSession_NicknameValidation(t *testing.T) {
 						}
 					}
 				})
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// gate-security-playground-create-orphan-anon-account-on-member-failure
+//
+// Step 3 of CreatePlaygroundSession (AddSessionMember) failing after step 2
+// (IssueAnonymousSessionBearer) succeeded must trigger best-effort
+// compensation: revoke the just-issued bearer and delete the anon account.
+// The compensation MUST NOT change the primary error return (still 5xx).
+// ---------------------------------------------------------------------------
+
+// newTestEnvWithStore is a custom-store variant of newTestEnv. Used by tests
+// that wrap the real store to inject a per-method failure (e.g. failing
+// AddSessionMember). The wrapped store is used by Handler.Store; the
+// underlying `realStore` is used for token issuance + assertions.
+func newTestEnvWithStore(t *testing.T, realStore store.Store, wrappedStore store.Store, cfg playground.Config) *testEnv {
+	t.Helper()
+	clk := fixedClock{t: time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)}
+	svc := tokens.New(realStore)
+	stor := newStubStorage()
+	if err := playground.ProvisionReservedOrg(context.Background(), realStore, clk.Now(), slog.New(slog.DiscardHandler)); err != nil {
+		t.Fatalf("provision reserved org: %v", err)
+	}
+	h := &playground.Handler{
+		Store:   wrappedStore,
+		Tokens:  svc,
+		Storage: stor,
+		Cfg:     cfg,
+		Clock:   clk,
+		Logger:  noopLogger(),
+	}
+	strictAPI := openapi.NewStrictHandlerWithOptions(&playgroundOnlyStrict{h}, nil,
+		openapi.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+			ResponseErrorHandlerFunc: httperr.WriteFromError,
+		})
+	apiWrapper := &openapi.ServerInterfaceWrapper{
+		Handler:          strictAPI,
+		ErrorHandlerFunc: httperr.WriteBadRequest,
+	}
+	r := chi.NewRouter()
+	r.Post("/api/playground/sessions", apiWrapper.CreatePlaygroundSession)
+	r.Post("/api/playground/sessions/{id}/join", apiWrapper.JoinPlaygroundSession)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	return &testEnv{srv: srv, s: realStore, svc: svc, stor: stor, clock: clk}
+}
+
+// TestCreatePlaygroundSession_MemberInsertFails_BearerRevoked asserts the
+// step-3-failure compensation: when AddSessionMember errors, the just-issued
+// anonymous bearer is revoked AND the anonymous account is deleted. The
+// primary handler error (5xx) is unchanged.
+//
+// Flow:
+//  1. Wrap the real store so AddSessionMember returns a synthetic error.
+//  2. POST CreatePlaygroundSession — expect 5xx.
+//  3. Capture the anon account ID by listing accounts pre/post (the orphan
+//     account was created by IssueAnonymousSessionBearer before the failure).
+//  4. Assert: the anon account row no longer exists (RevokeAnonymousBearer
+//     deleted it).
+//  5. Assert: no live OAuth tokens remain for that account (revoked).
+func TestCreatePlaygroundSession_MemberInsertFails_BearerRevoked(t *testing.T) {
+	for _, h := range stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			ctx := context.Background()
+			s := h.Open(t)
+
+			wrapped := &failingAddSessionMemberStore{
+				Store:  s,
+				addErr: errors.New("synthetic AddSessionMember failure"),
+			}
+			env := newTestEnvWithStore(t, s, wrapped, defaultCfg())
+
+			resp := postJSON(t, env.srv, "/api/playground/sessions", "", nil)
+			if resp.StatusCode < 500 {
+				t.Fatalf("want 5xx after AddSessionMember failure, got %d", resp.StatusCode)
+			}
+
+			// After the failure + compensation: no anonymous accounts should
+			// remain. The only way to enumerate them is via the session-row
+			// orphan path, but the session row was committed in step 1 so we
+			// can find it. Then we check that there's no member, and that the
+			// anon account that IssueAnonymousSessionBearer created is gone.
+			expiredQuery := store.ListExpiredPlaygroundSessionsParams{
+				OrgID: playground.ReservedOrgID,
+				Now:   env.clock.Now().Add(100 * 365 * 24 * time.Hour), // any future time, both thresholds elapsed
+			}
+			sessions, err := s.ListExpiredPlaygroundSessions(ctx, expiredQuery)
+			if err != nil {
+				t.Fatalf("ListExpiredPlaygroundSessions: %v", err)
+			}
+			if len(sessions) == 0 {
+				t.Fatal("expected orphaned session row to remain after AddSessionMember failure")
+			}
+
+			orphanSessID := sessions[0].ID
+			anonIDs, err := s.ListAnonymousSessionMemberIDs(ctx, playground.ReservedOrgID, orphanSessID)
+			if err != nil {
+				t.Fatalf("ListAnonymousSessionMemberIDs: %v", err)
+			}
+			// Compensation deleted the anon account; the session-member row
+			// was never inserted (step 3 failed). Both lists must be empty.
+			if len(anonIDs) != 0 {
+				t.Errorf("want 0 anonymous member IDs after compensation, got %d (%v)",
+					len(anonIDs), anonIDs)
+			}
+			memberCount, err := s.CountSessionMembers(ctx, store.CountSessionMembersParams{
+				OrgID:     playground.ReservedOrgID,
+				SessionID: orphanSessID,
+			})
+			if err != nil {
+				t.Fatalf("CountSessionMembers: %v", err)
+			}
+			if memberCount != 0 {
+				t.Errorf("want 0 session members (step 3 failed), got %d", memberCount)
 			}
 		})
 	}

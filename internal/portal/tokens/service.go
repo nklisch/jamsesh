@@ -55,6 +55,14 @@ type Service interface {
 	// revocation; if it does not match the token's owner, ErrForbidden is
 	// returned so callers can emit a 403.
 	Revoke(ctx context.Context, callerAccountID string, rawToken string, revokeAll bool) error
+	// RevokeAnonymousBearer revokes the anonymous bearer identified by the
+	// given raw token AND hard-deletes its associated anonymous account.
+	// Idempotent — returns nil when the token is already absent. Used by the
+	// playground handlers to compensate for a partial-failure window
+	// (`IssueAnonymousSessionBearer` succeeded but `AddSessionMember`
+	// failed). Errors from the revoke or delete steps are returned so the
+	// caller can log them; the caller's primary error path is unaffected.
+	RevokeAnonymousBearer(ctx context.Context, rawToken string) error
 }
 
 // Sentinel errors that callers map to PROTOCOL.md error codes.
