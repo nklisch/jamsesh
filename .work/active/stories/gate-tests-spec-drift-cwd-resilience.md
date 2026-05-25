@@ -1,7 +1,7 @@
 ---
 id: gate-tests-spec-drift-cwd-resilience
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, infra]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -67,3 +67,13 @@ even when the process cwd changes, so the YAML file can be found.
   `os.Getwd`, this test fails loudly.
 
 Verified: `go test ./internal/portal/events/... -count 1` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Path resolver extracted into `openAPIYAMLPath` helper, comparison body into `runEnumDrift` — eliminates copy-paste and centralizes the invariant. `t.Chdir(t.TempDir())` correctly uses the Go 1.24+ helper. Failure mode (path resolver drifting to `os.Getwd`) is the loud-fail target.
