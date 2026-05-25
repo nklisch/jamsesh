@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wrapper-bats-xdg-default-fallback-uncovered
 kind: story
-stage: review
+stage: done
 tags: [testing, plugin, infra]
 parent: null
 depends_on: []
@@ -71,3 +71,18 @@ test would catch it.
   to be edited on every release bump (same approach as `install.bats`).
 - Verification: `bats tests/wrapper/xdg_defaults.bats` → 2/2 pass;
   `bats tests/wrapper/*.bats` → 20/20 pass (full suite unaffected).
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- Negative subcase only checks `/tmp/jamsesh/bin`; it's a plausible misfire
+  target but not exhaustive. The positive subcase already pins the right path
+  positively, so this is fine.
+
+**Notes**: Tight, focused test addition; closes the gate finding. Test
+correctly bypasses the shared `setup_wrapper_test` helper (which always
+exports XDG_CACHE_HOME) and rebuilds an equivalent fixture inline.
