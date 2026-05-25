@@ -1,7 +1,7 @@
 ---
 id: gate-security-cli-join-clone-url-bearer-in-process-args
 kind: story
-stage: review
+stage: done
 tags: [security, plugin, cli, auth]
 parent: null
 depends_on: []
@@ -72,3 +72,20 @@ do the same.
     the API of `buildCloneURL` directly across multiple portal URL shapes.
 - Verification: `go build ./...` clean; `go test ./cmd/jamsesh/sessioncmd/...
   -count 1` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The bearer still passes through `argv` via `-c http.extraHeader=...` — this is
+  intentional and consistent with `new.go:pushBaseRef` and
+  `finalizecmd/fetchsource.go:performFetch`. The header form is the documented
+  upgrade from URL-embedded credentials; no further hardening warranted within
+  scope.
+
+**Notes**: Mirrors an already-used pattern (new.go, fetchsource.go). Tests pin
+both the API of `buildCloneURL` (no userinfo) and the call-site argv shape
+(no plaintext bearer outside the header blob). Closes the gate finding.
