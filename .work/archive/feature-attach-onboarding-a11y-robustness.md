@@ -1,7 +1,7 @@
 ---
 id: feature-attach-onboarding-a11y-robustness
 kind: feature
-stage: review
+stage: done
 tags: [ui, a11y, bug]
 parent: null
 depends_on: []
@@ -513,3 +513,13 @@ test's reliance on `[role="dialog"]` matching the scrim).
 
 Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 35 passed;
 `npm test -- --run` → 738 passed, 1 skipped.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Feature delivered as briefed. All 4 child stories approved individually. No cross-cutting concerns — each fix is local, no foundation-doc drift, no public API change. The orchestrator's separate `AttachHelpLink.test.ts` selector fix (61afa03) is appropriate test-integrity work for the dialog-role move. Advancing to done.
