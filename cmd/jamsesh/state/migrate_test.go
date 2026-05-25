@@ -287,3 +287,130 @@ func TestMigrate_skipAlreadyMigratedSession(t *testing.T) {
 		t.Errorf("per-session token = %q, want %q (should not be overwritten)", got, existingTok)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// idea-data-dir-migration-helper — DetectCCManagedLegacyData
+// ---------------------------------------------------------------------------
+
+func TestDetectCCManagedLegacyData_NoEnvVar_NoWarning(t *testing.T) {
+	t.Setenv("CLAUDE_PLUGIN_DATA", "")
+	dir := t.TempDir()
+	withPluginData(t, dir)
+	logger := &testLogger{}
+
+	if warned := DetectCCManagedLegacyData(logger); warned {
+		t.Errorf("warned=true with no env var set; want false")
+	}
+	if len(logger.warnings) != 0 {
+		t.Errorf("logger got %d warnings; want 0", len(logger.warnings))
+	}
+}
+
+func TestDetectCCManagedLegacyData_EnvSetButOldEmpty_NoWarning(t *testing.T) {
+	// Old CC-managed path exists but is empty — nothing to migrate.
+	oldPath := t.TempDir()
+	t.Setenv("CLAUDE_PLUGIN_DATA", oldPath)
+	newPath := t.TempDir()
+	withPluginData(t, newPath)
+
+	logger := &testLogger{}
+	if warned := DetectCCManagedLegacyData(logger); warned {
+		t.Errorf("warned=true with empty legacy dir; want false")
+	}
+}
+
+func TestDetectCCManagedLegacyData_OldHasToken_NewEmpty_Warns(t *testing.T) {
+	// Old CC-managed path has a token; new JAMSESH_DATA_DIR is empty —
+	// user has not migrated yet.
+	oldPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(oldPath, "token"), []byte("legacy-tok"), 0o600); err != nil {
+		t.Fatalf("write legacy token: %v", err)
+	}
+	t.Setenv("CLAUDE_PLUGIN_DATA", oldPath)
+
+	newPath := t.TempDir()
+	withPluginData(t, newPath)
+
+	logger := &testLogger{}
+	warned := DetectCCManagedLegacyData(logger)
+	if !warned {
+		t.Fatal("warned=false; want true (old has state, new is empty)")
+	}
+	if len(logger.warnings) != 1 {
+		t.Fatalf("logger got %d warnings; want 1", len(logger.warnings))
+	}
+	w := logger.warnings[0]
+	// Args alternate key, value — flatten and check for both paths.
+	found := map[string]bool{}
+	for i := 0; i+1 < len(w.args); i += 2 {
+		k, _ := w.args[i].(string)
+		v, _ := w.args[i+1].(string)
+		if k == "legacy_path" && v == oldPath {
+			found["legacy_path"] = true
+		}
+		if k == "new_path" && v == newPath {
+			found["new_path"] = true
+		}
+		if k == "suggested_command" && v != "" {
+			found["suggested_command"] = true
+		}
+	}
+	if !found["legacy_path"] || !found["new_path"] || !found["suggested_command"] {
+		t.Errorf("warning missing expected keys (found=%v): %+v", found, w)
+	}
+}
+
+func TestDetectCCManagedLegacyData_OldHasSessions_NewEmpty_Warns(t *testing.T) {
+	oldPath := t.TempDir()
+	sessDir := filepath.Join(oldPath, "sessions", "sess-1")
+	if err := os.MkdirAll(sessDir, 0o700); err != nil {
+		t.Fatalf("mkdir sess: %v", err)
+	}
+	t.Setenv("CLAUDE_PLUGIN_DATA", oldPath)
+	newPath := t.TempDir()
+	withPluginData(t, newPath)
+
+	logger := &testLogger{}
+	if warned := DetectCCManagedLegacyData(logger); !warned {
+		t.Error("warned=false; want true (old has a session dir)")
+	}
+}
+
+func TestDetectCCManagedLegacyData_OldAndNewBothPopulated_NoWarning(t *testing.T) {
+	// User already manually migrated — both paths have content. Don't nag.
+	oldPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(oldPath, "token"), []byte("legacy"), 0o600); err != nil {
+		t.Fatalf("write legacy: %v", err)
+	}
+	t.Setenv("CLAUDE_PLUGIN_DATA", oldPath)
+
+	newPath := t.TempDir()
+	withPluginData(t, newPath)
+	if err := os.WriteFile(filepath.Join(newPath, "token"), []byte("new"), 0o600); err != nil {
+		t.Fatalf("write new: %v", err)
+	}
+
+	logger := &testLogger{}
+	if warned := DetectCCManagedLegacyData(logger); warned {
+		t.Error("warned=true with both paths populated; want false")
+	}
+}
+
+func TestDetectCCManagedLegacyData_OldAndNewSamePath_NoWarning(t *testing.T) {
+	// Operator pointed both env vars at the same dir — no migration needed.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok"), 0o600); err != nil {
+		t.Fatalf("write tok: %v", err)
+	}
+	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	withPluginData(t, dir)
+
+	logger := &testLogger{}
+	if warned := DetectCCManagedLegacyData(logger); warned {
+		t.Error("warned=true when CLAUDE_PLUGIN_DATA == JAMSESH_DATA_DIR; want false")
+	}
+}
+
+// Avoid unused-import warning if `errors`/`fs` imports drift on changes.
+var _ = errors.New
+var _ = fs.ErrNotExist

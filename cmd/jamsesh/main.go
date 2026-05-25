@@ -39,6 +39,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "warning: token migration encountered errors: %v\n", err)
 	}
 
+	// Detect users who haven't migrated their data dir from the legacy
+	// CLAUDE_PLUGIN_DATA path to JAMSESH_DATA_DIR. Best-effort + advisory —
+	// emits a structured warning with the suggested `mv` command but does
+	// not auto-move. (idea-data-dir-migration-helper)
+	state.DetectCCManagedLegacyData(stderrLogger{})
+
 	app := &cli.Command{
 		Name:    "jamsesh",
 		Usage:   "Local client for the jamsesh portal",

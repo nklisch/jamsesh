@@ -1,7 +1,7 @@
 ---
 id: idea-data-dir-migration-helper
 kind: story
-stage: implementing
+stage: review
 tags: [plugin, migration, release-notes]
 parent: null
 depends_on: []
@@ -9,6 +9,32 @@ release_binding: null
 gate_origin: null
 created: 2026-05-24
 updated: 2026-05-25
+---
+
+## Implementation notes
+
+- `cmd/jamsesh/state/migrate.go`: added
+  `DetectCCManagedLegacyData(logger Logger) (warned bool)` and the helper
+  `hasMigratableState(dir string) (bool, error)`.
+- Behaviour: read `CLAUDE_PLUGIN_DATA` env. If set, the path is different
+  from `JAMSESH_DATA_DIR`, the old path has at least one of
+  `token`/`refresh_token`/non-empty `sessions/`, AND the new path is
+  empty — emit a structured `Warn` naming both paths and a copy-paste
+  `mv` command. Returns `true` so callers can gate interactive notices.
+- **Deviation from "consider auto-move"**: the implementation does NOT
+  auto-move directories. Silent moves can surprise self-hosters who
+  deliberately manage shared directories; the one-time mv cost is small
+  and the warning gives a copy-paste command. Documented here as the
+  conscious choice — easier to relax later than to walk back a silent
+  move.
+- `cmd/jamsesh/main.go`: wires `state.DetectCCManagedLegacyData(stderrLogger{})`
+  right after the per-session token migration on every invocation. Idempotent.
+- Six new tests in `migrate_test.go` cover: no env var, env set + old empty,
+  old token only, old sessions only, both paths populated (already
+  migrated), and env points at same dir as JAMSESH_DATA_DIR.
+
+Verified: `go test ./cmd/jamsesh/state/... -count 1` passes.
+
 ---
 
 The `story-data-dir-env-rename` refactor cuts over strictly from
