@@ -174,6 +174,11 @@ ${JAMSESH_DATA_DIR}/
         ├── ref                             which user/<branch> this CC is bound to
         ├── org_id                          org that owns this session
         ├── account_id                      authenticated user's account ID
+        ├── nickname                        server-minted handle for playground
+        │                                   sessions (mode 0600); cached from the
+        │                                   PlaygroundSessionCreated response so
+        │                                   `jamsesh status` can display it
+        │                                   without re-fetching
         └── last_seen_seq                   digest cursor
 ```
 

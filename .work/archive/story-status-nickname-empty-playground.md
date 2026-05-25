@@ -1,7 +1,7 @@
 ---
 id: story-status-nickname-empty-playground
 kind: story
-stage: review
+stage: done
 tags: [bug, cli, plugin]
 parent: null
 depends_on: []
@@ -63,3 +63,30 @@ when non-empty. `PlaygroundSessionSummary` (the GET response type) has no
 
 Test added: `TestPlaygroundAction_nicknameWritten` in `new_test.go`
 asserts the sidecar file is created with the correct value.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve with comments
+
+**Blockers**: none (the foundation-doc drift below was fixed inline)
+**Important**: none
+**Nits**:
+- Test covers the WRITE path (which was the bug) but doesn't exercise
+  the READ-then-render path end-to-end. Fine — the read code was
+  pre-existing and correct, so the write-path test catches the actual
+  regression.
+
+**Inline fix landed in this review commit**:
+- `docs/ARCHITECTURE.md` "Local state layout" block was missing the
+  `nickname` row. The `readNickname()` reader already referenced this
+  slot, so the drift technically pre-dated this commit, but this is the
+  commit that makes the file actually exist on disk — right place to
+  land the doc update. Added the row with the cache-from-create-response
+  rationale.
+
+**Notes**: Root-cause analysis was on-point — option (2) from the
+investigation order was correct. Fix is minimal (one defensive `if
+non-empty` + one `state.Write`), uses the established sidecar pattern
+and mode 0600, and propagates errors cleanly. Backward-compatible:
+pre-fix sessions without the file render empty (today's behaviour);
+post-fix sessions display the nickname.
