@@ -1,7 +1,7 @@
 ---
 id: idea-attach-onboarding-dialog-role-on-card
 kind: story
-stage: drafting
+stage: implementing
 tags: [ui, a11y]
 parent: feature-attach-onboarding-a11y-robustness
 depends_on: []
@@ -11,25 +11,74 @@ created: 2026-05-21
 updated: 2026-05-25
 ---
 
-`SessionAttachWalkthrough.svelte:112-121` puts `role="dialog"`,
-`aria-modal="true"`, and `aria-label="Attach Claude Code to this jam"`
-on the `.modal-backdrop` wrapper element rather than on the
-`.modal-card` `<article>` itself. Screen readers expect the dialog
-landmark to wrap the actual dialog content, not the dimmed overlay
-region around it. Effects:
+Move `role="dialog"`, `aria-modal`, and `aria-label` from the `.modal-backdrop`
+`<div>` to the inner `<article class="modal-card">` in both `FullCard.svelte`
+and `CompactCard.svelte`.
 
-- VoiceOver / NVDA may announce the dialog as encompassing the full
-  viewport rather than just the card.
-- Keyboard focus trap helpers that look for `[role="dialog"]` see the
-  backdrop, not the content surface.
+## Scope
 
-Compare with `frontend/src/lib/components/Modal.svelte:58-63` which
-correctly puts the role on the inner `<div class="modal">`.
+**Files**:
+- `frontend/src/lib/components/SessionAttachWalkthrough.svelte` (backdrop element)
+- `frontend/src/lib/components/walkthrough/FullCard.svelte` (add role to `<article>`)
+- `frontend/src/lib/components/walkthrough/CompactCard.svelte` (add role to `<article>`)
 
-Found in the v0.3.1 review of `feature-portal-session-attach-onboarding`.
+## Implementation
 
-Fix shape: move `role="dialog"`, `aria-modal="true"`, `aria-label`,
-and `tabindex` to the inner `<article class="modal-card">`. Keep the
-backdrop a plain `<div>` with the click-to-close handler. Make sure
-the a11y-ignore comments stay scoped to where they're actually
-needed.
+**`SessionAttachWalkthrough.svelte`** — strip dialog attributes from backdrop:
+```svelte
+<!-- Before -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="modal-backdrop"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Attach Claude Code to this jam"
+  tabindex="-1"
+  onclick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+>
+
+<!-- After -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="modal-backdrop"
+  role="presentation"
+  onclick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+>
+```
+
+**`FullCard.svelte`** — add role to `<article>`:
+```svelte
+<article
+  class="modal-card first-time"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Attach Claude Code to this jam"
+  tabindex="-1"
+>
+```
+
+**`CompactCard.svelte`** — same:
+```svelte
+<article
+  class="modal-card compact"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Attach Claude Code to this jam"
+  tabindex="-1"
+>
+```
+
+The `tabindex="-1"` on the `<article>` allows programmatic focus; the actual
+initial focus still goes to `closeBtn` via the existing `bind:this={closeBtnRef}`
+binding in each card — no change needed to focus management.
+
+## Acceptance Criteria
+
+- [ ] `[role="dialog"]` is on `<article class="modal-card ...">`, not on `.modal-backdrop`
+- [ ] `.modal-backdrop` has `role="presentation"` (no dialog role)
+- [ ] `aria-modal="true"` and `aria-label="Attach Claude Code to this jam"` on the `<article>`
+- [ ] No svelte-ignore comments on the dialog landmark itself
+- [ ] Test: `.modal-backdrop` does not have `role="dialog"`
+- [ ] Test: `.modal-card` has `role="dialog"`, `aria-modal="true"`, and `aria-label`
+- [ ] Existing test `'has correct dialog role and aria attributes'` still passes
