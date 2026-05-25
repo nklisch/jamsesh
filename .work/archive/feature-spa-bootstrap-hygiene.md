@@ -1,7 +1,7 @@
 ---
 id: feature-spa-bootstrap-hygiene
 kind: feature
-stage: review
+stage: done
 tags: [security, portal, ui, csp, testing]
 parent: null
 depends_on: []
@@ -296,3 +296,13 @@ All three child stories landed at stage:review:
 - `gate-tests-projectlanding-hardcoded-version-string` — Vite `define` + semver regex test
 
 Verified: `go test ./internal/portal/...` + `npm test -- --run` + `npm run build` all pass.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Feature delivered as briefed. All 3 children approved individually. CSP endpoint, no-store header, and version-drift fix are independent and complementary. No foundation-doc drift; the new `frontend/src/vite-env.d.ts` is small and well-commented.
