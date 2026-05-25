@@ -1,7 +1,7 @@
 ---
 id: gate-security-playground-internal-sql-errors-surface-to-anon
 kind: story
-stage: review
+stage: done
 tags: [security, portal, playground, error-handling]
 parent: feature-playground-hardening
 depends_on: []
@@ -67,3 +67,13 @@ only.
   invariant; the test pins it against regression.
 
 Verified: `go test ./internal/portal/playground/... -count 1 -run DBError_DoesNotLeakSQLDetail` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Test pins both directions: negative (SQL substrings absent) and positive (canonical envelope + message present). Runs against both SQLite and Postgres via the `stores(t)` matrix. Pipeline already enforces the invariant; no production code change needed.
