@@ -1,7 +1,7 @@
 ---
 id: gate-security-refresh-error-body-leak
 kind: story
-stage: review
+stage: done
 tags: [security, plugin, logging]
 parent: feature-server-secret-log-hygiene
 depends_on: []
@@ -126,3 +126,13 @@ func truncatedBody(r io.Reader) string {
   is still returned; only the body portion is bounded).
 
 Verified: `go test ./cmd/jamsesh/portalclient/... -count 1` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Helper is small, well-documented, and applied at all five error sites. 512B cap is appropriate for portal envelopes. Tests added for both refresh and GetJSON paths. Unused `io` import removed from refresh.go (good hygiene).
