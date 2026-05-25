@@ -1,7 +1,7 @@
 ---
 id: gate-security-anon-bearer-localstorage-xss-exposure
 kind: story
-stage: review
+stage: done
 tags: [security, ui, tokens, data-protection]
 parent: null
 depends_on: []
@@ -87,3 +87,9 @@ for wiring an actual log-and-204 receiver.
 **Verification:** `go build ./...` clean; `go test ./internal/portal/router/...`
 clean (existing security-headers tests pass); `npm run check` 0 errors;
 `npm test` 693/693 passing.
+
+## Review notes
+
+Spawned `review-csp-report-only-header-test-coverage` (Important) — the new `Content-Security-Policy-Report-Only` header is emitted but `security_headers_test.go` only asserts the enforced `Content-Security-Policy`. A regression that drops the report-only header would not be caught.
+
+CSP `Content-Security-Policy-Report-Only` header confirmed wired in `security_headers.go:74`. SECURITY.md paragraph "Client-side token storage and XSS residual risk" is accurate, covers durable + playground stores, names the keys, and acknowledges the residual XSS risk + the unwired report endpoint (tracked in backlog as `bug-csp-report-endpoint-not-wired`).
