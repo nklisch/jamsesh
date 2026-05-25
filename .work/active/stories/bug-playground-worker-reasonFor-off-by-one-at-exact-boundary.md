@@ -1,7 +1,7 @@
 ---
 id: bug-playground-worker-reasonFor-off-by-one-at-exact-boundary
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, playground]
 parent: feature-playground-hardening
 depends_on: []
@@ -63,3 +63,13 @@ data-correctness.
   replaced with notes that the inclusivity now matches the SQL predicate.
 
 Verified: `go test ./internal/portal/playground/... -count 1` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Root-cause fix — `reasonFor` inclusivity now matches the SQL sweep's `<=` predicate. The pre-existing boundary tests' "documented workaround" comments are correctly updated to describe the corrected behavior. Code comment cross-references the SQL predicate for future maintainers.
