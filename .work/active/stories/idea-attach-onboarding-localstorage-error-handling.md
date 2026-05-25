@@ -1,7 +1,7 @@
 ---
 id: idea-attach-onboarding-localstorage-error-handling
 kind: story
-stage: review
+stage: done
 tags: [ui, bug]
 parent: feature-attach-onboarding-a11y-robustness
 depends_on: []
@@ -101,3 +101,13 @@ function handleOpenSession() {
   - `falls back to full mode when localStorage.getItem throws`
 
 Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 28 passed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: All three call sites wrapped per design. Read path silently falls back to `full`; write paths log `console.warn` and proceed. The `typeof localStorage !== 'undefined'` guard is correctly removed (try/catch subsumes). Two negative-path tests pin the behavior.
