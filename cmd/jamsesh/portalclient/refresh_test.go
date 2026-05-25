@@ -17,6 +17,8 @@ func setupRefreshDir(t *testing.T, refreshToken string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	if err := os.WriteFile(dir+"/refresh_token", []byte(refreshToken), 0o600); err != nil {
 		t.Fatalf("writing refresh_token: %v", err)
 	}
@@ -158,6 +160,8 @@ func TestRefresher_Refresh_MissingRefreshToken(t *testing.T) {
 	// JAMSESH_DATA_DIR set but no refresh_token file.
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 
 	r := &Refresher{BaseURL: "http://unused"}
 	err := r.Refresh(context.Background())

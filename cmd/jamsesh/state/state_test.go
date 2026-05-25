@@ -5,13 +5,23 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 // withDataDir sets JAMSESH_DATA_DIR to dir for the duration of the test
 // and restores the original value (or unsets) on cleanup.
+//
+// Also chmods dir to 0o700 so DataDir's new permission check
+// (gate-security-datadir-permissions-not-validated) is satisfied for the
+// common pattern of `t.TempDir()` → `withDataDir(t, dir)`. Tests that
+// explicitly exercise the loose-permission path bypass this helper and
+// chmod the target themselves.
 func withDataDir(t *testing.T, dir string) {
 	t.Helper()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatalf("chmod data dir 0o700: %v", err)
+	}
 	orig, had := os.LookupEnv("JAMSESH_DATA_DIR")
 	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Cleanup(func() {
@@ -32,6 +42,9 @@ func withPluginData(t *testing.T, dir string) {
 // TestDataDir_envOverride asserts JAMSESH_DATA_DIR is honoured when set.
 func TestDataDir_envOverride(t *testing.T) {
 	want := t.TempDir()
+	if err := os.Chmod(want, 0o700); err != nil {
+		t.Fatalf("chmod 0o700: %v", err)
+	}
 	t.Setenv("JAMSESH_DATA_DIR", want)
 	got, err := DataDir()
 	if err != nil {
@@ -46,6 +59,12 @@ func TestDataDir_envOverride(t *testing.T) {
 func TestDataDir_xdgDefault(t *testing.T) {
 	t.Setenv("JAMSESH_DATA_DIR", "")
 	xdgBase := t.TempDir()
+	// XDG base must be strict — MkdirAll creates jamsesh/ at 0700 below it,
+	// but the perm check looks at the resolved data dir, not the base. Even
+	// so, keep the base strict for hygiene.
+	if err := os.Chmod(xdgBase, 0o700); err != nil {
+		t.Fatalf("chmod XDG base 0o700: %v", err)
+	}
 	t.Setenv("XDG_DATA_HOME", xdgBase)
 	got, err := DataDir()
 	if err != nil {
@@ -58,6 +77,76 @@ func TestDataDir_xdgDefault(t *testing.T) {
 	// Directory must have been created.
 	if _, statErr := os.Stat(got); statErr != nil {
 		t.Errorf("DataDir() did not create directory: %v", statErr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// gate-security-datadir-permissions-not-validated
+//
+// DataDir() refuses to use a pre-existing directory with group or world
+// rwx bits set. The newly-created directory always passes (MkdirAll applies
+// the 0o700 mode argument), so the check fires only for pre-existing dirs.
+// ---------------------------------------------------------------------------
+
+func TestDataDir_LoosePermissionsRefused(t *testing.T) {
+	// Create a target dir manually with loose perms, then point DataDir at it.
+	parent := t.TempDir()
+	target := filepath.Join(parent, "jamsesh-loose")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatalf("create loose dir: %v", err)
+	}
+	// Force the mode explicitly — umask may have stripped bits.
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatalf("chmod loose dir: %v", err)
+	}
+
+	t.Setenv("JAMSESH_DATA_DIR", target)
+	_, err := DataDir()
+	if err == nil {
+		t.Fatal("expected error from DataDir() on 0755 pre-existing directory, got nil")
+	}
+	if !strings.Contains(err.Error(), "0755") {
+		t.Errorf("error message should mention actual mode 0755: %v", err)
+	}
+	if !strings.Contains(err.Error(), "chmod 700") {
+		t.Errorf("error message should suggest the chmod 700 remediation: %v", err)
+	}
+}
+
+func TestDataDir_StrictPermissionsAccepted(t *testing.T) {
+	parent := t.TempDir()
+	target := filepath.Join(parent, "jamsesh-strict")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatalf("create strict dir: %v", err)
+	}
+	if err := os.Chmod(target, 0o700); err != nil {
+		t.Fatalf("chmod strict dir: %v", err)
+	}
+
+	t.Setenv("JAMSESH_DATA_DIR", target)
+	got, err := DataDir()
+	if err != nil {
+		t.Fatalf("DataDir() unexpected error on 0700 dir: %v", err)
+	}
+	if got != target {
+		t.Errorf("DataDir() = %q, want %q", got, target)
+	}
+}
+
+func TestDataDir_GroupRwxAlsoRefused(t *testing.T) {
+	parent := t.TempDir()
+	target := filepath.Join(parent, "jamsesh-grp")
+	if err := os.MkdirAll(target, 0o750); err != nil {
+		t.Fatalf("create grp dir: %v", err)
+	}
+	if err := os.Chmod(target, 0o750); err != nil {
+		t.Fatalf("chmod grp dir: %v", err)
+	}
+
+	t.Setenv("JAMSESH_DATA_DIR", target)
+	_, err := DataDir()
+	if err == nil {
+		t.Fatal("expected error from DataDir() on 0750 pre-existing directory, got nil")
 	}
 }
 

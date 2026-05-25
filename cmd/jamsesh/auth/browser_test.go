@@ -19,6 +19,8 @@ func setupTestStateDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	return dir
 }
 
@@ -263,6 +265,8 @@ func TestCommandHelpShowsDeviceCodeFlag(t *testing.T) {
 func TestExchangeCodeRequest(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", stateDir)
+
+	_ = os.Chmod(stateDir, 0o700)
 
 	var gotForm url.Values
 	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

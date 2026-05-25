@@ -29,6 +29,8 @@ func setupSession(t *testing.T, sessionID, portalURL string) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", portalURL)
 
 	// Create session state directory.
@@ -144,6 +146,8 @@ func TestForkCommand_withFlags(t *testing.T) {
 func TestForkCommand_missingCommitSHA(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 
 	app := &cli.Command{
 		Commands: []*cli.Command{sessioncmd.ForkCommand()},

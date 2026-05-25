@@ -23,6 +23,8 @@ func setupHookEnv(t *testing.T, srvURL, sessionID, orgID, ref, accountID string)
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	t.Setenv("CC_SESSION_ID", "") // use first-dir fallback
 
@@ -81,6 +83,8 @@ func TestSessionStart_noSession(t *testing.T) {
 	// No JAMSESH_DATA_DIR → no session → empty output.
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:9")
 	t.Setenv("CC_SESSION_ID", "")
 

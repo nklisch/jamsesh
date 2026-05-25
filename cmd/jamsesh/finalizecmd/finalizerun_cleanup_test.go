@@ -24,6 +24,8 @@ func setupFinalizeRunEnv(t *testing.T, sessionID, orgID, portalURL string) strin
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", portalURL)
 
 	sessDir := filepath.Join(dir, "sessions", sessionID)

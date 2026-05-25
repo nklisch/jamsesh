@@ -13,6 +13,8 @@ import (
 func withPluginData(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 }
 
 func newQueue(t *testing.T, dir string) *retryqueue.Queue {

@@ -32,6 +32,8 @@ func TestDeviceFlowHappyPath(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
+	_ = os.Chmod(stateDir, 0o700)
+
 	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/auth/device/authorize":
@@ -96,6 +98,8 @@ func TestDeviceFlowAuthorizationPending(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
+	_ = os.Chmod(stateDir, 0o700)
+
 	var pollCount atomic.Int32
 
 	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +151,8 @@ func TestDeviceFlowAuthorizationPending(t *testing.T) {
 func TestDeviceFlowSlowDown(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", stateDir)
+
+	_ = os.Chmod(stateDir, 0o700)
 
 	var pollCount atomic.Int32
 
@@ -205,6 +211,8 @@ func TestDeviceFlowExpiredToken(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
+	_ = os.Chmod(stateDir, 0o700)
+
 	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/auth/device/authorize":
@@ -247,6 +255,8 @@ func TestDeviceFlowAccessDenied(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
+	_ = os.Chmod(stateDir, 0o700)
+
 	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/auth/device/authorize":
@@ -283,6 +293,8 @@ func TestDeviceFlowAccessDenied(t *testing.T) {
 func TestDeviceFlowContextCancellation(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", stateDir)
+
+	_ = os.Chmod(stateDir, 0o700)
 
 	// A portal that always returns authorization_pending — we'll cancel the
 	// context before it would ever succeed.

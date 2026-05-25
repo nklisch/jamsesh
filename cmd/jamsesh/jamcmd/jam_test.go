@@ -33,6 +33,8 @@ func setupTestEnv(t *testing.T, portalURL string) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", portalURL)
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok-test"), 0o600); err != nil {
 		t.Fatalf("writing token: %v", err)

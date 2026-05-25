@@ -18,6 +18,8 @@ func setupTokenDir(t *testing.T, token string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	if err := os.WriteFile(dir+"/token", []byte(token), 0o600); err != nil {
 		t.Fatalf("writing token: %v", err)
 	}
@@ -192,6 +194,8 @@ func TestClient_SessionID_UsesPerSessionToken(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
 
+	_ = os.Chmod(dir, 0o700)
+
 	const sessID = "sess-abc123"
 	const legacyToken = "MIGRATED_TO_PER_SESSION"
 	const perSessToken = "per-session-bearer-xyz"
@@ -236,6 +240,8 @@ func TestClient_SessionID_UsesPerSessionToken(t *testing.T) {
 func TestClient_NoSessionID_UsesLegacyToken(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 
 	const legacyToken = "legacy-account-bearer"
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte(legacyToken), 0o600); err != nil {

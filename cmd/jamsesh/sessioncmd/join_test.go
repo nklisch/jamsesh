@@ -19,6 +19,8 @@ func setupJoinEnv(t *testing.T, srvURL string) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok-test"), 0o600); err != nil {
 		t.Fatalf("writing token: %v", err)
@@ -235,6 +237,8 @@ func TestJoinAction_inviteURL(t *testing.T) {
 func TestJoinAction_missingArg(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:19999")
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok"), 0o600); err != nil {
 		t.Fatal(err)

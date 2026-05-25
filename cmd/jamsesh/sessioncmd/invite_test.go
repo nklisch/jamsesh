@@ -20,6 +20,8 @@ func setupInviteEnv(t *testing.T, srvURL, sessionID, orgID string) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok-invite-test"), 0o600); err != nil {
 		t.Fatalf("writing token: %v", err)
@@ -211,6 +213,8 @@ func TestInviteAction_usageError(t *testing.T) {
 			// No server needed; error fires before any network call.
 			dir := t.TempDir()
 			t.Setenv("JAMSESH_DATA_DIR", dir)
+
+			_ = os.Chmod(dir, 0o700)
 			t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:19996")
 			_ = os.WriteFile(filepath.Join(dir, "token"), []byte("tok"), 0o600)
 
@@ -305,6 +309,8 @@ func TestInviteAction_missingOrgFails(t *testing.T) {
 	// No server needed; error fires before network.
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:19995")
 	_ = os.WriteFile(filepath.Join(dir, "token"), []byte("tok"), 0o600)
 	// Deliberately do NOT write a sessions/<id>/org_id file.

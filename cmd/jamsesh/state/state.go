@@ -27,10 +27,21 @@ const DefaultPortalURL = "https://jamsesh.dev"
 //
 // The directory is created (mkdir -p, mode 0700) if it does not already exist.
 // No error is returned when JAMSESH_DATA_DIR is unset — the XDG default is used.
+//
+// After resolving and creating the directory, DataDir validates its mode
+// (gate-security-datadir-permissions-not-validated): if the directory already
+// existed with group or world rwx bits set (mode & 0o077 != 0), DataDir
+// returns an error rather than silently using a loose-permission directory
+// for secret storage. The operator is told which chmod invocation fixes it.
+// Directories that DataDir creates itself always pass the check (MkdirAll
+// applies the mode argument to newly-created directories).
 func DataDir() (string, error) {
 	if d := os.Getenv("JAMSESH_DATA_DIR"); d != "" {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			return "", fmt.Errorf("creating JAMSESH_DATA_DIR %q: %w", d, err)
+		}
+		if err := checkDirPerms(d); err != nil {
+			return "", err
 		}
 		return d, nil
 	}
@@ -49,7 +60,28 @@ func DataDir() (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("creating data dir %q: %w", dir, err)
 	}
+	if err := checkDirPerms(dir); err != nil {
+		return "", err
+	}
 	return dir, nil
+}
+
+// checkDirPerms returns an error if dir has any group or world rwx bits set.
+// This guards against using a loose-permission pre-existing directory for
+// secret storage. The error names the path, the actual mode, and the
+// remediation command (chmod 700).
+func checkDirPerms(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("stat data dir %q: %w", dir, err)
+	}
+	if mode := info.Mode().Perm(); mode&0o077 != 0 {
+		return fmt.Errorf(
+			"data dir %q has unsafe permissions %04o (must be 0700 or tighter); run: chmod 700 %q",
+			dir, mode, dir,
+		)
+	}
+	return nil
 }
 
 // Read returns the contents of <DataDir>/<name>. Returns
@@ -180,6 +212,9 @@ func ReadCurrentBearer(sessionID string) (string, error) {
 
 // WriteSessionToken stores the bearer token for the given session at mode 0600.
 // The sessions/<sessionID>/ directory is created if it does not already exist.
+// The session subdir is permission-checked the same way DataDir is — a
+// pre-existing loose-permission sessions/<id>/ directory (e.g. one a user
+// chmodded by mistake) refuses the write rather than store a bearer there.
 func WriteSessionToken(sessionID string, token []byte) error {
 	dir, err := DataDir()
 	if err != nil {
@@ -188,6 +223,9 @@ func WriteSessionToken(sessionID string, token []byte) error {
 	sessDir := filepath.Join(dir, "sessions", sessionID)
 	if err := os.MkdirAll(sessDir, 0o700); err != nil {
 		return fmt.Errorf("creating session dir %q: %w", sessDir, err)
+	}
+	if err := checkDirPerms(sessDir); err != nil {
+		return err
 	}
 	return Write("sessions/"+sessionID+"/token", token, 0o600)
 }

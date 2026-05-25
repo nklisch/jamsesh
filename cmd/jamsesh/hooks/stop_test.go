@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -36,6 +37,8 @@ const stopInput = `{"session_id":"cc","transcript_path":""}`
 func TestStop_noSession(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("CC_SESSION_ID", "")
 
 	setHookRunGit(t, func(_ ...string) (string, string, int) { return "", "", 0 })

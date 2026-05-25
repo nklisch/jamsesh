@@ -30,6 +30,8 @@ func setHookRunGit(t *testing.T, fn func(args ...string) (stdout, stderr string,
 func TestUserPromptSubmit_noSession(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:9")
 	t.Setenv("CC_SESSION_ID", "")
 

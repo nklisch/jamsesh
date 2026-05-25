@@ -14,6 +14,8 @@ import (
 func TestModeCommand_writesStateFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("CC_SESSION_ID", "cc-inst-mode-test")
 
 	// Set up session directory.
@@ -61,6 +63,8 @@ func TestModeCommand_writesStateFile(t *testing.T) {
 func TestModeCommand_invalidMode(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	// Set up minimal session so we get past resolveSession.
 	sessDir := filepath.Join(dir, "sessions", "s1")
 	if err := os.MkdirAll(sessDir, 0o755); err != nil {
@@ -83,6 +87,8 @@ func TestModeCommand_invalidMode(t *testing.T) {
 func TestModeCommand_noSession(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("CC_SESSION_ID", "nonexistent")
 
 	app := &cli.Command{

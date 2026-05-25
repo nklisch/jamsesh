@@ -138,6 +138,8 @@ func TestStatusAction_durableSession(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupDurableSession(t, dir, sessionID, orgID, "jam/"+sessionID+"/acct-001/main", token)
@@ -199,6 +201,8 @@ func TestStatusAction_playgroundSession(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupPlaygroundSession(t, dir, sessionID, nickname, token)
@@ -267,6 +271,8 @@ func TestStatusAction_playgroundSession_noNicknameSidecar(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	// Pass empty nickname — setupPlaygroundSession skips the sidecar write,
@@ -360,6 +366,8 @@ func TestStatusAction_mixedSessions(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupDurableSession(t, dir, durableSessionID, durableOrgID, "jam/"+durableSessionID+"/acct/main", durableToken)
@@ -408,6 +416,8 @@ func TestStatusAction_missingToken(t *testing.T) {
 	// Session dir exists but has no token file.
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:0") // unreachable; should not be hit
 
 	sessDir := filepath.Join(dir, "sessions", sessionID)
@@ -441,6 +451,8 @@ func TestStatusAction_missingToken(t *testing.T) {
 func TestStatusAction_noSessions(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:0")
 
 	// Create an empty sessions directory.
@@ -494,6 +506,8 @@ func TestStatusAction_jsonOutput(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupDurableSession(t, dir, sessionID, orgID, "jam/"+sessionID+"/acct/main", token)
@@ -566,6 +580,8 @@ func TestStatusAction_jsonOutputMixedSessions(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupDurableSession(t, dir, durableSessionID, durableOrgID, "", durableToken)
@@ -604,6 +620,8 @@ func TestStatusAction_jsonOutputMixedSessions(t *testing.T) {
 func TestStatusAction_noSessionsJSON(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:0")
 
 	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o700); err != nil {
@@ -642,6 +660,8 @@ func TestReadSessionState_readsRefAndOrgID(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
 
+	_ = os.Chmod(dir, 0o700)
+
 	const sessID = "sess-rs-001"
 	sessDir := filepath.Join(dir, "sessions", sessID)
 	if err := os.MkdirAll(sessDir, 0o700); err != nil {
@@ -669,6 +689,8 @@ func setupStatusEnv(t *testing.T, srvURL, sessionID, orgID, yourRef string) stri
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("JAMSESH_DATA_DIR", dir)
+
+	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	// Unset the CC_SESSION_ID so resolveSession() uses the first-dir fallback.
 	t.Setenv("CC_SESSION_ID", "")

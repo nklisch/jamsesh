@@ -15,6 +15,8 @@ import (
 func buildBinary(t *testing.T) string {
 	t.Helper()
 	binDir := t.TempDir()
+
+	_ = os.Chmod(binDir, 0o700)
 	binPath := filepath.Join(binDir, "jamsesh")
 	cmd := exec.Command("go", "build", "-o", binPath, "jamsesh/cmd/jamsesh")
 	cmd.Dir = findModRoot(t)
@@ -62,6 +64,8 @@ func TestMcpHeaders_tokenPresent(t *testing.T) {
 	bin := buildBinary(t)
 	dataDir := t.TempDir()
 
+
+	_ = os.Chmod(dataDir, 0o700)
 	writeFile(t, filepath.Join(dataDir, "token"), "my-test-token")
 
 	cmd := exec.Command(bin, "mcp-headers")
@@ -91,6 +95,8 @@ func TestMcpHeaders_tokenAndSession(t *testing.T) {
 	bin := buildBinary(t)
 	dataDir := t.TempDir()
 
+
+	_ = os.Chmod(dataDir, 0o700)
 	const (
 		ccInstanceID = "cc-inst-abc123"
 		jamSessionID = "jamsesh-session-xyz789"
@@ -131,6 +137,8 @@ func TestMcpHeaders_tokenNoSession(t *testing.T) {
 	bin := buildBinary(t)
 	dataDir := t.TempDir()
 
+
+	_ = os.Chmod(dataDir, 0o700)
 	writeFile(t, filepath.Join(dataDir, "token"), "my-test-token")
 	// sessions/ dir exists but no entry matches the instance ID.
 	if err := os.MkdirAll(filepath.Join(dataDir, "sessions"), 0o700); err != nil {
