@@ -1,7 +1,7 @@
 ---
 id: gate-tests-app-gate-flash-unauthed-portalinfo-not-loaded
 kind: story
-stage: review
+stage: done
 tags: [testing, ui, regression]
 parent: null
 depends_on: []
@@ -79,3 +79,14 @@ Verification: `npm test -- App.test.ts` → 15 passed, 1 skipped (the new
 sentinel). No existing test affected by the spy rewire.
 
 Files touched: `frontend/src/App.test.ts`.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The parked bug `bug-app-home-renders-during-portalinfo-loading-flash` still has minimal frontmatter (no kind/stage/parent) — it should be promoted via `/agile-workflow:scope` so it enters the proper queue. Doing this is out of scope for the current story (which was the test-coverage gap, not the fix) but the user may want to run scope on the backlog before resuming autopilot.
+
+**Notes**: This story did its job — wrote the sentinel test, surfaced the production bug, captured the bug as a separate backlog item, and documented the un-skip trigger for when the bug is fixed. The CLAUDE.md test-integrity rule was honored: a failing test that documents why it fails (via `it.skip` + inline comment naming the parked bug) is more honest than papering over the gap. When the bug is fixed, removing `.skip` flips the sentinel green automatically.
