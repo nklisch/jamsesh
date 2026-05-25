@@ -1,7 +1,7 @@
 ---
 id: gate-tests-projectlanding-hardcoded-version-string
 kind: story
-stage: review
+stage: done
 tags: [testing, ui, cleanup]
 parent: feature-spa-bootstrap-hygiene
 depends_on: []
@@ -58,3 +58,13 @@ Verified:
 - `npm test -- --run ProjectLanding.test.ts` → 18 passed.
 - `npm run check` → 0 errors (1 pre-existing unrelated warning).
 - `npm run build` → succeeds, 226 modules transformed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Vite `define` for build-time substitution is the right tool — no runtime cost, no release-bump test edit needed. The vite-env.d.ts declaration prevents TS/svelte-check noise. Semver-shape regex in tests is the appropriate generality (not too loose, not too tight). Note: this means future package.json version bumps automatically flow into the colophon.
