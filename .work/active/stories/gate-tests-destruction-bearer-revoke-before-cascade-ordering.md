@@ -1,7 +1,7 @@
 ---
 id: gate-tests-destruction-bearer-revoke-before-cascade-ordering
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -51,3 +51,10 @@ cascade path: the tombstone is inserted, bearers are revoked, the session row is
 deleted with FK cascade, and the anon account is cleaned up. The ordering
 assertion is purely additive — it does not interfere with the existing
 correctness assertions in the file.
+
+## Review notes
+
+Approve. Wrapper-store records call sequence with a mutex; delegates to the
+real store for correctness. Asserts both calls happened and revokeIdx <
+deleteIdx. Pins the defense-in-depth ordering invariant with no mocks beyond
+the spy. Test passes.
