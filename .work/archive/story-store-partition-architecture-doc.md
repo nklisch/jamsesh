@@ -1,7 +1,7 @@
 ---
 id: story-store-partition-architecture-doc
 kind: story
-stage: review
+stage: done
 tags: [portal, documentation]
 parent: feature-refactor-store-narrow-handler-signatures
 depends_on: [story-store-partition-test-fixture-sweep]
