@@ -1,7 +1,7 @@
 ---
 id: review-join-nickname-valid-path-stale-skip
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground, tech-debt]
 parent: null
 depends_on: []
