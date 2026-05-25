@@ -1,7 +1,7 @@
 ---
 id: feature-refactor-store-narrow-handler-signatures
 kind: feature
-stage: review
+stage: done
 tags: [portal, refactor]
 parent: null
 depends_on: [feature-refactor-adapter-generic-wrap-helpers]
