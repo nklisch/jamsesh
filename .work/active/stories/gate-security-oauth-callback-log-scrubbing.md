@@ -1,7 +1,7 @@
 ---
 id: gate-security-oauth-callback-log-scrubbing
 kind: story
-stage: review
+stage: done
 tags: [security, portal, logging, auth]
 parent: feature-server-secret-log-hygiene
 depends_on: []
@@ -129,3 +129,13 @@ func TestAccessMiddlewareRedactsOAuthQueryParams(t *testing.T) {
 
 Verified: `go test ./internal/portal/logging/... -count 1` passes; the new
 test alone passes via `-run RedactsOAuth`.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Defense-in-depth regression test for an already-remediated finding. Test asserts: (a) raw `code` and `state` values absent from log, (b) key names retained for debug utility, (c) `<redacted>` sentinel present. Sound pattern.
