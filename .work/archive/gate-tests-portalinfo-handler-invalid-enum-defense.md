@@ -1,7 +1,7 @@
 ---
 id: gate-tests-portalinfo-handler-invalid-enum-defense
 kind: story
-stage: review
+stage: done
 tags: [testing, portal]
 parent: null
 depends_on: []
@@ -70,4 +70,20 @@ move validation into `NewHandler` constructor — file as `[testing]` or
   (*Handler, error)` constructor direction.
 - Verification: `go test ./internal/portal/portalinfo/... -count 1` →
   3 PASS valid, 4 SKIP invalid, all linked to the parked bug id.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The invalid-input subcases are `t.Skip`-linked to backlog id
+  `bug-portalinfo-handler-no-constructor-enum-validation` (the desired
+  defense is missing). Aligns with CLAUDE.md test-integrity rule —
+  honestly documents the gap rather than asserting fake green behaviour.
+
+**Notes**: Closes the gate test gap. Parked follow-up captures the
+proposed `NewHandler` constructor direction so the defense can be
+implemented and the skip lines deleted together.
 
