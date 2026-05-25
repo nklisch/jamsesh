@@ -34,7 +34,7 @@ backlog. Five new pattern skills shipped under `.claude/skills/patterns/`.
   flag — booting the portal with `--playground-enable` against a DB
   where the slug is taken by a non-protected org exits 1 instead of
   silently squatting. Lifecycle is bounded by configurable `IdleTimeout`
-  (default 30m) and `HardCap` (default 2h); abuse is bounded by a
+  (default 30m) and `HardCap` (default 24h); abuse is bounded by a
   per-IP/hour create cap and a per-session content cap enforced at
   pre-receive time. Tombstones with member/commit/auto-merge counts
   outlive the destroyed session for a short TTL so late HTTP polls get a

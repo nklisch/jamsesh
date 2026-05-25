@@ -1,7 +1,7 @@
 ---
 id: gate-docs-changelog-playground-hardcap-default-wrong
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -38,3 +38,6 @@ The production default for `JAMSESH_PLAYGROUND_HARD_CAP_S` is `86400` seconds
 In `CHANGELOG.md:39`, change `HardCap` (default 2h) to `HardCap` (default 24h)
 in the v0.4.0 release bullet. No "previously" prose — the changelog entry is
 the historical record of what shipped in v0.4.0, and what shipped was 24h.
+
+## Implementation notes
+Changed `HardCap` (default 2h) to `HardCap` (default 24h) in the v0.4.0 release bullet in `CHANGELOG.md`. Now consistent with `config.go:478` (86400s), `SPEC.md`, `SELF_HOST.md`, and `SECURITY.md`.
