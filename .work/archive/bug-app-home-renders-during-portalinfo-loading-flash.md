@@ -1,7 +1,7 @@
 ---
 id: bug-app-home-renders-during-portalinfo-loading-flash
 kind: story
-stage: review
+stage: done
 tags: [bug, ui, regression, flash, a11y]
 parent: null
 depends_on: []
@@ -158,3 +158,18 @@ The sentinel test already exists. After the fix:
   1 skipped).
 - `cd frontend && npm run check` → 0 errors. The single warning is the
   pre-existing one in `ModeSwitchDialog.svelte` unrelated to this fix.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: One-clause template edit landed exactly as designed. The new
+guard `(auth.isAuthenticated || portalInfo.loaded)` collapses the flash
+window onto the implicit empty render — the spec's "transparent loading
+shell" promise without spinning up a named branch. Auth-gate `$effect`
+correctly left untouched. Sentinel test un-skipped and passing; all 16
+App.test.ts cases green; svelte-check clean for App.svelte.
