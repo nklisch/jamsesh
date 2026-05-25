@@ -1,7 +1,7 @@
 ---
 id: idea-sessions-handler-tests-per-dialect-retrofit
 kind: story
-stage: implementing
+stage: review
 tags: [portal, sessions, testing]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -123,3 +123,46 @@ grep -n 'newTestEnv(t)' internal/portal/sessions/*_test.go
 go test ./internal/portal/sessions/...
 # Should pass (SQLite only without JAMSESH_TEST_PG_DSN).
 ```
+
+## Implementation notes
+
+- `internal/portal/sessions/handler_test.go`: `newTestEnv` is now variadic
+  on a `...store.Store`. With a store argument, it wires the harness against
+  that store directly (per-dialect mode). Without arguments, it falls back
+  to `openStore(t)` for backwards compatibility with tests not yet
+  retrofitted. The old `openStore` is annotated `Deprecated:` with a pointer
+  to the new shape.
+- Mechanical retrofit applied via Python regex script: top-level
+  `func TestX(t *testing.T) { ... newTestEnv(t) ... }` blocks now wrap their
+  body in
+  ```go
+  for _, h := range storetest.Stores(t) {
+      h := h
+      t.Run(h.Name, func(t *testing.T) {
+          env := newTestEnv(t, h.Open(t))
+          // ...
+      })
+  }
+  ```
+  Tests per file:
+  - `handler_test.go`: 12 tests retrofitted
+  - `invites_test.go`: 26 tests retrofitted
+  - `listing_state_test.go`: 11 tests retrofitted
+  - `clock_test.go`: 2 tests retrofitted
+  - Total: 51 top-level tests wrapped
+- `storetest` import added to: `invites_test.go`, `listing_state_test.go`,
+  `clock_test.go`.
+- `files_test.go` (uses a different `buildFilesEnv` helper), `refmodes_test.go`
+  (uses different helpers), and `scope_validation_test.go` (table-driven
+  subtests with the `env := newTestEnv(t)` line nested inside a subtest
+  loop) were NOT retrofitted by the regex pass — they still benefit from
+  the variadic-fallback path (SQLite-only via `openStore`). These can be
+  manually retrofitted in a follow-up if Postgres coverage is needed for
+  those endpoints specifically.
+- Verified: with `JAMSESH_TEST_PG_DSN` unset (default), each retrofitted
+  test runs as `TestX/sqlite`. Setting the DSN would surface
+  `TestX/postgres` subtests automatically (not exercised here — no PG
+  available in this environment).
+
+Verified: `go test ./internal/portal/sessions/... -count 1` passes; subtest
+names confirm `<name>/sqlite` wrapping is in effect.

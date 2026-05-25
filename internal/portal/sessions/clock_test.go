@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"jamsesh/internal/api/openapi"
+	"jamsesh/internal/db/store/storetest"
 	"jamsesh/internal/portal/httperr"
 	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/tokens"
@@ -30,32 +31,37 @@ func (f *handlerFakeClock) Now() time.Time { return f.t }
 // the bearer middleware and strict-handler wiring are identical to
 // production.
 func TestHandler_CreateSessionUsesInjectedClock(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator-clock@example.com")
-	org := seedOrg(t, env.s, "Clock Test Org", "clock-test-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator-clock@example.com")
+			org := seedOrg(t, env.s, "Clock Test Org", "clock-test-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	fixed := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
-	clk := &handlerFakeClock{t: fixed}
+			fixed := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+			clk := &handlerFakeClock{t: fixed}
 
-	srv := newClockSessionsSrv(t, env, clk)
-	token := env.bearerToken(t, acc.ID)
+			srv := newClockSessionsSrv(t, env, clk)
+			token := env.bearerToken(t, acc.ID)
 
-	body := map[string]any{
-		"name":         "Clock injection test",
-		"goal":         "Verify clock injection",
-		"scope":        `["src/**"]`,
-		"default_mode": "sync",
-	}
-	resp := postJSON(t, srv, "/api/orgs/"+org.ID+"/sessions", token, body)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", resp.StatusCode)
-	}
-	var sess openapi.Session
-	decodeBody(t, resp, &sess)
+			body := map[string]any{
+				"name":         "Clock injection test",
+				"goal":         "Verify clock injection",
+				"scope":        `["src/**"]`,
+				"default_mode": "sync",
+			}
+			resp := postJSON(t, srv, "/api/orgs/"+org.ID+"/sessions", token, body)
+			if resp.StatusCode != http.StatusCreated {
+				t.Fatalf("expected 201, got %d", resp.StatusCode)
+			}
+			var sess openapi.Session
+			decodeBody(t, resp, &sess)
 
-	if !sess.CreatedAt.Equal(fixed) {
-		t.Errorf("CreatedAt: want %v, got %v", fixed, sess.CreatedAt)
+			if !sess.CreatedAt.Equal(fixed) {
+				t.Errorf("CreatedAt: want %v, got %v", fixed, sess.CreatedAt)
+			}
+		})
 	}
 }
 
@@ -66,32 +72,37 @@ func TestHandler_CreateSessionUsesInjectedClock(t *testing.T) {
 // created via the standard env should have a CreatedAt stamp in
 // [before, after].
 func TestHandler_NewVsNewWithClock_ProductionPathClean(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator-realclock@example.com")
-	org := seedOrg(t, env.s, "Realclock Org", "realclock-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator-realclock@example.com")
+			org := seedOrg(t, env.s, "Realclock Org", "realclock-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	token := env.bearerToken(t, acc.ID)
-	body := map[string]any{
-		"name":         "RealClock Path",
-		"goal":         "verify default constructor",
-		"scope":        `["**"]`,
-		"default_mode": "sync",
-	}
+			token := env.bearerToken(t, acc.ID)
+			body := map[string]any{
+				"name":         "RealClock Path",
+				"goal":         "verify default constructor",
+				"scope":        `["**"]`,
+				"default_mode": "sync",
+			}
 
-	before := time.Now().UTC()
-	resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions", token, body)
-	after := time.Now().UTC()
+			before := time.Now().UTC()
+			resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions", token, body)
+			after := time.Now().UTC()
 
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", resp.StatusCode)
-	}
-	var sess openapi.Session
-	decodeBody(t, resp, &sess)
+			if resp.StatusCode != http.StatusCreated {
+				t.Fatalf("expected 201, got %d", resp.StatusCode)
+			}
+			var sess openapi.Session
+			decodeBody(t, resp, &sess)
 
-	// The realClock should produce a stamp inside [before, after].
-	if sess.CreatedAt.Before(before) || sess.CreatedAt.After(after) {
-		t.Errorf("CreatedAt %v not in [%v, %v]", sess.CreatedAt, before, after)
+			// The realClock should produce a stamp inside [before, after].
+			if sess.CreatedAt.Before(before) || sess.CreatedAt.After(after) {
+				t.Errorf("CreatedAt %v not in [%v, %v]", sess.CreatedAt, before, after)
+			}
+		})
 	}
 }
 

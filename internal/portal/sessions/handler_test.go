@@ -236,23 +236,44 @@ type testEnv struct {
 	eventLog *events.Log
 }
 
-// openStore delegates to the shared storetest harness, returning the SQLite
-// store from storetest.Stores(t) (always present). Postgres remains opt-in
-// via JAMSESH_TEST_PG_DSN, but the existing sessions tests are SQLite-only
-// for historical reasons — see story-playground-server-hardening-handler-test-coverage
-// for the rationale for not retrofitting every test here as a per-dialect
-// loop (the per-dialect treatment is applied to playground handler tests
-// where the Postgres adapter for new queries actually has coverage gaps).
+// newTestEnv builds a sessions testEnv. The optional store argument enables
+// the per-dialect harness pattern; when omitted, falls back to the SQLite
+// harness from storetest.Stores(t) for backwards compatibility with tests
+// that haven't been retrofitted yet.
+//
+// Per-dialect retrofit (idea-sessions-handler-tests-per-dialect-retrofit):
+// the canonical call shape for new and retrofitted tests is
+//
+//	for _, h := range storetest.Stores(t) {
+//	    h := h
+//	    t.Run(h.Name, func(t *testing.T) {
+//	        env := newTestEnv(t, h.Open(t))
+//	        // ... existing body ...
+//	    })
+//	}
+//
+// With JAMSESH_TEST_PG_DSN set, every test runs as both `<Name>/sqlite` and
+// `<Name>/postgres` subtests; otherwise only the sqlite subtest runs.
+func newTestEnv(t *testing.T, s ...store.Store) *testEnv {
+	t.Helper()
+	var st store.Store
+	if len(s) > 0 {
+		st = s[0]
+	} else {
+		st = openStore(t)
+	}
+	return newTestEnvWithStore(t, st, st)
+}
+
+// openStore is a legacy shim retained for tests that have not yet been
+// retrofitted to the per-dialect harness. New tests should pass the store
+// from storetest.Stores(t) loop into newTestEnv directly.
+//
+// Deprecated: pass storetest.Stores(t)[i].Open(t) into newTestEnv instead.
 func openStore(t *testing.T) store.Store {
 	t.Helper()
 	harnesses := storetest.Stores(t)
 	return harnesses[0].Open(t) // SQLite is always the first harness
-}
-
-func newTestEnv(t *testing.T) *testEnv {
-	t.Helper()
-	s := openStore(t)
-	return newTestEnvWithStore(t, s, s)
 }
 
 // newTestEnvWithStore builds a testEnv that wires the session handler against
@@ -402,96 +423,111 @@ func seedOrgMember(t *testing.T, s store.Store, orgID, accountID, role string) {
 // ---------------------------------------------------------------------------
 
 func TestCreateSession_HappyPath(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator@example.com")
-	org := seedOrg(t, env.s, "Test Org", "test-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator@example.com")
+			org := seedOrg(t, env.s, "Test Org", "test-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	token := env.bearerToken(t, acc.ID)
+			token := env.bearerToken(t, acc.ID)
 
-	body := map[string]any{
-		"name":         "Fix auth bug",
-		"goal":         "Resolve auth race condition",
-		"scope":        `["src/auth/**"]`,
-		"default_mode": "sync",
-	}
+			body := map[string]any{
+				"name":         "Fix auth bug",
+				"goal":         "Resolve auth race condition",
+				"scope":        `["src/auth/**"]`,
+				"default_mode": "sync",
+			}
 
-	resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions", token, body)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", resp.StatusCode)
-	}
+			resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions", token, body)
+			if resp.StatusCode != http.StatusCreated {
+				t.Fatalf("expected 201, got %d", resp.StatusCode)
+			}
 
-	var sess openapi.Session
-	decodeBody(t, resp, &sess)
+			var sess openapi.Session
+			decodeBody(t, resp, &sess)
 
-	if sess.Status != "active" {
-		t.Errorf("expected status=active, got %q", sess.Status)
-	}
-	if sess.Goal != "Resolve auth race condition" {
-		t.Errorf("unexpected goal: %q", sess.Goal)
-	}
-	if len(sess.Members) != 1 {
-		t.Errorf("expected 1 member, got %d", len(sess.Members))
-	}
-	if sess.Members[0].Role != "creator" {
-		t.Errorf("expected creator role, got %q", sess.Members[0].Role)
-	}
+			if sess.Status != "active" {
+				t.Errorf("expected status=active, got %q", sess.Status)
+			}
+			if sess.Goal != "Resolve auth race condition" {
+				t.Errorf("unexpected goal: %q", sess.Goal)
+			}
+			if len(sess.Members) != 1 {
+				t.Errorf("expected 1 member, got %d", len(sess.Members))
+			}
+			if sess.Members[0].Role != "creator" {
+				t.Errorf("expected creator role, got %q", sess.Members[0].Role)
+			}
 
-	// Verify the bare repo was created.
-	exists, _ := env.stor.RepoExists(org.ID, sess.Id)
-	if !exists {
-		t.Error("bare repo was not created")
+			// Verify the bare repo was created.
+			exists, _ := env.stor.RepoExists(org.ID, sess.Id)
+			if !exists {
+				t.Error("bare repo was not created")
+			}
+		})
 	}
 }
 
 func TestCreateSession_RepoFailureRollsBack(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator@example.com")
-	org := seedOrg(t, env.s, "Test Org", "test-org-rb")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator@example.com")
+			org := seedOrg(t, env.s, "Test Org", "test-org-rb")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	// Inject a storage failure.
-	env.stor.createError = errors.New("disk full")
+			// Inject a storage failure.
+			env.stor.createError = errors.New("disk full")
 
-	token := env.bearerToken(t, acc.ID)
-	body := map[string]any{
-		"name":         "Fail Session",
-		"goal":         "Will fail on repo",
-		"scope":        `["**"]`,
-		"default_mode": "sync",
-	}
+			token := env.bearerToken(t, acc.ID)
+			body := map[string]any{
+				"name":         "Fail Session",
+				"goal":         "Will fail on repo",
+				"scope":        `["**"]`,
+				"default_mode": "sync",
+			}
 
-	resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions", token, body)
-	if resp.StatusCode != http.StatusInternalServerError {
-		t.Fatalf("expected 500 on repo failure, got %d", resp.StatusCode)
-	}
+			resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions", token, body)
+			if resp.StatusCode != http.StatusInternalServerError {
+				t.Fatalf("expected 500 on repo failure, got %d", resp.StatusCode)
+			}
 
-	// Verify the session row was cleaned up.
-	all, err := env.s.ListSessionsForOrg(context.Background(), org.ID)
-	if err != nil {
-		t.Fatalf("list sessions: %v", err)
-	}
-	if len(all) != 0 {
-		t.Errorf("expected session to be cleaned up after repo failure, but %d row(s) remain", len(all))
+			// Verify the session row was cleaned up.
+			all, err := env.s.ListSessionsForOrg(context.Background(), org.ID)
+			if err != nil {
+				t.Fatalf("list sessions: %v", err)
+			}
+			if len(all) != 0 {
+				t.Errorf("expected session to be cleaned up after repo failure, but %d row(s) remain", len(all))
+			}
+		})
 	}
 }
 
 func TestCreateSession_NotOrgMember_Returns403(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "outsider@example.com")
-	org := seedOrg(t, env.s, "Test Org", "test-org-403")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "outsider@example.com")
+			org := seedOrg(t, env.s, "Test Org", "test-org-403")
 
-	token := env.bearerToken(t, acc.ID)
-	body := map[string]any{
-		"name":         "Not My Org",
-		"goal":         "Should fail",
-		"scope":        `["**"]`,
-		"default_mode": "sync",
-	}
+			token := env.bearerToken(t, acc.ID)
+			body := map[string]any{
+				"name":         "Not My Org",
+				"goal":         "Should fail",
+				"scope":        `["**"]`,
+				"default_mode": "sync",
+			}
 
-	resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions", token, body)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", resp.StatusCode)
+			resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions", token, body)
+			if resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("expected 403, got %d", resp.StatusCode)
+			}
+		})
 	}
 }
 
@@ -518,82 +554,97 @@ func createSession(t *testing.T, env *testEnv, orgID, accID string) openapi.Sess
 }
 
 func TestPatchSession_WideScope(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator@example.com")
-	org := seedOrg(t, env.s, "Test Org", "patch-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator@example.com")
+			org := seedOrg(t, env.s, "Test Org", "patch-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	sess := createSession(t, env, org.ID, acc.ID)
-	token := env.bearerToken(t, acc.ID)
+			sess := createSession(t, env, org.ID, acc.ID)
+			token := env.bearerToken(t, acc.ID)
 
-	path := "/api/orgs/" + org.ID + "/sessions/" + sess.Id
-	body := map[string]any{
-		"scope": `["src/**","tests/**"]`,
-		"goal":  "Updated goal",
-	}
-	resp := patchJSON(t, env.srv, path, token, body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+			path := "/api/orgs/" + org.ID + "/sessions/" + sess.Id
+			body := map[string]any{
+				"scope": `["src/**","tests/**"]`,
+				"goal":  "Updated goal",
+			}
+			resp := patchJSON(t, env.srv, path, token, body)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("expected 200, got %d", resp.StatusCode)
+			}
 
-	var updated openapi.Session
-	decodeBody(t, resp, &updated)
-	if updated.Goal != "Updated goal" {
-		t.Errorf("expected updated goal, got %q", updated.Goal)
+			var updated openapi.Session
+			decodeBody(t, resp, &updated)
+			if updated.Goal != "Updated goal" {
+				t.Errorf("expected updated goal, got %q", updated.Goal)
+			}
+		})
 	}
 }
 
 func TestPatchSession_ScopeNarrowingRejected(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator@example.com")
-	org := seedOrg(t, env.s, "Test Org", "narrow-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator@example.com")
+			org := seedOrg(t, env.s, "Test Org", "narrow-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	sess := createSession(t, env, org.ID, acc.ID)
-	token := env.bearerToken(t, acc.ID)
+			sess := createSession(t, env, org.ID, acc.ID)
+			token := env.bearerToken(t, acc.ID)
 
-	path := "/api/orgs/" + org.ID + "/sessions/" + sess.Id
-	body := map[string]any{
-		// Only "tests/**" — removes "src/**" which was in original scope.
-		"scope": `["tests/**"]`,
-	}
-	resp := patchJSON(t, env.srv, path, token, body)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.StatusCode)
-	}
+			path := "/api/orgs/" + org.ID + "/sessions/" + sess.Id
+			body := map[string]any{
+				// Only "tests/**" — removes "src/**" which was in original scope.
+				"scope": `["tests/**"]`,
+			}
+			resp := patchJSON(t, env.srv, path, token, body)
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", resp.StatusCode)
+			}
 
-	var errEnv openapi.ErrorEnvelope
-	decodeBody(t, resp, &errEnv)
-	if errEnv.Error != "session.scope_narrowing_rejected" {
-		t.Errorf("expected scope_narrowing_rejected, got %q", errEnv.Error)
+			var errEnv openapi.ErrorEnvelope
+			decodeBody(t, resp, &errEnv)
+			if errEnv.Error != "session.scope_narrowing_rejected" {
+				t.Errorf("expected scope_narrowing_rejected, got %q", errEnv.Error)
+			}
+		})
 	}
 }
 
 func TestPatchSession_NonCreatorForbidden(t *testing.T) {
-	env := newTestEnv(t)
-	creator := seedAccount(t, env.s, "creator@example.com")
-	member := seedAccount(t, env.s, "member@example.com")
-	org := seedOrg(t, env.s, "Test Org", "perm-org")
-	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
-	seedOrgMember(t, env.s, org.ID, member.ID, "member")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			creator := seedAccount(t, env.s, "creator@example.com")
+			member := seedAccount(t, env.s, "member@example.com")
+			org := seedOrg(t, env.s, "Test Org", "perm-org")
+			seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+			seedOrgMember(t, env.s, org.ID, member.ID, "member")
 
-	sess := createSession(t, env, org.ID, creator.ID)
-	memberToken := env.bearerToken(t, member.ID)
+			sess := createSession(t, env, org.ID, creator.ID)
+			memberToken := env.bearerToken(t, member.ID)
 
-	// Add member to session so the GetSessionMember check finds them but wrong role.
-	_ = env.s.AddSessionMember(context.Background(), store.AddSessionMemberParams{
-		OrgID:     org.ID,
-		SessionID: sess.Id,
-		AccountID: member.ID,
-		Role:      "member",
-		JoinedAt:  time.Now().UTC(),
-	})
+			// Add member to session so the GetSessionMember check finds them but wrong role.
+			_ = env.s.AddSessionMember(context.Background(), store.AddSessionMemberParams{
+				OrgID:     org.ID,
+				SessionID: sess.Id,
+				AccountID: member.ID,
+				Role:      "member",
+				JoinedAt:  time.Now().UTC(),
+			})
 
-	path := "/api/orgs/" + org.ID + "/sessions/" + sess.Id
-	body := map[string]any{"goal": "Hijack goal"}
-	resp := patchJSON(t, env.srv, path, memberToken, body)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", resp.StatusCode)
+			path := "/api/orgs/" + org.ID + "/sessions/" + sess.Id
+			body := map[string]any{"goal": "Hijack goal"}
+			resp := patchJSON(t, env.srv, path, memberToken, body)
+			if resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("expected 403, got %d", resp.StatusCode)
+			}
+		})
 	}
 }
 
@@ -602,82 +653,97 @@ func TestPatchSession_NonCreatorForbidden(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFinalizeSession_HappyPath(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator@example.com")
-	org := seedOrg(t, env.s, "Test Org", "fin-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator@example.com")
+			org := seedOrg(t, env.s, "Test Org", "fin-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	sess := createSession(t, env, org.ID, acc.ID)
-	token := env.bearerToken(t, acc.ID)
+			sess := createSession(t, env, org.ID, acc.ID)
+			token := env.bearerToken(t, acc.ID)
 
-	resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/finalize", token, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+			resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/finalize", token, nil)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("expected 200, got %d", resp.StatusCode)
+			}
 
-	var updated openapi.Session
-	decodeBody(t, resp, &updated)
-	if updated.Status != "finalizing" {
-		t.Errorf("expected status=finalizing, got %q", updated.Status)
+			var updated openapi.Session
+			decodeBody(t, resp, &updated)
+			if updated.Status != "finalizing" {
+				t.Errorf("expected status=finalizing, got %q", updated.Status)
+			}
+		})
 	}
 }
 
 func TestFinalizeSession_Idempotent(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator@example.com")
-	org := seedOrg(t, env.s, "Test Org", "fin-idem-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator@example.com")
+			org := seedOrg(t, env.s, "Test Org", "fin-idem-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	sess := createSession(t, env, org.ID, acc.ID)
-	token := env.bearerToken(t, acc.ID)
+			sess := createSession(t, env, org.ID, acc.ID)
+			token := env.bearerToken(t, acc.ID)
 
-	// First finalize.
-	resp1 := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/finalize", token, nil)
-	if resp1.StatusCode != http.StatusOK {
-		t.Fatalf("first finalize: expected 200, got %d", resp1.StatusCode)
-	}
+			// First finalize.
+			resp1 := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/finalize", token, nil)
+			if resp1.StatusCode != http.StatusOK {
+				t.Fatalf("first finalize: expected 200, got %d", resp1.StatusCode)
+			}
 
-	// Second finalize — should be idempotent 200, no duplicate event.
-	resp2 := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/finalize", token, nil)
-	if resp2.StatusCode != http.StatusOK {
-		t.Fatalf("second finalize: expected 200, got %d", resp2.StatusCode)
-	}
+			// Second finalize — should be idempotent 200, no duplicate event.
+			resp2 := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/finalize", token, nil)
+			if resp2.StatusCode != http.StatusOK {
+				t.Fatalf("second finalize: expected 200, got %d", resp2.StatusCode)
+			}
 
-	// Verify only one session.finalizing event was emitted.
-	evts, err := env.s.ListEventsSince(context.Background(), store.ListEventsSinceParams{
-		SessionID: sess.Id,
-		SinceSeq:  -1,
-		Limit:     100,
-	})
-	if err != nil {
-		t.Fatalf("list events: %v", err)
-	}
-	var finalizingCount int
-	for _, e := range evts {
-		if e.Type == "session.finalizing" {
-			finalizingCount++
-		}
-	}
-	if finalizingCount != 1 {
-		t.Errorf("expected exactly 1 session.finalizing event, got %d", finalizingCount)
+			// Verify only one session.finalizing event was emitted.
+			evts, err := env.s.ListEventsSince(context.Background(), store.ListEventsSinceParams{
+				SessionID: sess.Id,
+				SinceSeq:  -1,
+				Limit:     100,
+			})
+			if err != nil {
+				t.Fatalf("list events: %v", err)
+			}
+			var finalizingCount int
+			for _, e := range evts {
+				if e.Type == "session.finalizing" {
+					finalizingCount++
+				}
+			}
+			if finalizingCount != 1 {
+				t.Errorf("expected exactly 1 session.finalizing event, got %d", finalizingCount)
+			}
+		})
 	}
 }
 
 func TestFinalizeSession_EndedReturns409(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator@example.com")
-	org := seedOrg(t, env.s, "Test Org", "fin-ended-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator@example.com")
+			org := seedOrg(t, env.s, "Test Org", "fin-ended-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	sess := createSession(t, env, org.ID, acc.ID)
-	token := env.bearerToken(t, acc.ID)
+			sess := createSession(t, env, org.ID, acc.ID)
+			token := env.bearerToken(t, acc.ID)
 
-	// Abandon first to put it in ended state.
-	_ = postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", token, nil)
+			// Abandon first to put it in ended state.
+			_ = postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", token, nil)
 
-	resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/finalize", token, nil)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", resp.StatusCode)
+			resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/finalize", token, nil)
+			if resp.StatusCode != http.StatusConflict {
+				t.Fatalf("expected 409, got %d", resp.StatusCode)
+			}
+		})
 	}
 }
 
@@ -686,97 +752,112 @@ func TestFinalizeSession_EndedReturns409(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestAbandonSession_HappyPath(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator@example.com")
-	org := seedOrg(t, env.s, "Test Org", "abn-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator@example.com")
+			org := seedOrg(t, env.s, "Test Org", "abn-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	sess := createSession(t, env, org.ID, acc.ID)
-	token := env.bearerToken(t, acc.ID)
+			sess := createSession(t, env, org.ID, acc.ID)
+			token := env.bearerToken(t, acc.ID)
 
-	resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", token, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+			resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", token, nil)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("expected 200, got %d", resp.StatusCode)
+			}
 
-	var updated openapi.Session
-	decodeBody(t, resp, &updated)
-	if updated.Status != "ended" {
-		t.Errorf("expected status=ended, got %q", updated.Status)
-	}
-	if updated.EndReason != "abandoned" {
-		t.Errorf("expected end_reason=abandoned, got %q", updated.EndReason)
-	}
+			var updated openapi.Session
+			decodeBody(t, resp, &updated)
+			if updated.Status != "ended" {
+				t.Errorf("expected status=ended, got %q", updated.Status)
+			}
+			if updated.EndReason != "abandoned" {
+				t.Errorf("expected end_reason=abandoned, got %q", updated.EndReason)
+			}
 
-	// Verify session.ended event was emitted.
-	evts, _ := env.s.ListEventsSince(context.Background(), store.ListEventsSinceParams{
-		SessionID: sess.Id,
-		SinceSeq:  -1,
-		Limit:     100,
-	})
-	var endedCount int
-	for _, e := range evts {
-		if e.Type == "session.ended" {
-			endedCount++
-		}
-	}
-	if endedCount != 1 {
-		t.Errorf("expected 1 session.ended event, got %d", endedCount)
+			// Verify session.ended event was emitted.
+			evts, _ := env.s.ListEventsSince(context.Background(), store.ListEventsSinceParams{
+				SessionID: sess.Id,
+				SinceSeq:  -1,
+				Limit:     100,
+			})
+			var endedCount int
+			for _, e := range evts {
+				if e.Type == "session.ended" {
+					endedCount++
+				}
+			}
+			if endedCount != 1 {
+				t.Errorf("expected 1 session.ended event, got %d", endedCount)
+			}
+		})
 	}
 }
 
 func TestAbandonSession_DoubleFireNoDoubleEvent(t *testing.T) {
-	env := newTestEnv(t)
-	acc := seedAccount(t, env.s, "creator@example.com")
-	org := seedOrg(t, env.s, "Test Org", "abn-dbl-org")
-	seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			acc := seedAccount(t, env.s, "creator@example.com")
+			org := seedOrg(t, env.s, "Test Org", "abn-dbl-org")
+			seedOrgMember(t, env.s, org.ID, acc.ID, "creator")
 
-	sess := createSession(t, env, org.ID, acc.ID)
-	token := env.bearerToken(t, acc.ID)
+			sess := createSession(t, env, org.ID, acc.ID)
+			token := env.bearerToken(t, acc.ID)
 
-	// First abandon.
-	resp1 := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", token, nil)
-	if resp1.StatusCode != http.StatusOK {
-		t.Fatalf("first abandon: expected 200, got %d", resp1.StatusCode)
-	}
+			// First abandon.
+			resp1 := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", token, nil)
+			if resp1.StatusCode != http.StatusOK {
+				t.Fatalf("first abandon: expected 200, got %d", resp1.StatusCode)
+			}
 
-	// Second abandon — already ended, should return 409.
-	resp2 := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", token, nil)
-	if resp2.StatusCode != http.StatusConflict {
-		t.Fatalf("second abandon: expected 409, got %d", resp2.StatusCode)
-	}
+			// Second abandon — already ended, should return 409.
+			resp2 := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", token, nil)
+			if resp2.StatusCode != http.StatusConflict {
+				t.Fatalf("second abandon: expected 409, got %d", resp2.StatusCode)
+			}
 
-	// Verify only one session.ended event was emitted.
-	evts, _ := env.s.ListEventsSince(context.Background(), store.ListEventsSinceParams{
-		SessionID: sess.Id,
-		SinceSeq:  -1,
-		Limit:     100,
-	})
-	var endedCount int
-	for _, e := range evts {
-		if e.Type == "session.ended" {
-			endedCount++
-		}
-	}
-	if endedCount != 1 {
-		t.Errorf("expected exactly 1 session.ended event, got %d", endedCount)
+			// Verify only one session.ended event was emitted.
+			evts, _ := env.s.ListEventsSince(context.Background(), store.ListEventsSinceParams{
+				SessionID: sess.Id,
+				SinceSeq:  -1,
+				Limit:     100,
+			})
+			var endedCount int
+			for _, e := range evts {
+				if e.Type == "session.ended" {
+					endedCount++
+				}
+			}
+			if endedCount != 1 {
+				t.Errorf("expected exactly 1 session.ended event, got %d", endedCount)
+			}
+		})
 	}
 }
 
 func TestAbandonSession_NonCreatorForbidden(t *testing.T) {
-	env := newTestEnv(t)
-	creator := seedAccount(t, env.s, "creator@example.com")
-	member := seedAccount(t, env.s, "member@example.com")
-	org := seedOrg(t, env.s, "Test Org", "abn-perm-org")
-	seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
-	seedOrgMember(t, env.s, org.ID, member.ID, "member")
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			creator := seedAccount(t, env.s, "creator@example.com")
+			member := seedAccount(t, env.s, "member@example.com")
+			org := seedOrg(t, env.s, "Test Org", "abn-perm-org")
+			seedOrgMember(t, env.s, org.ID, creator.ID, "creator")
+			seedOrgMember(t, env.s, org.ID, member.ID, "member")
 
-	sess := createSession(t, env, org.ID, creator.ID)
-	memberToken := env.bearerToken(t, member.ID)
+			sess := createSession(t, env, org.ID, creator.ID)
+			memberToken := env.bearerToken(t, member.ID)
 
-	resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", memberToken, nil)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", resp.StatusCode)
+			resp := postJSON(t, env.srv, "/api/orgs/"+org.ID+"/sessions/"+sess.Id+"/abandon", memberToken, nil)
+			if resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("expected 403, got %d", resp.StatusCode)
+			}
+		})
 	}
 }
 
