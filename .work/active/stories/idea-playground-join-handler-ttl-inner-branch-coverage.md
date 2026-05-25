@@ -1,7 +1,7 @@
 ---
 id: idea-playground-join-handler-ttl-inner-branch-coverage
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground, testing]
 parent: feature-playground-hardening
 depends_on: [gate-security-githttp-receivepack-wallclock-not-injected]
@@ -72,3 +72,23 @@ throughout).
   the second time check if `time.Until` is the blocker (this would itself
   be a small product-correctness improvement, since the rest of the
   handler is clock-injected).
+
+## Implementation notes
+
+- Added `stepClock` type (pointer receiver) in `playground/handler_test.go`
+  alongside the existing `fixedClock`. Returns `base, base+step, base+2*step, ...`
+  on successive `Now()` calls.
+- New test `TestJoinPlaygroundSession_TTLZero_Returns410` in `handler_test.go`:
+  1. Creates a session with `HardCapAt = T0 + 1s`.
+  2. Wires the handler with `&stepClock{base: T0, step: 2*time.Second}`.
+  3. Resets `clk.n = 0` after env construction (provisioning consumed a
+     Now() call) so the join handler sees the intended sequence: outer
+     check at T0 (passes, `!T0.Before(T0+1s)` is false), inner ttl at T0+2s
+     (`HardCapAt.Sub(T0+2s) = -1s ≤ 0` fires).
+  4. Asserts 410 with `playground.session_ended` envelope.
+- Also added a `Logout` panic-stub to `playgroundOnlyStrict` (and to all
+  other test shims under `internal/portal/`) for the new operation
+  introduced by `feature-auth-signout-backend-revoke-backend` — required
+  for the strict-server interface check to compile.
+
+Verified: `go test ./internal/portal/playground/... -count 1 -run TTLZero_Returns410` passes.

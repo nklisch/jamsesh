@@ -60,6 +60,9 @@ func (c *commentsOnlyStrict) StartOAuth(_ context.Context, _ openapi.StartOAuthR
 func (c *commentsOnlyStrict) RefreshToken(_ context.Context, _ openapi.RefreshTokenRequestObject) (openapi.RefreshTokenResponseObject, error) {
 	panic("not wired")
 }
+func (c *commentsOnlyStrict) Logout(_ context.Context, _ openapi.LogoutRequestObject) (openapi.LogoutResponseObject, error) {
+	panic("not wired")
+}
 func (c *commentsOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
 	panic("not wired")
 }

@@ -64,6 +64,9 @@ func (stubStrict) RefreshToken(_ context.Context, _ openapi.RefreshTokenRequestO
 func (stubStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
 	return nil, nil
 }
+func (stubStrict) Logout(_ context.Context, _ openapi.LogoutRequestObject) (openapi.LogoutResponseObject, error) {
+	return nil, nil
+}
 func (stubStrict) GetMe(_ context.Context, _ openapi.GetMeRequestObject) (openapi.GetMeResponseObject, error) {
 	return nil, nil
 }

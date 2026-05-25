@@ -31,6 +31,22 @@ type fixedClock struct{ t time.Time }
 
 func (c fixedClock) Now() time.Time { return c.t }
 
+// stepClock returns base, base+step, base+2*step, ... on successive Now()
+// calls. Used to exercise inner branches that depend on the clock advancing
+// between two reads in the same handler invocation
+// (idea-playground-join-handler-ttl-inner-branch-coverage).
+type stepClock struct {
+	base time.Time
+	step time.Duration
+	n    int
+}
+
+func (c *stepClock) Now() time.Time {
+	t := c.base.Add(time.Duration(c.n) * c.step)
+	c.n++
+	return t
+}
+
 // ---------------------------------------------------------------------------
 // Storage stub
 // ---------------------------------------------------------------------------
@@ -90,6 +106,9 @@ func (h *playgroundOnlyStrict) StartOAuth(_ context.Context, _ openapi.StartOAut
 	panic("not wired")
 }
 func (h *playgroundOnlyStrict) RefreshToken(_ context.Context, _ openapi.RefreshTokenRequestObject) (openapi.RefreshTokenResponseObject, error) {
+	panic("not wired")
+}
+func (h *playgroundOnlyStrict) Logout(_ context.Context, _ openapi.LogoutRequestObject) (openapi.LogoutResponseObject, error) {
 	panic("not wired")
 }
 func (h *playgroundOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
@@ -892,6 +911,71 @@ func TestJoinPlaygroundSession_HardCapElapsed_Returns410(t *testing.T) {
 			if err != nil {
 				t.Fatalf("CreateSession: %v", err)
 			}
+
+			joinResp := postJSON(t, env.srv, "/api/playground/sessions/"+sessID+"/join", "", nil)
+			if joinResp.StatusCode != http.StatusGone {
+				t.Errorf("want 410, got %d", joinResp.StatusCode)
+			}
+			var errBody openapi.ErrorEnvelope
+			decodeJSON(t, joinResp, &errBody)
+			if errBody.Error != "playground.session_ended" {
+				t.Errorf("want error=playground.session_ended, got %q", errBody.Error)
+			}
+		})
+	}
+}
+
+// TestJoinPlaygroundSession_TTLZero_Returns410 covers the inner-branch
+// `ttl <= 0` path in JoinPlaygroundSession (handler.go around line 306):
+// the outer hard-cap check passes (clock at T0, HardCapAt at T0+1s, so
+// `!T0.Before(T0+1s)` = false → proceeds), then the clock advances between
+// the outer and inner reads, making `HardCapAt.Sub(now)` negative.
+//
+// Driven by a stepClock that returns base, base+step, base+2*step, ... on
+// successive Now() calls — the outer check uses Now() #1, the inner
+// computation uses Now() #2.
+//
+// (idea-playground-join-handler-ttl-inner-branch-coverage)
+func TestJoinPlaygroundSession_TTLZero_Returns410(t *testing.T) {
+	for _, h := range stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			ctx := context.Background()
+			s := h.Open(t)
+
+			T0 := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+			hardCapAt := T0.Add(1 * time.Second)
+			idleAt := T0.Add(30 * time.Minute)
+
+			// stepClock: outer check sees T0 (passes); inner computation sees
+			// T0+2s (ttl = 1s - 2s = -1s ≤ 0 → 410). Build the env BEFORE
+			// inserting the session so the reserved playground org row is
+			// provisioned (FK target).
+			clk := &stepClock{base: T0, step: 2 * time.Second}
+			env := newTestEnvWithClock(t, s, defaultCfg(), clk)
+
+			sessID := "sess-ttl-zero"
+			_, err := s.CreateSession(ctx, store.CreateSessionParams{
+				ID:                        sessID,
+				OrgID:                     playground.ReservedOrgID,
+				Name:                      "ttl-zero-test",
+				Goal:                      "exercise ttl<=0 inner branch",
+				WritableScope:             `["**"]`,
+				DefaultMode:               "sync",
+				Status:                    "active",
+				CreatedAt:                 T0.Add(-1 * time.Hour),
+				LastSubstantiveActivityAt: &T0,
+				HardCapAt:                 &hardCapAt,
+				IdleTimeoutAt:             &idleAt,
+			})
+			if err != nil {
+				t.Fatalf("CreateSession: %v", err)
+			}
+
+			// The first Now() call already happened inside newTestEnvWithClock
+			// (provisioning the reserved org). Reset n so the join handler
+			// sees a fresh sequence — outer call returns T0, inner returns T0+2s.
+			clk.n = 0
 
 			joinResp := postJSON(t, env.srv, "/api/playground/sessions/"+sessID+"/join", "", nil)
 			if joinResp.StatusCode != http.StatusGone {

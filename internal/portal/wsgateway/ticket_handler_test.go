@@ -53,6 +53,9 @@ func (h *wsTicketOnlyHandler) StartOAuth(_ context.Context, _ openapi.StartOAuth
 func (h *wsTicketOnlyHandler) RefreshToken(_ context.Context, _ openapi.RefreshTokenRequestObject) (openapi.RefreshTokenResponseObject, error) {
 	panic("not implemented")
 }
+func (h *wsTicketOnlyHandler) Logout(_ context.Context, _ openapi.LogoutRequestObject) (openapi.LogoutResponseObject, error) {
+	panic("not wired")
+}
 func (h *wsTicketOnlyHandler) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
 	panic("not implemented")
 }

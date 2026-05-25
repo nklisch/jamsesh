@@ -116,6 +116,9 @@ func (m *magicLinkOnlyStrict) RefreshToken(_ context.Context, _ openapi.RefreshT
 	panic("RefreshToken: not wired in this test")
 }
 
+func (m *magicLinkOnlyStrict) Logout(_ context.Context, _ openapi.LogoutRequestObject) (openapi.LogoutResponseObject, error) {
+	panic("not wired")
+}
 func (m *magicLinkOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
 	panic("RevokeToken: not wired in this test")
 }

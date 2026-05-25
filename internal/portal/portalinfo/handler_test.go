@@ -38,6 +38,9 @@ func (h *portalInfoOnlyStrict) StartOAuth(_ context.Context, _ openapi.StartOAut
 func (h *portalInfoOnlyStrict) RefreshToken(_ context.Context, _ openapi.RefreshTokenRequestObject) (openapi.RefreshTokenResponseObject, error) {
 	panic("not wired")
 }
+func (h *portalInfoOnlyStrict) Logout(_ context.Context, _ openapi.LogoutRequestObject) (openapi.LogoutResponseObject, error) {
+	panic("not wired")
+}
 func (h *portalInfoOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
 	panic("not wired")
 }

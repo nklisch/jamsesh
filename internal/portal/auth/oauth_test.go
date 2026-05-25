@@ -64,6 +64,9 @@ func (o *oauthOnlyStrict) RefreshToken(_ context.Context, _ openapi.RefreshToken
 	panic("RefreshToken: not wired in OAuth tests")
 }
 
+func (o *oauthOnlyStrict) Logout(_ context.Context, _ openapi.LogoutRequestObject) (openapi.LogoutResponseObject, error) {
+	panic("not wired")
+}
 func (o *oauthOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
 	panic("RevokeToken: not wired in OAuth tests")
 }

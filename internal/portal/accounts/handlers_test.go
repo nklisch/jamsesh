@@ -101,6 +101,9 @@ func (a *accountsOnlyStrict) StartOAuth(_ context.Context, _ openapi.StartOAuthR
 func (a *accountsOnlyStrict) RefreshToken(_ context.Context, _ openapi.RefreshTokenRequestObject) (openapi.RefreshTokenResponseObject, error) {
 	panic("RefreshToken: not wired in accounts tests")
 }
+func (a *accountsOnlyStrict) Logout(_ context.Context, _ openapi.LogoutRequestObject) (openapi.LogoutResponseObject, error) {
+	panic("not wired")
+}
 func (a *accountsOnlyStrict) RevokeToken(_ context.Context, _ openapi.RevokeTokenRequestObject) (openapi.RevokeTokenResponseObject, error) {
 	panic("RevokeToken: not wired in accounts tests")
 }
