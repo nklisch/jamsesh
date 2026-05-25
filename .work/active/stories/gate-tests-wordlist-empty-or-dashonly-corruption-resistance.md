@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wordlist-empty-or-dashonly-corruption-resistance
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -46,3 +46,11 @@ Added `internal/portal/playground/wordlist/corruption_resistance_test.go` (inter
 - `TestSplitNonEmpty_TrimsLeadingTrailingSpacesFromEntries` — entries with surrounding whitespace are trimmed before they reach the slice.
 
 All 8 tests (5 new + 3 pre-existing) pass. No production bugs found; the real wordlists contain no blank or dash-only lines.
+
+## Review notes
+
+Approve. 10k-iteration Pick() test exercises the real embedded wordlist
+end-to-end (asserts non-empty, exactly one hyphen, no leading/trailing dash).
+The internal-package tests exercise the splitNonEmpty parser directly and
+honestly document its design boundary (dash-only lines pass through —
+protection is the curated source, not the parser). All 8 tests pass.
