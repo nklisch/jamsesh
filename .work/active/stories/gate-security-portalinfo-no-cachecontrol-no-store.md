@@ -1,7 +1,7 @@
 ---
 id: gate-security-portalinfo-no-cachecontrol-no-store
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal, http]
 parent: feature-spa-bootstrap-hygiene
 depends_on: []
@@ -41,3 +41,27 @@ for the cache TTL. Mostly an operational correctness concern, but flipping
 playground off after abuse is a security operator's lever — caches should
 not weaken it. Set `Cache-Control: no-store` (or short max-age with
 `must-revalidate`).
+
+## Implementation notes
+
+- `internal/portal/portalinfo/handler.go`: added exported
+  `NoCacheMiddleware(next http.Handler) http.Handler` that sets
+  `Cache-Control: no-store` before calling next.ServeHTTP. Header is set
+  BEFORE the strict-server handler writes status — Go's net/http drops
+  headers set after WriteHeader.
+- `cmd/portal/main.go`: changed the registration from
+  `r.Get("/portal/info", ...)` to
+  `r.With(portalinfo.NoCacheMiddleware).Get("/portal/info", ...)` —
+  scoped to only this endpoint via chi's `r.With(...)` chain. No other
+  route is affected.
+- `internal/portal/portalinfo/handler_test.go`: `newTestEnv` now wraps
+  the route with `NoCacheMiddleware` so existing tests exercise production
+  wiring. New test `TestGetPortalInfo_CacheControlNoStore` asserts
+  `resp.Header.Get("Cache-Control") == "no-store"` and that the body is
+  still valid JSON.
+- "no-store" (not "no-cache") so the response is never stored, even with
+  revalidation — needed because deploy-time config flips must reach the
+  browser without a stale-cache window.
+
+Verified: `go test ./internal/portal/portalinfo/... -count 1` passes
+(all 7+ subtests).

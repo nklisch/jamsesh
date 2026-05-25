@@ -172,7 +172,9 @@ func newTestEnv(t *testing.T, h *portalinfo.Handler) *testEnv {
 	}
 
 	r := chi.NewRouter()
-	r.Get("/api/portal/info", apiWrapper.GetPortalInfo)
+	// Match production wiring: NoCacheMiddleware applied to /portal/info only.
+	// (gate-security-portalinfo-no-cachecontrol-no-store)
+	r.With(portalinfo.NoCacheMiddleware).Get("/api/portal/info", apiWrapper.GetPortalInfo)
 
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
@@ -303,5 +305,33 @@ func TestGetPortalInfo_NoAuthRequired(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status: got %d, want 200 (endpoint must be public)", resp.StatusCode)
+	}
+}
+
+// TestGetPortalInfo_CacheControlNoStore asserts the Cache-Control: no-store
+// header is present so deploy-time config flips (PlaygroundEnabled,
+// LandingVariant) propagate immediately to all browsers and any
+// intermediate cache.
+// (gate-security-portalinfo-no-cachecontrol-no-store)
+func TestGetPortalInfo_CacheControlNoStore(t *testing.T) {
+	h := &portalinfo.Handler{PlaygroundEnabled: true, LandingVariant: "auto"}
+	env := newTestEnv(t, h)
+
+	resp, err := http.Get(env.srv.URL + "/api/portal/info")
+	if err != nil {
+		t.Fatalf("GET /api/portal/info: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control: got %q, want %q", got, "no-store")
+	}
+	// The body must still decode normally.
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if _, ok := body["playground_enabled"]; !ok {
+		t.Errorf("playground_enabled missing from body: %v", body)
 	}
 }

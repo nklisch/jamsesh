@@ -969,7 +969,9 @@ func main() {
 			// Portal info — fully public, no auth or rate-limiting needed.
 			// Returns deploy-time config (playground_enabled, landing_variant) for
 			// anonymous SPA bootstrap before the auth flow completes.
-			r.Get("/portal/info", apiWrapper.GetPortalInfo)
+			// Cache-Control: no-store so deploy-time toggles propagate immediately
+			// (gate-security-portalinfo-no-cachecontrol-no-store).
+			r.With(portalinfo.NoCacheMiddleware).Get("/portal/info", apiWrapper.GetPortalInfo)
 
 			// Playground — unauthenticated: create and join issue fresh bearers,
 			// tombstone is public (no credential needed to read destruction summary).
