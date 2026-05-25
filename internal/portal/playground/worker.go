@@ -130,11 +130,18 @@ func (w *Worker) purgeTombstones(ctx context.Context) {
 
 // reasonFor determines the end_reason string for a session based on which
 // threshold has elapsed. Hard cap takes priority when both are past.
+//
+// Uses !now.Before (i.e. now >= threshold) rather than now.After (now >
+// threshold) so the tombstone reason is correct at the EXACT boundary
+// instant. The SQL sweep predicate is `hard_cap_at <= ?` / `idle_timeout_at
+// <= ?`; matching that predicate's inclusivity here keeps the tombstone
+// reason consistent at the boundary.
+// (bug-playground-worker-reasonFor-off-by-one-at-exact-boundary)
 func (w *Worker) reasonFor(sess store.Session, now time.Time) string {
-	if sess.HardCapAt != nil && now.After(*sess.HardCapAt) {
+	if sess.HardCapAt != nil && !now.Before(*sess.HardCapAt) {
 		return "hard_cap"
 	}
-	if sess.IdleTimeoutAt != nil && now.After(*sess.IdleTimeoutAt) {
+	if sess.IdleTimeoutAt != nil && !now.Before(*sess.IdleTimeoutAt) {
 		return "idle"
 	}
 	// Shouldn't happen — the sweep query only returns sessions where at least

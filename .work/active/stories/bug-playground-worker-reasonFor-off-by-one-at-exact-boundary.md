@@ -1,7 +1,7 @@
 ---
 id: bug-playground-worker-reasonFor-off-by-one-at-exact-boundary
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, playground]
 parent: feature-playground-hardening
 depends_on: []
@@ -49,3 +49,17 @@ this fix).
 Low — semantically the session is still cleaned up at the boundary; just
 the tombstone reason is wrong. Affects observability/telemetry only. Not
 data-correctness.
+
+## Implementation notes
+
+- `internal/portal/playground/worker.go`: switched both branches in
+  `reasonFor` from `now.After(*sess.HardCapAt)` / `now.After(*sess.IdleTimeoutAt)`
+  to `!now.Before(*sess.HardCapAt)` / `!now.Before(*sess.IdleTimeoutAt)` —
+  i.e. `now >= threshold`, matching the SQL sweep's `<= ?now` predicate.
+- `worker_test.go`: `TestWorker_SessionExpiresWhenNowEqualsHardCapAt` and
+  `TestWorker_SessionExpiresWhenNowEqualsIdleTimeoutAt` now assert
+  `"hard_cap"` and `"idle"` at the exact boundary (previously asserted
+  `"manual"` as a documented workaround). The "off-by-one" comments are
+  replaced with notes that the inclusivity now matches the SQL predicate.
+
+Verified: `go test ./internal/portal/playground/... -count 1` passes.

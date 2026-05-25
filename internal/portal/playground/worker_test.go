@@ -344,13 +344,9 @@ func TestWorker_RunsEvenWhenCreateDisabled(t *testing.T) {
 // that inclusion so future refactors or query rewrites can't silently change
 // `<=` to `<` (strict) without a failing test.
 //
-// Secondary observation: reasonFor uses now.After(hard_cap_at) which is
-// strictly `now > hard_cap_at`. At the exact equality point the hard_cap
-// branch is false and the idle branch is also false, so reasonFor falls
-// through to "manual". This test therefore asserts reason "manual" at the
-// boundary — not "hard_cap". A future change that aligns reasonFor to use
-// `>=` (i.e. !now.Before(hard_cap_at)) would correctly return "hard_cap" and
-// this assertion should be updated at that time.
+// reasonFor uses !now.Before(hard_cap_at) (i.e. now >= hard_cap_at) so the
+// boundary returns "hard_cap" — matching the SQL predicate's inclusivity.
+// (bug-playground-worker-reasonFor-off-by-one-at-exact-boundary)
 func TestWorker_SessionExpiresWhenNowEqualsHardCapAt(t *testing.T) {
 	ctx := context.Background()
 	env, worker, clk := newWorkerEnv(t)
@@ -390,15 +386,14 @@ func TestWorker_SessionExpiresWhenNowEqualsHardCapAt(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got: %v", err)
 	}
 
-	// At the exact boundary reasonFor uses now.After(hard_cap_at) which is
-	// strictly >, so it falls through to "manual". This is the documented
-	// off-by-one between the SQL predicate (<=) and reasonFor (>).
+	// reasonFor uses !now.Before(hard_cap_at) — matches the SQL <= predicate.
+	// At the exact boundary the reason is "hard_cap".
 	tomb, err := env.s.GetTombstone(ctx, sess.ID)
 	if err != nil {
 		t.Fatalf("GetTombstone: %v", err)
 	}
-	if tomb.EndReason != "manual" {
-		t.Errorf("tombstone end_reason at exact hard_cap_at boundary: want manual (reasonFor off-by-one), got %s", tomb.EndReason)
+	if tomb.EndReason != "hard_cap" {
+		t.Errorf("tombstone end_reason at exact hard_cap_at boundary: want hard_cap, got %s", tomb.EndReason)
 	}
 }
 
@@ -410,12 +405,9 @@ func TestWorker_SessionExpiresWhenNowEqualsHardCapAt(t *testing.T) {
 // boundary. This test locks that inclusion so future refactors or query
 // rewrites can't silently change `<=` to `<` (strict) without a failing test.
 //
-// Secondary observation: reasonFor uses now.After(idle_timeout_at) which is
-// strictly `now > idle_timeout_at`. At the exact equality point the idle
-// branch is false, so reasonFor falls through to "manual". This test therefore
-// asserts reason "manual" at the boundary — not "idle". A future change that
-// aligns reasonFor to use `>=` (i.e. !now.Before(idle_timeout_at)) would
-// correctly return "idle" and this assertion should be updated at that time.
+// reasonFor uses !now.Before(idle_timeout_at) — same inclusivity as the SQL
+// predicate — so the reason at the exact boundary is "idle".
+// (bug-playground-worker-reasonFor-off-by-one-at-exact-boundary)
 func TestWorker_SessionExpiresWhenNowEqualsIdleTimeoutAt(t *testing.T) {
 	ctx := context.Background()
 	env, worker, clk := newWorkerEnv(t)
@@ -455,15 +447,14 @@ func TestWorker_SessionExpiresWhenNowEqualsIdleTimeoutAt(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got: %v", err)
 	}
 
-	// At the exact boundary reasonFor uses now.After(idle_timeout_at) which is
-	// strictly >, so it falls through to "manual". This is the documented
-	// off-by-one between the SQL predicate (<=) and reasonFor (>).
+	// reasonFor uses !now.Before(idle_timeout_at) — matches the SQL <=
+	// predicate. At the exact boundary the reason is "idle".
 	tomb, err := env.s.GetTombstone(ctx, sess.ID)
 	if err != nil {
 		t.Fatalf("GetTombstone: %v", err)
 	}
-	if tomb.EndReason != "manual" {
-		t.Errorf("tombstone end_reason at exact idle_timeout_at boundary: want manual (reasonFor off-by-one), got %s", tomb.EndReason)
+	if tomb.EndReason != "idle" {
+		t.Errorf("tombstone end_reason at exact idle_timeout_at boundary: want idle, got %s", tomb.EndReason)
 	}
 }
 
