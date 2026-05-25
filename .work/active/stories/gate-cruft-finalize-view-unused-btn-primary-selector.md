@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-finalize-view-unused-btn-primary-selector
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
