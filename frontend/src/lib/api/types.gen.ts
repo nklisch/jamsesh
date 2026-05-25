@@ -123,6 +123,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portal/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return deploy-time portal configuration for anonymous bootstrap
+         * @description Returns the portal's deploy-time configuration that the SPA needs before
+         *     authentication: whether the playground is enabled and which landing variant
+         *     is active. No authorization required — the endpoint is intentionally public
+         *     so the SPA can fetch it on bootstrap before the auth flow completes.
+         */
+        get: operations["getPortalInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me": {
         parameters: {
             query?: never;
@@ -800,7 +823,7 @@ export interface components {
              * @description Event type; used as discriminator for payload
              * @enum {string}
              */
-            type: "commit.arrived" | "merge.succeeded" | "conflict.detected" | "conflict.resolved" | "comment.added" | "comment.resolved" | "ref.forked" | "mode.changed" | "turn.ended" | "presence.updated" | "session.created" | "session.finalizing" | "session.ended" | "playground.destruction_warning";
+            type: "auto-merger.backpressure" | "commit.arrived" | "merge.succeeded" | "conflict.detected" | "conflict.resolved" | "comment.added" | "comment.resolved" | "ref.forked" | "mode.changed" | "turn.ended" | "presence.updated" | "session.created" | "session.finalizing" | "session.ended" | "playground.destruction_warning";
             /**
              * Format: date-time
              * @description ISO-8601 timestamp of event emission
@@ -808,7 +831,14 @@ export interface components {
             timestamp: string;
             /** @description Session this event belongs to */
             session_id: string;
-            payload: components["schemas"]["CommitArrivedPayload"] | components["schemas"]["MergeSucceededPayload"] | components["schemas"]["ConflictDetectedPayload"] | components["schemas"]["ConflictResolvedPayload"] | components["schemas"]["CommentAddedPayload"] | components["schemas"]["CommentResolvedPayload"] | components["schemas"]["RefForkedPayload"] | components["schemas"]["ModeChangedPayload"] | components["schemas"]["TurnEndedPayload"] | components["schemas"]["PresenceUpdatedPayload"] | components["schemas"]["SessionCreatedPayload"] | components["schemas"]["SessionFinalizingPayload"] | components["schemas"]["SessionEndedPayload"] | components["schemas"]["PlaygroundDestructionWarningPayload"];
+            payload: components["schemas"]["AutoMergerBackpressurePayload"] | components["schemas"]["CommitArrivedPayload"] | components["schemas"]["MergeSucceededPayload"] | components["schemas"]["ConflictDetectedPayload"] | components["schemas"]["ConflictResolvedPayload"] | components["schemas"]["CommentAddedPayload"] | components["schemas"]["CommentResolvedPayload"] | components["schemas"]["RefForkedPayload"] | components["schemas"]["ModeChangedPayload"] | components["schemas"]["TurnEndedPayload"] | components["schemas"]["PresenceUpdatedPayload"] | components["schemas"]["SessionCreatedPayload"] | components["schemas"]["SessionFinalizingPayload"] | components["schemas"]["SessionEndedPayload"] | components["schemas"]["PlaygroundDestructionWarningPayload"];
+        };
+        /** @description The auto-merger work queue was full when a commit.arrived event was received; the commit was dropped from the merge pipeline. Emitted so clients can surface backpressure warnings. PROTOCOL.md canonical fields: session_id, dropped_ref. */
+        AutoMergerBackpressurePayload: {
+            /** @description ID of the session whose auto-merger queue was full */
+            session_id: string;
+            /** @description The session ref whose commit was dropped from the queue (omitted if unknown) */
+            dropped_ref?: string;
         };
         /** @description A commit was pushed to a session ref. PROTOCOL.md canonical fields: ref, sha, author_id, summary. */
         CommitArrivedPayload: {
@@ -1758,6 +1788,7 @@ export interface components {
             /**
              * @description Requested display handle (e.g. "amber-otter"). Optional; server picks
              *     one if absent. Server retries on collision with a fresh wordlist pick.
+             *     Must be 2-24 characters, letters/digits/dashes only.
              * @example quiet-fox
              */
             nickname?: string;
@@ -1888,6 +1919,22 @@ export interface components {
              * @description ISO-8601 timestamp when this tombstone itself expires (default 30 days after ended_at)
              */
             expires_at: string;
+        };
+        PortalInfo: {
+            /**
+             * @description Whether the playground subsystem is enabled on this deploy
+             * @example true
+             */
+            playground_enabled: boolean;
+            /**
+             * @description What anonymous visitors see at "/":
+             *     "auto" — redirect to /playground when playground is enabled, else /login;
+             *     "project" — render the project landing page;
+             *     "login" — redirect to /login (today's default behaviour).
+             * @example auto
+             * @enum {string}
+             */
+            landing_variant: "auto" | "project" | "login";
         };
     };
     responses: {
@@ -2098,6 +2145,19 @@ export interface operations {
                 };
                 content?: never;
             };
+            /**
+             * @description Bad request. Possible error codes:
+             *     - `magic_link.reserved_domain` — email domain is reserved for internal use (e.g. @playground.local synthetic accounts).
+             *     - `auth.magic_link_not_enabled` — portal has no email provider configured.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error (email delivery failure) */
             500: {
                 headers: {
@@ -2132,6 +2192,26 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getPortalInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Portal info */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalInfo"];
+                };
+            };
         };
     };
     getMe: {
@@ -3315,6 +3395,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaygroundJoinResult"];
+                };
+            };
+            /**
+             * @description Bad request. Possible error codes:
+             *     - `playground.invalid_nickname` — nickname does not meet the 2-24 char, letters/digits/dashes rule.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             404: components["responses"]["NotFound"];

@@ -312,6 +312,29 @@ correction. No page reload is needed.
 The portal UI has these primary surfaces. (Concrete designs land in
 `.mockups/screens/` as built.)
 
+- **Anonymous visitor at `/`** — what unauthenticated visitors see at the
+  root path is controlled by the deploy-time `JAMSESH_LANDING_VARIANT` flag
+  (exposed to the SPA via `GET /api/portal/info`, fetched at bootstrap into
+  the `portalInfo` rune store). Three variants:
+  - `project` — renders `ProjectLanding.svelte` in-place at `/`. The
+    Swiss/ITS design (strict 12-col grid, numbered sections 01 HERO / 02
+    SCHEMATIC / 03 METHOD, colophon). Used by jamsesh.dev. Mockup:
+    `.mockups/screens/feature-portal-visitor-entry-pages/option-1.html`.
+  - `auto` (default) — if the deploy has `playground_enabled: true`,
+    redirects anonymous `/` to `/playground` (the existing
+    `PlaygroundLanding.svelte`). If playground is disabled, redirects to
+    `/login`. This variant maximises playground discoverability with zero
+    extra config.
+  - `login` — redirects anonymous `/` to `/login` unconditionally.
+    Available for self-hosters who want auth-only entry even when playground
+    is enabled.
+
+  Authenticated visitors at `/` are unaffected by this flag — they always
+  see `Home.svelte` (the org picker / org creation flow). The `portalInfo`
+  gate is anonymous-only. If the `/api/portal/info` fetch fails at
+  bootstrap, the SPA falls back to `login` variant (safe bounce to `/login`)
+  and logs a console warning.
+
 - **Home (post-auth landing at `/`)** — the SPA's first non-org-scoped
   surface after sign-in. Renders one of three states driven by `auth.orgs`
   (populated from `GET /api/me`'s `orgs[]`): `null` (loading spinner);

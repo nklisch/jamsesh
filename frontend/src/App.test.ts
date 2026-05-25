@@ -1,6 +1,7 @@
 // App.test.ts
 // Covers two $effect blocks in App.svelte:
-//   1. Auth-gate effect  — redirects based on auth state and route name.
+//   1. Auth-gate effect  — redirects based on auth state, route name, and
+//      landing-variant from portalInfo.
 //   2. Bootstrap effect  — calls auth.loadCurrentUser() exactly once on cold-load.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -45,6 +46,9 @@ vi.mock('$lib/screens/InviteAccept.svelte', () => ({
 vi.mock('$lib/screens/NotFound.svelte', () => ({
   default: function NotFoundStub(_anchor: unknown, _props: unknown) { return {}; },
 }));
+vi.mock('$lib/screens/ProjectLanding.svelte', () => ({
+  default: function ProjectLandingStub(_anchor: unknown, _props: unknown) { return {}; },
+}));
 
 // ── Router mock ──────────────────────────────────────────────────────────────
 // `current` is a mutable object so tests can set .name before render().
@@ -84,6 +88,28 @@ vi.mock('$lib/auth.svelte', () => ({
   },
 }));
 
+// ── portalInfo mock ──────────────────────────────────────────────────────────
+// Mirrors the wrapper-object shape from portalInfo.svelte.ts.
+// Tests mutate mockPortalInfo fields directly; init() is a no-op.
+
+const mockPortalInfoInit = vi.fn().mockResolvedValue(undefined);
+const mockPortalInfo = {
+  loaded: true as boolean,
+  playgroundEnabled: false as boolean,
+  landingVariant: 'login' as 'auto' | 'project' | 'login',
+};
+
+vi.mock('$lib/portalInfo.svelte', () => ({
+  get portalInfo() {
+    return {
+      get loaded() { return mockPortalInfo.loaded; },
+      get playgroundEnabled() { return mockPortalInfo.playgroundEnabled; },
+      get landingVariant() { return mockPortalInfo.landingVariant; },
+      init: () => mockPortalInfoInit(),
+    };
+  },
+}));
+
 // ── Location helper ───────────────────────────────────────────────────────────
 
 function setLocation(pathname: string, search: string = '') {
@@ -105,6 +131,10 @@ describe('App — auth-gate $effect', () => {
     mockRouterCurrent.name = 'home';
     mockRouterCurrent.params = {};
     mockRouterCurrent.requiresAuth = true;
+    // portalInfo defaults: loaded, login variant (safe default).
+    mockPortalInfo.loaded = true;
+    mockPortalInfo.playgroundEnabled = false;
+    mockPortalInfo.landingVariant = 'login';
     setLocation('/');
   });
 
@@ -193,6 +223,93 @@ describe('App — auth-gate $effect', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(mockNavigate).not.toHaveBeenCalled();
   });
+
+  // ── Anonymous `/` landing-variant routing ─────────────────────────────────
+  // Covers the 6 combinations from the Unit 2 acceptance criteria.
+
+  it('unauthed + landingVariant=project → does NOT navigate (renders ProjectLanding in-place)', async () => {
+    mockAuth.isAuthenticated = false;
+    mockRouterCurrent.name = 'home';
+    mockRouterCurrent.requiresAuth = true;
+    mockPortalInfo.loaded = true;
+    mockPortalInfo.landingVariant = 'project';
+    mockPortalInfo.playgroundEnabled = false;
+
+    render(App);
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('unauthed + landingVariant=auto + playgroundEnabled=true → navigates to /playground', async () => {
+    mockAuth.isAuthenticated = false;
+    mockRouterCurrent.name = 'home';
+    mockRouterCurrent.requiresAuth = true;
+    mockPortalInfo.loaded = true;
+    mockPortalInfo.landingVariant = 'auto';
+    mockPortalInfo.playgroundEnabled = true;
+
+    render(App);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/playground'));
+  });
+
+  it('unauthed + landingVariant=auto + playgroundEnabled=false → navigates to /login', async () => {
+    mockAuth.isAuthenticated = false;
+    mockRouterCurrent.name = 'home';
+    mockRouterCurrent.requiresAuth = true;
+    mockPortalInfo.loaded = true;
+    mockPortalInfo.landingVariant = 'auto';
+    mockPortalInfo.playgroundEnabled = false;
+
+    render(App);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+  });
+
+  it('unauthed + landingVariant=login → navigates to /login', async () => {
+    mockAuth.isAuthenticated = false;
+    mockRouterCurrent.name = 'home';
+    mockRouterCurrent.requiresAuth = true;
+    mockPortalInfo.loaded = true;
+    mockPortalInfo.landingVariant = 'login';
+    mockPortalInfo.playgroundEnabled = false;
+
+    render(App);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+  });
+
+  it('authed + landingVariant=project → does NOT navigate (renders Home, flag has no effect on authed)', async () => {
+    mockAuth.isAuthenticated = true;
+    mockAuth.orgs = [{ id: 'org-1', name: 'Acme', slug: 'acme', role: 'creator' }];
+    mockRouterCurrent.name = 'home';
+    mockRouterCurrent.requiresAuth = true;
+    mockPortalInfo.loaded = true;
+    mockPortalInfo.landingVariant = 'project';
+    mockPortalInfo.playgroundEnabled = false;
+
+    render(App);
+
+    await new Promise((r) => setTimeout(r, 50));
+    // Should NOT navigate — authed users at / always see Home.svelte.
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('portalInfo not yet loaded → does not navigate until loaded (gate holds)', async () => {
+    mockAuth.isAuthenticated = false;
+    mockRouterCurrent.name = 'home';
+    mockRouterCurrent.requiresAuth = true;
+    // Simulate the fetch still in flight.
+    mockPortalInfo.loaded = false;
+    mockPortalInfo.landingVariant = 'login';
+
+    render(App);
+
+    await new Promise((r) => setTimeout(r, 50));
+    // Gate must hold while portalInfo is not yet loaded.
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
 });
 
 describe('App — bootstrap $effect', () => {
@@ -202,6 +319,10 @@ describe('App — bootstrap $effect', () => {
     mockRouterCurrent.name = 'home';
     mockRouterCurrent.params = {};
     mockRouterCurrent.requiresAuth = true;
+    // portalInfo defaults: loaded, project variant so gate does not navigate.
+    mockPortalInfo.loaded = true;
+    mockPortalInfo.landingVariant = 'project';
+    mockPortalInfo.playgroundEnabled = false;
     setLocation('/');
   });
 

@@ -1,8 +1,10 @@
 <script lang="ts">
   import { current, navigate } from '$lib/router.svelte';
   import { auth } from '$lib/auth.svelte';
+  import { portalInfo } from '$lib/portalInfo.svelte';
   import Login from '$lib/screens/Login.svelte';
   import Home from '$lib/screens/Home.svelte';
+  import ProjectLanding from '$lib/screens/ProjectLanding.svelte';
   import MagicLinkExchange from '$lib/screens/MagicLinkExchange.svelte';
   import OAuthCallback from '$lib/screens/OAuthCallback.svelte';
   import SessionList from '$lib/screens/SessionList.svelte';
@@ -15,6 +17,11 @@
   import SessionTombstone from '$lib/screens/SessionTombstone.svelte';
   import NotFound from '$lib/screens/NotFound.svelte';
 
+  // Bootstrap: kick off portalInfo.init() immediately alongside auth so that
+  // the landing-variant is resolved before the auth-gate effect makes routing
+  // decisions at `/` for anonymous visitors.
+  void portalInfo.init();
+
   // Auth gate: routes that declare `requiresAuth: true` (the default) require
   // an authenticated session. Routes that declare `requiresAuth: false` are
   // public and the gate leaves them alone.
@@ -23,6 +30,9 @@
   // `?return_to=<original>` so that after the user logs in they land back on
   // the invite page rather than the generic session list.  All other routes
   // continue to lose context on redirect (existing behavior).
+  //
+  // Anonymous `/` (home) routing waits for portalInfo.loaded so we don't
+  // decide the landing-variant before the bootstrap fetch resolves.
   $effect(() => {
     // Authed user landed on /login (direct visit, back button, etc.) — bounce to home.
     // Skip oauth-callback (it does its own post-exchange navigation) and magic-link
@@ -32,11 +42,28 @@
       return;
     }
 
-    // Unauthed user on a protected route → /login.
-    // Whether a route is protected is declared on the route itself via
-    // `requiresAuth: true` (the default). The old hardcoded name-based
-    // allowlist is gone; the route registry is the single source of truth.
+    // Unauthed user on a protected route → /login, with landing-variant
+    // branching for the home route. Gate on portalInfo.loaded so the variant
+    // decision isn't made before the bootstrap fetch resolves.
     if (current.requiresAuth && !auth.isAuthenticated) {
+      if (current.name === 'home') {
+        // Wait until portalInfo has resolved its bootstrap fetch.
+        if (!portalInfo.loaded) return;
+
+        const v = portalInfo.landingVariant;
+        if (v === 'project') {
+          // Render ProjectLanding in-place at `/` — no navigation.
+          return;
+        }
+        if (v === 'auto' && portalInfo.playgroundEnabled) {
+          navigate('/playground');
+          return;
+        }
+        // 'login', 'auto'+!playgroundEnabled, or any fallback.
+        navigate('/login');
+        return;
+      }
+
       if (current.name === 'invite-accept') {
         const returnTo = window.location.pathname + window.location.search;
         navigate('/login?return_to=' + encodeURIComponent(returnTo));
@@ -60,6 +87,8 @@
 
 {#if current.name === 'login'}
   <Login />
+{:else if current.name === 'home' && !auth.isAuthenticated && portalInfo.loaded && portalInfo.landingVariant === 'project'}
+  <ProjectLanding />
 {:else if current.name === 'home'}
   <Home />
 {:else if current.name === 'magic-link'}
