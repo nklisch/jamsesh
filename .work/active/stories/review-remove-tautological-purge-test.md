@@ -1,7 +1,7 @@
 ---
 id: review-remove-tautological-purge-test
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground, cleanup]
 parent: null
 depends_on: []
