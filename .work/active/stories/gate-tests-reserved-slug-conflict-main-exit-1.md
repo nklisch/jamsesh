@@ -1,7 +1,7 @@
 ---
 id: gate-tests-reserved-slug-conflict-main-exit-1
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -58,3 +58,11 @@ Created `cmd/portal/main_test.go` with
 
 `go build ./...` and `go test ./cmd/portal/...` both pass. Test runtime ~1.6s
 (dominated by the `go build` of the portal binary).
+
+## Review notes
+
+Approve. True e2e: builds the portal binary into a tempdir, seeds an on-disk
+SQLite with an unprotected slug="playground" org, spawns the binary with
+`JAMSESH_PLAYGROUND_ENABLED=true`, asserts exit code 1 + stderr contains both
+"reserved slug" and the `JAMSESH_PLAYGROUND_ENABLED=false` remediation hint.
+Test passes (~3.5s with build).
