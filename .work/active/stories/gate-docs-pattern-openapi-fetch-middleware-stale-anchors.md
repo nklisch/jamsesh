@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-openapi-fetch-middleware-stale-anchors
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -34,3 +34,7 @@ Re-grep for `client.GET|client.POST|client.PATCH|client.DELETE` across the curre
 Re-anchored `.claude/skills/patterns/openapi-fetch-middleware-client.md` examples from line numbers to symbol-based pointers (named handlers, named `client.GET`/`POST` calls). Added an explicit note at the top of the Examples section that anchors are intentionally symbol-based given the v0.4.0 god-component decomposition. Bumped the call-site count from 13+ to 20+ to reflect the extracted hooks.
 
 Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).
+
+## Review notes
+
+Spawned `review-openapi-fetch-pattern-rolling-foundation-prose` (Important) — the example section still contains "the v0.4.0 god-component decomposition refactor moved most of these" which is a rolling-foundation violation; the introductory note at the top of the Examples section already covers the symbol-anchoring rationale without naming a version.
