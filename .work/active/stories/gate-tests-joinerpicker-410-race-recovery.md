@@ -1,7 +1,7 @@
 ---
 id: gate-tests-joinerpicker-410-race-recovery
 kind: story
-stage: review
+stage: done
 tags: [testing, ui, playground]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -95,3 +95,13 @@ starts around line 331 in the existing file.
   combination was the actual story gap.
 
 Verified: `npm test -- --run JoinerPicker.test.ts` → 23 passed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Combines double-submit guard with the 410 redirect path — the actual story-AC gap. Hand-controlled promise pattern correctly simulates in-flight delay. Negative-assertion (`queryByRole('alert')` is null) pins the no-error-fallback contract on 410.
