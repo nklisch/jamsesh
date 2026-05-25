@@ -1,7 +1,7 @@
 ---
 id: gate-tests-parseinviteemails-dedupe-location-architectural-note
 kind: story
-stage: drafting
+stage: done
 tags: [testing, plugin]
 parent: null
 depends_on: []
@@ -30,3 +30,11 @@ simple verdict is acceptable.
 
 ## Test location (suggested)
 `cmd/jamsesh/sessioncmd/invite_test.go`
+
+## Autopilot triage (2026-05-24)
+
+Verdict: skip — body explicitly states "No new test needed —
+flagging for completeness. Closing this item with a simple verdict
+is acceptable." The architectural single-location invariant is
+already verified by the code-review pass that produced this item.
+Archiving as done with no implementation.
