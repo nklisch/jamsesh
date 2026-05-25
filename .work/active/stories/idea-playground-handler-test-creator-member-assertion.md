@@ -1,7 +1,7 @@
 ---
 id: idea-playground-handler-test-creator-member-assertion
 kind: story
-stage: review
+stage: done
 tags: [portal, playground, testing]
 parent: feature-playground-hardening
 depends_on: []
@@ -65,3 +65,13 @@ check that asserts the creator member row remains. Roughly 8 lines added.
   subsequent member-list call would panic on `sessions[0]`.
 
 Verified: `go test ./internal/portal/playground/... -count 1 -run RepoCreateFails_ReturnsError` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Targeted test extension that pins step-3 persistence. Promoting `t.Error` → `t.Fatal` before the subsequent member-list call is correct — prevents a panic on `sessions[0]`. The assertion uses `ListAnonymousSessionMemberIDs` (the same call destruction makes for anon-account cleanup), tying the test to the actual recovery path.
