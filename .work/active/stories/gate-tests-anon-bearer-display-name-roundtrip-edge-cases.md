@@ -1,7 +1,7 @@
 ---
 id: gate-tests-anon-bearer-display-name-roundtrip-edge-cases
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, tokens]
 parent: null
 depends_on: []
@@ -56,3 +56,10 @@ Added five test functions to `internal/portal/tokens/anon_bearer_test.go`:
    in `service_impl.go` if the product ever decides to reject them.
 
 No production bugs were surfaced. All tests pass (`go test ./internal/portal/...` green).
+
+## Review notes
+
+Approve. Five tests cover collision-fallback handles, unicode, max-length,
+whitespace padding, and whitespace-only nickname (current behaviour documented
+honestly per the project's "test the truth" rule). All exercise the real
+`Validate` round-trip through a real SQLite store. Tests pass.
