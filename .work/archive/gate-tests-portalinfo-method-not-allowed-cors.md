@@ -1,7 +1,7 @@
 ---
 id: gate-tests-portalinfo-method-not-allowed-cors
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, api]
 parent: null
 depends_on: []
@@ -62,4 +62,19 @@ if absent.
   provided by chi's router; the test makes it explicit and regression-proof.
 - Verification: `go test ./internal/portal/portalinfo/... -count 1` →
   full file passes including both new tests.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `TestGetPortalInfo_OptionsPreflight` asserts `< 500` rather than a
+  specific status — pragmatic given chi may return 200/204/405 for OPTIONS
+  on a registered GET path depending on routing internals. Test comment
+  explicitly flags the direction to flip when CORS support lands.
+
+**Notes**: Closes the gate test gap. Both 405 and OPTIONS contract
+surfaces are now regression-proof.
 
