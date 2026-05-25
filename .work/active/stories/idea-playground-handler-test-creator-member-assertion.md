@@ -1,14 +1,14 @@
 ---
 id: idea-playground-handler-test-creator-member-assertion
 kind: story
-stage: backlog
+stage: drafting
 tags: [portal, playground, testing]
-parent: null
+parent: feature-playground-hardening
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-25
 ---
 
 # Assert creator member row persists in CreatePlaygroundSession_RepoCreateFails

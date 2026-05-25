@@ -3,12 +3,12 @@ id: gate-security-anon-bearer-validate-no-session-binding
 kind: story
 stage: drafting
 tags: [security, portal, tokens, defense-in-depth]
-parent: null
+parent: feature-playground-hardening
 depends_on: []
 release_binding: null
 gate_origin: security
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # Playground anonymous bearer `Validate` does not enforce the bearer's bound `session_id`, leaving cross-session safety entirely to session-member checks

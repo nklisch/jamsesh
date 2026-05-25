@@ -3,12 +3,12 @@ id: gate-security-playground-create-orphan-anon-account-on-member-failure
 kind: story
 stage: drafting
 tags: [security, portal, playground, data-protection]
-parent: null
+parent: feature-playground-hardening
 depends_on: []
 release_binding: null
 gate_origin: security
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # Playground `CreatePlaygroundSession` leaks an orphaned anon account + bearer when `AddSessionMember` fails between bearer issuance and member insert

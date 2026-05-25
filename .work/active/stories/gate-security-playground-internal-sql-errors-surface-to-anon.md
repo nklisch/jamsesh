@@ -3,12 +3,12 @@ id: gate-security-playground-internal-sql-errors-surface-to-anon
 kind: story
 stage: drafting
 tags: [security, portal, playground, error-handling]
-parent: null
+parent: feature-playground-hardening
 depends_on: []
 release_binding: null
 gate_origin: security
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # `WrapDBIfTransient`/`fmt.Errorf` chains for playground store failures may surface internal SQL error strings to anonymous callers

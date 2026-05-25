@@ -3,12 +3,12 @@ id: idea-playground-abuse-caps-activity-reset-integration-test
 kind: story
 stage: drafting
 tags: [portal, playground, testing]
-parent: null
-depends_on: []
+parent: feature-playground-hardening
+depends_on: [gate-security-githttp-receivepack-wallclock-not-injected]
 release_binding: null
 gate_origin: null
 created: 2026-05-23
-updated: 2026-05-23
+updated: 2026-05-25
 ---
 
 # Activity-reset integration test (push → wait → push → wait past original timeout)

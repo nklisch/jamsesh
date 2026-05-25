@@ -3,12 +3,12 @@ id: gate-security-githttp-receivepack-wallclock-not-injected
 kind: story
 stage: drafting
 tags: [security, portal, refactor, testing]
-parent: null
+parent: feature-playground-hardening
 depends_on: []
 release_binding: null
 gate_origin: security
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # Per-session activity-reset on push runs under wall-clock `time.Now()` rather than the injected playground clock

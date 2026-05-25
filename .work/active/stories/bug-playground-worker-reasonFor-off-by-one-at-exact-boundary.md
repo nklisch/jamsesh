@@ -3,12 +3,12 @@ id: bug-playground-worker-reasonFor-off-by-one-at-exact-boundary
 kind: story
 stage: drafting
 tags: [bug, portal, playground]
-parent: null
+parent: feature-playground-hardening
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # Playground worker `reasonFor` returns `"manual"` at exact-boundary expiration instead of `"hard_cap"` / `"idle"`
