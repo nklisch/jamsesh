@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>feature-portal-visitor-entry-pages — Option 2: Neubrutalism</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: #14161a; color: #fafafa;
+      padding: 6px 14px;
+      display: flex; gap: 12px; align-items: baseline;
+      font: 11px/1 var(--font-mono); letter-spacing: 0.03em;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b8f99; }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      padding-top: 28px;
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+    }
+
+    /* Shared "brick" treatment — thick border + hard offset shadow */
+    .brick {
+      border: 3px solid var(--color-text-primary);
+      box-shadow: 7px 7px 0 0 var(--color-text-primary);
+      background: var(--color-bg-secondary);
+    }
+    .brick-accent {
+      border: 3px solid var(--color-text-primary);
+      box-shadow: 7px 7px 0 0 var(--color-text-primary);
+      background: var(--color-accent);
+      color: var(--color-text-inverse);
+    }
+    .brick-cream {
+      border: 3px solid var(--color-text-primary);
+      box-shadow: 7px 7px 0 0 var(--color-text-primary);
+      background: #f5e9c8; /* warm cream — within-spirit accent block */
+    }
+
+    /* Top bar */
+    .topbar {
+      max-width: 1200px; margin: 0 auto; padding: 24px 32px;
+      display: flex; align-items: center; gap: 24px;
+    }
+    .topbar .wordmark {
+      font: 800 26px/1 var(--font-sans);
+      letter-spacing: -0.04em;
+    }
+    .topbar .wordmark .dot { color: var(--color-accent); }
+    .topbar .stamp {
+      display: inline-block;
+      padding: 4px 10px;
+      background: var(--color-text-primary);
+      color: var(--color-text-inverse);
+      font: 600 10px/1 var(--font-mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transform: rotate(-2deg);
+    }
+    .topbar .spacer { flex: 1; }
+    .topbar .signin {
+      display: inline-block;
+      padding: 10px 18px;
+      font: 600 13px/1 var(--font-sans);
+      text-decoration: none;
+      color: var(--color-text-primary);
+      border: 3px solid var(--color-text-primary);
+      box-shadow: 4px 4px 0 0 var(--color-text-primary);
+      background: var(--color-bg-secondary);
+      transition: transform 0.05s ease, box-shadow 0.05s ease;
+    }
+    .topbar .signin:hover {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0 0 var(--color-text-primary);
+    }
+
+    /* Hero */
+    .hero {
+      max-width: 1200px; margin: 56px auto 0;
+      padding: 0 32px;
+      text-align: center;
+    }
+    .hero .eyebrow {
+      display: inline-block;
+      padding: 6px 14px;
+      background: var(--color-text-primary);
+      color: var(--color-text-inverse);
+      font: 700 12px/1 var(--font-mono);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+    .hero h1 {
+      margin: 0 0 24px;
+      font: 800 clamp(56px, 9vw, 124px)/0.92 var(--font-sans);
+      letter-spacing: -0.045em;
+    }
+    .hero h1 .accent-block {
+      display: inline-block;
+      background: var(--color-accent);
+      color: var(--color-text-inverse);
+      padding: 0 12px;
+      transform: rotate(-1deg);
+    }
+    .hero .lede {
+      max-width: 720px; margin: 0 auto 48px;
+      font: 400 var(--font-size-lg)/1.45 var(--font-sans);
+      color: var(--color-text-primary);
+    }
+
+    /* CTA row — big bold buttons */
+    .cta-row {
+      display: flex; gap: 24px; justify-content: center; align-items: center;
+      flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .cta-primary {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 22px 36px;
+      font: 800 22px/1 var(--font-sans);
+      letter-spacing: -0.01em;
+      text-decoration: none;
+      background: var(--color-accent);
+      color: var(--color-text-inverse);
+      border: 3px solid var(--color-text-primary);
+      box-shadow: 8px 8px 0 0 var(--color-text-primary);
+      transition: transform 0.05s ease, box-shadow 0.05s ease;
+    }
+    .cta-primary:hover {
+      transform: translate(3px, 3px);
+      box-shadow: 5px 5px 0 0 var(--color-text-primary);
+    }
+    .cta-primary .arrow { display: inline-block; transition: transform 0.1s ease; }
+    .cta-primary:hover .arrow { transform: translateX(4px); }
+    .cta-secondary {
+      font: 500 15px/1 var(--font-sans);
+      text-decoration: underline;
+      color: var(--color-text-secondary);
+    }
+    .cta-secondary:hover { color: var(--color-accent); }
+    .cta-hint {
+      max-width: 720px; margin: 0 auto;
+      font: 400 13px/1.4 var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+
+    /* What-is — 3 candy-flat blocks */
+    .what {
+      max-width: 1200px; margin: 96px auto 0;
+      padding: 0 32px;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px;
+    }
+    .tile {
+      padding: 28px 24px;
+      border: 3px solid var(--color-text-primary);
+      box-shadow: 7px 7px 0 0 var(--color-text-primary);
+    }
+    .tile:nth-child(1) { background: #fce5b5; } /* warm cream */
+    .tile:nth-child(2) { background: var(--color-bg-secondary); }
+    .tile:nth-child(3) { background: #c9e0e1; } /* pale teal */
+    .tile h3 {
+      margin: 0 0 12px;
+      font: 800 22px/1.1 var(--font-sans);
+      letter-spacing: -0.02em;
+    }
+    .tile p { margin: 0; font: 400 15px/1.5 var(--font-sans); }
+    .tile code { font-family: var(--font-mono); font-size: 13px; background: var(--color-text-primary); color: var(--color-text-inverse); padding: 2px 6px; }
+
+    /* Install strip */
+    .install-strip {
+      max-width: 1200px; margin: 88px auto 0;
+      padding: 32px;
+      border: 3px solid var(--color-text-primary);
+      box-shadow: 7px 7px 0 0 var(--color-text-primary);
+      background: var(--color-bg-secondary);
+      display: flex; gap: 24px; align-items: center; flex-wrap: wrap;
+    }
+    .install-strip h3 {
+      margin: 0;
+      font: 800 22px/1 var(--font-sans);
+      letter-spacing: -0.02em;
+      flex: 0 0 220px;
+    }
+    .install-strip .cmd {
+      flex: 1; min-width: 280px;
+      padding: 14px 18px;
+      background: var(--color-text-primary);
+      color: var(--color-text-inverse);
+      font: 500 14px/1.4 var(--font-mono);
+      border: 3px solid var(--color-text-primary);
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    /* Footer */
+    .footy {
+      max-width: 1200px; margin: 96px auto 0;
+      padding: 32px;
+      border-top: 3px solid var(--color-text-primary);
+      display: flex; gap: 32px; align-items: center; flex-wrap: wrap;
+    }
+    .footy .footy-mark { font: 800 18px/1 var(--font-sans); letter-spacing: -0.03em; }
+    .footy .footy-mark .dot { color: var(--color-accent); }
+    .footy .spacer { flex: 1; }
+    .footy .footy-links { display: flex; gap: 24px; }
+    .footy .footy-links a {
+      font: 600 14px/1 var(--font-sans);
+      text-decoration: none;
+      color: var(--color-text-primary);
+      border-bottom: 2px solid var(--color-text-primary);
+      padding-bottom: 2px;
+    }
+    .footy .footy-links a:hover { color: var(--color-accent); border-color: var(--color-accent); }
+
+    /* Footer bottom-padding so the offset shadows don't get clipped */
+    body { padding-bottom: 80px; }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 2 — Neubrutalism</strong>
+    <span>Thick borders, hard offset shadows, candy-flat blocks. Sells confidence.</span>
+  </header>
+
+  <header class="topbar">
+    <div class="wordmark">jamsesh<span class="dot">.</span></div>
+    <span class="stamp">v0.4.0 · OSS</span>
+    <div class="spacer"></div>
+    <a href="/login" class="signin">Sign in →</a>
+  </header>
+
+  <section class="hero">
+    <div class="eyebrow">Agent-in-the-loop human jam sessions</div>
+    <h1>
+      Get on a call.<br>
+      Jam on code.<br>
+      <span class="accent-block">Bring your agents.</span>
+    </h1>
+    <p class="lede">
+      Each person drives their own Claude Code agent. Every agent in the session sees the whole picture through live commits and comments — so the jam moves as one without anyone recapping state for anyone else.
+    </p>
+    <div class="cta-row">
+      <a href="/playground" class="cta-primary">
+        Try the playground
+        <span class="arrow">→</span>
+      </a>
+      <a href="/login" class="cta-secondary">or sign in for a durable session</a>
+    </div>
+    <p class="cta-hint">No account · No install · Auto-destroys after 24h or 30 min idle.</p>
+  </section>
+
+  <section class="what">
+    <div class="tile">
+      <h3>Voice-paced.</h3>
+      <p>Talk through direction. Your agent catches up from peers' commits and addressed comments before its next turn.</p>
+    </div>
+    <div class="tile">
+      <h3>Everyone in the loop.</h3>
+      <p>Drop <code>@quiet-fox</code> or <code>@all-agents</code> in a comment; it lands in their next turn. Humans and agents share one conversation.</p>
+    </div>
+    <div class="tile">
+      <h3>Real git underneath.</h3>
+      <p>Every push lands in a real bare repo. Real branches, real diffs. Nothing parallel to learn.</p>
+    </div>
+  </section>
+
+  <section class="install-strip">
+    <h3>Or from your own CC →</h3>
+    <div class="cmd">claude plugin marketplace add nklisch/jamsesh &amp;&amp; claude plugins install jamsesh</div>
+  </section>
+
+  <footer class="footy">
+    <div class="footy-mark">jamsesh<span class="dot">.</span></div>
+    <span style="font: 500 12px var(--font-mono); color: var(--color-text-tertiary);">Apache-2.0 · v0.4.0</span>
+    <div class="spacer"></div>
+    <div class="footy-links">
+      <a href="https://github.com/nklisch/jamsesh">GitHub</a>
+      <a href="#docs">Docs</a>
+      <a href="https://github.com/nklisch/jamsesh/blob/main/docs/SELF_HOST.md">Self-host</a>
+      <a href="/login">Sign in</a>
+    </div>
+  </footer>
+</body>
+</html>

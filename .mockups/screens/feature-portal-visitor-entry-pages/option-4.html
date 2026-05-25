@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>feature-portal-visitor-entry-pages — Option 4: Swiss + Neubrutalist gesture</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: #14161a; color: #fafafa;
+      padding: 6px 14px;
+      display: flex; gap: 12px; align-items: baseline;
+      font: 11px/1 var(--font-mono); letter-spacing: 0.03em;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b8f99; }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      padding-top: 28px;
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+    }
+
+    /* 12-col Swiss grid (quiet) */
+    .grid {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 32px;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+
+    /* Top bar */
+    .topbar {
+      border-bottom: 1px solid var(--color-border);
+      padding: 16px 0;
+    }
+    .topbar .grid { align-items: baseline; }
+    .topbar .wordmark { grid-column: 1 / span 3; font: 600 16px/1 var(--font-sans); letter-spacing: -0.03em; }
+    .topbar .wordmark .dot { color: var(--color-accent); }
+    .topbar .colophon { grid-column: 4 / span 6; font: 400 11px/1 var(--font-mono); color: var(--color-text-tertiary); letter-spacing: 0.05em; text-transform: uppercase; }
+    .topbar .signin { grid-column: 11 / span 2; text-align: right; font: 400 12px/1 var(--font-sans); color: var(--color-text-secondary); text-decoration: none; }
+    .topbar .signin:hover { color: var(--color-accent); }
+
+    /* Hero — Swiss composed */
+    .hero { padding: 96px 0 64px; }
+    .hero .num { grid-column: 1 / span 2; font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; color: var(--color-text-tertiary); }
+    .hero .num strong { color: var(--color-accent); font-weight: 500; }
+    .hero .eyebrow { grid-column: 4 / span 6; font: 500 11px/1 var(--font-mono); letter-spacing: 0.12em; color: var(--color-text-secondary); text-transform: uppercase; align-self: end; }
+    .hero h1 {
+      grid-column: 1 / -1;
+      margin: 28px 0 0;
+      font: 600 76px/0.98 var(--font-sans);
+      letter-spacing: -0.04em;
+    }
+    .hero h1 em {
+      font-style: italic;
+      font-weight: 400;
+      color: var(--color-text-secondary);
+    }
+    .hero .lede {
+      grid-column: 4 / span 6;
+      margin: 36px 0 0;
+      font: 400 var(--font-size-lg)/1.55 var(--font-sans);
+      color: var(--color-text-secondary);
+    }
+
+    /* THE GESTURE — Swiss grid, one neubrutalist CTA block breaking it */
+    .cta-band {
+      margin: 64px 0 0;
+      padding: 56px 0;
+      position: relative;
+    }
+    .cta-band::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--color-bg-secondary);
+      z-index: -1;
+    }
+    .cta-band .num { grid-column: 1 / span 2; font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; color: var(--color-text-tertiary); }
+    .cta-band .num strong { color: var(--color-accent); font-weight: 500; }
+    .cta-band .label { grid-column: 4 / span 6; font: 500 11px/1 var(--font-mono); letter-spacing: 0.12em; color: var(--color-text-secondary); text-transform: uppercase; }
+    .cta-band .brick {
+      grid-column: 1 / span 7;
+      margin: 28px 0 0;
+      display: block;
+      padding: 32px 40px;
+      background: var(--color-accent);
+      color: var(--color-text-inverse);
+      border: 3px solid var(--color-text-primary);
+      box-shadow: 9px 9px 0 0 var(--color-text-primary);
+      text-decoration: none;
+      transition: transform 0.06s ease, box-shadow 0.06s ease;
+    }
+    .cta-band .brick:hover {
+      transform: translate(4px, 4px);
+      box-shadow: 5px 5px 0 0 var(--color-text-primary);
+    }
+    .cta-band .brick .brick-eyebrow {
+      font: 500 11px/1 var(--font-mono);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-bottom: 14px;
+    }
+    .cta-band .brick .brick-headline {
+      display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+      font: 700 42px/1 var(--font-sans);
+      letter-spacing: -0.025em;
+    }
+    .cta-band .brick .brick-arrow {
+      display: inline-block;
+      transition: transform 0.1s ease;
+      font-weight: 400;
+    }
+    .cta-band .brick:hover .brick-arrow { transform: translateX(6px); }
+    .cta-band .meta {
+      grid-column: 9 / span 4;
+      margin: 28px 0 0;
+      align-self: end;
+      font: 400 13px/1.55 var(--font-sans);
+      color: var(--color-text-secondary);
+    }
+    .cta-band .meta a {
+      color: var(--color-text-primary);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .cta-band .meta a:hover { color: var(--color-accent); }
+
+    /* Method — back to Swiss quiet */
+    .method { padding: 80px 0; }
+    .method .num { grid-column: 1 / span 2; font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; color: var(--color-text-tertiary); }
+    .method .num strong { color: var(--color-accent); font-weight: 500; }
+    .method .label { grid-column: 4 / span 6; font: 500 11px/1 var(--font-mono); letter-spacing: 0.12em; color: var(--color-text-secondary); text-transform: uppercase; }
+    .method-list { grid-column: 4 / span 9; margin: 32px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+    .method-list .step h3 { font: 500 var(--font-size-base) var(--font-sans); margin: 0 0 8px; }
+    .method-list .step .step-num { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; color: var(--color-accent); margin-bottom: 12px; }
+    .method-list .step p { margin: 0; font: 400 14px/1.55 var(--font-sans); color: var(--color-text-secondary); }
+    .method-list .step code { font-family: var(--font-mono); font-size: 12px; color: var(--color-accent); }
+
+    /* Colophon */
+    .colophon-sec { padding: 32px 0 64px; border-top: 1px solid var(--color-border); }
+    .colophon-sec .colophon-meta { grid-column: 1 / span 4; font: 400 11px/1.5 var(--font-mono); color: var(--color-text-tertiary); letter-spacing: 0.04em; }
+    .colophon-sec .links { grid-column: 9 / span 4; text-align: right; display: flex; gap: 20px; justify-content: flex-end; }
+    .colophon-sec .links a { font: 400 12px/1 var(--font-sans); color: var(--color-text-secondary); text-decoration: none; }
+    .colophon-sec .links a:hover { color: var(--color-accent); }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 4 — Swiss + Neubrutalist gesture</strong>
+    <span>Quiet grid, ONE bold CTA brick breaks composition. Rigor plus one confident move.</span>
+  </header>
+
+  <header class="topbar">
+    <div class="grid">
+      <div class="wordmark">jamsesh<span class="dot">.</span></div>
+      <div class="colophon">Agent-in-the-loop human jam sessions · v0.4.0</div>
+      <a href="/login" class="signin">Sign in →</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="grid">
+      <div class="num"><strong>01</strong> &nbsp; PROPOSAL</div>
+      <div class="eyebrow">For teams that already pair on calls</div>
+      <h1>
+        Your team. Your agents. <em>One jam.</em>
+      </h1>
+      <p class="lede">
+        Each person drives their own Claude Code agent. Every agent in the session sees the whole picture through live commits and comments — so you stay in flow with your team and the agents handle the rest.
+      </p>
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <div class="grid">
+      <div class="num"><strong>02</strong> &nbsp; ACTION</div>
+      <div class="label">No account · no install · 24h or 30 min idle</div>
+      <a href="/playground" class="brick">
+        <div class="brick-eyebrow">START HERE</div>
+        <div class="brick-headline">
+          <span>Try the playground</span>
+          <span class="brick-arrow">→</span>
+        </div>
+      </a>
+      <div class="meta">
+        Or run from your own Claude Code: <code style="font-family: var(--font-mono); font-size: 13px;">/jamsesh:jam new --playground</code> · <a href="/login">Sign in for a durable session</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="method">
+    <div class="grid">
+      <div class="num"><strong>03</strong> &nbsp; METHOD</div>
+      <div class="label">How the loop closes</div>
+      <div class="method-list">
+        <div class="step">
+          <div class="step-num">A · VOICE-PACED</div>
+          <h3>Talk through direction.</h3>
+          <p>Your agent catches up from peers' commits and addressed comments before its next turn. No one recaps state.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">B · ONE CONVERSATION</div>
+          <h3>Comments cross the boundary.</h3>
+          <p>Address <code>@quiet-fox</code> or <code>@all-agents</code> in a comment; it lands in their next turn. Humans and agents share one thread.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">C · REAL GIT UNDERNEATH</div>
+          <h3>Nothing parallel to learn.</h3>
+          <p>Every push lands in a real bare repo. Real branches, real diffs, real <code>git fetch</code>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="colophon-sec">
+    <div class="grid">
+      <div class="colophon-meta">jamsesh / Apache-2.0 / v0.4.0 / 2026</div>
+      <div class="links">
+        <a href="https://github.com/nklisch/jamsesh">GitHub</a>
+        <a href="#docs">Docs</a>
+        <a href="https://github.com/nklisch/jamsesh/blob/main/docs/SELF_HOST.md">Self-host</a>
+        <a href="/login">Sign in</a>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

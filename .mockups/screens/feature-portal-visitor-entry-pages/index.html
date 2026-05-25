@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>feature-portal-visitor-entry-pages — 4 options</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      background: #0f1014;
+      color: #fafafa;
+      font: 14px/1.4 var(--font-sans);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+    }
+
+    .header {
+      padding: 14px 22px;
+      border-bottom: 1px solid #2a2c33;
+      display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap;
+    }
+    .header strong {
+      font: 600 16px/1 var(--font-sans);
+      letter-spacing: -0.02em;
+    }
+    .header .id {
+      font: 500 11px/1 var(--font-mono);
+      letter-spacing: 0.06em;
+      color: #8b8f99;
+      text-transform: uppercase;
+    }
+    .header .blurb {
+      font: 400 13px/1.4 var(--font-sans);
+      color: #c8cbd3;
+      max-width: 760px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: 1fr 1fr;
+      gap: 14px;
+      padding: 14px;
+      min-height: 0;
+    }
+    .cell {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      background: #14161a;
+      border: 1px solid #2a2c33;
+      border-radius: 6px;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .cell-head {
+      padding: 10px 14px;
+      border-bottom: 1px solid #2a2c33;
+      display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap;
+    }
+    .cell-head .num {
+      font: 600 12px/1 var(--font-mono);
+      letter-spacing: 0.08em;
+      color: var(--color-accent);
+    }
+    .cell-head .title {
+      font: 600 14px/1 var(--font-sans);
+      letter-spacing: -0.01em;
+      color: #fafafa;
+    }
+    .cell-head .pitch {
+      font: 400 12px/1.4 var(--font-sans);
+      color: #8b8f99;
+      flex: 1 1 100%;
+    }
+    .cell-head .open {
+      margin-left: auto;
+      font: 500 11px/1 var(--font-sans);
+      color: #c8cbd3;
+      text-decoration: none;
+      padding: 5px 10px;
+      border: 1px solid #2a2c33;
+      border-radius: 4px;
+    }
+    .cell-head .open:hover { color: #fafafa; border-color: #4a4d57; }
+    .cell-body {
+      position: relative;
+      background: var(--color-bg-primary);
+      overflow: hidden;
+    }
+    .cell-body iframe {
+      width: 200%;
+      height: 200%;
+      border: 0;
+      transform: scale(0.5);
+      transform-origin: 0 0;
+      pointer-events: none;
+    }
+    .cell-body .frame-cover {
+      position: absolute;
+      inset: 0;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <strong>4 directions for the project landing</strong>
+    <span class="id">feature-portal-visitor-entry-pages</span>
+    <p class="blurb">Each lives within the Quiet Slate palette + Geist typography. They vary in layout, hierarchy, type-use, and aesthetic voice. Click a thumbnail to open the full mockup.</p>
+  </header>
+  <main class="grid">
+    <section class="cell">
+      <header class="cell-head">
+        <span class="num">B</span>
+        <span class="title">Friendly minimalist (baseline)</span>
+        <a class="open" href="project-landing.html" target="_blank">Open →</a>
+        <p class="pitch">The current direction — quiet SaaS landing, soft accent CTA, install disclosure, what-is cards. The anchor to compare the four poles against.</p>
+      </header>
+      <div class="cell-body">
+        <iframe src="project-landing.html" loading="lazy" scrolling="no"></iframe>
+        <a class="frame-cover" href="project-landing.html" target="_blank" aria-label="Open baseline"></a>
+      </div>
+    </section>
+
+    <section class="cell">
+      <header class="cell-head">
+        <span class="num">01</span>
+        <span class="title">Swiss / ITS</span>
+        <a class="open" href="option-1.html" target="_blank">Open →</a>
+        <p class="pitch">Strict 12-col grid, oversized numeric captions, asymmetric type-led composition. Sells rigor.</p>
+      </header>
+      <div class="cell-body">
+        <iframe src="option-1.html" loading="lazy" scrolling="no"></iframe>
+        <a class="frame-cover" href="option-1.html" target="_blank" aria-label="Open Option 1"></a>
+      </div>
+    </section>
+
+    <section class="cell">
+      <header class="cell-head">
+        <span class="num">02</span>
+        <span class="title">Neubrutalism</span>
+        <a class="open" href="option-2.html" target="_blank">Open →</a>
+        <p class="pitch">Thick borders, hard offset shadows, candy-flat blocks, oversized type. Sells confidence.</p>
+      </header>
+      <div class="cell-body">
+        <iframe src="option-2.html" loading="lazy" scrolling="no"></iframe>
+        <a class="frame-cover" href="option-2.html" target="_blank" aria-label="Open Option 2"></a>
+      </div>
+    </section>
+
+    <section class="cell">
+      <header class="cell-head">
+        <span class="num">03</span>
+        <span class="title">Provocation</span>
+        <a class="open" href="option-3.html" target="_blank">Open →</a>
+        <p class="pitch">One rhetorical question dominates the viewport. Sells the IDEA, not the product.</p>
+      </header>
+      <div class="cell-body">
+        <iframe src="option-3.html" loading="lazy" scrolling="no"></iframe>
+        <a class="frame-cover" href="option-3.html" target="_blank" aria-label="Open Option 3"></a>
+      </div>
+    </section>
+
+    <section class="cell">
+      <header class="cell-head">
+        <span class="num">04</span>
+        <span class="title">Swiss + Neubrutalist gesture</span>
+        <a class="open" href="option-4.html" target="_blank">Open →</a>
+        <p class="pitch">Quiet Swiss composition with ONE bold CTA brick. Rigor plus one confident move.</p>
+      </header>
+      <div class="cell-body">
+        <iframe src="option-4.html" loading="lazy" scrolling="no"></iframe>
+        <a class="frame-cover" href="option-4.html" target="_blank" aria-label="Open Option 4"></a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

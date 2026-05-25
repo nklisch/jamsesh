@@ -74,12 +74,25 @@ side-effect of the default mode.
 
 ## Mockups
 
-- **Project landing**:
-  [`.mockups/screens/feature-portal-visitor-entry-pages/project-landing.html`](../../../.mockups/screens/feature-portal-visitor-entry-pages/project-landing.html)
-  — hero with primary "Try the playground →" CTA, three-card "what is
-  it" grid, install-instructions disclosure, GitHub/Docs/Sign-in
-  navigation. Adapted from `01-prospect-landing.html` so the visual
-  voice carries.
+- **Project landing — chosen direction**:
+  [`.mockups/screens/feature-portal-visitor-entry-pages/option-1.html`](../../../.mockups/screens/feature-portal-visitor-entry-pages/option-1.html)
+  — **Option 1, Swiss / ITS pole**. Strict 12-col grid, numbered
+  sections, asymmetric type-led composition, header nav (Home / Docs
+  / Self-host / Playground + GitHub icon + Sign in). Signed off as
+  the chosen direction on 2026-05-24 after a 4-option exploration
+  (Swiss / Neubrutalism / Provocation / Swiss+Neubrutalist hybrid)
+  produced via `/ux-ui-design:screens`. ProjectLanding.svelte
+  implementation mirrors this mockup's structure.
+- **Comparison index**:
+  [`.mockups/screens/feature-portal-visitor-entry-pages/index.html`](../../../.mockups/screens/feature-portal-visitor-entry-pages/index.html)
+  — side-by-side view of the chosen direction plus all explored
+  alternatives, with the friendly-minimalist baseline kept for
+  reference (`project-landing.html`).
+- **Alternative options retained for reference**:
+  `option-2.html` (Neubrutalism), `option-3.html` (Provocation),
+  `option-4.html` (Swiss + Neubrutalist hybrid), `project-landing.html`
+  (friendly-minimalist baseline). All in
+  `.mockups/screens/feature-portal-visitor-entry-pages/`.
 - **Generic landing (auto mode)**: reuses
   [`.mockups/flows/playground-onboarding/01-prospect-landing.html`](../../../.mockups/flows/playground-onboarding/01-prospect-landing.html)
   — the existing `/playground` rendered at `/` via redirect. No new
@@ -87,12 +100,6 @@ side-effect of the default mode.
 - **Login mode**: no mockup — today's `/login` bounce, unchanged.
 - See [`.mockups/screens/feature-portal-visitor-entry-pages/README.md`](../../../.mockups/screens/feature-portal-visitor-entry-pages/README.md)
   for the full mockup index.
-
-For additional project-landing options, invoke
-`/ux-ui-design:screens feature-portal-visitor-entry-pages` to generate
-the standard 4-option exploration. The current mockup is a single
-recommended path adapted from the established design language; the
-slash command produces alternative compositions for comparison.
 
 ## Architectural choice
 

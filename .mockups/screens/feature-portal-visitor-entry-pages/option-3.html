@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>feature-portal-visitor-entry-pages — Option 3: Provocation</title>
+  <link rel="stylesheet" href="../../design-system/tokens.css">
+  <style>
+    .mock-meta {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: #14161a; color: #fafafa;
+      padding: 6px 14px;
+      display: flex; gap: 12px; align-items: baseline;
+      font: 11px/1 var(--font-mono); letter-spacing: 0.03em;
+    }
+    .mock-meta strong { font-weight: 600; }
+    .mock-meta span { color: #8b8f99; }
+
+    html, body { margin: 0; padding: 0; min-height: 100%; }
+    body {
+      padding-top: 28px;
+      font: var(--font-size-base)/var(--line-height-base) var(--font-sans);
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+    }
+
+    /* Top bar — just the wordmark, almost ghosted */
+    .topbar {
+      position: absolute;
+      top: 56px; left: 48px;
+      font: 500 14px/1 var(--font-sans);
+      letter-spacing: -0.02em;
+      color: var(--color-text-tertiary);
+    }
+    .topbar .dot { color: var(--color-accent); }
+
+    /* The question — fills the viewport */
+    .stage {
+      min-height: calc(100vh - 28px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 80px 48px 48px;
+      position: relative;
+    }
+    .question {
+      max-width: 1100px;
+      font: 500 clamp(48px, 7vw, 96px)/1.08 var(--font-sans);
+      letter-spacing: -0.035em;
+      color: var(--color-text-primary);
+    }
+    .question .pause {
+      display: inline-block;
+      width: 0.6em;
+    }
+    .question .accent {
+      color: var(--color-accent);
+      font-style: italic;
+      font-weight: 400;
+    }
+
+    /* Tiny CTA, bottom of the stage */
+    .stage-cta {
+      position: absolute;
+      bottom: 56px; left: 48px; right: 48px;
+      display: flex; justify-content: space-between; align-items: baseline;
+      font: 400 13px/1 var(--font-mono);
+      letter-spacing: 0.04em;
+      color: var(--color-text-tertiary);
+    }
+    .stage-cta .try {
+      color: var(--color-text-primary);
+      text-decoration: none;
+      border-bottom: 1px solid var(--color-accent);
+      padding-bottom: 2px;
+      font-family: var(--font-sans);
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+    .stage-cta .try:hover { color: var(--color-accent); }
+    .stage-cta .scroll-cue {
+      animation: drift 2.4s ease-in-out infinite;
+    }
+    @keyframes drift {
+      0%, 100% { transform: translateY(0); opacity: 0.6; }
+      50% { transform: translateY(4px); opacity: 1; }
+    }
+
+    /* Answer — appears below the fold */
+    .answer-stage {
+      padding: 120px 48px 80px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+    }
+    .answer-stage .inner { max-width: 800px; margin: 0 auto; }
+    .answer-stage .label {
+      font: 500 11px/1 var(--font-mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--color-accent);
+      margin-bottom: 24px;
+    }
+    .answer-stage .answer {
+      font: 400 28px/1.4 var(--font-sans);
+      letter-spacing: -0.012em;
+      color: var(--color-text-primary);
+      margin: 0 0 48px;
+    }
+    .answer-stage .answer .key {
+      background: linear-gradient(transparent 62%, var(--color-accent-muted, rgba(31,107,112,0.18)) 62%);
+      padding: 0 4px;
+    }
+    .answer-stage .cta-final {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 16px 28px;
+      background: var(--color-text-primary);
+      color: var(--color-text-inverse);
+      font: 500 17px/1 var(--font-sans);
+      text-decoration: none;
+      transition: gap 0.15s ease;
+    }
+    .answer-stage .cta-final:hover { gap: 18px; }
+    .answer-stage .cta-final .arrow { display: inline-block; }
+    .answer-stage .meta {
+      margin-top: 80px;
+      display: flex; gap: 32px;
+      font: 400 13px/1 var(--font-mono);
+      letter-spacing: 0.04em;
+      color: var(--color-text-tertiary);
+    }
+    .answer-stage .meta a { color: var(--color-text-secondary); text-decoration: none; }
+    .answer-stage .meta a:hover { color: var(--color-accent); }
+  </style>
+</head>
+<body>
+  <header class="mock-meta">
+    <strong>Option 3 — Provocation</strong>
+    <span>One rhetorical question dominates. Sells the IDEA, not the product.</span>
+  </header>
+
+  <div class="topbar">jamsesh<span class="dot">.</span></div>
+
+  <section class="stage">
+    <h1 class="question">
+      What if your teammates' agents could <span class="accent">see each other</span> while you talked?
+    </h1>
+    <div class="stage-cta">
+      <a href="/playground" class="try">Try the playground →</a>
+      <span class="scroll-cue">scroll for the short answer ↓</span>
+    </div>
+  </section>
+
+  <section class="answer-stage">
+    <div class="inner">
+      <div class="label">The short answer</div>
+      <p class="answer">
+        You get on a call with your team. Each person drives their own Claude Code agent. Every agent sees <span class="key">commits and addressed comments from every other agent</span> before its next turn — so the jam moves as one, without anyone recapping state for anyone else's agent.
+      </p>
+      <a href="/playground" class="cta-final">
+        Try the playground
+        <span class="arrow">→</span>
+      </a>
+      <div class="meta">
+        <a href="https://github.com/nklisch/jamsesh">GitHub</a>
+        <a href="#docs">Docs</a>
+        <a href="https://github.com/nklisch/jamsesh/blob/main/docs/SELF_HOST.md">Self-host</a>
+        <a href="/login">Sign in for a durable session</a>
+      </div>
+    </div>
+  </section>
+</body>
+</html>
