@@ -34,6 +34,25 @@ func TestPick_Diversity(t *testing.T) {
 	}
 }
 
+// TestWordlistLengthBand pins a lower bound on each embedded list so an
+// accidental file truncation (a `git checkout` clobber, a bad sed, a CRLF
+// re-encode that strips entries) is caught at CI time before it ships.
+//
+// 150 is roughly 85% of the smaller list (animals: ~182 at time of
+// writing). Provides a meaningful guard without being a brittle exact-count
+// assertion. (gate-tests-wordlist-diversity-threshold-and-length-band)
+func TestWordlistLengthBand(t *testing.T) {
+	const minEntries = 150
+	if n := wordlist.AdjCount(); n < minEntries {
+		t.Errorf("adjectives wordlist has %d entries; want >= %d (accidental truncation?)",
+			n, minEntries)
+	}
+	if n := wordlist.AnimalCount(); n < minEntries {
+		t.Errorf("animals wordlist has %d entries; want >= %d (accidental truncation?)",
+			n, minEntries)
+	}
+}
+
 func TestWordlistsNonEmpty(t *testing.T) {
 	// If the embed fails or the file is empty, Pick() would panic. This test
 	// exercises Pick() on startup and catches the panic as a failure.

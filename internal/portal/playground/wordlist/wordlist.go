@@ -43,3 +43,12 @@ func splitNonEmpty(raw string) []string {
 	}
 	return out
 }
+
+// AdjCount returns the number of adjectives in the embedded list. Exported
+// for tests that pin the wordlist size against accidental truncation
+// (gate-tests-wordlist-diversity-threshold-and-length-band).
+func AdjCount() int { return len(adjectives) }
+
+// AnimalCount returns the number of animals in the embedded list. Exported
+// for the same reason as AdjCount.
+func AnimalCount() int { return len(animals) }

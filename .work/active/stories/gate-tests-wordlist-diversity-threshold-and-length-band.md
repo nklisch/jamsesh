@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wordlist-diversity-threshold-and-length-band
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -65,3 +65,21 @@ Current counts: adjectives 177, animals 182. The 150 threshold is ~85% of the
 smaller list — meaningful guard against truncation, not a brittle exact count.
 
 Do NOT change `TestPick_Diversity`'s 900/1000 threshold.
+
+## Implementation notes
+
+- `internal/portal/playground/wordlist/wordlist.go`: added two exported
+  accessors — `AdjCount() int` and `AnimalCount() int` — returning the
+  length of the respective embedded slices. Minimal public-API addition
+  needed because the test file is `package wordlist_test` (external).
+- `internal/portal/playground/wordlist/wordlist_test.go`: added
+  `TestWordlistLengthBand` asserting each list is `>= 150` entries. 150
+  is ~85% of the smaller list (animals, ~182), providing a guard against
+  accidental truncation without being brittle to small editorial trims.
+- The existing `TestPick_Diversity` threshold (>= 900 distinct of 1000
+  picks) is left as-is. With 150x150 = 22.5k combinations as the floor,
+  900/1000 distinct is still well within reach — the diversity test
+  remains a useful smoke check.
+
+Verified: `go test ./internal/portal/playground/wordlist/... -count 1 -v` →
+all tests pass (current state: 239 adjectives, 182 animals).
