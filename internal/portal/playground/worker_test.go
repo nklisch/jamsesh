@@ -245,47 +245,6 @@ func TestWorker_GracefulShutdownStopsWithinOneInterval(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: tombstone TTL purge runs
-// ---------------------------------------------------------------------------
-
-func TestWorker_PurgesTombstonesAfterTTL(t *testing.T) {
-	ctx := context.Background()
-	env, _, clk := newWorkerEnv(t)
-
-	now := clk.Now()
-
-	// Insert a tombstone directly with a very short TTL (already expired).
-	err := env.s.RecordTombstone(ctx, store.RecordTombstoneParams{
-		SessionID:       "sess-purge-001",
-		OrgID:           playground.ReservedOrgID,
-		MembersCount:    1,
-		CommitsCount:    0,
-		AutoMergesCount: 0,
-		DurationSeconds: 60,
-		EndReason:       "manual",
-		EndedAt:         now.Add(-48 * time.Hour),
-		ExpiresAt:       now.Add(-24 * time.Hour), // already expired
-	})
-	if err != nil {
-		t.Fatalf("RecordTombstone: %v", err)
-	}
-
-	// Purge via the store directly (exercises the method the worker calls).
-	if err := env.s.PurgeExpiredTombstones(ctx, now); err != nil {
-		t.Fatalf("PurgeExpiredTombstones: %v", err)
-	}
-
-	// The tombstone should be gone.
-	_, err = env.s.GetTombstone(ctx, "sess-purge-001")
-	if err == nil {
-		t.Error("expected tombstone to be purged, but GetTombstone succeeded")
-	}
-	if !isNotFound(err) {
-		t.Errorf("expected ErrNotFound, got: %v", err)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Test: reasonFor priority (hard_cap wins over idle)
 // ---------------------------------------------------------------------------
 

@@ -1,7 +1,7 @@
 ---
 id: review-remove-tautological-purge-test
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground, cleanup]
 parent: null
 depends_on: []
@@ -38,3 +38,11 @@ and the new in-file comment block (line 764) explicitly says
 
 Verify the package still builds and the remaining purge/cadence tests
 pass after removal.
+
+## Implementation notes
+Deleted `TestWorker_PurgesTombstonesAfterTTL` (lines 251–286) from
+`internal/portal/playground/worker_test.go`. The replacement test
+`TestWorker_PurgesTombstones_OnPurgeEveryTickInterval` (line 775 in
+original, now renumbered) already exists and covers the worker-driven
+purge path. The playground package continues to build and all tests pass
+after removal.
