@@ -1,7 +1,14 @@
 ---
 id: idea-data-dir-migration-helper
+kind: story
+stage: drafting
+tags: [plugin, migration, release-notes]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
 created: 2026-05-24
-tags: [migration, release-notes]
+updated: 2026-05-25
 ---
 
 The `story-data-dir-env-rename` refactor cuts over strictly from
