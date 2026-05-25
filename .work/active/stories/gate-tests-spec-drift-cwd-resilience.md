@@ -1,7 +1,7 @@
 ---
 id: gate-tests-spec-drift-cwd-resilience
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, infra]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -53,3 +53,17 @@ Steps:
 
 The key invariant to verify: `runtime.Caller(0)` returns an absolute path
 even when the process cwd changes, so the YAML file can be found.
+
+## Implementation notes
+
+- Extracted the YAML path resolution into a `openAPIYAMLPath(t)` helper that
+  uses `runtime.Caller(0)` (unchanged from the original) — both the default-cwd
+  test and the new non-default-cwd test share the resolver.
+- Extracted the enum-comparison body into a `runEnumDrift(t, data)` helper —
+  both tests share comparison logic, no copy-paste.
+- New `TestEventTypeConstants_MatchOpenAPIYAML_NonDefaultCwd` calls
+  `t.Chdir(t.TempDir())` (Go 1.24+; module is at 1.26) then re-runs the same
+  comparison. If the path-resolver ever drifts to a relative path or
+  `os.Getwd`, this test fails loudly.
+
+Verified: `go test ./internal/portal/events/... -count 1` passes.
