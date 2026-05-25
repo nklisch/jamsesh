@@ -1,7 +1,7 @@
 ---
 id: gate-tests-tombstone-purge-cadence-tick-bound-vs-wallclock
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -46,3 +46,10 @@ Added `TestWorker_PurgeCadence_IsTickBound_Not_WallClockBound` in
 The `purgeCountStore` wrapper delegates all store calls to the real store and
 increments an `int` counter on each `PurgeExpiredTombstones` call. No mocking
 framework required.
+
+## Review notes
+
+Approve. Wrapper-store count + dual-sided assertions (no-fire under 60 ticks,
+≥1-fire above) pin the tick-bound semantics. Real worker.Run() exercises the
+production ticker loop. Timing uses generous 30ms/200ms margins relative to
+the 60-tick threshold at 1ms/tick. Tests pass.
