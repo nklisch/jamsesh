@@ -1,7 +1,7 @@
 ---
 id: gate-tests-ratelimit-retryafter-header-unasserted
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -57,3 +57,9 @@ presence (non-empty string); this new test validates the value parses as a
 positive integer, fully covering Story 3 AC #1.
 
 All tests pass: `go test ./internal/portal/playground/... -run TestCreateRateLimitMiddleware`.
+
+## Review notes
+
+Approve. Exhausts burst (3 allowed at 201), 4th asserted 429 + Retry-After
+that parses as a positive integer. Tighter than the existing
+"non-empty header" check. Test passes.
