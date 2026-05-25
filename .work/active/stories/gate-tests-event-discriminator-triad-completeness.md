@@ -1,7 +1,7 @@
 ---
 id: gate-tests-event-discriminator-triad-completeness
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, spec]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -54,3 +54,21 @@ Assertions:
 
 Reuse the existing `sortedCopy` and `difference` helpers from the same file.
 Emit a structured diagnostic on failure (same style as the existing test).
+
+## Implementation notes
+
+- Added two YAML extractors alongside the existing
+  `extractEventEnvelopeTypeEnum`:
+  - `extractDiscriminatorMapping(t, data) (keys, refs []string)`
+  - `extractPayloadOneOfRefs(t, data) []string`
+- New `TestEventDiscriminatorTriad_Completeness` cross-checks:
+  - `enum` set == `discriminator.mapping` keys set
+  - `discriminator.mapping` values set == `payload.oneOf[*].$ref` set
+- Failure modes covered: adding to enum but forgetting mapping; adding
+  mapping but forgetting oneOf $ref; adding oneOf $ref but forgetting
+  mapping. Each emits a targeted error message naming the missing side.
+- Same `runtime.Caller(0)`-based path resolution as the parent enum test,
+  so cwd-independence is preserved.
+
+Verified: `go test ./internal/portal/events/... -count 1` passes (current
+state: 15 enum entries, 15 mapping entries, 15 oneOf $refs — all aligned).
