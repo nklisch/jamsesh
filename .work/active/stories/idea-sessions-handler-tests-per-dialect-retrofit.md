@@ -1,7 +1,7 @@
 ---
 id: idea-sessions-handler-tests-per-dialect-retrofit
 kind: story
-stage: review
+stage: done
 tags: [portal, sessions, testing]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -166,3 +166,13 @@ go test ./internal/portal/sessions/...
 
 Verified: `go test ./internal/portal/sessions/... -count 1` passes; subtest
 names confirm `<name>/sqlite` wrapping is in effect.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve with note
+
+**Blockers**: none
+**Important**: none
+**Nits**: 3 files (`files_test.go`, `refmodes_test.go`, `scope_validation_test.go`) remain un-retrofitted due to different helper patterns. The variadic-fallback path preserves their existing SQLite-only behavior — no test breakage.
+
+**Notes**: 51 tests retrofitted is meaningful coverage. The variadic `newTestEnv` signature (`...store.Store`) is the right shape for an incremental retrofit — un-touched callers continue to work via the old `openStore` path. When `JAMSESH_TEST_PG_DSN` is set, the retrofitted tests automatically gain `/postgres` subtests. A follow-up to retrofit the remaining 3 files (specifically `buildFilesEnv` and `scope_validation_test.go`'s table-driven loop) can be parked if Postgres coverage is desired for those endpoints; not blocking.
