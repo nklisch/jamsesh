@@ -300,3 +300,57 @@ func TestRequireSessionMember_Success(t *testing.T) {
 		t.Errorf("want zero AuthFail on success, got status %d", fail.Status)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// gate-security-anon-bearer-validate-no-session-binding
+//
+// RequireAnonymousSessionMember is a documenting alias for RequireSessionMember
+// — the contract it pins is that playground anonymous bearers are enforced
+// to bind to the session_id they were issued for via the session-member check.
+// ---------------------------------------------------------------------------
+
+func TestRequireAnonymousSessionMember_BearerForDifferentSession_Rejected(t *testing.T) {
+	want := testAccount()
+	ctx := accountCtx(want)
+	// stubStore returns ErrNotFound for session B because the bearer's
+	// account was added as a member of session A only.
+	s := &stubStore{
+		getSessionMemberFn: func(_ context.Context, arg store.GetSessionMemberParams) (store.SessionMember, error) {
+			if arg.OrgID != "org_playground" {
+				t.Errorf("orgID: got %q", arg.OrgID)
+			}
+			if arg.SessionID == "sess-B" {
+				return store.SessionMember{}, store.ErrNotFound
+			}
+			return store.SessionMember{OrgID: arg.OrgID, SessionID: arg.SessionID, AccountID: want.ID}, nil
+		},
+	}
+	// Try session B with a bearer that's only a member of session A.
+	_, _, fail, ok := handlerauth.RequireAnonymousSessionMember(ctx, s, "org_playground", "sess-B")
+	if ok {
+		t.Fatal("want ok=false when bearer is not a member of the requested session")
+	}
+	if fail.Status != 403 {
+		t.Errorf("want 403 (Forbidden), got status %d", fail.Status)
+	}
+}
+
+func TestRequireAnonymousSessionMember_BearerForCorrectSession_Allowed(t *testing.T) {
+	want := testAccount()
+	ctx := accountCtx(want)
+	s := &stubStore{
+		getSessionMemberFn: func(_ context.Context, arg store.GetSessionMemberParams) (store.SessionMember, error) {
+			return store.SessionMember{OrgID: arg.OrgID, SessionID: arg.SessionID, AccountID: want.ID, Role: "creator"}, nil
+		},
+	}
+	_, member, fail, ok := handlerauth.RequireAnonymousSessionMember(ctx, s, "org_playground", "sess-A")
+	if !ok {
+		t.Fatal("want ok=true when bearer matches session")
+	}
+	if member.Role != "creator" {
+		t.Errorf("member.Role: got %q want creator", member.Role)
+	}
+	if fail.Status != 0 {
+		t.Errorf("want zero AuthFail on success, got status %d", fail.Status)
+	}
+}

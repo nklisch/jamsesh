@@ -361,21 +361,17 @@ func (h *Handler) JoinPlaygroundSession(ctx context.Context, req openapi.JoinPla
 
 // GetPlaygroundSession returns the compact session descriptor for a playground
 // session. The caller must present a valid anonymous bearer for this session
-// (i.e. be a session member).
+// (i.e. be a session member). This enforces the playground's
+// per-session-bearer binding via handlerauth.RequireAnonymousSessionMember —
+// a bearer issued for session A cannot read session B even if both belong to
+// the reserved playground org.
+// (gate-security-anon-bearer-validate-no-session-binding)
 func (h *Handler) GetPlaygroundSession(ctx context.Context, req openapi.GetPlaygroundSessionRequestObject) (openapi.GetPlaygroundSessionResponseObject, error) {
 	sessionID := req.Id
 
-	// Require a valid bearer — the bearer must belong to a session member.
-	acc, fail, ok := handlerauth.RequireAccount(ctx)
-	if !ok {
-		if fail.Err != nil {
-			return nil, deperr.WrapDBIfTransient(fmt.Errorf("playground: get session auth: %w", fail.Err))
-		}
-		return openapi.GetPlaygroundSession401JSONResponse{
-			UnauthorizedJSONResponse: fail.Unauthorized,
-		}, nil
-	}
-
+	// Look up the session row first so a 404 on a missing session takes
+	// priority over a 401 on an unauthenticated request — matches the
+	// existing behaviour and the implicit contract documented in handler tests.
 	sess, err := h.Store.GetSession(ctx, ReservedOrgID, sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -389,22 +385,32 @@ func (h *Handler) GetPlaygroundSession(ctx context.Context, req openapi.GetPlayg
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("playground: get session: %w", err))
 	}
 
-	// Verify the bearer's account is a member of this session.
-	_, err = h.Store.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     ReservedOrgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	})
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+	// Combined RequireAccount + GetSessionMember in one helper. The bearer
+	// must have been issued for this exact session_id (per-session anonymous
+	// bearer contract — cross-session bearer reuse is rejected here).
+	_, _, fail, ok := handlerauth.RequireAnonymousSessionMember(ctx, h.Store, ReservedOrgID, sessionID)
+	if !ok {
+		if fail.Status == 500 {
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("playground: get session auth: %w", fail.Err))
+		}
+		// 401 (no bearer) or 403 (bearer is for a different session). The
+		// playground endpoint surfaces both as 401 with distinct error codes
+		// for the not-a-member case so the client can distinguish them.
+		if fail.Status == 401 {
 			return openapi.GetPlaygroundSession401JSONResponse{
-				UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-					Error:   "auth.not_a_member",
-					Message: "your bearer token is not associated with this session",
-				},
+				UnauthorizedJSONResponse: fail.Unauthorized,
 			}, nil
 		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("playground: get session member: %w", err))
+		// 403 mapped to 401 with the not_a_member code — matches the prior
+		// behaviour for the playground endpoint (anonymous bearers are
+		// session-scoped, so a forbidden member check is an auth failure
+		// from the client's perspective).
+		return openapi.GetPlaygroundSession401JSONResponse{
+			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+				Error:   "auth.not_a_member",
+				Message: "your bearer token is not associated with this session",
+			},
+		}, nil
 	}
 
 	count, err := h.Store.CountSessionMembers(ctx, store.CountSessionMembersParams{

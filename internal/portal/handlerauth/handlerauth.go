@@ -107,6 +107,26 @@ func RequireOrgMember(ctx context.Context, s orgMemberStore, orgID string) (*sto
 	return acc, member, AuthFail{}, true
 }
 
+// RequireAnonymousSessionMember is an alias for RequireSessionMember that
+// documents the playground-specific contract: the caller's anonymous bearer
+// MUST have been issued for the requested session_id. Because anonymous
+// bearers are minted per-session by IssueAnonymousSessionBearer (creating a
+// fresh anon account each time), a session-member check is equivalent to
+// "bearer was issued for this session" — the underlying anon account row
+// only exists because the bearer was issued, and the account is added as a
+// session member in the same transaction.
+//
+// Use this in place of `RequireAccount + GetSessionMember` on playground
+// endpoints. It composes the same checks but the named helper documents
+// the cross-session-bearer-reuse defense (story:
+// gate-security-anon-bearer-validate-no-session-binding).
+//
+// Durable-session callers should continue to use RequireSessionMember
+// directly; the distinction matters only for documentation.
+func RequireAnonymousSessionMember(ctx context.Context, s sessionMemberStore, orgID, sessionID string) (*store.Account, store.SessionMember, AuthFail, bool) {
+	return RequireSessionMember(ctx, s, orgID, sessionID)
+}
+
 // RequireSessionMember verifies that the authenticated account is a member of
 // the given session (identified by orgID + sessionID). It does NOT check org
 // membership — callers that need an org-membership gate should use
