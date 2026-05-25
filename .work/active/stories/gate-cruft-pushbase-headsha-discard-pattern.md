@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-pushbase-headsha-discard-pattern
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
