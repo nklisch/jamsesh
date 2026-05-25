@@ -1,7 +1,7 @@
 ---
 id: story-store-partition-test-fixture-sweep
 kind: story
-stage: review
+stage: done
 tags: [portal, refactor, testing]
 parent: feature-refactor-store-narrow-handler-signatures
 depends_on: [story-store-partition-handler-signature-sweep]
