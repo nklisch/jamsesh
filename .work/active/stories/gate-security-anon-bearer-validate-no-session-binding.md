@@ -1,7 +1,7 @@
 ---
 id: gate-security-anon-bearer-validate-no-session-binding
 kind: story
-stage: review
+stage: done
 tags: [security, portal, tokens, defense-in-depth]
 parent: feature-playground-hardening
 depends_on: []
@@ -80,3 +80,13 @@ structurally impossible to forget.
   - `TestRequireAnonymousSessionMember_BearerForCorrectSession_Allowed`
 
 Verified: `go test ./internal/portal/playground/... ./internal/portal/handlerauth/... -count 1` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: The remediation chose the structural-impossibility-to-forget path (`RequireAnonymousSessionMember` helper) rather than modifying `Validate` — correct, since `Validate` is shared with durable sessions. Naming pins the playground contract for future maintainers. Tombstone deviation is sound: the payload exposes only summary stats (session_id, counts, end_reason, timestamps) — no member identities, no payload bytes. Two negative-path handlerauth tests pin the cross-session rejection.
