@@ -126,3 +126,18 @@ updated: 2026-05-24
 - **gate-patterns** (2026-05-24) — 5 new patterns extracted, 0 inconsistencies
   - New patterns: per-instance-factory-rune-store, adapter-wrap-helpers, strict-server-partial-handler-shim, playground-activity-reset, ticker-sweep-loop
   - Tracking item `gate-patterns-v0.4.0` at stage:done (gate's deliverable is the pattern files themselves)
+
+### Gate re-runs (2026-05-24, post-autopilot drain)
+
+After autopilot drained the original 90+ gate-produced items, all 5 gates re-ran to verify the implementations themselves didn't introduce new issues:
+
+- **gate-security (re-run)** — 0 new findings. The bundle's security posture remains clean across the new implementations (CSP report-uri header, playground maxLength validation, anon-bearer tests, store-partition refactor).
+- **gate-tests (re-run)** — 0 new findings. All 25 prior gate-tests items confirmed at stage:done; no new coverage gaps in the autopilot's implementations.
+- **gate-cruft (re-run)** — 7 new findings (6 High + 1 Medium), all drained in the same release-deploy cycle:
+  - High → active/stories (6): httperr-errinvalidnickname-unused, worker-test-createplaygroundsession-helper-unused, sessions-handler-test-fakeclock-advance-unused, playground-worker-errstopretrying-unused-var, status-compat-typealias-statusoutput-unused, finalize-view-unused-btn-primary-selector
+  - Medium → active/stories (1): status-test-stale-setupstatusenv-comment
+- **gate-docs (re-run)** — 5 new findings, all drained in the same release-deploy cycle:
+  - changelog-foundation-doc-assertion (1): changelog-playground-hardcap-default-wrong (CHANGELOG had `HardCap` 2h; SPEC/code is 24h)
+  - pattern-skill-staleness (4): pattern-line-anchors-drift-rerun, pattern-adapter-wrap-helpers-type-name-drift, pattern-per-instance-factory-sessionviewshell-moved, pattern-dual-dialect-occurrence-count-stale
+- **gate-patterns (re-run)** — 4 additional patterns extracted (additive, no inconsistencies):
+  - package-private-composed-store-interface, test-narrow-store-delegation, testenv-harness-struct, reserved-org-id-local-const-mirror
