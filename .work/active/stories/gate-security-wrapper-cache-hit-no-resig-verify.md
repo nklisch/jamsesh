@@ -3,7 +3,7 @@ id: gate-security-wrapper-cache-hit-no-resig-verify
 kind: story
 stage: drafting
 tags: [security, plugin, infra, supply-chain]
-parent: null
+parent: feature-server-secret-log-hygiene
 depends_on: []
 release_binding: null
 gate_origin: security

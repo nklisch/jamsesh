@@ -3,12 +3,12 @@ id: gate-security-oauth-callback-log-scrubbing
 kind: story
 stage: drafting
 tags: [security, portal, logging, auth]
-parent: null
+parent: feature-server-secret-log-hygiene
 depends_on: []
 release_binding: null
 gate_origin: security
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # GitHub OAuth callback may surface provider-error envelopes / log `code`+`state` query params

@@ -3,7 +3,7 @@ id: gate-security-datadir-permissions-not-validated
 kind: story
 stage: drafting
 tags: [security, plugin, hardening]
-parent: null
+parent: feature-server-secret-log-hygiene
 depends_on: []
 release_binding: null
 gate_origin: security

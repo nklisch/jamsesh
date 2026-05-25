@@ -3,12 +3,12 @@ id: gate-security-refresh-error-body-leak
 kind: story
 stage: drafting
 tags: [security, plugin, logging]
-parent: null
+parent: feature-server-secret-log-hygiene
 depends_on: []
 release_binding: null
 gate_origin: security
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # Refresh token error path leaks raw upstream response bodies into local stderr/log
