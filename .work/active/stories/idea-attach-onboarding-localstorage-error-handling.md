@@ -1,7 +1,14 @@
 ---
 id: idea-attach-onboarding-localstorage-error-handling
-created: 2026-05-21
+kind: story
+stage: drafting
 tags: [ui, bug]
+parent: feature-attach-onboarding-a11y-robustness
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-21
+updated: 2026-05-25
 ---
 
 `SessionAttachWalkthrough.svelte:82` and `:90` call

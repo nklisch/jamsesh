@@ -1,7 +1,14 @@
 ---
 id: idea-attach-onboarding-keyboard-accessibility
-created: 2026-05-21
+kind: story
+stage: drafting
 tags: [ui, a11y]
+parent: feature-attach-onboarding-a11y-robustness
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-21
+updated: 2026-05-25
 ---
 
 The walkthrough modal has several click-only interactive surfaces that
