@@ -1,7 +1,7 @@
 ---
 id: idea-playground-ws-event-types-missing-from-openapi
 kind: story
-stage: drafting
+stage: implementing
 tags: [ui, refactor, openapi, playground]
 parent: null
 depends_on: []

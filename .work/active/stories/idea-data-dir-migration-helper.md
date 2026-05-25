@@ -1,7 +1,7 @@
 ---
 id: idea-data-dir-migration-helper
 kind: story
-stage: drafting
+stage: implementing
 tags: [plugin, migration, release-notes]
 parent: null
 depends_on: []

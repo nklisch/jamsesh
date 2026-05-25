@@ -1,7 +1,7 @@
 ---
 id: idea-app-test-svelte5-component-mock-broken
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, ui]
 parent: null
 depends_on: []
