@@ -111,6 +111,35 @@ func TestSecurityHeaders_Middleware(t *testing.T) {
 			t.Errorf("Content-Security-Policy: want custom %q, got %q", custom, got)
 		}
 	})
+
+	t.Run("Content-Security-Policy-Report-Only header is present and well-formed", func(t *testing.T) {
+		mw := router.SecurityHeaders(router.SecurityHeadersOptions{})
+		h := mw(stubHandler)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		h.ServeHTTP(w, r)
+
+		cspRO := w.Header().Get("Content-Security-Policy-Report-Only")
+		if cspRO == "" {
+			t.Fatal("Content-Security-Policy-Report-Only header was empty")
+		}
+
+		// Must end with the report-uri directive so violations are reported.
+		if !strings.HasSuffix(cspRO, "report-uri /_csp-report") {
+			t.Errorf("Content-Security-Policy-Report-Only must end with 'report-uri /_csp-report'; got: %s", cspRO)
+		}
+
+		// Must mirror the enforced CSP's core directives.
+		for _, want := range []string{
+			"script-src 'self'",
+			"default-src 'self'",
+		} {
+			if !strings.Contains(cspRO, want) {
+				t.Errorf("Content-Security-Policy-Report-Only missing directive %q; full header: %s", want, cspRO)
+			}
+		}
+	})
 }
 
 // TestSecurityHeaders_RouterIntegration verifies that the full router emits

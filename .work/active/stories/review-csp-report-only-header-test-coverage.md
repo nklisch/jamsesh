@@ -1,7 +1,7 @@
 ---
 id: review-csp-report-only-header-test-coverage
 kind: story
-stage: implementing
+stage: review
 tags: [testing, security]
 parent: null
 depends_on: []
@@ -30,3 +30,10 @@ Add at least one test in `security_headers_test.go` asserting:
 - it ends with `report-uri /_csp-report`,
 - its body otherwise mirrors `defaultCSP()` (or at minimum contains
   `script-src 'self'`).
+
+## Implementation notes
+Added subtest `Content-Security-Policy-Report-Only header is present and
+well-formed` to `TestSecurityHeaders_Middleware` in
+`internal/portal/router/security_headers_test.go`. The test asserts the
+header is non-empty, ends with `report-uri /_csp-report`, and contains
+both `default-src 'self'` and `script-src 'self'`. All router tests pass.
