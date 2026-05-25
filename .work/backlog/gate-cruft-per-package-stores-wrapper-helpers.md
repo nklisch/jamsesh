@@ -34,3 +34,12 @@ func stores(t *testing.T) []storetest.DialectHarness {
 
 ## Removal
 The wrapper exists only to save typing `storetest.` at call sites. Inline `storetest.Stores(t)` at the (few) call sites in each test file and remove both wrappers + their comment blocks. Note: this is contested — some projects deliberately keep such shortcuts. Low confidence; treat as judgment.
+
+## Autopilot triage (2026-05-24)
+
+Left at drafting. The body explicitly flags this as a contested
+judgment call: "this is contested — some projects deliberately keep
+such shortcuts. Low confidence; treat as judgment." Autopilot
+declines to autonomously make this style call; awaiting human
+decision on whether to inline `storetest.Stores(t)` at call sites or
+keep the per-package shortcuts.

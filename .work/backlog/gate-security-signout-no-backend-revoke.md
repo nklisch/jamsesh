@@ -8,7 +8,7 @@ depends_on: []
 release_binding: null
 gate_origin: security
 created: 2026-05-20
-updated: 2026-05-20
+updated: 2026-05-24
 ---
 
 # signOut() clears local tokens without notifying backend to revoke them
@@ -56,3 +56,11 @@ DB-level refresh-token revocation) plus the frontend best-effort call —
 this is feature-scope work, not a single-stride story. Moved to backlog
 for proper scoping in a future release. Per release-v0.3.0 file's
 documented escape hatch.
+
+## Autopilot triage (2026-05-24)
+
+Left at drafting. Per the prior autopilot deferral note: requires a
+new backend endpoint (`POST /api/auth/logout` with DB-level
+refresh-token revocation) plus the frontend best-effort call —
+feature-scope, not a single-stride story. Awaiting human
+`/agile-workflow:scope` to promote into a properly-designed feature.

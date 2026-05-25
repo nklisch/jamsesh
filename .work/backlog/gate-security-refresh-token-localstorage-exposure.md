@@ -8,7 +8,7 @@ depends_on: []
 release_binding: null
 gate_origin: security
 created: 2026-05-20
-updated: 2026-05-20
+updated: 2026-05-24
 ---
 
 # Refresh token persisted in localStorage, exposed to any XSS
@@ -55,3 +55,12 @@ feature-scope (probably epic-scope) work requiring proper design and
 cross-stack implementation, not a single-stride story. Moved to backlog
 for scoping via `/agile-workflow:scope` in a future release. Per
 release-v0.3.0 file's documented escape hatch.
+
+## Autopilot triage (2026-05-24)
+
+Left at drafting. Per the prior autopilot deferral note: genuinely
+architectural — remediation requires either HttpOnly cookie + backend
+changes, or a Backend-for-Frontend pattern. Either path is
+feature-scope (probably epic-scope) work. Awaiting human
+`/agile-workflow:scope` for proper design and cross-stack
+implementation.
