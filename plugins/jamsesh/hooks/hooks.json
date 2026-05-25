@@ -1,10 +1,77 @@
 {
+  "description": "jamsesh hooks: session-lifecycle integration with the local jamsesh binary. SessionStart injects session context; UserPromptSubmit fetches digest + drains retry queue; PreToolUse gates Bash (denies git push / remote.* config); PostToolUse pushes after every git commit; Stop auto-commits + pushes any remainder; SessionEnd is currently a v1 no-op.",
   "hooks": {
-    "SessionStart":     "bin/jamsesh hook session-start",
-    "UserPromptSubmit": "bin/jamsesh hook user-prompt-submit",
-    "PreToolUse":       "bin/jamsesh hook pre-tool-use",
-    "PostToolUse":      "bin/jamsesh hook post-tool-use",
-    "Stop":             "bin/jamsesh hook stop",
-    "SessionEnd":       "bin/jamsesh hook session-end"
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/jamsesh hook session-start",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/jamsesh hook user-prompt-submit",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/jamsesh hook pre-tool-use",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/jamsesh hook post-tool-use",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/jamsesh hook stop",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/jamsesh hook session-end",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }
