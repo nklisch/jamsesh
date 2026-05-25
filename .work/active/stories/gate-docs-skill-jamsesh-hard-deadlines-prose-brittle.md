@@ -1,7 +1,7 @@
 ---
 id: gate-docs-skill-jamsesh-hard-deadlines-prose-brittle
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
