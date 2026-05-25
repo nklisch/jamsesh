@@ -1,7 +1,7 @@
 ---
 id: gate-security-wrapper-cache-hit-no-resig-verify
 kind: story
-stage: review
+stage: done
 tags: [security, plugin, infra, supply-chain]
 parent: feature-server-secret-log-hygiene
 depends_on: []
@@ -122,3 +122,13 @@ cache-hit block — it is now defined once above.
 - No network round-trip on the warm-cache happy path — the sidecar is local.
 
 Verified: `bats tests/wrapper/*.bats` → 18 passed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Sidecar pattern is the right design — local verification, no network round-trip on warm hits, automatic recovery on tamper or legacy-install. The mismatch warning is unconditional (correct — security signal must not be silenced by verbose flag). `sha256_of` correctly moved above its first use and the duplicate is removed. Sidecar `mv` is atomic alongside the binary mv.
