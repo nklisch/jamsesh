@@ -1,7 +1,7 @@
 ---
 id: gate-tests-migrate-17-18-up-down-up-isolated
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, migrations]
 parent: null
 depends_on: []
@@ -52,3 +52,12 @@ go test ./internal/db/... -run 'TestMigrate00017|TestMigrate00018' -v
 go test ./internal/db/...
 # ok  jamsesh/internal/db  0.105s
 ```
+
+## Review notes
+
+Approve. Each test isolates its boundary (seed to 16/17, Up, Down, re-Up) and
+asserts schema state via real DDL/DML (INSERT that should fail before the
+column exists, INSERT that should succeed after). Also pins data-survival
+across Down (back-filled `last_substantive_activity_at`). The
+"isolation-actually-possible" finding contradicts the story premise correctly
+and is documented in the notes. Tests pass.
