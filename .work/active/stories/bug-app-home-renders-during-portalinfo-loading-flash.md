@@ -1,7 +1,7 @@
 ---
 id: bug-app-home-renders-during-portalinfo-loading-flash
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, ui, regression, flash, a11y]
 parent: null
 depends_on: []

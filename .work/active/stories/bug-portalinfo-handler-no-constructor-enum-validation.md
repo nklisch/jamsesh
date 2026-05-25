@@ -1,7 +1,7 @@
 ---
 id: bug-portalinfo-handler-no-constructor-enum-validation
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, portal, security]
 parent: null
 depends_on: []
