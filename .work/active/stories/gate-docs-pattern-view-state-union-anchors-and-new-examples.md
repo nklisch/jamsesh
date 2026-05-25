@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-view-state-union-anchors-and-new-examples
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
