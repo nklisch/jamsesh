@@ -1,7 +1,7 @@
 ---
 id: feature-auth-signout-backend-revoke-frontend
 kind: story
-stage: review
+stage: done
 tags: [security, auth, ui]
 parent: feature-auth-signout-backend-revoke
 depends_on: [feature-auth-signout-backend-revoke-backend]
@@ -181,3 +181,13 @@ Verified:
 - `npm test -- --run auth.test.ts` → 29 passed.
 - `npm test -- --run` → 738 passed, 1 skipped.
 - `npm run check` → 0 errors, 1 pre-existing unrelated warning.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: The clear-then-POST order deviation is correctly justified: (a) keeps the synchronous local-state-clear contract for non-awaiting callers like `unauthorizedMiddleware` in `client.ts`, (b) prevents recursion when the logout endpoint itself returns 401 (captured token is empty on recursive entry). Explicit `Authorization: Bearer <capturedToken>` header bypasses the now-empty bearerMiddleware lookup. `try/catch` swallows transport errors; openapi-fetch's `{ error }` result is treated as success-for-purposes-of-local-clear (which is right — we tried). Four new tests cover the matrix.
