@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-per-instance-factory-sessionviewshell-moved
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
