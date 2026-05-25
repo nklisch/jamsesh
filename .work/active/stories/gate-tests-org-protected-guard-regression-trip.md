@@ -1,7 +1,7 @@
 ---
 id: gate-tests-org-protected-guard-regression-trip
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, security, defense-in-depth]
 parent: null
 depends_on: []
@@ -54,3 +54,18 @@ handler. Adding a future `DeleteOrg` handler requires:
 The existing `TestPatchOrg_ProtectedOrg_Returns409` test continues to cover the
 happy-path 409 response for `PatchOrg`; this regression-trip test adds the
 store-bypass sentinel and establishes the extensible table pattern.
+
+## Review notes
+
+Approve with a nit. Wrapper-store records the first mutation method called
+and the test asserts (a) `mutationCalled == ""` after the request and (b)
+status 409 with code `org.protected`. The table-driven pattern is sound and
+extensible. Nit: the inline comment claims "fail at compile time if the new
+route's store method is not added to the guard", which isn't quite true —
+adding a new handler that calls a brand-new store method bypasses the trip
+silently until the dev remembers to add an override. A `reflect`-based scan
+of `OrgsHandler` method names would close that loop but is non-blocking.
+Test passes.
+
+### Spawned items
+- `review-org-protected-reflect-handler-scan` (Nit, in backlog)
