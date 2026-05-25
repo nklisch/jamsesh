@@ -1,7 +1,7 @@
 ---
 id: gate-tests-cli-jam-playground-flag-e2e-extractor-stale-url
 kind: story
-stage: implementing
+stage: done
 tags: [testing, e2e-test, bug, cli, playground]
 parent: null
 depends_on: []
@@ -52,3 +52,14 @@ fix + add a helper unit test in the same file).
 The e2e either silently fails after the bundle's fix OR has never been
 re-run in v0.4.1; either way the bundle would ship a broken
 anti-tautology check that no longer verifies what its docstring claims.
+
+## Implementation notes (2026-05-25)
+
+Inline fix during gate-tests cycle:
+
+- `tests/e2e/golden/cli_jam_playground_flag_test.go:213-230` — rewrote
+  `extractPlaygroundSessionID` to anchor on the new `/playground/s/`
+  prefix, split before `/join` (or any trailing whitespace/EOL), and
+  updated the docstring + fatal message to match the new URL shape.
+- `cd tests/e2e && go vet ./golden/` clean — no compile or static errors.
+- Full e2e run is gated on testcontainers; deferred to CI.

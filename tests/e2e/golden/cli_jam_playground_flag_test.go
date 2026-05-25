@@ -207,26 +207,28 @@ func getPlaygroundSession(ctx context.Context, t *testing.T, baseURL, sessionID,
 // extractPlaygroundSessionID parses the session ID from the "Share URL:" line
 // in the binary's stdout. The line format is:
 //
-//	  Share URL:  http://host:port/playground/<sessionID>
+//	  Share URL:  http://host:port/playground/s/<sessionID>/join
 //
 // Fatals if no matching line is found.
 func extractPlaygroundSessionID(t *testing.T, output, baseURL string) string {
 	t.Helper()
-	prefix := strings.TrimRight(baseURL, "/") + "/playground/"
+	prefix := strings.TrimRight(baseURL, "/") + "/playground/s/"
 	for _, line := range strings.Split(output, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if idx := strings.Index(trimmed, prefix); idx >= 0 {
-			id := strings.TrimSpace(trimmed[idx+len(prefix):])
-			// Strip any trailing path segments or whitespace.
-			if i := strings.IndexAny(id, " \t/\r\n"); i > 0 {
-				id = id[:i]
-			}
-			if id != "" {
-				return id
-			}
+		idx := strings.Index(trimmed, prefix)
+		if idx < 0 {
+			continue
+		}
+		rest := trimmed[idx+len(prefix):]
+		// Session ID runs from here until the next '/', whitespace, or EOL.
+		if i := strings.IndexAny(rest, " \t/\r\n"); i > 0 {
+			rest = rest[:i]
+		}
+		if rest != "" {
+			return rest
 		}
 	}
-	t.Fatalf("extractPlaygroundSessionID: no 'Share URL: ...%s<id>' line in output:\n%s", prefix, output)
+	t.Fatalf("extractPlaygroundSessionID: no 'Share URL: ...%s<id>/join' line in output:\n%s", prefix, output)
 	return "" // unreachable
 }
 
