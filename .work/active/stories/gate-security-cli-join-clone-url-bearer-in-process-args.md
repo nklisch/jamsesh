@@ -5,7 +5,7 @@ stage: drafting
 tags: [security, plugin, cli, auth]
 parent: null
 depends_on: []
-release_binding: v0.4.1
+release_binding: null
 gate_origin: security
 created: 2026-05-25
 updated: 2026-05-25

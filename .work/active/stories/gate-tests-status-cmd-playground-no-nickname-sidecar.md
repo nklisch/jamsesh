@@ -5,7 +5,7 @@ stage: implementing
 tags: [testing, plugin, cli, playground]
 parent: null
 depends_on: []
-release_binding: v0.4.1
+release_binding: null
 gate_origin: tests
 created: 2026-05-25
 updated: 2026-05-25

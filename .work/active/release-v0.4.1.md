@@ -41,19 +41,19 @@ no-op architectural-note triage on the parseInviteEmails dedupe.
 
 ## Gate runs
 
-- **gate-security** (2026-05-25) — 5 findings (0 critical, 0 high, 1 medium, 4 low)
-  - Medium: `gate-security-cli-join-clone-url-bearer-in-process-args` (stage:drafting)
-  - Low (backlog): `gate-security-wrapper-cache-hit-no-resig-verify`,
-    `gate-security-datadir-permissions-not-validated`,
-    `gate-security-portalinfo-no-rate-limit`,
-    `gate-security-portalinfo-no-cachecontrol-no-store`
-- **gate-tests** (2026-05-25) — 9 findings (2 critical, 2 high, 3 medium, 2 low)
-  - Critical: `gate-tests-cli-jam-playground-flag-e2e-extractor-stale-url`,
-    `gate-tests-playwright-landing-variant-project-spec`
-  - High: `gate-tests-app-gate-flash-unauthed-portalinfo-not-loaded`,
-    `gate-tests-status-cmd-playground-no-nickname-sidecar`
-  - Medium: `gate-tests-wrapper-bats-xdg-default-fallback-uncovered`,
-    `gate-tests-portalinfo-handler-invalid-enum-defense`,
-    `gate-tests-portalinfo-method-not-allowed-cors`
-  - Low (backlog): `gate-tests-projectlanding-hardcoded-version-string`,
-    `gate-tests-portalinfo-init-post-load-resolves-synchronously`
+- **gate-security** (2026-05-25) — 5 findings filed (0 critical, 0 high, 1 medium, 4 low). All unbound from v0.4.1 (deferred per user direction — patch-release pragmatic).
+- **gate-tests** (2026-05-25) — 9 findings filed (2 critical, 2 high, 3 medium, 2 low). 1 Critical drained inline (`gate-tests-cli-jam-playground-flag-e2e-extractor-stale-url` — fixed stale share-URL extractor). Remaining 8 unbound from v0.4.1 (deferred per user direction).
+- **gate-cruft**, **gate-docs**, **gate-patterns** — skipped per user direction (patch-release scope).
+
+## Drained inline this cycle
+
+- `gate-tests-cli-jam-playground-flag-e2e-extractor-stale-url` (Critical) —
+  `tests/e2e/golden/cli_jam_playground_flag_test.go` `extractPlaygroundSessionID`
+  re-anchored on the new `/playground/s/<id>/join` URL shape that
+  `story-fix-cli-playground-share-url` introduced.
+
+## Deferred to future releases (filed, unbound)
+
+Gate findings tracked as items but not blocking this patch. See
+`.work/active/stories/gate-{security,tests}-*.md` and
+`.work/backlog/gate-{security,tests}-*.md`.
