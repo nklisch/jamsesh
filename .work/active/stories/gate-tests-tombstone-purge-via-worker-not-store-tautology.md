@@ -1,7 +1,7 @@
 ---
 id: gate-tests-tombstone-purge-via-worker-not-store-tautology
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground, refactor]
 parent: null
 depends_on: []
@@ -49,3 +49,20 @@ runs the worker for 200ms at 1ms/tick (well above the 60-tick threshold),
 and asserts the tombstone is gone after the run. This exercises the
 `worker → purgeTombstones() → store.PurgeExpiredTombstones()` call chain
 rather than the store in isolation.
+
+## Review notes
+
+Approve with Important finding. The new test
+`TestWorker_PurgesTombstones_OnPurgeEveryTickInterval` correctly drives the
+real `worker.Run()` loop and asserts the tombstone is gone — proving the
+worker invokes the purge on cadence. This satisfies the story's core goal of
+replacing tautology with a real worker-driven test.
+
+Important: the old tautological `TestWorker_PurgesTombstonesAfterTTL`
+(internal/portal/playground/worker_test.go:251-286) was NOT removed. The
+new test's comment block explicitly says "replaces the existing
+TestWorker_PurgesTombstonesAfterTTL", but they currently coexist. Cleanup
+spawned at `review-remove-tautological-purge-test`. Tests pass.
+
+### Spawned items
+- `review-remove-tautological-purge-test` (Important)
