@@ -1,7 +1,7 @@
 ---
 id: feature-auth-signout-backend-revoke
 kind: feature
-stage: review
+stage: done
 tags: [security, portal, ui, auth, tokens]
 parent: null
 depends_on: []
@@ -386,3 +386,13 @@ synchronous-clear semantics for callers that don't `await` (notably
 `unauthorizedMiddleware`).
 
 Verified: `go test ./internal/portal/tokens/... -count 1` + `npm test -- --run auth.test.ts` → 29 passed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Feature delivered as briefed. Both child stories approved individually. The frontend's POST-after-clear deviation is sound — preserves the synchronous-clear contract for non-awaiting callers and prevents recursion via `unauthorizedMiddleware`. Pre-existing `gate-security-signout-no-backend-revoke` (parent child story) is already at `done`. No foundation-doc drift; the additive `rawBearerCtxKey` doesn't affect existing consumers.
