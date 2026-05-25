@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"jamsesh/internal/api/openapi"
@@ -91,11 +92,14 @@ func TestJoinAction_happy(t *testing.T) {
 
 	// Track git calls.
 	var gitCalls [][]string
+	var gitWithEnvCalls [][]string
 	origRunGit := runGit
 	origRunGitOutput := runGitOutput
+	origRunGitWithEnv := runGitWithEnv
 	t.Cleanup(func() {
 		runGit = origRunGit
 		runGitOutput = origRunGitOutput
+		runGitWithEnv = origRunGitWithEnv
 	})
 	runGit = func(args ...string) error {
 		gitCalls = append(gitCalls, append([]string(nil), args...))
@@ -103,6 +107,10 @@ func TestJoinAction_happy(t *testing.T) {
 	}
 	runGitOutput = func(args ...string) (string, error) {
 		return "", nil
+	}
+	runGitWithEnv = func(env []string, args ...string) error {
+		gitWithEnvCalls = append(gitWithEnvCalls, append([]string(nil), args...))
+		return nil
 	}
 
 	mux := http.NewServeMux()
@@ -134,16 +142,59 @@ func TestJoinAction_happy(t *testing.T) {
 		t.Fatalf("join returned error: %v", err)
 	}
 
-	// Verify git clone was called.
-	foundClone := false
-	for _, call := range gitCalls {
-		if len(call) > 0 && call[0] == "clone" {
-			foundClone = true
+	// Verify git clone was called via runGitWithEnv (extraHeader path).
+	// The clone command is invoked as `git -c http.extraHeader=... clone --bare <url> <dest>`.
+	var cloneCall []string
+	for _, call := range gitWithEnvCalls {
+		for _, a := range call {
+			if a == "clone" {
+				cloneCall = call
+				break
+			}
+		}
+		if cloneCall != nil {
 			break
 		}
 	}
-	if !foundClone {
-		t.Errorf("expected git clone call, got: %v", gitCalls)
+	if cloneCall == nil {
+		t.Fatalf("expected git clone call via runGitWithEnv, got runGit=%v runGitWithEnv=%v",
+			gitCalls, gitWithEnvCalls)
+	}
+
+	// Token must NOT appear in any positional arg (process listing safety).
+	// The clone URL must be credential-less, and the bearer must flow via the
+	// http.extraHeader -c flag, where it's still embedded in argv but at least
+	// scoped behind a header rather than a remote-URL field that ends up in
+	// `git remote -v` / reflog output.
+	// Assert the clone URL itself carries no `userinfo` segment.
+	for i, a := range cloneCall {
+		if a == "clone" {
+			// Next positional after possible flags should be the URL.
+			// Walk forward to first non-flag arg.
+			for j := i + 1; j < len(cloneCall); j++ {
+				if strings.HasPrefix(cloneCall[j], "-") {
+					continue
+				}
+				if cloneCall[j] == "--bare" {
+					continue
+				}
+				if strings.Contains(cloneCall[j], "@") &&
+					(strings.HasPrefix(cloneCall[j], "http://") || strings.HasPrefix(cloneCall[j], "https://")) {
+					t.Errorf("clone URL contains userinfo: %q (token leak via URL)", cloneCall[j])
+				}
+				break
+			}
+		}
+	}
+	// The bearer token "tok-test" must not appear unencoded anywhere in
+	// argv outside the http.extraHeader Basic-auth blob.
+	for _, a := range cloneCall {
+		if strings.HasPrefix(a, "http.extraHeader=") {
+			continue
+		}
+		if strings.Contains(a, "tok-test") {
+			t.Errorf("bearer token leaked into argv: %q", a)
+		}
 	}
 
 	// Verify per-session state was written.
@@ -183,12 +234,15 @@ func TestJoinAction_inviteURL(t *testing.T) {
 
 	origRunGit := runGit
 	origRunGitOutput := runGitOutput
+	origRunGitWithEnv := runGitWithEnv
 	t.Cleanup(func() {
 		runGit = origRunGit
 		runGitOutput = origRunGitOutput
+		runGitWithEnv = origRunGitWithEnv
 	})
 	runGit = func(args ...string) error { return nil }
 	runGitOutput = func(args ...string) (string, error) { return "", nil }
+	runGitWithEnv = func(env []string, args ...string) error { return nil }
 
 	var inviteAccepted bool
 
@@ -231,6 +285,37 @@ func TestJoinAction_inviteURL(t *testing.T) {
 
 	if !inviteAccepted {
 		t.Error("invite accept endpoint was not called")
+	}
+}
+
+// TestBuildCloneURL_NoCredentialsEmbedded is the focused regression test for
+// gate-security-cli-join-clone-url-bearer-in-process-args. buildCloneURL must
+// return a credential-less URL; the bearer flows through `-c http.extraHeader`
+// at the clone call site, not via the URL's userinfo segment.
+func TestBuildCloneURL_NoCredentialsEmbedded(t *testing.T) {
+	cases := []struct {
+		name, portalURL string
+	}{
+		{"https no trailing slash", "https://portal.example.com"},
+		{"https trailing slash", "https://portal.example.com/"},
+		{"https with subpath", "https://portal.example.com/api/v1"},
+		{"http localhost", "http://127.0.0.1:8080"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := buildCloneURL(tc.portalURL, "org-1", "sess-1")
+			if strings.Contains(got, "@") {
+				// `@` only appears in URLs as the separator between userinfo
+				// and host — a credential-less URL must never contain it.
+				t.Errorf("buildCloneURL returned URL with userinfo segment: %q", got)
+			}
+			if strings.Contains(got, "x-access-token") {
+				t.Errorf("buildCloneURL leaked credential marker: %q", got)
+			}
+			if !strings.HasSuffix(got, "/git/org-1/sess-1.git") {
+				t.Errorf("buildCloneURL path malformed: %q", got)
+			}
+		})
 	}
 }
 

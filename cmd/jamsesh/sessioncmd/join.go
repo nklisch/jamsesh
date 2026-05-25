@@ -3,6 +3,7 @@ package sessioncmd
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"os"
@@ -122,9 +123,20 @@ func joinAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// 7. Clone the session bare repo.
-	cloneURL := buildCloneURL(portalURL, tok, orgID, sessionID)
+	// Bearer is passed via `-c http.extraHeader` (NOT URL-embedded) so the token
+	// does not appear in the process listing (`ps aux`), git's reflog, or
+	// `git remote -v` output for the duration of the clone. The remote URL
+	// itself is credential-less. Mirrors the pattern in new.go:pushBaseRef and
+	// finalizecmd/fetchsource.go:performFetch.
+	cloneURL := buildCloneURL(portalURL, orgID, sessionID)
+	basicHeader := "Authorization: Basic " + base64.StdEncoding.EncodeToString(
+		[]byte("x-access-token:"+tok))
 	localPath := sessionID + ".git"
-	if err := runGit("clone", "--bare", cloneURL, localPath); err != nil {
+	if err := runGitWithEnv(
+		nil,
+		"-c", "http.extraHeader="+basicHeader,
+		"clone", "--bare", cloneURL, localPath,
+	); err != nil {
 		return fmt.Errorf("cloning session repo: %w", err)
 	}
 
@@ -208,15 +220,17 @@ func findOrgForSession(ctx context.Context, pc *portalclient.Client, me openapi.
 	return "", fmt.Errorf("session %q not found in any of your orgs", sessionID)
 }
 
-// buildCloneURL injects the bearer token into the portal URL as HTTP basic auth
-// so git can authenticate without a credential helper.
-func buildCloneURL(portalURL, token, orgID, sessionID string) string {
+// buildCloneURL builds a credential-less clone URL for the session's bare
+// repo on the portal. The bearer token is NOT embedded in the URL — the
+// caller passes it via `-c http.extraHeader=...` so it is never visible in
+// the process listing (`ps aux`), git's reflog, or `git remote -v` output.
+// See join.go's clone call site and new.go:pushBaseRef for the pattern.
+func buildCloneURL(portalURL, orgID, sessionID string) string {
 	u, err := url.Parse(portalURL)
 	if err != nil {
 		// Shouldn't happen; fall back to the raw URL.
 		return portalURL + "/git/" + orgID + "/" + sessionID + ".git"
 	}
-	u.User = url.UserPassword("x-access-token", token)
 	u.Path = strings.TrimRight(u.Path, "/") + "/git/" + orgID + "/" + sessionID + ".git"
 	return u.String()
 }
