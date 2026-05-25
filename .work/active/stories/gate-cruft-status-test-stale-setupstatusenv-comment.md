@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-status-test-stale-setupstatusenv-comment
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
