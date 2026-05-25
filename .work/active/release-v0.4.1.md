@@ -47,3 +47,13 @@ no-op architectural-note triage on the parseInviteEmails dedupe.
     `gate-security-datadir-permissions-not-validated`,
     `gate-security-portalinfo-no-rate-limit`,
     `gate-security-portalinfo-no-cachecontrol-no-store`
+- **gate-tests** (2026-05-25) — 9 findings (2 critical, 2 high, 3 medium, 2 low)
+  - Critical: `gate-tests-cli-jam-playground-flag-e2e-extractor-stale-url`,
+    `gate-tests-playwright-landing-variant-project-spec`
+  - High: `gate-tests-app-gate-flash-unauthed-portalinfo-not-loaded`,
+    `gate-tests-status-cmd-playground-no-nickname-sidecar`
+  - Medium: `gate-tests-wrapper-bats-xdg-default-fallback-uncovered`,
+    `gate-tests-portalinfo-handler-invalid-enum-defense`,
+    `gate-tests-portalinfo-method-not-allowed-cors`
+  - Low (backlog): `gate-tests-projectlanding-hardcoded-version-string`,
+    `gate-tests-portalinfo-init-post-load-resolves-synchronously`
