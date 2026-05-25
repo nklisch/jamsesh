@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -1502,6 +1503,61 @@ func TestJoinPlaygroundSession_NicknameValidation(t *testing.T) {
 						}
 					}
 				})
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// gate-security-playground-internal-sql-errors-surface-to-anon
+//
+// Internal SQL error strings must never appear in the response body returned
+// to anonymous callers. The deperr.WrapDBIfTransient + httperr.WriteFromError
+// pipeline maps transient DB errors to ErrDBUnavailable, which renders as
+// a generic `dep.db_unavailable` envelope with the message
+// "database is currently unavailable". This test pins the invariant.
+// ---------------------------------------------------------------------------
+
+// TestCreatePlaygroundSession_DBError_DoesNotLeakSQLDetail injects a
+// SQL-shaped store failure on AddSessionMember and asserts the resulting
+// 5xx response body uses the generic envelope, not the SQL string.
+func TestCreatePlaygroundSession_DBError_DoesNotLeakSQLDetail(t *testing.T) {
+	for _, h := range stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			s := h.Open(t)
+
+			// SQL-shaped injected error — must NOT appear in the response body.
+			sqlLikeErr := errors.New("sql: database is locked")
+			wrapped := &failingAddSessionMemberStore{
+				Store:  s,
+				addErr: sqlLikeErr,
+			}
+			env := newTestEnvWithStore(t, s, wrapped, defaultCfg())
+
+			resp := postJSON(t, env.srv, "/api/playground/sessions", "", nil)
+			if resp.StatusCode != http.StatusServiceUnavailable {
+				t.Fatalf("want 503 (db_unavailable), got %d", resp.StatusCode)
+			}
+
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			body := string(bodyBytes)
+
+			// Negative: SQL-shaped substrings must not appear.
+			for _, leak := range []string{"sql:", "database is locked", "AddSessionMember"} {
+				if strings.Contains(body, leak) {
+					t.Errorf("response body leaks internal detail %q: %s", leak, body)
+				}
+			}
+			// Positive: canonical envelope and message must be present.
+			if !strings.Contains(body, "dep.db_unavailable") {
+				t.Errorf("response body missing canonical error code: %s", body)
+			}
+			if !strings.Contains(body, "database is currently unavailable") {
+				t.Errorf("response body missing canonical message: %s", body)
 			}
 		})
 	}

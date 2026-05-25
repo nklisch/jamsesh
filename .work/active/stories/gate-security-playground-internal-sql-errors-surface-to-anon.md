@@ -1,7 +1,7 @@
 ---
 id: gate-security-playground-internal-sql-errors-surface-to-anon
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal, playground, error-handling]
 parent: feature-playground-hardening
 depends_on: []
@@ -42,3 +42,28 @@ Audit the `httperr.WriteFromError` path to ensure the response envelope
 strips internal error chains for anonymous endpoints (return a generic
 `internal` 500), and reserve the wrapped chain for the structured access log
 only.
+
+## Implementation notes
+
+- Audit confirmed: the `WrapDBIfTransient` + `httperr.WriteFromError`
+  pipeline already maps transient DB failures to the canonical
+  `dep.db_unavailable` envelope with the message
+  `"database is currently unavailable"` — no internal SQL string leaks.
+  Story scope is purely a test pin.
+- Added `TestCreatePlaygroundSession_DBError_DoesNotLeakSQLDetail` in
+  `internal/portal/playground/handler_test.go`. The test:
+  - injects an `errors.New("sql: database is locked")` failure on
+    `AddSessionMember` via the existing `failingAddSessionMemberStore`;
+  - asserts response is 503;
+  - asserts the response body does NOT contain `"sql:"`,
+    `"database is locked"`, or `"AddSessionMember"`;
+  - asserts the response body DOES contain `"dep.db_unavailable"` and
+    `"database is currently unavailable"`.
+- The injected SQL string still appears in the structured log (per the
+  `code=dep.db_unavailable status=503 err="...sql: database is locked"`
+  pattern) — that's expected and desirable for operator diagnosis. The
+  test confirms it never leaks to anonymous HTTP responses.
+- No production code changes needed — pipeline already enforces the
+  invariant; the test pins it against regression.
+
+Verified: `go test ./internal/portal/playground/... -count 1 -run DBError_DoesNotLeakSQLDetail` passes.
