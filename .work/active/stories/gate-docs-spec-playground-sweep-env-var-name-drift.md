@@ -1,7 +1,7 @@
 ---
 id: gate-docs-spec-playground-sweep-env-var-name-drift
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
