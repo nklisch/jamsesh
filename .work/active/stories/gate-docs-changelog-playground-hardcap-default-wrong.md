@@ -1,7 +1,7 @@
 ---
 id: gate-docs-changelog-playground-hardcap-default-wrong
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
