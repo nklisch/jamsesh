@@ -1,7 +1,7 @@
 ---
 id: feature-test-spec-drift-and-coverage
 kind: feature
-stage: review
+stage: done
 tags: [testing, portal, ui, spec]
 parent: null
 depends_on: []
@@ -391,3 +391,13 @@ All five child stories landed at stage:review:
 
 Verified: `go test ./internal/portal/events/... ./internal/portal/playground/wordlist/... ./internal/portal/sessions/... -count 1` passes;
 `npm test -- --run JoinerPicker.test.ts` → 23 passed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Feature delivered as briefed. All 5 children approved. Spec-drift triad check, cwd-resilience, wordlist truncation guard, JoinerPicker race coverage, and the sessions per-dialect retrofit are all independent and complementary. Retrofit deliberately partial (3 files use different helper patterns) — variadic-fallback preserves backward compat; a follow-up can pick those up later without disruption.
