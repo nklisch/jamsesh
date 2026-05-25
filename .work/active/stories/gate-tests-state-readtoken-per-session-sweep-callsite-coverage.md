@@ -1,7 +1,7 @@
 ---
 id: gate-tests-state-readtoken-per-session-sweep-callsite-coverage
 kind: story
-stage: review
+stage: done
 tags: [testing, plugin, refactor]
 parent: null
 depends_on: []
@@ -53,3 +53,9 @@ existing `withPluginData(t, dir)` helper. No new test infrastructure was needed.
 The session-level callsites in `sessioncmd/` are integration-tested via
 `status_test.go` (which already asserts per-session token reads); the unit tests
 here directly target the helper function that was swept across those callsites.
+
+## Review notes
+
+Approve. Five tests cleanly partition the callsite contracts (status, bound,
+pre-binding, multi-session). Each writes real files via the real helper and
+asserts isolation by content equality / inequality. All pass.
