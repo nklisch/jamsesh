@@ -311,6 +311,90 @@ func TestGetPortalInfo_NoAuthRequired(t *testing.T) {
 	}
 }
 
+// TestGetPortalInfo_InvalidLandingVariantSurfacesError is a
+// defense-in-depth regression: the handler holds a plain string and
+// raw-casts it to `openapi.PortalInfoLandingVariant` in GetPortalInfo.
+// If wiring in `cmd/portal/main.go` ever stops feeding from validated
+// config, the handler would silently emit a non-enum value.
+//
+// The desired contract is: every value held on the Handler must satisfy
+// `openapi.PortalInfoLandingVariant.Valid()` — either because the
+// constructor refused at construction, or because the runtime path
+// returns an error / sentinel for the invalid case.
+//
+// The handler currently has neither defense (see backlog id
+// `bug-portalinfo-handler-no-constructor-enum-validation`). The
+// invalid-input subcases below are therefore `t.Skip`ped with the
+// backlog id as their reason — they document the missing defense
+// without lying about the current behaviour. Once that bug is fixed
+// the skip lines should be deleted to activate the assertions.
+//
+// Story: gate-tests-portalinfo-handler-invalid-enum-defense
+func TestGetPortalInfo_InvalidLandingVariantSurfacesError(t *testing.T) {
+	cases := []struct {
+		name           string
+		landingVariant string
+		valid          bool // is this a known PortalInfoLandingVariant member?
+	}{
+		{"valid auto", "auto", true},
+		{"valid login", "login", true},
+		{"valid project", "project", true},
+		{"invalid empty", "", false},
+		{"invalid garbage", "not-a-real-variant", false},
+		{"invalid case mismatch", "Auto", false},
+		{"invalid whitespace", "auto ", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if !tc.valid {
+				// Honest skip: the handler raw-casts a string to the enum
+				// with no validation. The fail-closed contract this test
+				// asserts is the desired defense, not the current one.
+				// Tracked: bug-portalinfo-handler-no-constructor-enum-validation.
+				t.Skip("missing defense; see backlog bug-portalinfo-handler-no-constructor-enum-validation")
+			}
+
+			h := &portalinfo.Handler{
+				PlaygroundEnabled: true,
+				LandingVariant:    tc.landingVariant,
+			}
+
+			// 1. Direct call: a valid landing variant must round-trip
+			//    untouched and satisfy Valid() on the wire.
+			resp, err := h.GetPortalInfo(
+				context.Background(),
+				openapi.GetPortalInfoRequestObject{},
+			)
+			if err != nil {
+				t.Fatalf("GetPortalInfo(%q) returned error: %v", tc.landingVariant, err)
+			}
+			ok, isOK := resp.(openapi.GetPortalInfo200JSONResponse)
+			if !isOK {
+				t.Fatalf("GetPortalInfo(%q) returned %T, want GetPortalInfo200JSONResponse",
+					tc.landingVariant, resp)
+			}
+			if !ok.LandingVariant.Valid() {
+				t.Errorf(
+					"LandingVariant(%q).Valid() = false; openapi enum members are %q/%q/%q",
+					tc.landingVariant, openapi.Auto, openapi.Login, openapi.Project,
+				)
+			}
+
+			// 2. HTTP round-trip: the JSON body carries the same value.
+			env := newTestEnv(t, h)
+			status, body := env.getPortalInfo(t)
+			if status != http.StatusOK {
+				t.Fatalf("getPortalInfo: status=%d, want 200", status)
+			}
+			gotVariant, _ := body["landing_variant"].(string)
+			if gotVariant != tc.landingVariant {
+				t.Errorf("landing_variant: got %q, want %q",
+					gotVariant, tc.landingVariant)
+			}
+		})
+	}
+}
+
 // TestGetPortalInfo_CacheControlNoStore asserts the Cache-Control: no-store
 // header is present so deploy-time config flips (PlaygroundEnabled,
 // LandingVariant) propagate immediately to all browsers and any

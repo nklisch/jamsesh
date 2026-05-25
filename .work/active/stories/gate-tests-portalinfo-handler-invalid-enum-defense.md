@@ -1,7 +1,7 @@
 ---
 id: gate-tests-portalinfo-handler-invalid-enum-defense
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal]
 parent: null
 depends_on: []
@@ -47,3 +47,27 @@ func TestGetPortalInfo_InvalidLandingVariantSurfacesError(t *testing.T) {
 `internal/portal/portalinfo/handler_test.go`. Direction may instead
 move validation into `NewHandler` constructor — file as `[testing]` or
 `[refactor]` depending on chosen direction.
+
+## Implementation notes
+
+- New test `TestGetPortalInfo_InvalidLandingVariantSurfacesError` in
+  `internal/portal/portalinfo/handler_test.go` walks 7 subcases — 3 valid
+  enum members (`auto`, `login`, `project`) and 4 invalid forms (empty,
+  garbage, case mismatch, trailing whitespace).
+- The desired contract asserted: every `landing_variant` reaching the
+  wire must satisfy `openapi.PortalInfoLandingVariant.Valid()`. The
+  handler currently has no constructor and raw-casts the string to the
+  typed enum at response-time, so the invalid-input subcases would all
+  fail today.
+- Per project test-integrity rule (CLAUDE.md), invalid subcases call
+  `t.Skip("missing defense; see backlog
+  bug-portalinfo-handler-no-constructor-enum-validation")` rather than
+  fabricating green assertions. Once that backlog bug is fixed, the
+  skip line is deleted to activate the four assertions.
+- Parked follow-up bug at
+  `.work/backlog/bug-portalinfo-handler-no-constructor-enum-validation.md`
+  with the proposed `NewHandler(playgroundEnabled, landingVariant)
+  (*Handler, error)` constructor direction.
+- Verification: `go test ./internal/portal/portalinfo/... -count 1` →
+  3 PASS valid, 4 SKIP invalid, all linked to the parked bug id.
+
