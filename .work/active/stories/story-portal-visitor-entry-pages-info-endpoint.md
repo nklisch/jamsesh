@@ -1,7 +1,7 @@
 ---
 id: story-portal-visitor-entry-pages-info-endpoint
 kind: story
-stage: review
+stage: done
 tags: [portal, infra]
 parent: feature-portal-visitor-entry-pages
 depends_on: []
@@ -115,3 +115,27 @@ the full design.
   modes and the playground-discoverability rationale immediately after the row.
 
 **Verification:** `go generate ./internal/api/openapi && go build ./... && go vet ./... && go test ./...` — all clean, 57 packages pass.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- The new default `landing.variant: auto` will change behavior on upgrade for
+  existing deploys with `JAMSESH_PLAYGROUND_ENABLED=true` (anonymous `/` will
+  start redirecting to `/playground` once the SPA side ships). The behavior
+  change is intentional discoverability per the feature design, but worth a
+  release-notes call-out when next version ships.
+
+**Notes**: Implementation matches design exactly. Snapshot-at-construction
+pattern correctly honors config-is-immutable-post-startup. Public-route
+placement alongside playground routes matches the established pattern.
+SELF_HOST.md roll-forward complete; UX.md roll-forward is correctly assigned
+to the sibling spa-landing story. Tests are real (no skips/silenced asserts);
+the strict-server-partial-handler-shim updates across 9 test files are
+mechanical-correct.
+
+**Next**: Unblocks `story-portal-visitor-entry-pages-spa-landing` (which had
+`depends_on: [story-portal-visitor-entry-pages-info-endpoint]`).
