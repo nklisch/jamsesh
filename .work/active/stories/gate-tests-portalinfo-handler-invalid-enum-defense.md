@@ -1,7 +1,7 @@
 ---
 id: gate-tests-portalinfo-handler-invalid-enum-defense
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal]
 parent: null
 depends_on: []

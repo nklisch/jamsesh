@@ -1,7 +1,7 @@
 ---
 id: gate-tests-wrapper-bats-xdg-default-fallback-uncovered
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, plugin, infra]
 parent: null
 depends_on: []

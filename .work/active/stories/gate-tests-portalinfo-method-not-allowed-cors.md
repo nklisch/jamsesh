@@ -1,7 +1,7 @@
 ---
 id: gate-tests-portalinfo-method-not-allowed-cors
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, api]
 parent: null
 depends_on: []
