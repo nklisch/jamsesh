@@ -1,7 +1,7 @@
 ---
 id: gate-tests-bearer-issuance-tx-split-partial-failure
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -67,3 +67,10 @@ coverage via `stores(t)`.
 - `go test ./internal/portal/playground/ -run TestCreatePlaygroundSession_BearerIssuanceFails_OrphanRecovered -count=1` — PASS
 - Full suite: all tests pass except the two pre-existing parked failures
   (`TestJoinPlaygroundSession_Success`, `TestJoinPlaygroundSession_WithNickname_UsesIt`).
+
+## Review notes
+
+Approve. Stub fails ONLY at step 2 (bearer issuance), proving step 1
+committed and step 3 was skipped. Captures the handler-generated sessionID via
+a spy field (a clean alternative to a ListSessions scan), then exercises the
+real Destruction cascade and asserts ErrNotFound. Test passes.
