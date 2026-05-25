@@ -1,7 +1,7 @@
 ---
 id: gate-tests-applychangesperpath-extracted-branches
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, refactor]
 parent: null
 depends_on: []
@@ -56,3 +56,10 @@ each targeting a branch in `mergeBothModifiedPath` (called from `applyChangesPer
   to contain both changes.
 
 All three pass. Full `./internal/portal/automerger/...` suite: PASS.
+
+## Review notes
+
+Approve. Three tests each pin a distinct branch of `mergeBothModifiedPath`:
+identical-hash fast-path (asserts blob hash equality), both-delete fast-path
+(asserts path absent), and non-overlapping three-way merge (asserts merged
+bytes contain both edits). Real go-git repos, no mocks. Tests pass.
