@@ -1,7 +1,7 @@
 ---
 id: feature-server-secret-log-hygiene
 kind: feature
-stage: review
+stage: done
 tags: [security, portal, plugin, logging]
 parent: null
 depends_on: []
@@ -370,3 +370,13 @@ gained a `_ = os.Chmod(<dir>, 0o700)` immediately after each
 `t.Setenv("JAMSESH_DATA_DIR", <dir>)` to satisfy the new perm check.
 
 Verified: `go test ./cmd/jamsesh/... -count 1` passes; `bats tests/wrapper/*.bats` → 18 passed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Feature delivered as briefed. All 4 child stories approved individually. Cross-cutting test-helper sweep is the unavoidable consequence of the new perm check (Linux `t.TempDir()` is 0o755), correctly applied. No foundation-doc drift; defense-in-depth posture is preserved.
