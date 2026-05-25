@@ -1,7 +1,7 @@
 ---
 id: gate-security-portalinfo-no-cachecontrol-no-store
 kind: story
-stage: review
+stage: done
 tags: [security, portal, http]
 parent: feature-spa-bootstrap-hygiene
 depends_on: []
@@ -65,3 +65,13 @@ not weaken it. Set `Cache-Control: no-store` (or short max-age with
 
 Verified: `go test ./internal/portal/portalinfo/... -count 1` passes
 (all 7+ subtests).
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: `no-store` is correct (stricter than `no-cache`) — appropriate for deploy-time toggle propagation. Middleware sets header before `next.ServeHTTP` to avoid the WriteHeader-already-called silent-drop. Scoped via `r.With(...)` to only the one endpoint. Test harness wires the middleware so production semantics are exercised.
