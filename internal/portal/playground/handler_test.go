@@ -187,6 +187,9 @@ func (h *playgroundOnlyStrict) UpsertRefMode(_ context.Context, _ openapi.Upsert
 func (h *playgroundOnlyStrict) ListSessionRefs(_ context.Context, _ openapi.ListSessionRefsRequestObject) (openapi.ListSessionRefsResponseObject, error) {
 	panic("not wired")
 }
+func (h *playgroundOnlyStrict) GetPortalInfo(_ context.Context, _ openapi.GetPortalInfoRequestObject) (openapi.GetPortalInfoResponseObject, error) {
+	panic("not wired")
+}
 
 // Compile-time check that playgroundOnlyStrict satisfies the full interface.
 var _ openapi.StrictServerInterface = (*playgroundOnlyStrict)(nil)

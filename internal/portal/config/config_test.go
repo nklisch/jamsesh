@@ -1048,6 +1048,92 @@ playground_destruction_sweep_interval_s: 120
 	}
 }
 
+// TestLandingVariantDefault verifies that Landing.Variant defaults to "auto"
+// when JAMSESH_LANDING_VARIANT is unset and no YAML key is provided.
+func TestLandingVariantDefault(t *testing.T) {
+	clearEnv(t)
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Landing.Variant != "auto" {
+		t.Errorf("Landing.Variant default: got %q, want %q", cfg.Landing.Variant, "auto")
+	}
+}
+
+// TestLandingVariantEnvOverride verifies that JAMSESH_LANDING_VARIANT=project
+// is parsed correctly and overrides the default.
+func TestLandingVariantEnvOverride(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_LANDING_VARIANT", "project")
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Landing.Variant != "project" {
+		t.Errorf("Landing.Variant: got %q, want %q", cfg.Landing.Variant, "project")
+	}
+}
+
+// TestLandingVariantYAML verifies that landing.variant can be set via YAML.
+func TestLandingVariantYAML(t *testing.T) {
+	clearEnv(t)
+	yamlContent := `
+landing:
+  variant: login
+`
+	path := writeTempConfig(t, yamlContent)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Landing.Variant != "login" {
+		t.Errorf("Landing.Variant: got %q, want %q", cfg.Landing.Variant, "login")
+	}
+}
+
+// TestLandingVariantEnvTakesPrecedenceOverYAML verifies env overrides YAML.
+func TestLandingVariantEnvTakesPrecedenceOverYAML(t *testing.T) {
+	clearEnv(t)
+	yamlContent := `
+landing:
+  variant: login
+`
+	path := writeTempConfig(t, yamlContent)
+	t.Setenv("JAMSESH_LANDING_VARIANT", "project")
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Landing.Variant != "project" {
+		t.Errorf("Landing.Variant: got %q, want %q (env should win)", cfg.Landing.Variant, "project")
+	}
+}
+
+// TestValidation_LandingVariantInvalid verifies that an invalid value fails startup.
+func TestValidation_LandingVariantInvalid(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JAMSESH_LANDING_VARIANT", "invalid")
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("expected error for invalid JAMSESH_LANDING_VARIANT, got nil")
+	}
+}
+
+// TestValidation_LandingVariantValidValues verifies that all valid values are accepted.
+func TestValidation_LandingVariantValidValues(t *testing.T) {
+	for _, v := range []string{"auto", "project", "login"} {
+		t.Run(v, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("JAMSESH_LANDING_VARIANT", v)
+			_, err := config.Load("")
+			if err != nil {
+				t.Fatalf("JAMSESH_LANDING_VARIANT=%q should be valid, got error: %v", v, err)
+			}
+		})
+	}
+}
+
 // writeTempConfig writes content to a temp YAML file and returns its path.
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()

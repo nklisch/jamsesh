@@ -177,6 +177,9 @@ func (o *oauthOnlyStrict) GetPlaygroundSession(_ context.Context, _ openapi.GetP
 func (o *oauthOnlyStrict) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
 	panic("not wired")
 }
+func (o *oauthOnlyStrict) GetPortalInfo(_ context.Context, _ openapi.GetPortalInfoRequestObject) (openapi.GetPortalInfoResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 

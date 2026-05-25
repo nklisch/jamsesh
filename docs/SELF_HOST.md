@@ -145,6 +145,19 @@ path as the first argument: `jamsesh-portal /etc/jamsesh/config.yaml`.
 | `JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the Postmark server token; takes precedence over `JAMSESH_EMAIL_POSTMARK_SERVER_TOKEN` when set |
 | `JAMSESH_EMAIL_RESEND_API_KEY_FILE` | _(env-only)_ | _(none)_ | Path to a file containing the Resend API key; takes precedence over `JAMSESH_EMAIL_RESEND_API_KEY` when set |
 | `JAMSESH_WS_ALLOW_ORIGINS` | _(env-only)_ | _(none)_ | Comma-separated list of allowed `Origin` headers for cross-origin WebSocket upgrades to `/ws/sessions/{sessionID}`. Empty (default) denies all cross-origin upgrades. |
+| `JAMSESH_LANDING_VARIANT` | `landing.variant` | `auto` | What anonymous visitors see at `/`: `auto` — redirect to `/playground` when playground is enabled, else to `/login`; `project` — render the project landing page (used by jamsesh.dev); `login` — redirect to `/login` (today's behaviour, always). Invalid values fail startup. |
+
+**On `JAMSESH_LANDING_VARIANT`.** The three modes control the anonymous-visitor
+entry experience at the root path. `auto` is the playground-discoverability
+default: when `JAMSESH_PLAYGROUND_ENABLED=true` the portal redirects unsigned
+visitors at `/` to `/playground`, giving playground-capable deployments a real
+public entry point with zero extra config. When playground is disabled, `auto`
+falls back to `/login`. Use `project` to render the full project landing page
+(the Swiss-style design with the "Try the playground →" CTA and session-list
+hero section), intended for production deployments where jamsesh is the product.
+Use `login` to restore today's auth-only behaviour regardless of playground
+state — the right choice for private self-hosted instances that want no public
+surface.
 
 **On `JAMSESH_WS_ALLOW_ORIGINS`.** Same-origin connections (SPA and portal
 served from one host) need no entry — leave the var unset. Operators serving

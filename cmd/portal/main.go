@@ -45,6 +45,7 @@ import (
 	"jamsesh/internal/portal/metrics"
 	portaloauth "jamsesh/internal/portal/oauth"
 	"jamsesh/internal/portal/playground"
+	"jamsesh/internal/portal/portalinfo"
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/probes"
@@ -72,6 +73,7 @@ type combinedHandler struct {
 	FinalizeHandler   *finalize.Handler
 	WsTicketHandler   *wsgateway.WsTicketHandler
 	PlaygroundHandler *playground.Handler
+	PortalInfoHandler *portalinfo.Handler
 }
 
 // GetMe delegates to the accounts handler.
@@ -247,6 +249,11 @@ func (c *combinedHandler) GetPlaygroundSession(ctx context.Context, req openapi.
 // GetPlaygroundTombstone delegates to the playground handler.
 func (c *combinedHandler) GetPlaygroundTombstone(ctx context.Context, req openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
 	return c.PlaygroundHandler.GetPlaygroundTombstone(ctx, req)
+}
+
+// GetPortalInfo delegates to the portalinfo handler.
+func (c *combinedHandler) GetPortalInfo(ctx context.Context, req openapi.GetPortalInfoRequestObject) (openapi.GetPortalInfoResponseObject, error) {
+	return c.PortalInfoHandler.GetPortalInfo(ctx, req)
 }
 
 // compile-time assertion that combinedHandler satisfies the full interface.
@@ -746,6 +753,11 @@ func main() {
 	//     to "internal" 500) via httperr.WriteFromError.
 	//   - RequestErrorHandlerFunc: emits a "request.malformed" 400 envelope
 	//     instead of the default plain-text response.
+	portalInfoHandler := &portalinfo.Handler{
+		PlaygroundEnabled: cfg.PlaygroundEnabled,
+		LandingVariant:    cfg.Landing.Variant,
+	}
+
 	strictAPI := openapi.NewStrictHandlerWithOptions(&combinedHandler{
 		Handler:           tokenHandler,
 		MagicLinkHandler:  magicLinkHandler,
@@ -756,6 +768,7 @@ func main() {
 		FinalizeHandler:   finalizeHandler,
 		WsTicketHandler:   &wsgateway.WsTicketHandler{Tickets: wsTicketStore},
 		PlaygroundHandler: playgroundHandler,
+		PortalInfoHandler: portalInfoHandler,
 	}, nil, openapi.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  httperr.WriteBadRequest,
 		ResponseErrorHandlerFunc: httperr.WriteFromError,
@@ -951,6 +964,11 @@ func main() {
 				// (issued at create/join time). The handler validates membership.
 				r.Get("/playground/sessions/{id}", apiWrapper.GetPlaygroundSession)
 			})
+
+			// Portal info — fully public, no auth or rate-limiting needed.
+			// Returns deploy-time config (playground_enabled, landing_variant) for
+			// anonymous SPA bootstrap before the auth flow completes.
+			r.Get("/portal/info", apiWrapper.GetPortalInfo)
 
 			// Playground — unauthenticated: create and join issue fresh bearers,
 			// tombstone is public (no credential needed to read destruction summary).

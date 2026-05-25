@@ -169,6 +169,9 @@ func (stubStrict) GetPlaygroundSession(_ context.Context, _ openapi.GetPlaygroun
 func (stubStrict) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
 	return nil, nil
 }
+func (stubStrict) GetPortalInfo(_ context.Context, _ openapi.GetPortalInfoRequestObject) (openapi.GetPortalInfoResponseObject, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Helper: build a test router wired with the real strict handler pipeline.

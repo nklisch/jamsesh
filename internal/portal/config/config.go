@@ -24,7 +24,8 @@
 //	playground_enabled, playground_idle_timeout_s,
 //	playground_hard_cap_s, playground_create_per_ip_hour,
 //	playground_max_participants, playground_max_content_bytes,
-//	playground_destruction_sweep_interval_s
+//	playground_destruction_sweep_interval_s,
+//	landing.variant
 //
 // Env vars:   JAMSESH_AUTH_RATE_LIMIT_ENABLED,
 //
@@ -71,7 +72,8 @@
 //	JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR,
 //	JAMSESH_PLAYGROUND_MAX_PARTICIPANTS,
 //	JAMSESH_PLAYGROUND_MAX_CONTENT_BYTES,
-//	JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S
+//	JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S,
+//	JAMSESH_LANDING_VARIANT
 //
 // Secret env vars with _FILE variants (file contents take precedence):
 //
@@ -271,6 +273,22 @@ type Config struct {
 	// expiry. Default: 60.
 	// Env: JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S
 	PlaygroundDestructionSweepIntervalS int `yaml:"playground_destruction_sweep_interval_s"`
+
+	// Landing holds the visitor-facing entry-page configuration.
+	// Env: JAMSESH_LANDING_VARIANT controls Landing.Variant.
+	Landing LandingConfig `yaml:"landing"`
+}
+
+// LandingConfig holds the visitor-facing entry-page configuration.
+type LandingConfig struct {
+	// Variant selects what anonymous visitors see at "/" before authentication.
+	// Valid values:
+	//   "auto"    — redirect to /playground when playground is enabled,
+	//               otherwise bounce to /login. Default.
+	//   "project" — render the ProjectLanding component (used by jamsesh.dev).
+	//   "login"   — bounce directly to /login regardless of playground state.
+	// Env: JAMSESH_LANDING_VARIANT
+	Variant string `yaml:"variant"`
 }
 
 // DBConfig holds database connection pool settings.
@@ -482,6 +500,9 @@ func defaults() Config {
 		PlaygroundMaxParticipants:           5,
 		PlaygroundMaxContentBytes:           52428800,
 		PlaygroundDestructionSweepIntervalS: 60,
+		Landing: LandingConfig{
+			Variant: "auto",
+		},
 	}
 }
 
@@ -538,6 +559,12 @@ func (c Config) validate() error {
 	// HydrationCacheMaxBytes uses "zero or positive" semantics: zero means unlimited.
 	if err := mustBeNonNegative("hydration_cache_max_bytes", c.HydrationCacheMaxBytes); err != nil {
 		return err
+	}
+	switch c.Landing.Variant {
+	case "auto", "project", "login":
+		// valid
+	default:
+		return fmt.Errorf("config: invalid JAMSESH_LANDING_VARIANT %q (want auto|project|login)", c.Landing.Variant)
 	}
 	return nil
 }
@@ -623,6 +650,9 @@ func applyEnv(c *Config) error {
 	readEnvInt("JAMSESH_PLAYGROUND_CREATE_PER_IP_HOUR", &c.PlaygroundCreatePerIPHour)
 	readEnvInt("JAMSESH_PLAYGROUND_MAX_PARTICIPANTS", &c.PlaygroundMaxParticipants)
 	readEnvInt("JAMSESH_PLAYGROUND_DESTRUCTION_SWEEP_INTERVAL_S", &c.PlaygroundDestructionSweepIntervalS)
+
+	// Landing knobs.
+	readEnvString("JAMSESH_LANDING_VARIANT", &c.Landing.Variant)
 
 	// Email knobs.
 	if err := applyEmailEnv(&c.Email); err != nil {

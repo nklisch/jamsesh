@@ -1698,6 +1698,24 @@ components:
           format: date-time
           description: ISO-8601 timestamp when this tombstone itself expires (default 30 days after ended_at)
 
+    PortalInfo:
+      type: object
+      required: [playground_enabled, landing_variant]
+      properties:
+        playground_enabled:
+          type: boolean
+          description: Whether the playground subsystem is enabled on this deploy
+          example: true
+        landing_variant:
+          type: string
+          enum: [auto, project, login]
+          description: |
+            What anonymous visitors see at "/":
+            "auto" — redirect to /playground when playground is enabled, else /login;
+            "project" — render the project landing page;
+            "login" — redirect to /login (today's default behaviour).
+          example: auto
+
   responses:
     Unauthorized:
       description: missing or invalid bearer token
@@ -1897,6 +1915,24 @@ paths:
                 $ref: '#/components/schemas/TokenPair'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /api/portal/info:
+    get:
+      summary: Return deploy-time portal configuration for anonymous bootstrap
+      operationId: getPortalInfo
+      description: |
+        Returns the portal's deploy-time configuration that the SPA needs before
+        authentication: whether the playground is enabled and which landing variant
+        is active. No authorization required — the endpoint is intentionally public
+        so the SPA can fetch it on bootstrap before the auth flow completes.
+      security: []
+      responses:
+        '200':
+          description: Portal info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalInfo'
 
   /api/me:
     get:

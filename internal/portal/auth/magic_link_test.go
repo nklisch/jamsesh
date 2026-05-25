@@ -237,6 +237,9 @@ func (m *magicLinkOnlyStrict) GetPlaygroundSession(_ context.Context, _ openapi.
 func (m *magicLinkOnlyStrict) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
 	panic("not wired")
 }
+func (m *magicLinkOnlyStrict) GetPortalInfo(_ context.Context, _ openapi.GetPortalInfoRequestObject) (openapi.GetPortalInfoResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

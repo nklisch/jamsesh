@@ -155,6 +155,9 @@ func (t *tokensOnlyHandler) GetPlaygroundSession(_ context.Context, _ openapi.Ge
 func (t *tokensOnlyHandler) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
 	panic("not wired")
 }
+func (t *tokensOnlyHandler) GetPortalInfo(_ context.Context, _ openapi.GetPortalInfoRequestObject) (openapi.GetPortalInfoResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*tokensOnlyHandler)(nil)
 

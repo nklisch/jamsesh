@@ -1,7 +1,7 @@
 ---
 id: story-portal-visitor-entry-pages-info-endpoint
 kind: story
-stage: implementing
+stage: review
 tags: [portal, infra]
 parent: feature-portal-visitor-entry-pages
 depends_on: []
@@ -60,3 +60,58 @@ the full design.
 - OpenAPI generation: `go generate ./internal/api/openapi` (see
   `internal/api/openapi/*.gen.go` headers)
 - Testenv pattern: `.claude/skills/patterns/testenv-harness-struct.md`
+
+## Implementation notes
+
+**Config (`internal/portal/config/config.go`):**
+- Added `LandingConfig` sub-struct with `Variant string` field (YAML tag
+  `landing.variant`, matching the nested key path used by TLS, DB, etc).
+- Added `Landing LandingConfig` field to `Config` (YAML tag `landing`).
+- Default: `"auto"` set in `defaults()`.
+- Env-var overlay: `readEnvString("JAMSESH_LANDING_VARIANT", &c.Landing.Variant)` in `applyEnv()`.
+- Validation: `switch c.Landing.Variant { case "auto", "project", "login": ... }` in `validate()`.
+- Package-level doc comment updated with new YAML key and env var.
+
+**Handler (`internal/portal/portalinfo/handler.go`):**
+- New package `portalinfo` with `Handler` struct holding `PlaygroundEnabled bool`
+  and `LandingVariant string` captured at construction time (immutable snapshot).
+- `GetPortalInfo` returns `openapi.GetPortalInfo200JSONResponse` with the config
+  snapshot. Zero deps beyond the openapi package — no store, no clock.
+
+**Tests:**
+- `internal/portal/portalinfo/handler_test.go` — 6-case table-driven test
+  covering all 3 landing variants × 2 playground states, plus a
+  `TestGetPortalInfo_NoAuthRequired` confirming no auth header is needed.
+  Uses the `strict-server-partial-handler-shim` pattern with `portalInfoOnlyStrict`.
+- `internal/portal/config/config_test.go` — 6 new tests: default value, env
+  override, YAML parsing, env-over-YAML precedence, invalid-value error, all-valid-values.
+
+**OpenAPI (`docs/openapi.yaml`):**
+- Added `PortalInfo` schema to `components.schemas` with `playground_enabled:
+  boolean` and `landing_variant: string enum [auto, project, login]`.
+- Added `GET /api/portal/info` path with `security: []` (no auth), 200 returns
+  `PortalInfo`. Inserted before `/api/me`.
+- Ran `go generate ./internal/api/openapi` — generator produced
+  `PortalInfoLandingVariant` enum type with constants `Auto`, `Login`, `Project`,
+  `GetPortalInfo` on `StrictServerInterface`, and corresponding request/response
+  object types.
+
+**Wiring (`cmd/portal/main.go`):**
+- Added `PortalInfoHandler *portalinfo.Handler` field to `combinedHandler`.
+- Added `GetPortalInfo` delegation method on `combinedHandler`.
+- Constructs `portalInfoHandler` from `cfg.PlaygroundEnabled` and `cfg.Landing.Variant`.
+- Registered `r.Get("/portal/info", apiWrapper.GetPortalInfo)` in the
+  unauthenticated route group, alongside playground public routes.
+
+**Shim updates:**
+- Added `GetPortalInfo` stub to the 8 existing `StrictServerInterface` shims
+  across `playground`, `tokens`, `accounts`, `auth` (magic_link, oauth),
+  `wsgateway`, `comments`, `sessions`, and `router` test files to keep compile.
+
+**Docs (`docs/SELF_HOST.md`):**
+- Added `JAMSESH_LANDING_VARIANT` row to the §2 reference table (same column
+  shape as adjacent rows).
+- Added one-paragraph `**On JAMSESH_LANDING_VARIANT.**` explanation of the three
+  modes and the playground-discoverability rationale immediately after the row.
+
+**Verification:** `go generate ./internal/api/openapi && go build ./... && go vet ./... && go test ./...` — all clean, 57 packages pass.

@@ -183,6 +183,9 @@ func (h *sessionsOnlyStrict) GetPlaygroundSession(_ context.Context, _ openapi.G
 func (h *sessionsOnlyStrict) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
 	panic("not wired")
 }
+func (h *sessionsOnlyStrict) GetPortalInfo(_ context.Context, _ openapi.GetPortalInfoRequestObject) (openapi.GetPortalInfoResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*sessionsOnlyStrict)(nil)
 
