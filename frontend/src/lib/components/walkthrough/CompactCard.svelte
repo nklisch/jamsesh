@@ -11,6 +11,9 @@
     sessionId: string | null;
     joinCmd: string | null;
     copiedCmd: string | null;
+    /** Most-recent command whose clipboard.writeText rejected — passed
+     *  through to CcPane for the failure-hint UI. */
+    copyFailedCmd?: string | null;
     closeBtnRef?: HTMLButtonElement | null;
     oncopy: (cmd: string) => void;
     onshowfull: () => void;
@@ -22,6 +25,7 @@
     sessionId,
     joinCmd,
     copiedCmd,
+    copyFailedCmd = null,
     closeBtnRef = $bindable(),
     oncopy,
     onshowfull,
@@ -56,7 +60,7 @@
     below to copy and paste:
   </p>
 
-  <CcPane {joinCmd} {copiedCmd} oncopy={oncopy} />
+  <CcPane {joinCmd} {copiedCmd} {copyFailedCmd} oncopy={oncopy} />
 
   <button type="button" class="reopen-link" onclick={onshowfull}>
     First-time setup? Show the full walkthrough &rarr;

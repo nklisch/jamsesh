@@ -1,7 +1,7 @@
 ---
 id: idea-attach-onboarding-clipboard-error-handling
 kind: story
-stage: implementing
+stage: review
 tags: [ui, bug]
 parent: feature-attach-onboarding-a11y-robustness
 depends_on: []
@@ -89,3 +89,29 @@ Same pattern for the `install` command line and for the `cc-input` hint in
 - [ ] Feedback (success or failure) clears after ~1.2s
 - [ ] Test: mock `writeText` to reject → failure hint text appears
 - [ ] Test: mock `writeText` to reject → `copied` class absent on the clicked element
+
+## Implementation notes
+
+- Introduced `type CopyFeedback = { cmd: string; ok: boolean } | null` and
+  `let copyFeedback = $state<CopyFeedback>(null)` in
+  `SessionAttachWalkthrough.svelte`.
+- `copiedCmd` becomes a `$derived` (success-path only); `copyFailedCmd` is a
+  new `$derived` (failure-path only). Child component prop names stay the same
+  for backward compat.
+- `copyCmd()` now `try/catch`-wraps `navigator.clipboard.writeText`. On
+  rejection: `copyFeedback = { cmd, ok: false }`; success: `copyFeedback = { cmd, ok: true }`.
+  The 1.2s timer clears feedback in both cases. No `console.warn` — clipboard
+  denial in non-secure contexts is browser policy, not an app error.
+- `FullCard.svelte`: term-line hint `<span>` now shows
+  `"Copy failed — select and copy manually"` when `copyFailedCmd` matches the
+  command; falls through to "copied" / "click to copy" otherwise. Added
+  `copyFailedCmd?: string | null` to props.
+- `CcPane.svelte`: same hint logic; added `copyFailedCmd?` prop with default
+  `null`.
+- `CompactCard.svelte`: added `copyFailedCmd?` prop and passes through to CcPane.
+- `SessionAttachWalkthrough.svelte` template passes `copyFailedCmd` to both
+  child cards.
+- Four new tests cover: failure hint on term-line, no `copied` class on
+  failure, cc-input failure hint, no unhandled-rejection escape.
+
+Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 35 passed.

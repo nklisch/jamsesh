@@ -15,6 +15,9 @@
     sessionId: string | null;
     joinCmd: string | null;
     copiedCmd: string | null;
+    /** Most-recent command whose clipboard.writeText rejected. Drives the
+     *  "Copy failed — select and copy manually" hint text alongside copiedCmd. */
+    copyFailedCmd: string | null;
     dismissChecked: boolean;
     closeBtnRef?: HTMLButtonElement | null;
     oncopy: (cmd: string) => void;
@@ -27,6 +30,7 @@
     sessionId,
     joinCmd,
     copiedCmd,
+    copyFailedCmd,
     dismissChecked,
     closeBtnRef = $bindable(),
     oncopy,
@@ -86,9 +90,15 @@
         <span class="cmd-text"
           >claude plugin marketplace add <span class="arg">nklisch/jamsesh</span></span
         >
-        <span class="hint" aria-hidden="true"
-          >{copiedCmd === COMMANDS.marketplace ? 'copied' : 'click to copy'}</span
-        >
+        <span class="hint" aria-hidden="true">
+          {#if copyFailedCmd === COMMANDS.marketplace}
+            Copy failed — select and copy manually
+          {:else if copiedCmd === COMMANDS.marketplace}
+            copied
+          {:else}
+            click to copy
+          {/if}
+        </span>
       </button>
       <button
         type="button"
@@ -102,7 +112,15 @@
         <span class="cmd-text"
           >claude plugins install <span class="arg">jamsesh</span></span
         >
-        <span class="hint" aria-hidden="true">{copiedCmd === COMMANDS.install ? 'copied' : 'click to copy'}</span>
+        <span class="hint" aria-hidden="true">
+          {#if copyFailedCmd === COMMANDS.install}
+            Copy failed — select and copy manually
+          {:else if copiedCmd === COMMANDS.install}
+            copied
+          {:else}
+            click to copy
+          {/if}
+        </span>
       </button>
     </div>
   </div>
@@ -112,7 +130,7 @@
     # Start Claude Code from a checkout of your source repo, then click the prompt
     below to copy and paste at the CC prompt:
   </p>
-  <CcPane {joinCmd} {copiedCmd} oncopy={oncopy} />
+  <CcPane {joinCmd} {copiedCmd} {copyFailedCmd} oncopy={oncopy} />
   <p class="cc-aftermath">
     <span class="ok">→</span> After you run that, the local <code>bin/jamsesh</code> binary
     OAuths, clones the session, and wires up post-commit + SessionStart hooks. You can close

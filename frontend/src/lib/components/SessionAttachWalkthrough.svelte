@@ -35,7 +35,15 @@
   // ── Internal state ─────────────────────────────────────────────────────────
   let mode = $state<Mode>('full');
   let dismissChecked = $state(false);
-  let copiedCmd = $state<string | null>(null);
+
+  // copyFeedback drives both the success and failure UI in one state machine.
+  // Backward-compat aliases (`copiedCmd`, `copyFailedCmd`) are derived from it
+  // so child component prop names stay the same.
+  // (idea-attach-onboarding-clipboard-error-handling)
+  type CopyFeedback = { cmd: string; ok: boolean } | null;
+  let copyFeedback = $state<CopyFeedback>(null);
+  let copiedCmd = $derived(copyFeedback?.ok ? copyFeedback.cmd : null);
+  let copyFailedCmd = $derived(copyFeedback && !copyFeedback.ok ? copyFeedback.cmd : null);
 
   // DOM ref for focus management.
   let closeBtn = $state<HTMLButtonElement | null>(null);
@@ -114,12 +122,21 @@
     }
   }
 
-  /** Click-to-copy with ~1.2s "Copied" feedback badge. */
+  /** Click-to-copy with ~1.2s feedback badge.
+   *  On clipboard rejection (denied permission, non-secure context, etc.) we
+   *  set `copyFeedback = { cmd, ok: false }` so the hint text reads
+   *  "Copy failed — select and copy manually" for the same window. Clipboard
+   *  denial in non-secure contexts is an expected browser policy, not an
+   *  application error, so we intentionally do not log to console. */
   async function copyCmd(cmd: string) {
-    await navigator.clipboard.writeText(cmd);
-    copiedCmd = cmd;
+    try {
+      await navigator.clipboard.writeText(cmd);
+      copyFeedback = { cmd, ok: true };
+    } catch {
+      copyFeedback = { cmd, ok: false };
+    }
     setTimeout(() => {
-      if (copiedCmd === cmd) copiedCmd = null;
+      if (copyFeedback?.cmd === cmd) copyFeedback = null;
     }, 1200);
   }
 </script>
@@ -143,6 +160,7 @@
         {sessionId}
         {joinCmd}
         {copiedCmd}
+        {copyFailedCmd}
         {dismissChecked}
         bind:closeBtnRef={closeBtn}
         oncopy={copyCmd}
@@ -155,6 +173,7 @@
         {sessionId}
         {joinCmd}
         {copiedCmd}
+        {copyFailedCmd}
         bind:closeBtnRef={closeBtn}
         oncopy={copyCmd}
         onshowfull={() => (mode = 'full')}

@@ -335,6 +335,52 @@ describe('SessionAttachWalkthrough', () => {
     }
   });
 
+  // ── Clipboard error handling (idea-attach-onboarding-clipboard-error-handling) ─
+
+  it('shows "Copy failed" hint when clipboard.writeText rejects on a term-line', async () => {
+    writeText.mockRejectedValueOnce(new DOMException('Not allowed', 'NotAllowedError'));
+    renderWalkthrough({ open: true });
+    const buttons = document.querySelectorAll('button.term-line');
+    expect(buttons.length).toBe(2);
+    await fireEvent.click(buttons[0]);
+    await waitFor(() => {
+      expect(buttons[0]).toHaveTextContent(/copy failed.*select and copy manually/i);
+    });
+  });
+
+  it('does not apply "copied" class when clipboard.writeText rejects', async () => {
+    writeText.mockRejectedValueOnce(new DOMException('Not allowed', 'NotAllowedError'));
+    renderWalkthrough({ open: true });
+    const buttons = document.querySelectorAll('button.term-line');
+    await fireEvent.click(buttons[0]);
+    await waitFor(() => {
+      expect(buttons[0]).not.toHaveClass('copied');
+    });
+  });
+
+  it('clipboard rejection on cc-input surfaces the failure hint', async () => {
+    writeText.mockRejectedValueOnce(new DOMException('Not allowed', 'NotAllowedError'));
+    renderWalkthrough({ open: true, sessionId: 'abc' });
+    const ccBtn = document.querySelector('button.cc-input') as HTMLButtonElement;
+    await fireEvent.click(ccBtn);
+    await waitFor(() => {
+      expect(ccBtn).toHaveTextContent(/copy failed.*select and copy manually/i);
+      expect(ccBtn).not.toHaveClass('copied');
+    });
+  });
+
+  it('clipboard rejection does not surface as an unhandled promise rejection', async () => {
+    // If the catch block weren't there, vitest would report an unhandled
+    // promise rejection. We assert by simply running the flow and verifying
+    // the component still functions.
+    writeText.mockRejectedValueOnce(new DOMException('Not allowed', 'NotAllowedError'));
+    renderWalkthrough({ open: true });
+    const buttons = document.querySelectorAll('button.term-line');
+    await fireEvent.click(buttons[0]);
+    // The modal stays mounted and interactive.
+    expect(document.querySelector('.modal-card.first-time')).toBeInTheDocument();
+  });
+
   // ── Keyboard accessibility (idea-attach-onboarding-keyboard-accessibility) ─
 
   it('term-line elements are <button>s reachable by Tab and trigger copy on Enter', async () => {

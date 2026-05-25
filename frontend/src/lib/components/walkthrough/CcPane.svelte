@@ -7,10 +7,13 @@
   type Props = {
     joinCmd: string | null;
     copiedCmd: string | null;
+    /** Most-recent command whose clipboard.writeText rejected — drives the
+     *  failure hint alongside the success badge. */
+    copyFailedCmd?: string | null;
     oncopy: (cmd: string) => void;
   };
 
-  let { joinCmd, copiedCmd, oncopy }: Props = $props();
+  let { joinCmd, copiedCmd, copyFailedCmd = null, oncopy }: Props = $props();
 </script>
 
 <div class="cc-pane">
@@ -46,7 +49,15 @@
       >
         <span class="cc-arrow" aria-hidden="true">❯</span>
         <span class="cc-cmd">{joinCmd}</span>
-        <span class="cc-hint" aria-hidden="true">{copiedCmd === joinCmd ? 'copied' : 'click to copy'}</span>
+        <span class="cc-hint" aria-hidden="true">
+          {#if copyFailedCmd === joinCmd}
+            Copy failed — select and copy manually
+          {:else if copiedCmd === joinCmd}
+            copied
+          {:else}
+            click to copy
+          {/if}
+        </span>
         <span class="cc-check" aria-hidden="true">✓</span>
       </button>
     {:else}
