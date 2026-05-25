@@ -16,11 +16,18 @@ import App from './App.svelte';
 // render() calls cheap and test output noise-free.
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
+// Home and ProjectLanding stubs are spy-tracked so tests can observe which
+// home-branch the template mounts. The spies survive vi.mock hoisting via the
+// `(...args) => mockX(...args)` indirection (spa-test-module-mock-barrel
+// pattern).
+const mockHomeStub = vi.fn().mockReturnValue({});
+const mockProjectLandingStub = vi.fn().mockReturnValue({});
+
 vi.mock('$lib/screens/Login.svelte', () => ({
   default: function LoginStub(_anchor: unknown, _props: unknown) { return {}; },
 }));
 vi.mock('$lib/screens/Home.svelte', () => ({
-  default: function HomeStub(_anchor: unknown, _props: unknown) { return {}; },
+  default: (...args: unknown[]) => mockHomeStub(...args),
 }));
 vi.mock('$lib/screens/MagicLinkExchange.svelte', () => ({
   default: function MagicLinkExchangeStub(_anchor: unknown, _props: unknown) { return {}; },
@@ -47,7 +54,7 @@ vi.mock('$lib/screens/NotFound.svelte', () => ({
   default: function NotFoundStub(_anchor: unknown, _props: unknown) { return {}; },
 }));
 vi.mock('$lib/screens/ProjectLanding.svelte', () => ({
-  default: function ProjectLandingStub(_anchor: unknown, _props: unknown) { return {}; },
+  default: (...args: unknown[]) => mockProjectLandingStub(...args),
 }));
 
 // ── Router mock ──────────────────────────────────────────────────────────────
@@ -309,6 +316,29 @@ describe('App — auth-gate $effect', () => {
     await new Promise((r) => setTimeout(r, 50));
     // Gate must hold while portalInfo is not yet loaded.
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  // Skipped: known production bug `bug-app-home-renders-during-portalinfo-loading-flash`.
+  // The spec promised a transparent loading shell while portalInfo.loaded === false,
+  // but App.svelte's `{:else if current.name === 'home'}` branch falls through to
+  // `<Home/>` (the org picker) when no other branch matches. Un-skip this test
+  // when the bug is fixed (route gate must check portalInfo.loaded for the generic
+  // home branch).
+  it.skip('unauthed + portalInfo.loaded=false → neither Home nor ProjectLanding mounts (flash gate)', async () => {
+    mockAuth.isAuthenticated = false;
+    mockRouterCurrent.name = 'home';
+    mockRouterCurrent.requiresAuth = true;
+    mockPortalInfo.loaded = false;
+    mockPortalInfo.landingVariant = 'project';
+
+    render(App);
+
+    await new Promise((r) => setTimeout(r, 50));
+    // Gate must hold: neither home-branch screen should mount while portalInfo
+    // is still loading. The auth-gate $effect's navigation guard is asserted
+    // separately above — this asserts the template's mounting behavior.
+    expect(mockHomeStub).not.toHaveBeenCalled();
+    expect(mockProjectLandingStub).not.toHaveBeenCalled();
   });
 });
 

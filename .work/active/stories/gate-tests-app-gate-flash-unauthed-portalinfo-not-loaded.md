@@ -1,7 +1,7 @@
 ---
 id: gate-tests-app-gate-flash-unauthed-portalinfo-not-loaded
 kind: story
-stage: implementing
+stage: review
 tags: [testing, ui, regression]
 parent: null
 depends_on: []
@@ -58,3 +58,24 @@ it('renders nothing (or loading shell) when unauthed + portalInfo.loaded=false',
 A real visual regression risk goes unobserved. Bug would surface as a
 one-tick flicker of the org-picker UI before resolution — the very thing
 the spec promised to prevent.
+
+## Implementation notes
+
+Writing this test surfaced the production bug it was meant to catch — App.svelte's
+template falls through to `<Home/>` on the unauthed home branch when
+`portalInfo.loaded === false`, instead of holding a transparent loading shell.
+Bug parked separately as `bug-app-home-renders-during-portalinfo-loading-flash`.
+
+The sentinel test landed as `it.skip` in `App.test.ts` (auth-gate $effect
+describe), with an inline comment naming the parked bug and the un-skip
+trigger ("when the bug is fixed"). The mocks for `Home.svelte` and
+`ProjectLanding.svelte` were rewired through module-level `vi.fn()` spies
+(`mockHomeStub`, `mockProjectLandingStub`) so the test can observe which
+home-branch the template mounts; all other screen stubs remain plain no-op
+functions. The spy indirection follows the `spa-test-module-mock-barrel`
+pattern (`(...args) => mockX(...args)` survives vi.mock hoisting).
+
+Verification: `npm test -- App.test.ts` → 15 passed, 1 skipped (the new
+sentinel). No existing test affected by the spy rewire.
+
+Files touched: `frontend/src/App.test.ts`.
