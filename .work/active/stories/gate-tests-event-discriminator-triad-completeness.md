@@ -1,7 +1,7 @@
 ---
 id: gate-tests-event-discriminator-triad-completeness
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, spec]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -72,3 +72,13 @@ Emit a structured diagnostic on failure (same style as the existing test).
 
 Verified: `go test ./internal/portal/events/... -count 1` passes (current
 state: 15 enum entries, 15 mapping entries, 15 oneOf $refs — all aligned).
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Triad check is comprehensive — enum↔mapping keys and mapping values↔oneOf refs both pinned with directional diff output (which side is missing). Failure messages name the corrective action ("add to discriminator.mapping" / "add a $ref entry"). Diagnostics-as-documentation pattern.
