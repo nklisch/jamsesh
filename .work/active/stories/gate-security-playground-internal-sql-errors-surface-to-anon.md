@@ -1,7 +1,7 @@
 ---
 id: gate-security-playground-internal-sql-errors-surface-to-anon
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, playground, error-handling]
 parent: feature-playground-hardening
 depends_on: []

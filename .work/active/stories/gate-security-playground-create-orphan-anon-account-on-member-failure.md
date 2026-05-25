@@ -1,7 +1,7 @@
 ---
 id: gate-security-playground-create-orphan-anon-account-on-member-failure
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, playground, data-protection]
 parent: feature-playground-hardening
 depends_on: []

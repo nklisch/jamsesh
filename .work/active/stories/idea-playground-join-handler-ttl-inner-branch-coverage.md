@@ -1,7 +1,7 @@
 ---
 id: idea-playground-join-handler-ttl-inner-branch-coverage
 kind: story
-stage: drafting
+stage: implementing
 tags: [portal, playground, testing]
 parent: feature-playground-hardening
 depends_on: [gate-security-githttp-receivepack-wallclock-not-injected]

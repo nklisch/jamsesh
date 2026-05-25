@@ -1,7 +1,7 @@
 ---
 id: gate-security-githttp-receivepack-wallclock-not-injected
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, refactor, testing]
 parent: feature-playground-hardening
 depends_on: []

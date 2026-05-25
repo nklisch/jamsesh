@@ -1,7 +1,7 @@
 ---
 id: gate-security-anon-bearer-validate-no-session-binding
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, tokens, defense-in-depth]
 parent: feature-playground-hardening
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: bug-playground-worker-reasonFor-off-by-one-at-exact-boundary
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, portal, playground]
 parent: feature-playground-hardening
 depends_on: []

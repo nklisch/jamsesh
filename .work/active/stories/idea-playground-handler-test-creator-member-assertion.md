@@ -1,7 +1,7 @@
 ---
 id: idea-playground-handler-test-creator-member-assertion
 kind: story
-stage: drafting
+stage: implementing
 tags: [portal, playground, testing]
 parent: feature-playground-hardening
 depends_on: []
