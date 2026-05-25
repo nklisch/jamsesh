@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-dual-dialect-occurrence-count-stale
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -76,3 +76,17 @@ No edit landed on the pattern file in any commit — the four-item docs roll-up
 
 **To fix:** apply the edit per the Required-edit section (drop the absolute
 number; keep parity invariant), commit, then re-advance to review.
+
+## Implementation notes (round 2)
+
+Root cause of round 1 miss: the `Edit` tool requires a prior `Read` of the
+target file in the same session. My initial Edit attempt on
+`dual-dialect-mirror-queries.md` returned a "File has not been read yet"
+error that I missed; I then included the file in `git add` but since
+the working tree was unchanged, `git add` silently no-op'd it and the
+commit landed without the dual-dialect fix.
+
+Round 2 applies the edit properly: `Read` first, then `Edit` replacing
+the "32 occurrences ... counts match exactly" sentence with the
+parity-invariant phrasing. Verified now in the file. Stage re-advanced
+to `review`.

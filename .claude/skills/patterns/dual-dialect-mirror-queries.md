@@ -59,8 +59,9 @@ WHERE org_id = ? AND id = ?;
 ```
 
 **File**: `db/queries/postgres/sessions.sql:18` — identical text,
-`$1`/`$2`/`$3` placeholders. 32 occurrences of `org_id`/`session_id`
-filters in each dialect's queries — counts match exactly.
+`$1`/`$2`/`$3` placeholders. `org_id`/`session_id` filters mirror exactly
+across the two dialects — the parity invariant matters more than the
+absolute count, which grows as queries are added.
 
 ## When to Use
 
