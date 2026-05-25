@@ -1,7 +1,10 @@
 # jamsesh
 
-> Multi-agent jamming for codebases — coordinated Claude Code sessions
-> producing PR-shaped branches without merge headaches.
+> Agent-in-the-loop human jam sessions for code. Get on a call with
+> your team and jam — each person drives their own Claude Code agent.
+> Hash out a spec out loud, push code references back and forth, write
+> docs together; every agent in the session sees the whole picture as
+> it unfolds.
 
 License: Apache 2.0 · See [docs/SELF_HOST.md](docs/SELF_HOST.md) for the
 full operator guide.

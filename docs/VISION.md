@@ -1,8 +1,11 @@
 # Jamsesh
 
-Jamsesh is a collaboration substrate where a small team of humans drive Claude
-Code instances against a shared git-backed session, producing artifacts together
-in a live jam.
+Jamsesh runs **agent-in-the-loop human jam sessions**. A small team of
+humans gets on a call and jams together on code, specs, or docs, each
+person driving their own Claude Code agent. The portal keeps every
+agent aware of the whole session through live commits, comments, and
+presence — so the jam moves as one without anyone having to recap
+state for their teammate's agent.
 
 ## The problem
 
