@@ -1,7 +1,7 @@
 ---
 id: gate-security-cli-join-clone-url-bearer-in-process-args
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, plugin, cli, auth]
 parent: null
 depends_on: []
