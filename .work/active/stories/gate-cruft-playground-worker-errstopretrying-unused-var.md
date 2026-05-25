@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-playground-worker-errstopretrying-unused-var
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -34,3 +34,6 @@ var errStopRetrying = errors.New("stop retrying: session already absent")
 
 ## Removal
 Delete the doc comment + var declaration (lines 146-149). The `errors` import is still used elsewhere in worker.go (verify with `goimports -l`), so the import line likely stays. Run `go vet ./internal/portal/playground/...` to confirm.
+
+## Implementation notes
+Deleted `errStopRetrying` and its docstring from `internal/portal/playground/worker.go`. The `errors` import was also unused after removal (only appeared in a comment), so it was removed too. `go build ./...` and `go test ./internal/portal/playground/...` pass.

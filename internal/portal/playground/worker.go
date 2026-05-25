@@ -2,7 +2,6 @@ package playground
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"time"
 
@@ -143,7 +142,3 @@ func (w *Worker) reasonFor(sess store.Session, now time.Time) string {
 	return "manual"
 }
 
-// errStopRetrying is used internally to signal a step that cannot usefully be
-// retried (e.g. the session row is already gone). It is NEVER surfaced to the
-// caller — it is swallowed within Destroy() and logged if unexpected.
-var errStopRetrying = errors.New("stop retrying: session already absent")
