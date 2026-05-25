@@ -1,7 +1,7 @@
 ---
 id: gate-tests-playground-activity-reset-no-integration-coverage
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -76,3 +76,12 @@ Three integration tests added, one per substantive-action surface:
 - Negative control: durable orgID — fields equal T0 after the push.
 
 All tests pass. No production bugs discovered; wiring is correct end-to-end.
+
+## Review notes
+
+Approve. Three integration tests across three call-sites (comments, sessions
+finalize, git post-receive) each with a positive (playground) and negative
+(durable) control. SELECT-based assertions on `last_substantive_activity_at`
+and `idle_timeout_at` after the real handler executes. The git test uses a
+real httptest server, real Handler, real storage, real push — not stubbed.
+All 6 subtests pass.
