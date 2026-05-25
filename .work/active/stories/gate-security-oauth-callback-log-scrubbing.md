@@ -1,7 +1,7 @@
 ---
 id: gate-security-oauth-callback-log-scrubbing
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, logging, auth]
 parent: feature-server-secret-log-hygiene
 depends_on: []
@@ -40,8 +40,72 @@ lands in the structured access log alongside the request URL (which contains
 `code=` and `state=` for the OAuth callback). The portal does not currently
 strip `code`/`state` from logged URLs.
 
-## Remediation direction
-Add a log scrubber for `code`/`state` query params on
-`/auth/oauth/callback` (replace values with `[redacted]` before structured
-logging), or move OAuth callback to a POST that consumes the code from the
-request body so it never appears in access-log URLs.
+## Status: already remediated
+
+Investigation during feature design (2026-05-25) confirmed this is already
+fixed:
+
+1. `POST /api/auth/oauth/callback` receives `code` and `state` in the JSON
+   request body — not in the URL query string. The access logger logs
+   `r.URL.RawQuery`, which is empty for this endpoint.
+2. `internal/portal/logging/redact.go` already lists `"code"` and `"state"`
+   in `sensitiveParams`, and `RedactQueryTokens` is called on every access-log
+   line via the `logging.Access` middleware.
+3. The error chain from `deperr.WrapOAuthProvider` wraps a Go `error` value
+   (from the OAuth client library); it does not include raw provider HTTP
+   response bodies.
+
+## Remaining work
+
+Add a targeted regression test that pins the invariant — ensures `code` and
+`state` are covered by `RedactQueryTokens` in the access-log middleware — so
+a future refactor cannot silently remove them.
+
+**File**: `internal/portal/logging/logging_test.go`
+
+```go
+// TestAccessMiddlewareRedactsOAuthQueryParams pins the invariant that the
+// access-log middleware redacts OAuth code/state params from the logged
+// query field. The OauthCallback endpoint is a POST with JSON body (no query
+// params in production), but this test guards against any future path that
+// routes code/state through the URL.
+func TestAccessMiddlewareRedactsOAuthQueryParams(t *testing.T) {
+    const secretCode = "provider_auth_code_secret"
+    const secretState = "csrf_nonce_secret"
+
+    var buf bytes.Buffer
+    logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+    slog.SetDefault(logger)
+
+    inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusBadRequest) // simulated bad-grant response
+    })
+
+    w := httptest.NewRecorder()
+    r := httptest.NewRequest(http.MethodGet, "/api/auth/oauth/callback?code="+secretCode+"&state="+secretState, nil)
+
+    logging.Access(nil)(inner).ServeHTTP(w, r)
+
+    line := strings.TrimSpace(buf.String())
+    if strings.Contains(line, secretCode) {
+        t.Errorf("access log leaks OAuth code %q: %s", secretCode, line)
+    }
+    if strings.Contains(line, secretState) {
+        t.Errorf("access log leaks OAuth state %q: %s", secretState, line)
+    }
+
+    var entry map[string]any
+    if err := json.Unmarshal([]byte(line), &entry); err != nil {
+        t.Fatalf("decode log line: %v", err)
+    }
+    q, _ := entry["query"].(string)
+    if !strings.Contains(q, "<redacted>") {
+        t.Errorf("query field %q does not contain <redacted>", q)
+    }
+}
+```
+
+## Acceptance Criteria
+- [ ] `TestAccessMiddlewareRedactsOAuthQueryParams` is added to `internal/portal/logging/logging_test.go`
+- [ ] Test passes: neither `code` nor `state` values appear in log output
+- [ ] `<redacted>` sentinel appears in the logged `query` field for both params
