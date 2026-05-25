@@ -1,7 +1,7 @@
 ---
 id: gate-tests-comments-slog-warning-emission-assertion
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, logging]
 parent: null
 depends_on: []
@@ -54,3 +54,10 @@ Approach:
   propagation), exactly one WARN record is captured, the message contains
   `"reset idle timer failed"`, and the record carries attrs `org`, `session`,
   and `err` matching the values passed in `service.go` line 224.
+
+## Review notes
+
+Approve. Captures slog output via JSON handler, asserts level + msg + all
+structured attrs (org, session, err). Comment-create succeeds (best-effort
+contract preserved). Real seeded SQLite store; only the reset call is stubbed.
+Test passes.
