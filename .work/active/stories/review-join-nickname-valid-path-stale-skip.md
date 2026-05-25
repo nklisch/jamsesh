@@ -1,7 +1,7 @@
 ---
 id: review-join-nickname-valid-path-stale-skip
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, playground, tech-debt]
 parent: null
 depends_on: []
@@ -42,3 +42,12 @@ which pass. Valid-path subtests are bonus coverage that was correctly
 skipped at write-time when the join handler was broken. Now that the
 handler works, the skips are stale and the test bodies need branching to
 match the success shape.
+
+## Implementation notes
+Removed the `t.Skip(...)` guard (handler_test.go:1440-1442) and branched
+the assertion block: for `wantCode == 200`, the test now decodes
+`openapi.PlaygroundJoinResult` and asserts that a supplied nickname
+round-trips verbatim or, for the server-mints case, is non-empty. For
+non-200 paths the original `ErrorEnvelope` decode is retained. All 11
+subtests (6 invalid + 5 valid) pass cleanly with no new bugs surfaced —
+no parking required.

@@ -1432,15 +1432,6 @@ func TestJoinPlaygroundSession_NicknameValidation(t *testing.T) {
 			for _, tc := range cases {
 				tc := tc
 				t.Run(tc.name, func(t *testing.T) {
-					// Valid-path subtests require the join handler to complete
-					// successfully, but the handler returns 410 on any freshly
-					// created session due to a pre-existing clock-skew bug.
-					// Skip rather than fail so the suite stays honest — the
-					// bug is documented in bug-playground-join-with-nickname-returns-410-on-fresh-session.
-					if tc.wantCode == http.StatusOK {
-						t.Skip("skipped: join returns 410 on fresh session (bug-playground-join-with-nickname-returns-410-on-fresh-session)")
-					}
-
 					var body any
 					if tc.nickname != "" {
 						body = map[string]string{"nickname": tc.nickname}
@@ -1449,13 +1440,29 @@ func TestJoinPlaygroundSession_NicknameValidation(t *testing.T) {
 					if resp.StatusCode != tc.wantCode {
 						t.Errorf("nickname %q: want status %d, got %d", tc.nickname, tc.wantCode, resp.StatusCode)
 					}
-					var errBody openapi.ErrorEnvelope
-					decodeJSON(t, resp, &errBody)
-					if errBody.Error != tc.wantErr {
-						t.Errorf("nickname %q: want error=%q, got %q", tc.nickname, tc.wantErr, errBody.Error)
-					}
-					if errBody.Message == "" {
-						t.Errorf("nickname %q: want non-empty message", tc.nickname)
+					if tc.wantCode == http.StatusOK {
+						var joined openapi.PlaygroundJoinResult
+						decodeJSON(t, resp, &joined)
+						if tc.nickname != "" {
+							// Supplied nickname must round-trip verbatim.
+							if joined.Nickname != tc.nickname {
+								t.Errorf("nickname %q: want round-trip nickname %q, got %q", tc.nickname, tc.nickname, joined.Nickname)
+							}
+						} else {
+							// Server-minted nickname must be non-empty.
+							if joined.Nickname == "" {
+								t.Errorf("empty nickname case: server should mint a non-empty nickname")
+							}
+						}
+					} else {
+						var errBody openapi.ErrorEnvelope
+						decodeJSON(t, resp, &errBody)
+						if errBody.Error != tc.wantErr {
+							t.Errorf("nickname %q: want error=%q, got %q", tc.nickname, tc.wantErr, errBody.Error)
+						}
+						if errBody.Message == "" {
+							t.Errorf("nickname %q: want non-empty message", tc.nickname)
+						}
 					}
 				})
 			}
