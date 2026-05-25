@@ -890,6 +890,9 @@ func main() {
 			r.Group(func(r chi.Router) {
 				r.Use(tokens.BearerMiddleware(tokenSvc))
 				r.Post("/auth/revoke", apiWrapper.RevokeToken)
+				// feature-auth-signout-backend-revoke-backend — zero-body
+				// sign-out endpoint; revokes all tokens for the caller.
+				r.Post("/auth/logout", apiWrapper.Logout)
 				r.Post("/auth/ws-ticket", apiWrapper.IssueWsTicket)
 				r.Get("/me", apiWrapper.GetMe)
 				r.Post("/orgs", apiWrapper.CreateOrg)

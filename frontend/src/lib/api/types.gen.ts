@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke all tokens for the authenticated account (sign-out)
+         * @description Convenience endpoint for SPA sign-out. The Bearer token in the Authorization header identifies the caller AND the account whose tokens are revoked — there is no request body. Semantically equivalent to POST /api/auth/revoke with the request's bearer token and revoke_all=true, but with a zero-body call shape that suits a fire-and-forget client.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/oauth/start": {
         parameters: {
             query?: never;
@@ -2047,6 +2067,25 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All tokens revoked; client may now clear local state */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     startOAuth: {

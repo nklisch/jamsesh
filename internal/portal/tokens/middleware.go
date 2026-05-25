@@ -12,6 +12,7 @@ import (
 )
 
 type ctxKey struct{}
+type rawBearerCtxKey struct{}
 
 // BearerMiddleware returns a chi-compatible middleware that validates an
 // "Authorization: Bearer <token>" header and attaches the resolved *store.Account
@@ -45,6 +46,12 @@ func BearerMiddleware(svc Service) func(http.Handler) http.Handler {
 				return
 			}
 			ctx := context.WithValue(r.Context(), ctxKey{}, acct)
+			// Stash the raw bearer too so handlers like Logout can look up
+			// the token row by hash without re-extracting it from the
+			// Authorization header. Purely additive — existing consumers
+			// of AccountFromContext are unaffected.
+			// (feature-auth-signout-backend-revoke-backend)
+			ctx = context.WithValue(ctx, rawBearerCtxKey{}, tok)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -55,6 +62,23 @@ func BearerMiddleware(svc Service) func(http.Handler) http.Handler {
 func AccountFromContext(ctx context.Context) (*store.Account, bool) {
 	v, ok := ctx.Value(ctxKey{}).(*store.Account)
 	return v, ok
+}
+
+// rawBearerFromContext returns the raw bearer string attached by
+// BearerMiddleware. Package-private — only Handler.Logout needs it. Tests
+// that bypass BearerMiddleware (e.g. via ContextWithAccount) can attach the
+// raw bearer themselves via the un-exported context key — wired through
+// ContextWithRawBearer.
+func rawBearerFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(rawBearerCtxKey{}).(string)
+	return v
+}
+
+// ContextWithRawBearer attaches the raw bearer string to ctx using the
+// same key BearerMiddleware uses. Tests that authenticate via
+// ContextWithAccount also call this so Logout has the bearer it needs.
+func ContextWithRawBearer(ctx context.Context, raw string) context.Context {
+	return context.WithValue(ctx, rawBearerCtxKey{}, raw)
 }
 
 // ContextWithAccount attaches the given account to ctx using the same key

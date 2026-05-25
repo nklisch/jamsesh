@@ -88,6 +88,51 @@ func (h *Handler) RevokeToken(ctx context.Context, req openapi.RevokeTokenReques
 	return openapi.RevokeToken204Response{}, nil
 }
 
+// Logout implements POST /api/auth/logout. Revokes ALL tokens for the
+// authenticated account (logout-everywhere semantics) using the bearer
+// presented in the Authorization header. No request body required.
+//
+// (feature-auth-signout-backend-revoke-backend)
+//
+// auth flow: same import-cycle constraint as RevokeToken — AccountFromContext
+// is called directly rather than via handlerauth.
+func (h *Handler) Logout(ctx context.Context, _ openapi.LogoutRequestObject) (openapi.LogoutResponseObject, error) {
+	acct, ok := AccountFromContext(ctx)
+	if !ok {
+		return openapi.Logout401JSONResponse{
+			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+				Error:   "auth.invalid_token",
+				Message: "invalid token",
+			},
+		}, nil
+	}
+	rawToken := rawBearerFromContext(ctx)
+	if rawToken == "" {
+		// BearerMiddleware always populates this when an account is in ctx;
+		// the explicit nil check is belt-and-suspenders for direct context
+		// injection paths that forget ContextWithRawBearer.
+		return openapi.Logout401JSONResponse{
+			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+				Error:   "auth.invalid_token",
+				Message: "invalid token",
+			},
+		}, nil
+	}
+	if err := h.svc.Revoke(ctx, acct.ID, rawToken, true); err != nil {
+		// ErrForbidden cannot occur in practice: we pass acct.ID as both
+		// caller and the token's owner (BearerMiddleware fetched acct via
+		// the same token's hash). Map any error to 401 to avoid leaking
+		// internals.
+		return openapi.Logout401JSONResponse{
+			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
+				Error:   "auth.invalid_token",
+				Message: "invalid token",
+			},
+		}, nil
+	}
+	return openapi.Logout204Response{}, nil
+}
+
 // mapToRefreshError converts token sentinel errors to the appropriate 401 response.
 func mapToRefreshError(err error) openapi.RefreshTokenResponseObject {
 	var code, msg string

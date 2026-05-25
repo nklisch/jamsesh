@@ -1,7 +1,7 @@
 ---
 id: feature-auth-signout-backend-revoke-backend
 kind: story
-stage: implementing
+stage: review
 tags: [security, auth, tokens]
 parent: feature-auth-signout-backend-revoke
 depends_on: []
@@ -134,3 +134,35 @@ r.Post("/auth/logout", apiWrapper.Logout)
 - [ ] `POST /api/auth/logout` without a Bearer header returns `401`.
 - [ ] All existing `tokens` package tests continue to pass.
 - [ ] New handler tests pass.
+
+## Implementation notes
+
+- `docs/openapi.yaml`: added `POST /api/auth/logout` with `operationId: logout`,
+  `bearerAuth` security, no request body, 204 + 401 responses. `make generate-api`
+  regenerated `internal/api/openapi/server.gen.go` (LogoutRequestObject,
+  Logout204Response, Logout401JSONResponse, route registration in
+  HandlerFromMux) and `frontend/src/lib/api/types.gen.ts`.
+- `internal/portal/tokens/middleware.go`: added `rawBearerCtxKey{}` and the
+  pair `rawBearerFromContext(ctx) string` (package-private) +
+  `ContextWithRawBearer(ctx, raw) context.Context` (exported for tests that
+  bypass HTTP middleware). `BearerMiddleware` now also stores the validated
+  raw token in context — purely additive.
+- `internal/portal/tokens/handlers.go`: `Handler.Logout(ctx, req)` reads the
+  account and raw bearer from context, then calls
+  `h.svc.Revoke(ctx, acct.ID, rawToken, true)` (logout-everywhere). All
+  failures map to 401 to avoid leaking internals (`ErrForbidden` is
+  unreachable in practice — same account on both sides).
+- `cmd/portal/main.go`: `r.Post("/auth/logout", apiWrapper.Logout)` mounted
+  inside the BearerMiddleware group alongside `/auth/revoke`.
+- `internal/portal/tokens/handlers_test.go`:
+  - `newTestEnv` wires `/api/auth/logout` into the test router under the
+    Bearer-protected group.
+  - Four new tests:
+    - `TestHandler_Logout_RevokesAllTokens`
+    - `TestHandler_Logout_NoBearerReturns401`
+    - `TestHandler_Logout_InvalidBearerReturns401`
+    - `TestHandler_Logout_IsIdempotent_AlreadyRevoked`
+- `tokensOnlyHandler` embeds `*tokens.Handler` so it gains the new `Logout`
+  method automatically; no shim update needed.
+
+Verified: `go test ./internal/portal/tokens/... -count 1` passes, `go build ./...` clean.

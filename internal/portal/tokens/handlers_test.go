@@ -179,10 +179,11 @@ func newTestEnv(t *testing.T) *testEnv {
 		r.Post("/api/auth/refresh", strictAPI.RefreshToken)
 	})
 
-	// Authenticated: POST /api/auth/revoke (Bearer required)
+	// Authenticated: POST /api/auth/revoke + /api/auth/logout (Bearer required)
 	r.Group(func(r chi.Router) {
 		r.Use(tokens.BearerMiddleware(svc))
 		r.Post("/api/auth/revoke", strictAPI.RevokeToken)
+		r.Post("/api/auth/logout", strictAPI.Logout)
 	})
 
 	srv := httptest.NewServer(r)
@@ -498,5 +499,77 @@ func TestHandler_RevokeToken_CrossAccount_RevokeAll_Forbidden(t *testing.T) {
 	}
 	if _, err := env.svc.Validate(ctx, pairB.RefreshToken); err != nil {
 		t.Errorf("B's refresh token should still be valid after rejected cross-account revoke-all: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// feature-auth-signout-backend-revoke-backend — POST /api/auth/logout
+// ---------------------------------------------------------------------------
+
+func TestHandler_Logout_RevokesAllTokens(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	_, pair := env.mustIssue(t, "logout-happy@example.com")
+
+	// Pre-condition: both tokens valid.
+	if _, err := env.svc.Validate(ctx, pair.AccessToken); err != nil {
+		t.Fatalf("pre: access token must validate: %v", err)
+	}
+	if _, err := env.svc.Validate(ctx, pair.RefreshToken); err != nil {
+		t.Fatalf("pre: refresh token must validate: %v", err)
+	}
+
+	// Call logout with the access token as the bearer.
+	resp := postJSON(t, env.srv, "/api/auth/logout", nil,
+		map[string]string{"Authorization": "Bearer " + pair.AccessToken})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("Logout: want 204, got %d", resp.StatusCode)
+	}
+
+	// Post-condition: both tokens revoked.
+	if _, err := env.svc.Validate(ctx, pair.AccessToken); err == nil {
+		t.Errorf("access token should be invalidated after logout, but Validate succeeded")
+	}
+	if _, err := env.svc.Validate(ctx, pair.RefreshToken); err == nil {
+		t.Errorf("refresh token should be invalidated after logout, but Validate succeeded")
+	}
+}
+
+func TestHandler_Logout_NoBearerReturns401(t *testing.T) {
+	env := newTestEnv(t)
+	resp := postJSON(t, env.srv, "/api/auth/logout", nil, nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Logout without bearer: want 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandler_Logout_InvalidBearerReturns401(t *testing.T) {
+	env := newTestEnv(t)
+	resp := postJSON(t, env.srv, "/api/auth/logout", nil,
+		map[string]string{"Authorization": "Bearer not-a-real-token"})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Logout with invalid bearer: want 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandler_Logout_IsIdempotent_AlreadyRevoked(t *testing.T) {
+	env := newTestEnv(t)
+	_, pair := env.mustIssue(t, "logout-idemp@example.com")
+
+	// First logout: 204.
+	resp := postJSON(t, env.srv, "/api/auth/logout", nil,
+		map[string]string{"Authorization": "Bearer " + pair.AccessToken})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("first logout: want 204, got %d", resp.StatusCode)
+	}
+
+	// Second logout with the (now revoked) bearer: BearerMiddleware
+	// validates first and short-circuits with 401 — the logout handler is
+	// not even reached. Either way the contract holds: tokens stay revoked.
+	resp = postJSON(t, env.srv, "/api/auth/logout", nil,
+		map[string]string{"Authorization": "Bearer " + pair.AccessToken})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("second logout (revoked bearer): want 401, got %d", resp.StatusCode)
 	}
 }

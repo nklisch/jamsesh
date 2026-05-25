@@ -1807,6 +1807,25 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/auth/logout:
+    post:
+      summary: Revoke all tokens for the authenticated account (sign-out)
+      description: >
+        Convenience endpoint for SPA sign-out. The Bearer token in the
+        Authorization header identifies the caller AND the account whose
+        tokens are revoked — there is no request body. Semantically
+        equivalent to POST /api/auth/revoke with the request's bearer
+        token and revoke_all=true, but with a zero-body call shape that
+        suits a fire-and-forget client.
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: All tokens revoked; client may now clear local state
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /api/auth/oauth/start:
     post:
       summary: Begin OAuth authorization flow — returns the provider authorize URL
