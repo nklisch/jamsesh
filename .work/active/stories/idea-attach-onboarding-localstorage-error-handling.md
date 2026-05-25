@@ -1,7 +1,7 @@
 ---
 id: idea-attach-onboarding-localstorage-error-handling
 kind: story
-stage: implementing
+stage: review
 tags: [ui, bug]
 parent: feature-attach-onboarding-a11y-robustness
 depends_on: []
@@ -87,3 +87,17 @@ function handleOpenSession() {
 - [ ] The `typeof localStorage !== 'undefined'` guard is removed (try/catch is the guard)
 - [ ] Test: spy `Storage.prototype.setItem` to throw → `onclose` still called once
 - [ ] Test: spy `Storage.prototype.getItem` to throw → modal renders `.modal-card.first-time`
+
+## Implementation notes
+
+- `$effect` mode-on-mount: wrapped `localStorage.getItem(DISMISS_KEY)` in
+  try/catch; on throw, falls back to `dismissed = false` (i.e. `mode = 'full'`).
+  The `typeof localStorage !== 'undefined'` guard is removed.
+- `handleClose()` + `handleOpenSession()`: wrapped `localStorage.setItem(...)`
+  in try/catch with `console.warn` on failure. `onclose()` / `onopenSession()`
+  always runs.
+- Two new tests pin the behaviour:
+  - `still calls onclose when localStorage.setItem throws`
+  - `falls back to full mode when localStorage.getItem throws`
+
+Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 28 passed.

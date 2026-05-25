@@ -307,4 +307,46 @@ describe('SessionAttachWalkthrough', () => {
     expect(document.querySelector('.modal-card.compact')).toBeInTheDocument();
     expect(screen.getByText(/open a session view to copy its join command/i)).toBeInTheDocument();
   });
+
+  // ── localStorage error tolerance ─────────────────────────────────────────
+  // idea-attach-onboarding-localstorage-error-handling: QuotaExceededError /
+  // SecurityError on localStorage MUST NOT block the user's intent to close,
+  // and a getItem throw MUST NOT keep the modal in a broken state.
+
+  it('still calls onclose when localStorage.setItem throws', async () => {
+    const onclose = vi.fn();
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new DOMException('QuotaExceededError', 'QuotaExceededError');
+      });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      renderWalkthrough({ open: true, onclose });
+      const checkbox = screen.getByRole('checkbox');
+      await fireEvent.click(checkbox);
+      const skipBtn = screen.getByRole('button', { name: /skip for now/i });
+      await fireEvent.click(skipBtn);
+      expect(onclose).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      setItemSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('falls back to full mode when localStorage.getItem throws', () => {
+    const getItemSpy = vi
+      .spyOn(Storage.prototype, 'getItem')
+      .mockImplementation(() => {
+        throw new DOMException('SecurityError', 'SecurityError');
+      });
+    try {
+      renderWalkthrough({ open: true });
+      // Default 'full' mode renders the first-time ceremonial card.
+      expect(document.querySelector('.modal-card.first-time')).toBeInTheDocument();
+    } finally {
+      getItemSpy.mockRestore();
+    }
+  });
 });

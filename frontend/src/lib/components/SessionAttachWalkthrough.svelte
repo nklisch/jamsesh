@@ -43,11 +43,17 @@
   // ── Mode-on-mount: re-read flag whenever open flips true ──────────────────
   $effect(() => {
     if (!open) return;
-    mode =
-      typeof localStorage !== 'undefined' &&
-      localStorage.getItem(DISMISS_KEY) === 'true'
-        ? 'compact'
-        : 'full';
+    // localStorage access can throw in some browser contexts (Safari private
+    // browsing pre-15, SecurityError when storage is disabled, etc). Swallow
+    // and fall back to the safe default ('full') — the user can still dismiss
+    // again next time. (idea-attach-onboarding-localstorage-error-handling)
+    let dismissed = false;
+    try {
+      dismissed = localStorage.getItem(DISMISS_KEY) === 'true';
+    } catch {
+      // SecurityError / quota-blocked context — default to full mode.
+    }
+    mode = dismissed ? 'compact' : 'full';
   });
 
   // ── ESC handler — registered while open, torn down on close ───────────────
@@ -78,18 +84,28 @@
 
   // ── Behaviors ──────────────────────────────────────────────────────────────
 
-  /** Persist dismiss flag if checked, then call parent onclose. */
+  /** Persist dismiss flag if checked, then call parent onclose.
+   *  Storage failures (QuotaExceededError / SecurityError) MUST NOT block
+   *  the user's intent to close — log + proceed. */
   function handleClose() {
     if (dismissChecked) {
-      localStorage.setItem(DISMISS_KEY, 'true');
+      try {
+        localStorage.setItem(DISMISS_KEY, 'true');
+      } catch (e) {
+        console.warn('[jamsesh] Could not persist walkthrough dismiss flag:', e);
+      }
     }
     onclose();
   }
 
-  /** "Open session view →" button handler. */
+  /** "Open session view →" button handler. Same storage-failure tolerance. */
   function handleOpenSession() {
     if (dismissChecked) {
-      localStorage.setItem(DISMISS_KEY, 'true');
+      try {
+        localStorage.setItem(DISMISS_KEY, 'true');
+      } catch (e) {
+        console.warn('[jamsesh] Could not persist walkthrough dismiss flag:', e);
+      }
     }
     if (onopenSession) {
       onopenSession();
