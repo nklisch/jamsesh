@@ -32,3 +32,7 @@ Available patterns:
 - [strict-server-partial-handler-shim.md](strict-server-partial-handler-shim.md) — Strict-Server Partial Handler Shim
 - [playground-activity-reset.md](playground-activity-reset.md) — Playground Activity Reset on Substantive Action
 - [ticker-sweep-loop.md](ticker-sweep-loop.md) — Context-Cancellable Ticker Sweep Loop
+- [package-private-composed-store-interface.md](package-private-composed-store-interface.md) — Package-Private Composed Store Interface
+- [test-narrow-store-delegation.md](test-narrow-store-delegation.md) — Test Narrow-Store Delegation Wrapper
+- [testenv-harness-struct.md](testenv-harness-struct.md) — testEnv Harness Struct
+- [reserved-org-id-local-const-mirror.md](reserved-org-id-local-const-mirror.md) — Reserved-Org-ID Local-Const Mirror

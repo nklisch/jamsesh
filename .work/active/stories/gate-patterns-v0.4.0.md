@@ -15,6 +15,8 @@ updated: 2026-05-24
 
 ## New patterns codified
 
+### Initial run (2026-05-24)
+
 - `per-instance-factory-rune-store` — Rune stores needing per-mount isolation
   use `export function create<Name>(...)` returning a plain-object facade
   with `$state`/`$derived` in the closure body. 5 factories in v0.4.0 in
@@ -37,24 +39,74 @@ updated: 2026-05-24
   5 workers: playground destruction sweep, objectstore lifecycle,
   ws-gateway ticket janitor, lease retention, lease heartbeat.
 
+### Re-run extension (2026-05-24, post `store.Store`-narrowing refactor)
+
+- `package-private-composed-store-interface` — Portal consumer packages
+  declare a lowercase `<pkg>Store interface` composed from `store.*`
+  sub-interfaces (plus `WithTx`) and accept it in their constructor;
+  `cmd/portal/main.go` passes the full adapter and structural typing
+  matches each narrow interface. 20 production occurrences across
+  accounts, automerger×2, auth×3, comments, events, finalize, githttp,
+  handlerauth×2, mcpendpoint, playground×3, sessions, storage, tokens,
+  wsgateway.
+- `test-narrow-store-delegation` — Test files inject typed store
+  failures via `failing<Verb><Entity>Store` wrappers that delegate every
+  consumer-interface method to a real store except the single
+  method-under-test; never `struct { store.Store }` embedding.
+  6 wrappers across 5 files (accounts ×2, sessions, comments ×2,
+  finalize).
+- `testenv-harness-struct` — Each portal package's tests bundle wired
+  deps (`*httptest.Server`, real `store.Store`, tokens service, stubs)
+  in an unexported `testEnv struct` constructed via
+  `newTestEnv(t *testing.T) *testEnv` with optional
+  `WithStore`/`WithClock`/`WithTokens` overloads. 8 packages: tokens,
+  githttp, sessions, wsgateway, comments, mcpendpoint, playground,
+  testclock.
+- `reserved-org-id-local-const-mirror` — Cross-cutting reserved
+  identifiers (`playgroundOrgID = "org_playground"`) are mirrored as
+  lowercase package-local `const` in each consumer with a comment
+  pinning them to `playground.ReservedOrgID` to break import cycles
+  without widening the dependency graph. 4 production occurrences
+  (sessions, comments, githttp, prereceive) plus 3 test-scope inline
+  mirrors.
+
 ## Inconsistencies flagged
 
-None. The five new shapes are additive: they extend the existing pattern
-catalog with new variants but do not violate any documented pattern.
+None. Both the original 5 and the re-run extension's 4 are additive:
+they extend the existing pattern catalog with new variants but do not
+violate any documented pattern.
 
 ## Pattern files written
+
+Initial run:
 
 - `.claude/skills/patterns/per-instance-factory-rune-store.md`
 - `.claude/skills/patterns/adapter-wrap-helpers.md`
 - `.claude/skills/patterns/strict-server-partial-handler-shim.md`
 - `.claude/skills/patterns/playground-activity-reset.md`
 - `.claude/skills/patterns/ticker-sweep-loop.md`
+
+Re-run extension:
+
+- `.claude/skills/patterns/package-private-composed-store-interface.md`
+- `.claude/skills/patterns/test-narrow-store-delegation.md`
+- `.claude/skills/patterns/testenv-harness-struct.md`
+- `.claude/skills/patterns/reserved-org-id-local-const-mirror.md`
+
+Combined updates:
+
 - `.claude/skills/patterns/SKILL.md` (updated available-patterns list)
-- `.claude/rules/patterns.md` (updated index)
+- `.claude/rules/patterns.md` (updated index — 25 entries, under cap)
 
 ## Discovery summary
 
-- Files scanned: 238 bundle files + ~60 immediate consumers
-- Pattern candidates evaluated: 12
-- Genuine patterns (3+ occurrences): 5
-- Inconsistencies with existing patterns: 0
+- Initial run: 238 bundle files + ~60 immediate consumers scanned;
+  12 candidates evaluated; 5 genuine patterns (3+ occurrences);
+  0 inconsistencies.
+- Re-run extension: 190 incremental code files (since 2026-05-24) +
+  20+ consumer packages re-scanned; 9 candidates evaluated; 4 genuine
+  new patterns; 0 inconsistencies. Candidates rejected for <3
+  occurrences: slog JSON-handler capture (2 files), barrier+WaitGroup
+  race orchestration (2 files), table-driven boundary tests (stdlib
+  Go idiom, not project-specific).
+- Total v0.4.0 patterns codified: 9.
