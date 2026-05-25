@@ -3,12 +3,12 @@ id: gate-security-signout-no-backend-revoke
 kind: story
 stage: drafting
 tags: [security]
-parent: null
+parent: feature-auth-signout-backend-revoke
 depends_on: []
 release_binding: null
 gate_origin: security
 created: 2026-05-20
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # signOut() clears local tokens without notifying backend to revoke them
