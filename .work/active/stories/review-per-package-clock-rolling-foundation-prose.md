@@ -1,7 +1,7 @@
 ---
 id: review-per-package-clock-rolling-foundation-prose
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, cleanup]
 parent: null
 depends_on: []
@@ -31,3 +31,7 @@ do not need to know which version added each entry.
 Drop the second sentence ("the `playground`, `ratelimit`, …"). Leave the
 14-package list and the count; the doc should describe the system now,
 not the journey to it.
+
+## Implementation notes
+
+Removed the trailing 4-line sentence naming `auth/magic_link.go` / `wsgateway/clock.go` as inception packages and `playground` / `ratelimit` / `storage/objectstore` as brought-onto-pattern by `feature-refactor-per-package-clock-compliance` in v0.4.0. The remaining list of 14 packages stands on its own as a present-tense statement of where the pattern is in use. Edit applied in the parent autopilot session.

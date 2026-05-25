@@ -60,11 +60,7 @@ to the default `New(...)` which calls `NewWithClock(..., realClock{})`.
 Replicated identically across 14 packages total:
 `internal/portal/{accounts, auth, automerger, comments, events, finalize,
 mcpendpoint, playground, ratelimit, sessions, storage,
-storage/objectstore, tokens, wsgateway}`. The `auth/magic_link.go` and
-`wsgateway/clock.go` packages had this shape from inception; the
-`playground`, `ratelimit`, and `storage/objectstore` packages were brought
-onto the pattern by `feature-refactor-per-package-clock-compliance` in
-v0.4.0.
+storage/objectstore, tokens, wsgateway}`.
 
 ## When to Use
 

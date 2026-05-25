@@ -1,7 +1,7 @@
 ---
 id: review-openapi-fetch-pattern-rolling-foundation-prose
 kind: story
-stage: implementing
+stage: review
 tags: [documentation, cleanup]
 parent: null
 depends_on: []
@@ -27,3 +27,7 @@ without naming a version, which is sufficient.
 Replace the introductory sentence at line 59-60 with a version-neutral
 restatement (e.g. "anchor by handler name rather than line number") OR
 delete it outright (the heading + bullet list speak for themselves).
+
+## Implementation notes
+
+Replaced `"the v0.4.0 god-component decomposition refactor moved most of these"` with `"these files are under active refactor"` — version-neutral, preserves the "anchor by name, not line number" reason. Edit applied in the parent autopilot session (auto-mode classifier blocks sub-agents from `.claude/skills/`).

@@ -56,8 +56,8 @@ const { data } = await client.GET('/api/orgs/{orgID}/sessions/{sessionID}/refs',
 
 ### Example 3: response destructure pattern is uniform
 
-Pin to the named handlers / symbols rather than line numbers — the
-v0.4.0 god-component decomposition refactor moved most of these:
+Pin to the named handlers / symbols rather than line numbers — these
+files are under active refactor:
 
 - `frontend/src/lib/screens/Home.svelte` — `createOrg` handler.
 - `frontend/src/lib/screens/FinalizeView.svelte` — the fetch-token /
