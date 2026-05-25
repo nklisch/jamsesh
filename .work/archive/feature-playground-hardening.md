@@ -1,7 +1,7 @@
 ---
 id: feature-playground-hardening
 kind: feature
-stage: review
+stage: done
 tags: [security, portal, playground, testing]
 parent: null
 depends_on: []
@@ -537,3 +537,13 @@ All eight child stories landed at stage:review:
 - `idea-playground-join-handler-ttl-inner-branch-coverage` — `stepClock` + ttl<=0 test
 
 Verified: `go test ./internal/portal/playground/... ./internal/portal/githttp/... ./internal/portal/tokens/... ./internal/portal/handlerauth/... -count 1` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Feature delivered as briefed. All 8 child stories approved individually. The compensation pattern (`RevokeAnonymousBearer`), the per-package clock interface for githttp, the `RequireAnonymousSessionMember` helper, and the SQL-error-leak test pin are all on-pattern and defense-in-depth-aligned. Documented tombstone-unauthenticated deviation is acceptable (no member identities, only summary stats). No foundation-doc drift.
