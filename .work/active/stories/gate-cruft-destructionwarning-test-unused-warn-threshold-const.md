@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-destructionwarning-test-unused-warn-threshold-const
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
