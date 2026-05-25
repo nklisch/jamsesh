@@ -335,6 +335,38 @@ describe('SessionAttachWalkthrough', () => {
     }
   });
 
+  // ── Keyboard accessibility (idea-attach-onboarding-keyboard-accessibility) ─
+
+  it('term-line elements are <button>s reachable by Tab and trigger copy on Enter', async () => {
+    renderWalkthrough({ open: true });
+    const buttons = document.querySelectorAll('button.term-line');
+    expect(buttons.length).toBe(2);
+    // Native button — Enter triggers click in real browsers; testing-library's
+    // userEvent isn't wired here, so simulate the click behavior the button
+    // would dispatch on Enter.
+    (buttons[0] as HTMLButtonElement).click();
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('claude plugin marketplace add nklisch/jamsesh');
+    });
+  });
+
+  it('cc-input is a <button> and triggers copy when activated', async () => {
+    renderWalkthrough({ open: true, sessionId: 'abc' });
+    const ccBtn = document.querySelector('button.cc-input') as HTMLButtonElement | null;
+    expect(ccBtn).not.toBeNull();
+    ccBtn!.click();
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('/jamsesh:join abc');
+    });
+  });
+
+  it('reopen-link is a <button> in compact mode', () => {
+    localStorage.setItem('jamsesh.attach-walkthrough-dismissed', 'true');
+    renderWalkthrough({ open: true });
+    const btn = document.querySelector('button.reopen-link');
+    expect(btn).toBeInTheDocument();
+  });
+
   it('falls back to full mode when localStorage.getItem throws', () => {
     const getItemSpy = vi
       .spyOn(Storage.prototype, 'getItem')

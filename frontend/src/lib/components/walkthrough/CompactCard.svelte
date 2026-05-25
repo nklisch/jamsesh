@@ -58,11 +58,9 @@
 
   <CcPane {joinCmd} {copiedCmd} oncopy={oncopy} />
 
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <span class="reopen-link" onclick={onshowfull}>
+  <button type="button" class="reopen-link" onclick={onshowfull}>
     First-time setup? Show the full walkthrough &rarr;
-  </span>
+  </button>
 
   <div class="card-footer">
     <div></div>
@@ -163,6 +161,12 @@
   }
 
   .modal-card.compact .reopen-link {
+    /* Native <button> reset so the inline-link appearance survives. */
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font: inherit;
+
     display: inline-block;
     margin-top: 14px;
     font-size: var(--font-size-xs);

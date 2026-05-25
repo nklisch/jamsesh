@@ -74,36 +74,36 @@
       <span class="term-comment"
         ># Skip these if you&rsquo;ve already installed the jamsesh plugin on this machine.</span
       >
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
+      <button
+        type="button"
         class="term-line"
         class:copied={copiedCmd === COMMANDS.marketplace}
         onclick={() => oncopy(COMMANDS.marketplace)}
+        aria-label="Copy: claude plugin marketplace add nklisch/jamsesh"
       >
-        <span class="check">✓</span>
-        <span class="prompt">$</span>
+        <span class="check" aria-hidden="true">✓</span>
+        <span class="prompt" aria-hidden="true">$</span>
         <span class="cmd-text"
           >claude plugin marketplace add <span class="arg">nklisch/jamsesh</span></span
         >
-        <span class="hint"
+        <span class="hint" aria-hidden="true"
           >{copiedCmd === COMMANDS.marketplace ? 'copied' : 'click to copy'}</span
         >
-      </div>
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
+      </button>
+      <button
+        type="button"
         class="term-line"
         class:copied={copiedCmd === COMMANDS.install}
         onclick={() => oncopy(COMMANDS.install)}
+        aria-label="Copy: claude plugins install jamsesh"
       >
-        <span class="check">✓</span>
-        <span class="prompt">$</span>
+        <span class="check" aria-hidden="true">✓</span>
+        <span class="prompt" aria-hidden="true">$</span>
         <span class="cmd-text"
           >claude plugins install <span class="arg">jamsesh</span></span
         >
-        <span class="hint">{copiedCmd === COMMANDS.install ? 'copied' : 'click to copy'}</span>
-      </div>
+        <span class="hint" aria-hidden="true">{copiedCmd === COMMANDS.install ? 'copied' : 'click to copy'}</span>
+      </button>
     </div>
   </div>
 
@@ -235,6 +235,14 @@
   }
 
   .term-line {
+    /* Native <button> reset so the terminal look survives. */
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    width: 100%;
+    text-align: left;
+
     display: flex;
     align-items: center;
     gap: 10px;

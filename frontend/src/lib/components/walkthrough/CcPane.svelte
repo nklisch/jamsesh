@@ -37,18 +37,18 @@
 
   <div class="cc-input-wrap">
     {#if joinCmd !== null}
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
+      <button
+        type="button"
         class="cc-input"
         class:copied={copiedCmd === joinCmd}
         onclick={() => oncopy(joinCmd!)}
+        aria-label={`Copy: ${joinCmd}`}
       >
-        <span class="cc-arrow">❯</span>
+        <span class="cc-arrow" aria-hidden="true">❯</span>
         <span class="cc-cmd">{joinCmd}</span>
-        <span class="cc-hint">{copiedCmd === joinCmd ? 'copied' : 'click to copy'}</span>
-        <span class="cc-check">✓</span>
-      </div>
+        <span class="cc-hint" aria-hidden="true">{copiedCmd === joinCmd ? 'copied' : 'click to copy'}</span>
+        <span class="cc-check" aria-hidden="true">✓</span>
+      </button>
     {:else}
       <div class="cc-input cc-input--placeholder">
         <span class="cc-arrow">❯</span>
@@ -123,6 +123,15 @@
   }
 
   .cc-input {
+    /* Native <button> reset so the CC prompt look survives. The placeholder
+       branch stays as a <div> (non-interactive). */
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    width: 100%;
+    text-align: left;
+
     display: flex;
     align-items: center;
     gap: 10px;

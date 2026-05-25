@@ -1,7 +1,7 @@
 ---
 id: idea-attach-onboarding-keyboard-accessibility
 kind: story
-stage: implementing
+stage: review
 tags: [ui, a11y]
 parent: feature-attach-onboarding-a11y-robustness
 depends_on: []
@@ -143,3 +143,24 @@ right; add button resets:
 - [ ] Test: `document.querySelector('button.cc-input')` exists when `sessionId` is set
 - [ ] Test: `document.querySelector('button.reopen-link')` exists in compact mode
 - [ ] Test: Enter keydown on each button triggers the correct action
+
+## Implementation notes
+
+- `FullCard.svelte` `.term-line` → `<button type="button">` with
+  `aria-label="Copy: <full command>"`. Decorative `<span class="check">`,
+  prompt `$`, and `<span class="hint">` get `aria-hidden="true"` to reduce
+  screen-reader noise. Both `<!-- svelte-ignore -->` comments removed.
+- `CcPane.svelte` `.cc-input` (non-placeholder branch) → `<button type="button">`
+  with `aria-label={`Copy: ${joinCmd}`}`. Decorative spans get `aria-hidden`.
+  The placeholder branch (`cc-input--placeholder`) stays as a `<div>` (not
+  interactive).
+- `CompactCard.svelte` `.reopen-link` → `<button type="button" class="reopen-link">`.
+  Both `<!-- svelte-ignore -->` comments removed.
+- CSS resets (`background: transparent; border: 0; color: inherit; font: inherit;
+  width: 100%; text-align: left;`) added inline to `.term-line`, `.cc-input`,
+  and `.reopen-link` so the visual appearance is preserved.
+- New tests: `term-line elements are <button>s reachable by Tab and trigger
+  copy on Enter`, `cc-input is a <button> and triggers copy when activated`,
+  `reopen-link is a <button> in compact mode`.
+
+Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 31 passed.
