@@ -229,6 +229,86 @@ func TestStatusAction_playgroundSession(t *testing.T) {
 	}
 }
 
+// TestStatusAction_playgroundSession_noNicknameSidecar verifies backward-compat
+// behaviour: a playground session that was created before the nickname sidecar
+// feature (i.e. the "nickname" file is absent) must still exit 0, render the
+// playground row in the output, and produce no stray error about the missing
+// file.  This is the trip-wire that catches any future regression where
+// readNickname starts fataling on a missing sidecar instead of returning "".
+func TestStatusAction_playgroundSession_noNicknameSidecar(t *testing.T) {
+	const (
+		sessionID = "sess-pg-nonick"
+		token     = "tok-playground-nonick"
+	)
+
+	hardCap := time.Now().Add(23*time.Hour + 12*time.Minute)
+	idle := time.Now().Add(30 * time.Minute)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions/"+sessionID, func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			http.Error(w, "bad auth", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(openapi.PlaygroundSessionSummary{
+			Id:            sessionID,
+			Name:          "playground-" + sessionID,
+			OrgId:         playgroundOrgID,
+			MembersCount:  1,
+			HardCapAt:     hardCap,
+			IdleTimeoutAt: idle,
+			Status:        openapi.PlaygroundSessionSummaryStatusActive,
+		})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dir := t.TempDir()
+	t.Setenv("JAMSESH_DATA_DIR", dir)
+	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
+
+	// Pass empty nickname — setupPlaygroundSession skips the sidecar write,
+	// simulating a pre-fix session loaded from disk.
+	setupPlaygroundSession(t, dir, sessionID, "", token)
+
+	app := buildCLIApp()
+	var output string
+	var stderrOutput string
+	var runErr error
+	output = captureStdout(t, func() {
+		stderrOutput = captureStderr(t, func() {
+			runErr = app.Run(context.Background(), []string{"jamsesh", "status"})
+		})
+	})
+
+	if runErr != nil {
+		t.Fatalf("status returned error with no nickname sidecar: %v", runErr)
+	}
+
+	if !strings.Contains(output, "Playground sessions") {
+		t.Errorf("output missing playground section header; got: %q", output)
+	}
+	if !strings.Contains(output, sessionID) {
+		t.Errorf("output missing session ID; got: %q", output)
+	}
+	// Should show some "Ends in" duration even without a nickname.
+	if !strings.Contains(output, "Ends in:") {
+		t.Errorf("output missing 'Ends in:' duration; got: %q", output)
+	}
+	// The nickname column must render without crashing — an empty string is
+	// the correct backward-compat value, so there must be no "nickname" error
+	// logged to stderr.
+	if strings.Contains(stderrOutput, "nickname") {
+		t.Errorf("unexpected stderr mention of 'nickname'; got: %q", stderrOutput)
+	}
+	// Confirm no stray warning about a missing sidecar was emitted at all.
+	if stderrOutput != "" {
+		t.Errorf("expected clean stderr with no warnings; got: %q", stderrOutput)
+	}
+}
+
 // TestStatusAction_mixedSessions verifies that durable and playground sessions
 // are grouped separately in the output.
 func TestStatusAction_mixedSessions(t *testing.T) {

@@ -1,7 +1,7 @@
 ---
 id: gate-tests-status-cmd-playground-no-nickname-sidecar
 kind: story
-stage: implementing
+stage: review
 tags: [testing, plugin, cli, playground]
 parent: null
 depends_on: []
@@ -54,3 +54,29 @@ playground-session test.
 The regression that motivated this story (silent blank nickname) could
 recur without detection if the readback path ever changed to fatal on
 missing sidecar.
+
+## Implementation notes
+
+Added `TestStatusAction_playgroundSession_noNicknameSidecar` to
+`cmd/jamsesh/sessioncmd/status_test.go` immediately after the existing
+`TestStatusAction_playgroundSession`.
+
+**Design-flaw check:** Reviewed `readNickname` (status.go:262–272) — it
+already handles missing sidecar gracefully: any `os.ReadFile` error (including
+`fs.ErrNotExist`) returns `""` with no stderr output. No bug found; no escape
+hatch needed.
+
+**Test handle:** `setupPlaygroundSession` skips the sidecar write when
+`nickname == ""` (line 55–58), so passing an empty string simulates the
+pre-fix on-disk state without extra helper code.
+
+**Assertions (tighter than the minimum):**
+- exit 0 (no error returned)
+- stdout contains "Playground sessions" section header
+- stdout contains the session ID
+- stdout contains "Ends in:" duration
+- stderr is completely empty (no stray warnings — the regression would emit
+  an error mentioning "nickname" if `readNickname` ever started erroring
+  rather than silently returning "")
+
+Both variants pass; `go vet` is clean.
