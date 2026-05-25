@@ -1,14 +1,49 @@
 ---
-id: bug-jamsesh-status-nickname-empty-playground
+id: story-status-nickname-empty-playground
+kind: story
+stage: implementing
+tags: [bug, cli, plugin]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
 created: 2026-05-24
-tags: [bug, cli]
+updated: 2026-05-24
 ---
+
+# `jamsesh status` displays empty Nickname for playground sessions
+
+## Brief
 
 `jamsesh status` prints `Nickname:` with an empty value for playground
 sessions, even though the create-time output displays the server-minted
-handle (e.g. `teal-nightjar`). Either the status command isn't reading
-the per-session nickname back from local state, the nickname isn't being
-persisted at create time, or the playground row in the API response is
-missing the handle field. The fix likely lives in
-`cmd/jamsesh/sessioncmd/status.go` (or wherever the playground rows are
-formatted) plus possibly `sessioncmd/new.go` to confirm persistence.
+handle (e.g. `teal-nightjar`). Reproduced against a fresh playground
+session created from this repo.
+
+Three candidate root causes — investigate in order:
+
+1. **Status command isn't reading the handle back** — the per-session
+   nickname may already be in local state (under
+   `${data-dir}/sessions/<sid>/nickname` or similar), and
+   `cmd/jamsesh/sessioncmd/status.go` simply isn't loading it.
+2. **Nickname isn't persisted at create time** — `sessioncmd/new.go`
+   may print the server-minted handle to stdout but never write it to
+   disk for later commands to read.
+3. **API response is missing the handle** — the playground session row
+   the portal returns to `status` may omit the nickname field, leaving
+   the local renderer with nothing to display.
+
+Fix where the chain actually breaks. Most likely (1) or (2) given the
+playground session ulid the binary already knows about, but worth
+verifying with a `grep` for `nickname` / `handle` across
+`cmd/jamsesh/sessioncmd/` and the API client before editing.
+
+## Acceptance
+
+- `jamsesh status` renders the server-minted handle on the same row as
+  the playground session id, matching what `jam new --playground`
+  printed at create time.
+- Reproducible across both fresh-create and reload-from-disk paths
+  (i.e. it works for a session created in a *previous* shell session,
+  not just the one that just created it).
+- Test added covering the rendering path so regression is caught.
