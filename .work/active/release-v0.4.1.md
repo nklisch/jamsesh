@@ -41,4 +41,9 @@ no-op architectural-note triage on the parseInviteEmails dedupe.
 
 ## Gate runs
 
-<populated in Phase 4>
+- **gate-security** (2026-05-25) — 5 findings (0 critical, 0 high, 1 medium, 4 low)
+  - Medium: `gate-security-cli-join-clone-url-bearer-in-process-args` (stage:drafting)
+  - Low (backlog): `gate-security-wrapper-cache-hit-no-resig-verify`,
+    `gate-security-datadir-permissions-not-validated`,
+    `gate-security-portalinfo-no-rate-limit`,
+    `gate-security-portalinfo-no-cachecontrol-no-store`
