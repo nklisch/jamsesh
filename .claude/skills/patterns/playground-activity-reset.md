@@ -23,7 +23,7 @@ cost and the reset is fully disabled if config didn't wire the timeout.
 
 ### Example 1: comment creation
 
-**File**: `internal/portal/comments/service.go:214`
+**File**: `internal/portal/comments/service.go:226`
 
 ```go
 // Activity-reset for playground sessions (best-effort). A comment posted
@@ -45,7 +45,7 @@ if p.OrgID == playgroundOrgID && s.PlaygroundIdleTimeout > 0 {
 
 ### Example 2: finalize-attempt
 
-**File**: `internal/portal/sessions/handler.go:323`
+**File**: `internal/portal/sessions/handler.go:339`
 
 ```go
 if orgID == playgroundOrgID && h.playgroundIdleTimeout > 0 {
@@ -64,7 +64,7 @@ if orgID == playgroundOrgID && h.playgroundIdleTimeout > 0 {
 
 ### Example 3: post-receive (successful git push)
 
-**File**: `internal/portal/githttp/receive_pack.go:336`
+**File**: `internal/portal/githttp/receive_pack.go:338`
 
 ```go
 // This runs AFTER a successful push (subprocess exit 0 + storage sync),
@@ -85,8 +85,8 @@ if orgID == playgroundOrgID && h.PlaygroundIdleTimeout > 0 {
 ```
 
 3 occurrences, one per "substantive action" surface:
-`comments/service.go:214`, `sessions/handler.go:323`,
-`githttp/receive_pack.go:336`.
+`comments/service.go:226`, `sessions/handler.go:339`,
+`githttp/receive_pack.go:338`.
 
 ## When to Use
 

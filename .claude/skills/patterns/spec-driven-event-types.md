@@ -64,7 +64,7 @@ an entry in `AllTypes`.
 SessionCreated EventEnvelopeType = "session.created"
 ```
 
-**Emitter** (`internal/portal/sessions/handler.go:155`):
+**Emitter** (`internal/portal/sessions/handler.go:169`):
 ```go
 _, _ = h.events.Emit(ctx, orgID, sessionID, "session.created", payload)
 ```
@@ -81,7 +81,7 @@ schema at `docs/openapi.yaml:220`, enum entry, `oneOf` branch, and mapping.
 AutoMergerBackpressure EventEnvelopeType = "auto-merger.backpressure"
 ```
 
-**Emitter** (`internal/portal/automerger/worker.go:352`):
+**Emitter** (`internal/portal/automerger/worker.go:358`):
 ```go
 if _, err := w.Log.Emit(ctx, e.OrgID, e.SessionID, "auto-merger.backpressure", payload); err != nil {
 ```

@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-adapter-wrap-helpers-type-name-drift
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -69,3 +69,19 @@ In `.claude/skills/patterns/adapter-wrap-helpers.md`:
 
 Apply rolling-foundation: the pattern describes the code AS IT IS NOW; no
 "renamed from SQLiteAdapter" prose. Git history records the rename.
+
+## Implementation notes
+
+`.claude/skills/patterns/adapter-wrap-helpers.md` Examples 2 + 3 rolled
+to current code shape: `SQLiteAdapter → sqliteAdapter` (unexported),
+receiver letter `s → a`, method bodies updated (`s.q → a.q`). Line
+anchors rolled forward: Example 2 `:226 → :239`, Example 3 `:326 → :324`.
+
+Postgres mirror confirmed by verification (`type postgresAdapter` at
+`postgres_adapter.go:26`, methods with receiver `a *postgresAdapter`); no
+postgres-side mention in this pattern body that needed touching beyond
+keeping the sqlite example self-consistent.
+
+Edits applied in the parent autopilot session — auto-mode classifier
+blocks sub-agents from editing under `.claude/skills/`. `go build ./...`
+clean.

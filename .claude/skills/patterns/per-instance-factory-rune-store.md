@@ -86,8 +86,9 @@ export function createNewSessionForm(): NewSessionFormFacade {
 
 Replicated in `createRefActions` (`session/useRefActions.svelte.ts:11`) and
 `createPlaygroundCountdown` (`session/usePlaygroundCountdown.svelte.ts:20`) —
-5 factories consumed by `SessionViewShell.svelte:54-57` and
-`NewSessionDrawer.svelte:21`.
+5 factories consumed by
+`frontend/src/lib/screens/SessionViewShell.svelte:54-57` and
+`frontend/src/lib/components/NewSessionDrawer.svelte:21`.
 
 ## When to Use
 

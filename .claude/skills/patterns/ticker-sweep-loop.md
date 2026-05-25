@@ -21,7 +21,7 @@ pattern; calling it out as canonical makes it harder to omit.
 
 ### Example 1: playground destruction sweep, ctx-cancelled
 
-**File**: `internal/portal/playground/worker.go:62`
+**File**: `internal/portal/playground/worker.go:71`
 
 ```go
 ticker := time.NewTicker(w.Interval)

@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-dual-dialect-occurrence-count-stale
 kind: story
-stage: drafting
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -44,3 +44,16 @@ time a query is added, and the parity invariant is the actual pattern).
 This is medium-confidence drift — the "counts match exactly" half of the
 sentence is still correct so the pattern still teaches what matters. Fix
 it for accuracy but it's not a load-bearing bug.
+
+## Implementation notes
+
+Chose the "drop the absolute number" option over rolling 32→40 — the
+parity invariant is the actual pattern, and naming a count would just
+drift again next time a query lands. Replaced "32 occurrences of
+`org_id`/`session_id` filters in each dialect's queries — counts match
+exactly." with "`org_id`/`session_id` filters mirror exactly across the
+two dialects — the parity invariant matters more than the absolute
+count, which grows as queries are added." Now the pattern survives any
+future query addition without re-drifting.
+
+Edits applied in the parent autopilot session. `go build ./...` clean.

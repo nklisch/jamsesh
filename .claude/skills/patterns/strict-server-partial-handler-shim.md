@@ -73,8 +73,8 @@ func (a *accountsOnlyStrict) CreatePlaygroundSession(_ context.Context, _ openap
 
 Replicated in 8 packages: `accounts/handlers_test.go:84`,
 `auth/magic_link_test.go:111`, `auth/oauth_test.go:51`,
-`comments/service_test.go:42`, `playground/handler_test.go:89`,
-`sessions/handler_test.go:91`, `tokens/handlers_test.go:29` (named
+`comments/service_test.go:43`, `playground/handler_test.go:75`,
+`sessions/handler_test.go:92`, `tokens/handlers_test.go:29` (named
 `tokensOnlyHandler`), `wsgateway/ticket_handler_test.go:34` (named
 `wsTicketOnlyHandler`). 244 `panic("not wired")` lines across these files.
 

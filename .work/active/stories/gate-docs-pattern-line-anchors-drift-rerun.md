@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-line-anchors-drift-rerun
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -85,3 +85,35 @@ original gate-docs pass) intentionally pins anchors to symbols rather than
 line numbers for files under active refactor. Consider extending that
 "symbol-based anchor" approach to the five patterns above as a follow-up
 refactor — but the immediate fix is just line-number roll-forward.
+
+## Implementation notes
+
+Line anchors rolled forward across 5 pattern skills (edits applied in the
+parent autopilot session — auto-mode classifier blocks sub-agents from
+editing under `.claude/skills/`):
+
+- `spec-driven-event-types.md` — Example 1 emitter
+  `sessions/handler.go:155 → :169`; Example 2 emitter
+  `automerger/worker.go:352 → :358`.
+- `playground-activity-reset.md` — Example 1
+  `comments/service.go:214 → :226`; Example 2
+  `sessions/handler.go:323 → :339`; Example 3
+  `githttp/receive_pack.go:336 → :338`; plus the trailing summary list
+  rolled forward to match.
+- `ticker-sweep-loop.md` — Example 1
+  `playground/worker.go:62 → :71`.
+- `strict-server-partial-handler-shim.md` — summary list
+  `comments/service_test.go:42 → :43`,
+  `playground/handler_test.go:89 → :75`,
+  `sessions/handler_test.go:91 → :92`. The other anchors in the list
+  (`accounts/handlers_test.go:84`, `auth/magic_link_test.go:111`,
+  `auth/oauth_test.go:51`, `tokens/handlers_test.go:29`,
+  `wsgateway/ticket_handler_test.go:34`) were already correct.
+- `openapi-fetch-result-branch.md` — Example 2
+  `InviteAccept.svelte:80 → :82`; Example 3
+  `OrgSettings.svelte:32 → :22`.
+
+Symbol-based-anchor follow-up captured as a future refactor — not blocking
+this release.
+
+Verification: `go build ./...` clean (doc-only changes).

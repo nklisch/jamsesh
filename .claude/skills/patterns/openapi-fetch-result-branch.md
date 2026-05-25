@@ -43,7 +43,7 @@ try {
 ```
 
 ### Example 2: POST with `response` for status-code discrimination
-**File**: `frontend/src/lib/screens/InviteAccept.svelte:80`
+**File**: `frontend/src/lib/screens/InviteAccept.svelte:82`
 
 ```ts
 const { data, error, response } = await client.POST(
@@ -64,7 +64,7 @@ if (response?.status === 403 && errCode === 'auth.org_membership_required') {
 ```
 
 ### Example 3: GET with two-call Promise.all and per-call error narrow
-**File**: `frontend/src/lib/screens/OrgSettings.svelte:32`
+**File**: `frontend/src/lib/screens/OrgSettings.svelte:22`
 
 ```ts
 const [orgResult, membersResult] = await Promise.all([

@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-per-instance-factory-sessionviewshell-moved
 kind: story
-stage: implementing
+stage: review
 tags: [documentation]
 parent: null
 depends_on: []
@@ -51,3 +51,13 @@ no reader has to infer the directory from context.
 
 Apply rolling-foundation: just update the path. No "moved from
 components/" annotation.
+
+## Implementation notes
+
+`.claude/skills/patterns/per-instance-factory-rune-store.md:89` summary
+qualified with full paths:
+`frontend/src/lib/screens/SessionViewShell.svelte:54-57` and
+`frontend/src/lib/components/NewSessionDrawer.svelte:21`. No
+"moved from" prose — present-tense only.
+
+Edits applied in the parent autopilot session. `go build ./...` clean.

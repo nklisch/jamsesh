@@ -51,22 +51,22 @@ func wrapList[R any, D any](rows []R, err error, mapErr func(error) error, conve
 
 ### Example 2: scalar-return adapter method (sqlite)
 
-**File**: `internal/db/store/sqlite_adapter.go:226`
+**File**: `internal/db/store/sqlite_adapter.go:239`
 
 ```go
-func (s *SQLiteAdapter) GetOrgByID(ctx context.Context, id string) (Org, error) {
-    row, err := s.q.GetOrgByID(ctx, id)
+func (a *sqliteAdapter) GetOrgByID(ctx context.Context, id string) (Org, error) {
+    row, err := a.q.GetOrgByID(ctx, id)
     return wrap1(row, err, mapSQLiteErr, sqliteOrg)
 }
 ```
 
 ### Example 3: list-return adapter method (sqlite)
 
-**File**: `internal/db/store/sqlite_adapter.go:326`
+**File**: `internal/db/store/sqlite_adapter.go:324`
 
 ```go
-func (s *SQLiteAdapter) ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error) {
-    rows, err := s.q.ListOrgsForAccount(ctx, accountID)
+func (a *sqliteAdapter) ListOrgsForAccount(ctx context.Context, accountID string) ([]Org, error) {
+    rows, err := a.q.ListOrgsForAccount(ctx, accountID)
     return wrapList(rows, err, mapSQLiteErr, sqliteOrg)
 }
 ```
