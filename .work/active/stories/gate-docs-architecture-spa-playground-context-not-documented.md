@@ -1,7 +1,7 @@
 ---
 id: gate-docs-architecture-spa-playground-context-not-documented
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
