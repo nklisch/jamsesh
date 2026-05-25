@@ -1,7 +1,7 @@
 ---
 id: gate-security-githttp-receivepack-wallclock-not-injected
 kind: story
-stage: review
+stage: done
 tags: [security, portal, refactor, testing]
 parent: feature-playground-hardening
 depends_on: []
@@ -65,3 +65,13 @@ and use `h.Clock.Now().UTC()` for the timestamp.
   break the no-panic guarantee.
 
 Verified: `go test ./internal/portal/githttp/... -count 1` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Textbook application of the per-package-clock-interface pattern. Nil-Clock fallback at call site is the right defensive default; production wiring in `cmd/portal/main.go` injects `RealClock()`. Tests now assert exact-time equality (much stronger than the prior wall-clock heuristic) plus a fallback test pins the nil-Clock no-panic guarantee.
