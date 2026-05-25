@@ -418,6 +418,16 @@ func newPlaygroundAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	// Persist the server-minted nickname so "jamsesh status" can display it.
+	// PlaygroundSessionSummary (returned by GET /api/playground/sessions/<id>)
+	// does not carry the nickname — only PlaygroundSessionCreated does — so we
+	// cache it locally at create time.
+	if resp.Nickname != "" {
+		if err := state.Write("sessions/"+resp.Session.Id+"/nickname", []byte(resp.Nickname), 0o600); err != nil {
+			return fmt.Errorf("writing playground nickname: %w", err)
+		}
+	}
+
 	printPlaygroundSummary(resp, baseURL)
 	return nil
 }

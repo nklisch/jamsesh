@@ -711,6 +711,44 @@ func TestPlaygroundAction_happyPath(t *testing.T) {
 	}
 }
 
+// TestPlaygroundAction_nicknameWritten verifies that the server-minted nickname
+// from the PlaygroundSessionCreated response is persisted to the per-session
+// nickname sidecar file so "jamsesh status" can display it without re-fetching
+// (PlaygroundSessionSummary does not include the nickname field).
+func TestPlaygroundAction_nicknameWritten(t *testing.T) {
+	const (
+		sessionID        = "sess-pg-nick-001"
+		expectedNickname = "amber-otter"
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		resp := samplePlaygroundResp(sessionID)
+		resp.Nickname = expectedNickname
+		writePlaygroundJSON(w, resp)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dir := setupPlaygroundEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+
+	app := buildCLIApp()
+	if err := app.Run(context.Background(), []string{"jamsesh", "new", "--playground"}); err != nil {
+		t.Fatalf("new --playground returned error: %v", err)
+	}
+
+	nicknamePath := filepath.Join(dir, "sessions", sessionID, "nickname")
+	data, err := os.ReadFile(nicknamePath)
+	if err != nil {
+		t.Fatalf("nickname file not written: %v", err)
+	}
+	if string(data) != expectedNickname {
+		t.Errorf("nickname = %q, want %q", string(data), expectedNickname)
+	}
+}
+
 // TestPlaygroundAction_namePassthrough verifies that --name "demo" is sent in
 // the create request body.
 func TestPlaygroundAction_namePassthrough(t *testing.T) {

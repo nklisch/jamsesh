@@ -1,7 +1,7 @@
 ---
 id: story-status-nickname-empty-playground
 kind: story
-stage: implementing
+stage: review
 tags: [bug, cli, plugin]
 parent: null
 depends_on: []
@@ -47,3 +47,19 @@ verifying with a `grep` for `nickname` / `handle` across
   (i.e. it works for a session created in a *previous* shell session,
   not just the one that just created it).
 - Test added covering the rendering path so regression is caught.
+
+## Implementation notes
+
+Root cause: (2) — `writePlaygroundSessionState` in `new.go` never wrote
+the nickname sidecar file. The `readNickname()` function in `status.go`
+was reading the right path (`sessions/<id>/nickname`) but the file was
+never created.
+
+Fix: after `writePlaygroundSessionState` succeeds, write `resp.Nickname`
+to `sessions/<resp.Session.Id>/nickname` via `state.Write`. Only write
+when non-empty. `PlaygroundSessionSummary` (the GET response type) has no
+`Nickname` field — the nickname is only available in `PlaygroundSessionCreated`
+(the POST response), so it must be cached locally at create time.
+
+Test added: `TestPlaygroundAction_nicknameWritten` in `new_test.go`
+asserts the sidecar file is created with the correct value.
