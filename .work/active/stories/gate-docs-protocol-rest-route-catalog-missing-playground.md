@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-rest-route-catalog-missing-playground
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
