@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-playground-worker-errstopretrying-unused-var
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
