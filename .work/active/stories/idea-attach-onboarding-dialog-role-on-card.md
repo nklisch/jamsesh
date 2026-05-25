@@ -1,7 +1,7 @@
 ---
 id: idea-attach-onboarding-dialog-role-on-card
 kind: story
-stage: implementing
+stage: review
 tags: [ui, a11y]
 parent: feature-attach-onboarding-a11y-robustness
 depends_on: []
@@ -82,3 +82,20 @@ binding in each card — no change needed to focus management.
 - [ ] Test: `.modal-backdrop` does not have `role="dialog"`
 - [ ] Test: `.modal-card` has `role="dialog"`, `aria-modal="true"`, and `aria-label`
 - [ ] Existing test `'has correct dialog role and aria attributes'` still passes
+
+## Implementation notes
+
+- `SessionAttachWalkthrough.svelte`: backdrop now has `role="presentation"`,
+  no dialog attributes; `svelte-ignore a11y_click_events_have_key_events` +
+  `a11y_no_static_element_interactions` cover the backdrop click handler.
+- `FullCard.svelte` + `CompactCard.svelte`: `<article>` carries `role="dialog"`,
+  `aria-modal="true"`, `aria-label="Attach Claude Code to this jam"`, and
+  `tabindex="-1"`. A focused `svelte-ignore a11y_no_noninteractive_element_to_interactive_role`
+  with a comment explaining the WAI-ARIA APG modal-content pattern justifies
+  the role on `<article>`.
+- New test `places role=dialog on the modal-card <article>, not on the
+  backdrop scrim` pins the invariant; existing `has correct dialog role and
+  aria attributes` continues to pass (its `[role="dialog"]` selector now
+  matches the article).
+
+Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 26 passed.

@@ -36,7 +36,19 @@
   }: Props = $props();
 </script>
 
-<article class="modal-card first-time">
+<!-- The modal content card carries the dialog landmark so screen readers
+     focus the content (not the scrim). The Svelte warning about
+     "non-interactive element with interactive role" does not apply here:
+     `<article role="dialog">` is the recommended pattern in WAI-ARIA APG
+     for modal content containers. -->
+<!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
+<article
+  class="modal-card first-time"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Attach Claude Code to this jam"
+  tabindex="-1"
+>
   <span class="eyebrow">
     {#if sessionId}
       Session · {sessionId}

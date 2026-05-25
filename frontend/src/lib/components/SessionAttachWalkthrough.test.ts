@@ -78,6 +78,20 @@ describe('SessionAttachWalkthrough', () => {
     expect(dialog).toHaveAttribute('aria-label', 'Attach Claude Code to this jam');
   });
 
+  it('places role=dialog on the modal-card <article>, not on the backdrop scrim', () => {
+    // idea-attach-onboarding-dialog-role-on-card: screen-reader landmark
+    // navigation must land on the content card, not the click-to-dismiss scrim.
+    renderWalkthrough();
+    const backdrop = document.querySelector('.modal-backdrop');
+    expect(backdrop).not.toHaveAttribute('role', 'dialog');
+    expect(backdrop).toHaveAttribute('role', 'presentation');
+
+    const card = document.querySelector('.modal-card');
+    expect(card).toHaveAttribute('role', 'dialog');
+    expect(card).toHaveAttribute('aria-modal', 'true');
+    expect(card).toHaveAttribute('aria-label', 'Attach Claude Code to this jam');
+  });
+
   // ── click-to-copy: shell commands ─────────────────────────────────────────
 
   it('copies marketplace command when that term-line is clicked', async () => {

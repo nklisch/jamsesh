@@ -109,14 +109,15 @@
 </script>
 
 {#if open}
+  <!-- Backdrop is a click-to-dismiss scrim, NOT the dialog landmark. The
+       `role="dialog"` + aria-modal + aria-label live on the inner <article> in
+       FullCard / CompactCard so screen-reader landmark navigation lands on the
+       content rather than the scrim. (idea-attach-onboarding-dialog-role-on-card) -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Attach Claude Code to this jam"
-    tabindex="-1"
+    role="presentation"
     onclick={(e) => {
       if (e.target === e.currentTarget) handleClose();
     }}
