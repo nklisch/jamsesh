@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-finalize-view-unused-btn-primary-selector
 kind: story
-stage: implementing
+stage: review
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -40,3 +40,6 @@ WARNING "src/lib/screens/FinalizeView.svelte" 689:3 "Unused CSS selector \".btn.
 
 ## Removal
 Delete the `.btn.primary` block (lines 689-693). The other `.btn` and `.btn.ghost` rules remain — they are still in use. Re-run `pnpm --filter frontend svelte-check` (or the project's lint script) to confirm the warning is gone.
+
+## Implementation notes
+Deleted the `.btn.primary` CSS block from `frontend/src/lib/screens/FinalizeView.svelte`. `npm run check` shows 0 errors 1 warning (pre-existing unrelated warning in ModeSwitchDialog). All 693 frontend tests pass.

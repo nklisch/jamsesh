@@ -686,11 +686,6 @@
     font: var(--font-weight-medium) var(--font-size-sm) var(--font-sans);
     cursor: pointer;
   }
-  .btn.primary {
-    background: var(--color-bg-inverse); color: var(--color-text-inverse);
-    border: 1px solid var(--color-bg-inverse);
-    width: auto; padding: 7px 14px;
-  }
   .btn.ghost {
     background: transparent; color: var(--color-text-primary);
     border: 1px solid var(--color-border-strong);
