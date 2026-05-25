@@ -1,7 +1,7 @@
 ---
 id: idea-playground-join-handler-ttl-inner-branch-coverage
 kind: story
-stage: review
+stage: done
 tags: [portal, playground, testing]
 parent: feature-playground-hardening
 depends_on: [gate-security-githttp-receivepack-wallclock-not-injected]
@@ -92,3 +92,13 @@ throughout).
   for the strict-server interface check to compile.
 
 Verified: `go test ./internal/portal/playground/... -count 1 -run TTLZero_Returns410` passes.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: `stepClock` correctly simulates the clock-tick race between outer and inner reads. Test runs against both dialects via `stores(t)` matrix. The `clk.n = 0` reset after `newTestEnvWithClock` is a necessary harness detail (provisioning consumed one Now() call) — captured in a comment. Logout panic-stub propagation across 9 test files is the right cross-cutting consequence of the new strict-server operation.
