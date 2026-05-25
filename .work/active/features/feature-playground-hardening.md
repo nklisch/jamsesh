@@ -1,7 +1,7 @@
 ---
 id: feature-playground-hardening
 kind: feature
-stage: implementing
+stage: review
 tags: [security, portal, playground, testing]
 parent: null
 depends_on: []
@@ -523,3 +523,17 @@ Stories 2-6 are parallelizable after story 1 lands. Stories 7 and 8 are parallel
 - **`handlerStore` interface widening (Unit 3)**: Adding `store.OAuthTokenStore` + `DeleteAccountsByIDs` to `handlerStore` increases mock surface for handler tests. Mitigated by using the `test-narrow-store-delegation` pattern — existing failing-store wrappers delegate to a real store and only override the method under test. No test mock is a full implementation.
 - **`stepClock` state in tests (Unit 8)**: The `stepClock` has mutable state (`n int`). Tests that create a `stepClock` must not share the instance across subtests. The pointer receiver enforces per-instance state; callers must pass `&stepClock{...}` and not reuse across calls.
 - **`RevokeAnonymousBearer` partial failure (Unit 3)**: If `RevokeOAuthToken` succeeds but `DeleteAccountsByIDs` fails, the bearer is revoked but the anon account persists (benign — no active credentials, destruction sweep cleans). If the reverse, the account is gone but the bearer is still technically valid until expiry. Both are acceptable at severity=low; log at Warn.
+
+## Implementation summary (autopilot run)
+
+All eight child stories landed at stage:review:
+- `gate-security-githttp-receivepack-wallclock-not-injected` — Clock injection
+- `bug-playground-worker-reasonFor-off-by-one-at-exact-boundary` — `!now.Before` predicate
+- `gate-security-playground-create-orphan-anon-account-on-member-failure` — `RevokeAnonymousBearer` + compensation
+- `gate-security-playground-internal-sql-errors-surface-to-anon` — test pin
+- `gate-security-anon-bearer-validate-no-session-binding` — `RequireAnonymousSessionMember` helper
+- `idea-playground-handler-test-creator-member-assertion` — `ListAnonymousSessionMemberIDs` assertion
+- `idea-playground-abuse-caps-activity-reset-integration-test` — second-push integration test
+- `idea-playground-join-handler-ttl-inner-branch-coverage` — `stepClock` + ttl<=0 test
+
+Verified: `go test ./internal/portal/playground/... ./internal/portal/githttp/... ./internal/portal/tokens/... ./internal/portal/handlerauth/... -count 1` passes.

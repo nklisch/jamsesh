@@ -1,7 +1,7 @@
 ---
 id: feature-test-spec-drift-and-coverage
 kind: feature
-stage: implementing
+stage: review
 tags: [testing, portal, ui, spec]
 parent: null
 depends_on: []
@@ -379,3 +379,15 @@ All stories are test-only — they are their own verification surface.
 - **sessions retrofit scale**: 7 files, ~66 test functions. Mechanical but
   large. Risk of missing a call site — run `grep -n 'newTestEnv(t)' internal/portal/sessions/*_test.go`
   after the change to confirm all sites are updated.
+
+## Implementation summary (autopilot run)
+
+All five child stories landed at stage:review:
+- `gate-tests-event-discriminator-triad-completeness` — enum/mapping/oneOf cross-check
+- `gate-tests-spec-drift-cwd-resilience` — `t.Chdir(t.TempDir())` test
+- `gate-tests-wordlist-diversity-threshold-and-length-band` — `AdjCount` / `AnimalCount` accessors + 150-entry guard
+- `gate-tests-joinerpicker-410-race-recovery` — double-click + 410 race test
+- `idea-sessions-handler-tests-per-dialect-retrofit` — variadic `newTestEnv` + 51 tests wrapped in dialect loop
+
+Verified: `go test ./internal/portal/events/... ./internal/portal/playground/wordlist/... ./internal/portal/sessions/... -count 1` passes;
+`npm test -- --run JoinerPicker.test.ts` → 23 passed.

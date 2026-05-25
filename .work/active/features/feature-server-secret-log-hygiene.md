@@ -1,7 +1,7 @@
 ---
 id: feature-server-secret-log-hygiene
 kind: feature
-stage: implementing
+stage: review
 tags: [security, portal, plugin, logging]
 parent: null
 depends_on: []
@@ -356,3 +356,17 @@ and `TestDataDir_StrictPermissionsAccepted`. Use `t.TempDir()` + `os.Chmod`.
   always fit within 512 bytes. Only a misbehaving or non-portal server returns
   a larger body, and in that case we don't need the full body for diagnosis.
   Accepted tradeoff.
+
+## Implementation summary (autopilot run)
+
+All four child stories landed at stage:review:
+- `gate-security-oauth-callback-log-scrubbing` — test pin (no production change)
+- `gate-security-refresh-error-body-leak` — `truncatedBody` helper + 5 call sites
+- `gate-security-datadir-permissions-not-validated` — `checkDirPerms` + 19 test files updated
+- `gate-security-wrapper-cache-hit-no-resig-verify` — sha256 sidecar + 3 BATS tests
+
+Cross-cutting side effect: 19 test helper sites under `cmd/jamsesh/`
+gained a `_ = os.Chmod(<dir>, 0o700)` immediately after each
+`t.Setenv("JAMSESH_DATA_DIR", <dir>)` to satisfy the new perm check.
+
+Verified: `go test ./cmd/jamsesh/... -count 1` passes; `bats tests/wrapper/*.bats` → 18 passed.

@@ -1,7 +1,7 @@
 ---
 id: feature-spa-bootstrap-hygiene
 kind: feature
-stage: implementing
+stage: review
 tags: [security, portal, ui, csp, testing]
 parent: null
 depends_on: []
@@ -287,3 +287,12 @@ it('renders the colophon with version and license', () => {
   `/api/*`. The CSP endpoint needs its own `MaxBytesReader` guard to
   prevent large payloads from exhausting memory. Explicitly called out in
   Unit 1 implementation notes.
+
+## Implementation summary (autopilot run)
+
+All three child stories landed at stage:review:
+- `bug-csp-report-endpoint-not-wired` — `POST /_csp-report` handler + 5 tests
+- `gate-security-portalinfo-no-cachecontrol-no-store` — `NoCacheMiddleware` + Cache-Control test
+- `gate-tests-projectlanding-hardcoded-version-string` — Vite `define` + semver regex test
+
+Verified: `go test ./internal/portal/...` + `npm test -- --run` + `npm run build` all pass.

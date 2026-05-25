@@ -1,7 +1,7 @@
 ---
 id: feature-attach-onboarding-a11y-robustness
 kind: feature
-stage: implementing
+stage: review
 tags: [ui, a11y, bug]
 parent: null
 depends_on: []
@@ -498,3 +498,18 @@ desired, but no assertion change needed.
   components. The design uses a `$derived` alias to keep backward compatibility.
   If any implementor renames the prop in child components, the test selectors
   (`class:copied`) must be updated consistently.
+
+## Implementation summary (autopilot run)
+
+All four child stories landed at stage:review:
+- `idea-attach-onboarding-dialog-role-on-card` — role=dialog moved to `<article>`
+- `idea-attach-onboarding-localstorage-error-handling` — try/catch on getItem/setItem
+- `idea-attach-onboarding-keyboard-accessibility` — term-line/cc-input/reopen-link → `<button>`
+- `idea-attach-onboarding-clipboard-error-handling` — `CopyFeedback` discriminator + failure hint UI
+
+Side-effect: `frontend/src/lib/components/AttachHelpLink.test.ts` updated to
+select `.modal-backdrop` for the click target (the dialog-role move broke the
+test's reliance on `[role="dialog"]` matching the scrim).
+
+Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 35 passed;
+`npm test -- --run` → 738 passed, 1 skipped.

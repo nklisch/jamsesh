@@ -1,7 +1,7 @@
 ---
 id: feature-auth-signout-backend-revoke
 kind: feature
-stage: implementing
+stage: review
 tags: [security, portal, ui, auth, tokens]
 parent: null
 depends_on: []
@@ -373,3 +373,16 @@ test('signOut clears state even when POST /api/auth/logout returns 401', ...)
 - **`BearerMiddleware` context mutation** — adding `rawBearerCtxKey` to
   the context is purely additive. Existing consumers of `AccountFromContext`
   are unaffected. Low risk.
+
+## Implementation summary (autopilot run)
+
+Both child stories landed at stage:review:
+- `feature-auth-signout-backend-revoke-backend` — `POST /api/auth/logout` endpoint, openapi spec, handler, route, 4 tests
+- `feature-auth-signout-backend-revoke-frontend` — async `signOut`, best-effort POST, 4 new tests
+
+Design deviation captured in the frontend story: local-state clear runs
+BEFORE the async POST (not after, per original design) to preserve
+synchronous-clear semantics for callers that don't `await` (notably
+`unauthorizedMiddleware`).
+
+Verified: `go test ./internal/portal/tokens/... -count 1` + `npm test -- --run auth.test.ts` → 29 passed.
