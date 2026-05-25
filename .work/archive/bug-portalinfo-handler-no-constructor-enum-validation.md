@@ -1,7 +1,7 @@
 ---
 id: bug-portalinfo-handler-no-constructor-enum-validation
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, security]
 parent: null
 depends_on: []
@@ -177,3 +177,22 @@ closed or sentinel — but skips invalid cases linked to this bug).
   TestGetPortalInfo_InvalidLandingVariantSurfacesError -v` → all 7
   subcases run (no skips), all pass.
 - `go vet ./...` → clean.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Constructor adds the type-system defense the design called
+for — `NewHandler` validates via the generated
+`openapi.PortalInfoLandingVariant(s).Valid()` (single source of truth)
+and returns `(nil, err)` on failure so no half-built handler can leak.
+`cmd/portal/main.go` switched cleanly and exits 1 with the bad value
+logged on misconfiguration. The test table was retargeted to drive
+`NewHandler` on every row; all 4 previously-skipped invalid subcases now
+run and pass. Public `Handler` struct + fields preserved (no breaking
+change to test fixtures). No security regression (defense increases);
+`go vet` and full build clean.
