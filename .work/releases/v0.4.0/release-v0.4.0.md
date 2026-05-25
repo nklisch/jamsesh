@@ -1,7 +1,7 @@
 ---
 id: release-v0.4.0
 kind: release
-stage: quality-gate
+stage: released
 tags: []
 parent: null
 depends_on: []
@@ -141,3 +141,25 @@ After autopilot drained the original 90+ gate-produced items, all 5 gates re-ran
   - pattern-skill-staleness (4): pattern-line-anchors-drift-rerun, pattern-adapter-wrap-helpers-type-name-drift, pattern-per-instance-factory-sessionviewshell-moved, pattern-dual-dialect-occurrence-count-stale
 - **gate-patterns (re-run)** — 4 additional patterns extracted (additive, no inconsistencies):
   - package-private-composed-store-interface, test-narrow-store-delegation, testenv-harness-struct, reserved-org-id-local-const-mirror
+
+## Shipped
+
+**Date**: 2026-05-24
+**Mapping**: tag-based (via `scripts/release-bump.sh v0.4.0`)
+**Tag**: `v0.4.0` pushed to `origin`
+**Release-prep commit**: `17c9d60`
+**Total items shipped**: 91 (1 epic + 17 features + 73 stories) + this release file
+
+### Gate finding totals
+
+Initial run + autopilot drain + post-drain re-run:
+
+- **Security**: 11 findings total (2 medium → done in v0.4.0; 7 low → backlog; 0 critical/high). Re-run: 0 new findings.
+- **Tests**: 30 findings → all 25 active items at done; 5 low → backlog. Re-run: 0 new findings.
+- **Cruft**: 12 findings → 10 done in v0.4.0; 2 low → backlog. Re-run: 7 new findings (6 high + 1 medium), all drained in same cycle.
+- **Docs**: 19 findings → all done in v0.4.0. Re-run: 5 new findings (1 changelog + 4 pattern-skill), all drained in same cycle.
+- **Patterns**: 9 patterns extracted across initial + re-run (5 + 4). Tracking item at done. Pattern skills live under `.claude/skills/patterns/`.
+
+### CI
+
+`scripts/release-bump.sh` pushed `main` and the tag; release CI fires on `v0.4.0`. Operator follow-up: `gh run watch`.
