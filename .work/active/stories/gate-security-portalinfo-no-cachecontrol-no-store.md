@@ -1,7 +1,7 @@
 ---
 id: gate-security-portalinfo-no-cachecontrol-no-store
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, http]
 parent: feature-spa-bootstrap-hygiene
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: bug-csp-report-endpoint-not-wired
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, csp]
 parent: feature-spa-bootstrap-hygiene
 depends_on: []
