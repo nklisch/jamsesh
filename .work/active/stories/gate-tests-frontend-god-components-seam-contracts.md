@@ -1,7 +1,7 @@
 ---
 id: gate-tests-frontend-god-components-seam-contracts
 kind: story
-stage: review
+stage: done
 tags: [testing, ui, refactor]
 parent: null
 depends_on: []
@@ -48,3 +48,11 @@ Added dedicated seam-contract test files for all nine hook modules:
 - `frontend/src/lib/components/useNewSessionForm.test.ts` — 7 tests; covers initial state, submit() validation failures, submit() command generation, invitee flag, mode setter, reset() output clearing, and isolation.
 
 `usePlaygroundCountdown` is excluded from isolated tests: its `$derived` reads from `auth.playgroundContext` (a module-level rune store), and its seam is already thoroughly covered by the SessionViewShell integration tests which exercise `seedFromSession`, `mountSubscriptions`, and WS event handling in a full render context.
+
+## Review notes
+
+Approve. Eight new test files exercise the real production modules; only the
+API client is stubbed at the boundary (`spa-test-module-mock-barrel`). 57
+total tests, all pass. Assertions are on real state mutations and dervied
+fields (canRun, selectedShas ordering, lock conflict shape), not on mock
+returns. The exclusion of usePlaygroundCountdown is reasonable and justified.
