@@ -1,7 +1,7 @@
 ---
 id: gate-security-signout-no-backend-revoke
 kind: story
-stage: drafting
+stage: done
 tags: [security]
 parent: feature-auth-signout-backend-revoke
 depends_on: []
