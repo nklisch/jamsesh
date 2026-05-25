@@ -1,7 +1,7 @@
 ---
 id: idea-attach-onboarding-clipboard-error-handling
 kind: story
-stage: review
+stage: done
 tags: [ui, bug]
 parent: feature-attach-onboarding-a11y-robustness
 depends_on: []
@@ -115,3 +115,13 @@ Same pattern for the `install` command line and for the `cc-input` hint in
   failure, cc-input failure hint, no unhandled-rejection escape.
 
 Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 35 passed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: `copyFeedback` state machine collapses success/failure into one source; `copiedCmd` / `copyFailedCmd` $derived signals preserve child-prop API. try/catch swallows browser-policy rejections (correct — not an app error). Timer-clear branch correctly keys on cmd identity. All three hint sites (term-line ×2, cc-input) updated with consistent fallback text. Four new tests pin the contract including no-unhandled-rejection.
