@@ -1,7 +1,7 @@
 ---
 id: gate-docs-protocol-event-types-missing-two
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
