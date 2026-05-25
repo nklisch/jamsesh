@@ -1,7 +1,7 @@
 ---
 id: gate-tests-bare-repo-create-orphan-destruction-cleanup
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -62,3 +62,9 @@ The test:
 Verified: `go build ./internal/portal/playground/...` + both
 `TestCreatePlaygroundSession_RepoCreateFails_*` tests pass (SQLite dialect).
 No new backlog items required — destruction sweep cleanly handles the orphan.
+
+## Review notes
+
+Approve. End-to-end orphan-to-cleanup test that drives the real handler, exercises
+the real destruction cascade, and asserts negative post-conditions (ErrNotFound,
+member count == 0, anon accounts deleted, bare-repo idempotency). Test passes.
