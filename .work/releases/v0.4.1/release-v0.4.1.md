@@ -1,7 +1,7 @@
 ---
 id: release-v0.4.1
 kind: release
-stage: quality-gate
+stage: released
 tags: []
 parent: null
 depends_on: []
@@ -57,3 +57,19 @@ no-op architectural-note triage on the parseInviteEmails dedupe.
 Gate findings tracked as items but not blocking this patch. See
 `.work/active/stories/gate-{security,tests}-*.md` and
 `.work/backlog/gate-{security,tests}-*.md`.
+
+## Shipped (2026-05-25)
+
+**Mapping**: tag-based (annotated `v0.4.1`, pushed to `origin/main`).
+
+**Release commit**: `6a97c5a` (release-prep: v0.4.1)
+**Release tag**: `v0.4.1`
+
+**Bound items shipped**: 8
+- 1 feature + 5 stories (the original v0.4.1 bundle)
+- 1 inline-drained Critical gate-tests story
+- 1 no-op architectural-note story (from prior cycle, kept in bundle)
+
+**Gate finding totals**: 14 filed (gate-security: 5; gate-tests: 9). 1
+drained inline; 13 unbound and deferred to future release(s).
+cruft/docs/patterns gates skipped per user direction.
