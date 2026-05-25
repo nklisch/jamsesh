@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-per-package-clock-package-count-undercount
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -34,3 +34,7 @@ Update the package list to the 14 above and the count to "14 packages total" in 
 Updated `.claude/skills/patterns/per-package-clock-interface.md`: package count corrected from 10 to 14, listed all 14 packages (`accounts, auth, automerger, comments, events, finalize, mcpendpoint, playground, ratelimit, sessions, storage, storage/objectstore, tokens, wsgateway`), and re-anchored the `comments/service.go` example reference from `:27` to `:33`.
 
 Verified: Foundation docs are markdown — no build/test step. Edits preserve the rolling-foundation discipline (no "previously" prose, no "in v1.x" notes; assertions replaced in place).
+
+## Review notes
+
+Spawned `review-per-package-clock-rolling-foundation-prose` (Important) — the package-list paragraph in `Replicated identically across 14 packages total` ends with a sentence naming `feature-refactor-per-package-clock-compliance` in v0.4.0, which is a rolling-foundation violation. The package list itself is correct.
