@@ -1,7 +1,7 @@
 ---
 id: bug-postreceive-emits-events-for-base-ref-bootstrap-history
 kind: story
-stage: implementing
+stage: review
 tags: [bug, event-bus, playground, backpressure, performance]
 parent: null
 depends_on: []
@@ -198,3 +198,50 @@ Tests:
   designed for the catch-up-via-scan model and is correct for normal
   per-commit emission; this fix removes the synthetic bootstrap pressure
   that was making it look undersized.
+
+## Implementation notes
+
+- **Files changed**:
+  - `internal/portal/postreceive/emitter.go` — added `baseSHA string`
+    parameter to `EmitForUpdates`; threaded through to `emitForUpdate`;
+    replaced the single-`stopHash` walk with a `stops` set that includes
+    both `OldSHA` (when non-empty) and `baseSHA` (when non-empty and
+    different from `NewSHA`); early-return when the bootstrap push has
+    `NewSHA == baseSHA`; `maxCommitsPerUpdate` cap now applies only when
+    the stop set is empty (pathological unbounded walk).
+  - `internal/portal/githttp/receive_pack.go` — compute the effective
+    `baseSHA` immediately before the emitter call: take `session.BaseSHA`
+    if already populated, override with the just-pushed `NewSHA` if this
+    receive contains the base-ref creation (no DB re-read — the SHA is
+    in the `updates` slice). Pass to `EmitForUpdates`.
+- **Tests added**:
+  - `TestEmitForUpdates_BootstrapBaseRef` — bootstrap push of 5-commit
+    history with `NewSHA == baseSHA`; asserts 0 emitted events (AC 1)
+  - `TestEmitForUpdates_CollaboratorBranchOffBase` — 4-commit history,
+    base at c2, push of new ref at c4 with empty OldSHA and `baseSHA=c2`;
+    asserts exactly 2 events (c3, c4) in oldest-first order (AC 2)
+  - `TestPostReceive_BaseRefBootstrapEmitsNoCommitArrived` — handler-level
+    integration test: real `git push` of 5-commit bootstrap through the
+    receive_pack handler, asserts zero `commit.arrived` events in the
+    event log (AC 4 + 5; covers both playground and durable session paths
+    since `mustCreateSession` uses the same `Storage.CreateRepo` chokepoint
+    as both UI front doors)
+- **Tests updated**: all 5 existing `TestEmitForUpdates_*` tests adjusted
+  to pass `""` as the new `baseSHA` parameter, preserving their original
+  semantics (no base anchor, behavior unchanged).
+- **Discrepancies from design**: none. Design was vetted against the
+  source before scoping; implementation matched the design verbatim.
+- **Adjacent issues parked**: none surfaced during implementation.
+
+### Verification
+
+- `go build ./...` — clean
+- `go vet ./internal/portal/postreceive/... ./internal/portal/githttp/...`
+  — clean
+- `go test ./internal/portal/postreceive/...` — PASS (0.162s)
+- `go test ./internal/portal/githttp/...` — PASS (1.392s)
+- Acceptance criteria 1-5: covered by the two unit tests + one handler
+  integration test listed above. AC 6: `maxCommitsPerUpdate = 1000`
+  constant is untouched; the guard now applies only when the stop set is
+  empty (the pathological no-base no-OldSHA case it was always intended
+  to defend).

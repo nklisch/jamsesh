@@ -196,7 +196,7 @@ func TestEmitForUpdates_ThreeCommitChain(t *testing.T) {
 		OldSHA: c1.Hash.String(), // c2 and c3 are new
 		NewSHA: c3.Hash.String(),
 	}
-	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update})
+	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update}, "")
 	if err != nil {
 		t.Fatalf("EmitForUpdates: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestEmitForUpdates_EmptyRange(t *testing.T) {
 		OldSHA: c1.Hash.String(),
 		NewSHA: c1.Hash.String(),
 	}
-	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update})
+	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update}, "")
 	if err != nil {
 		t.Fatalf("EmitForUpdates: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestEmitForUpdates_NewRef(t *testing.T) {
 		OldSHA: "",
 		NewSHA: c3.Hash.String(),
 	}
-	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update})
+	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update}, "")
 	if err != nil {
 		t.Fatalf("EmitForUpdates: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestEmitForUpdates_JamAuthorTrailer(t *testing.T) {
 		OldSHA: "",
 		NewSHA: c1.Hash.String(),
 	}
-	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update})
+	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update}, "")
 	if err != nil {
 		t.Fatalf("EmitForUpdates: %v", err)
 	}
@@ -363,7 +363,7 @@ func TestEmitForUpdates_NoJamAuthorFallback(t *testing.T) {
 		OldSHA: "",
 		NewSHA: c1.Hash.String(),
 	}
-	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update})
+	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update}, "")
 	if err != nil {
 		t.Fatalf("EmitForUpdates: %v", err)
 	}
@@ -376,6 +376,97 @@ func TestEmitForUpdates_NoJamAuthorFallback(t *testing.T) {
 	// Falls back to git author email set in initTestRepo ("test@jamsesh.test").
 	if p.AuthorId != "test@jamsesh.test" {
 		t.Errorf("AuthorId fallback: want test@jamsesh.test, got %s", p.AuthorId)
+	}
+}
+
+// TestEmitForUpdates_BootstrapBaseRef verifies that a bootstrap push where
+// NewSHA equals baseSHA (the session-creating base-ref push) emits zero
+// events, regardless of how much pre-session history the commit reaches.
+func TestEmitForUpdates_BootstrapBaseRef(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	sess, acc := mustSetupSession(t, ctx, s)
+	log := events.New(s)
+	emitter := &postreceive.Emitter{Log: log}
+
+	// Build a 5-commit history simulating a user's pre-session main branch.
+	repo, dir := initTestRepo(t)
+	var head *object.Commit
+	for i := 1; i <= 5; i++ {
+		head = makeCommit(t, repo, dir, head,
+			map[string]string{fmt.Sprintf("f%d.txt", i): fmt.Sprintf("%d", i)},
+			fmt.Sprintf("pre-session commit %d", i))
+	}
+
+	// Bootstrap push to the base ref: OldSHA is empty (new ref) AND the
+	// pushed NewSHA is the SHA that the receive_pack handler will stamp
+	// as session.base_sha for this very push.
+	headSHA := head.Hash.String()
+	update := postreceive.RefUpdate{
+		Ref:    "refs/heads/jam/" + sess.ID + "/base",
+		OldSHA: "",
+		NewSHA: headSHA,
+	}
+	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update}, headSHA)
+	if err != nil {
+		t.Fatalf("EmitForUpdates: %v", err)
+	}
+
+	evs, err := log.ListSince(ctx, sess.ID, 0, 100)
+	if err != nil {
+		t.Fatalf("ListSince: %v", err)
+	}
+	if len(evs) != 0 {
+		t.Errorf("bootstrap base-ref push: want 0 events, got %d", len(evs))
+	}
+}
+
+// TestEmitForUpdates_CollaboratorBranchOffBase verifies that a new-ref push
+// (OldSHA == "") that branches off a known base emits events only for
+// commits AFTER the base — pre-session history reachable from the new ref
+// stops at baseSHA.
+func TestEmitForUpdates_CollaboratorBranchOffBase(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	sess, acc := mustSetupSession(t, ctx, s)
+	log := events.New(s)
+	emitter := &postreceive.Emitter{Log: log}
+
+	repo, dir := initTestRepo(t)
+	// c1, c2: pre-session history (the base SHA points at c2).
+	c1 := makeCommit(t, repo, dir, nil, map[string]string{"a.txt": "1"},
+		"pre-session a")
+	c2 := makeCommit(t, repo, dir, c1, map[string]string{"b.txt": "2"},
+		"pre-session b")
+	// c3, c4: session-authored commits on a collaborator branch off c2.
+	c3 := makeCommit(t, repo, dir, c2, map[string]string{"c.txt": "3"},
+		msgWithAuthor("session commit c", "alice@example.com"))
+	c4 := makeCommit(t, repo, dir, c3, map[string]string{"d.txt": "4"},
+		msgWithAuthor("session commit d", "alice@example.com"))
+
+	update := postreceive.RefUpdate{
+		Ref:    "refs/heads/jam/" + sess.ID + "/alice/work",
+		OldSHA: "",
+		NewSHA: c4.Hash.String(),
+	}
+	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update}, c2.Hash.String())
+	if err != nil {
+		t.Fatalf("EmitForUpdates: %v", err)
+	}
+
+	evs, err := log.ListSince(ctx, sess.ID, 0, 100)
+	if err != nil {
+		t.Fatalf("ListSince: %v", err)
+	}
+	if len(evs) != 2 {
+		t.Fatalf("want 2 events (c3, c4), got %d", len(evs))
+	}
+	// Oldest-first ordering: evs[0] = c3, evs[1] = c4.
+	if p := decodePayload(t, evs[0].Payload); p.Sha != c3.Hash.String() {
+		t.Errorf("evs[0].Sha: want %s, got %s", c3.Hash.String(), p.Sha)
+	}
+	if p := decodePayload(t, evs[1].Payload); p.Sha != c4.Hash.String() {
+		t.Errorf("evs[1].Sha: want %s, got %s", c4.Hash.String(), p.Sha)
 	}
 }
 
@@ -402,7 +493,7 @@ func TestEmitForUpdates_EmitBatchErrorPropagates(t *testing.T) {
 		OldSHA: "",
 		NewSHA: c1.Hash.String(),
 	}
-	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update})
+	err := emitter.EmitForUpdates(ctx, repo, sess, acc, []postreceive.RefUpdate{update}, "")
 	if err == nil {
 		t.Error("expected error from EmitBatch after store close, got nil")
 	}

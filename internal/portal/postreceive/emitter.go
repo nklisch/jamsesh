@@ -69,15 +69,24 @@ type RefUpdate = gitref.RefUpdate
 // parameter is accepted for API symmetry with the smart-http handler but is
 // not consulted — the canonical author_id comes from the Jam-Author trailer
 // or commit.Author.Email.
+//
+// baseSHA is the session's pre-session bootstrap commit (the base ref's
+// SHA). Commits reachable from baseSHA are pre-session history and are
+// excluded from emission: the walk treats baseSHA as an additional stop
+// point alongside update.OldSHA. Pass "" when the session has no base ref
+// yet (the very first base-ref push itself stamps it). For a bootstrap
+// push where update.NewSHA == baseSHA the walk yields zero new commits
+// and no events are emitted.
 func (e *Emitter) EmitForUpdates(
 	ctx context.Context,
 	repo *git.Repository,
 	session *store.Session,
 	_ *store.Account,
 	updates []RefUpdate,
+	baseSHA string,
 ) error {
 	for _, update := range updates {
-		if err := e.emitForUpdate(ctx, repo, session, update); err != nil {
+		if err := e.emitForUpdate(ctx, repo, session, update, baseSHA); err != nil {
 			return err
 		}
 	}
@@ -125,21 +134,39 @@ func (e *Emitter) EmitForUpdates(
 
 // emitForUpdate handles a single ref update: walks new commits, builds
 // CommitArrivedPayload drafts (oldest-first), and calls EmitBatch.
+//
+// The walk stops on any commit in the stop set. update.OldSHA contributes
+// when non-empty (subsequent push to existing ref); baseSHA contributes
+// when non-empty and different from update.NewSHA (excludes pre-session
+// bootstrap history). When both are empty the walk runs unbounded up to
+// maxCommitsPerUpdate — the defensive guard for pathological refs whose
+// history is not reachable from base.
 func (e *Emitter) emitForUpdate(
 	ctx context.Context,
 	repo *git.Repository,
 	session *store.Session,
 	update RefUpdate,
+	baseSHA string,
 ) error {
 	// No-op: range is empty.
 	if update.OldSHA != "" && update.OldSHA == update.NewSHA {
 		return nil
 	}
+	// No-op: bootstrap base-ref push (NewSHA is itself the base) — there
+	// are no session-authored commits to emit for the seed.
+	if baseSHA != "" && baseSHA == update.NewSHA {
+		return nil
+	}
 
 	newHash := plumbing.NewHash(update.NewSHA)
 
-	hasStop := update.OldSHA != ""
-	stopHash := plumbing.NewHash(update.OldSHA) // zero hash when !hasStop
+	stops := make(map[plumbing.Hash]struct{}, 2)
+	if update.OldSHA != "" {
+		stops[plumbing.NewHash(update.OldSHA)] = struct{}{}
+	}
+	if baseSHA != "" && baseSHA != update.NewSHA {
+		stops[plumbing.NewHash(baseSHA)] = struct{}{}
+	}
 
 	iter, err := repo.Log(&git.LogOptions{From: newHash})
 	if err != nil {
@@ -151,11 +178,14 @@ func (e *Emitter) emitForUpdate(
 	// reverse to chronological (oldest-first) order before emitting.
 	var newestFirst []*object.Commit
 	iterErr := iter.ForEach(func(c *object.Commit) error {
-		if hasStop && c.Hash == stopHash {
+		if _, isStop := stops[c.Hash]; isStop {
 			return storer.ErrStop
 		}
 		newestFirst = append(newestFirst, c)
-		if !hasStop && len(newestFirst) >= maxCommitsPerUpdate {
+		// Cap only applies when no stops are configured (truly unbounded
+		// walk — pathological case of a ref whose history doesn't reach
+		// base or any prior ref state).
+		if len(stops) == 0 && len(newestFirst) >= maxCommitsPerUpdate {
 			return storer.ErrStop
 		}
 		return nil

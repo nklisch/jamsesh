@@ -307,10 +307,27 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	// push to object storage. We MUST call this BEFORE committing 200 OK —
 	// if the sync fails (e.g. NoSuchBucket), we return 500 so the git client
 	// sees a non-zero exit and does not believe the push succeeded.
+	//
+	// Compute the effective base SHA for this receive:
+	//   - If a prior push already stamped sessions.base_sha, use that.
+	//   - If THIS receive contains the base-ref creation, use the just-
+	//     pushed NewSHA (the SetSessionBaseSHA call above stamped it but
+	//     the in-memory session struct is stale; reading from updates
+	//     avoids a DB round-trip).
+	// baseSHA == "" means no base ref exists yet (push to base did not land
+	// or failed mid-flight); the emitter then walks without a base anchor.
+	baseSHA := ""
+	if session.BaseSHA != nil {
+		baseSHA = *session.BaseSHA
+	}
+	if u := findBaseRefUpdate(sessionID, updates); u != nil {
+		baseSHA = u.NewSHA
+	}
+
 	if h.Emitter != nil {
 		if emitErr := h.Emitter.EmitForUpdates(
 			r.Context(), diskRepo, &session, account,
-			updates,
+			updates, baseSHA,
 		); emitErr != nil {
 			slog.ErrorContext(r.Context(), "receive-pack: post-receive emit (object-storage sync failure)",
 				"err", emitErr, "org", orgID, "session", sessionID)

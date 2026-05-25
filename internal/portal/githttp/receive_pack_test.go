@@ -1078,6 +1078,58 @@ func TestPostReceive_NonBaseRefDoesNotReStamp(t *testing.T) {
 	}
 }
 
+// TestPostReceive_BaseRefBootstrapEmitsNoCommitArrived verifies that the
+// inaugural base-ref push (the seeded pre-session history) emits zero
+// commit.arrived events, even when the bootstrap contains many commits.
+// Acceptance criteria 1 + 4-5 of the
+// bug-postreceive-emits-events-for-base-ref-bootstrap-history story.
+func TestPostReceive_BaseRefBootstrapEmitsNoCommitArrived(t *testing.T) {
+	env := newPushEnv(t)
+	acc, token := env.mustIssueToken(t, "bootstrap-alice@example.com")
+	orgID, sessionID := env.mustCreateSession(t, acc, `["**"]`)
+
+	bareDir := filepath.Join(env.storageRoot, "orgs", orgID, "sessions", sessionID+".git")
+	workDir := initBareRepo(t, bareDir)
+
+	// Simulate a pre-session repo with 5 commits of history. The bootstrap
+	// push carries them all but they predate the session and must not emit.
+	for i := 1; i <= 5; i++ {
+		makeCommitWithTrailers(t, workDir, sessionID, acc.ID,
+			fmt.Sprintf("src/seed_%d.go", i), fmt.Sprintf("package main // %d", i))
+	}
+
+	baseRef := fmt.Sprintf("refs/heads/jam/%s/base", sessionID)
+	pushURLStr := env.pushURL(token, orgID, sessionID)
+	pushCmd := exec.Command("git", "push", pushURLStr, fmt.Sprintf("HEAD:%s", baseRef))
+	pushCmd.Dir = workDir
+	pushCmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := pushCmd.CombinedOutput(); err != nil {
+		t.Fatalf("base ref bootstrap push failed: %v\n%s", err, out)
+	}
+
+	// Pre-condition: the base SHA was stamped.
+	ctx := context.Background()
+	sess, err := env.store.GetSession(ctx, orgID, sessionID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if sess.BaseSHA == nil {
+		t.Fatal("pre-condition: base_sha not stamped after bootstrap push")
+	}
+
+	// Assertion: no commit.arrived events were emitted for the bootstrap.
+	evs, err := env.eventLog.ListSince(ctx, sessionID, 0, 100)
+	if err != nil {
+		t.Fatalf("ListSince: %v", err)
+	}
+	for _, e := range evs {
+		if e.Type == "commit.arrived" {
+			t.Errorf("bootstrap push emitted commit.arrived seq=%d sha=%s; expected zero",
+				e.Seq, e.Payload)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Playground activity-reset integration tests
 // ---------------------------------------------------------------------------
