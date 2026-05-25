@@ -1,7 +1,7 @@
 ---
 id: idea-playground-handler-test-creator-member-assertion
 kind: story
-stage: implementing
+stage: review
 tags: [portal, playground, testing]
 parent: feature-playground-hardening
 depends_on: []
@@ -50,3 +50,18 @@ check that asserts the creator member row remains. Roughly 8 lines added.
 - The test asserts both the session row AND the creator member row remain in
   the store after `CreateRepo` returns an error.
 - Test still passes against both SQLite and (when env set) Postgres.
+
+## Implementation notes
+
+- Extended `TestCreatePlaygroundSession_RepoCreateFails_ReturnsError` with a
+  second assertion: after the existing `ListExpiredPlaygroundSessions` check
+  confirms the orphan session row remains, call
+  `ListAnonymousSessionMemberIDs(ctx, playground.ReservedOrgID, orphanSessID)`
+  and assert at least one member ID is returned. This pins that step 3
+  (AddSessionMember as "creator") ran successfully before step 4 (CreateRepo)
+  failed.
+- Promoted the prior `t.Error` on empty sessions to `t.Fatal` so the test
+  short-circuits cleanly if the session row is missing — otherwise the
+  subsequent member-list call would panic on `sessions[0]`.
+
+Verified: `go test ./internal/portal/playground/... -count 1 -run RepoCreateFails_ReturnsError` passes.

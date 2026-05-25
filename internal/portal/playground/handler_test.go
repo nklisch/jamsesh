@@ -1026,7 +1026,21 @@ func TestCreatePlaygroundSession_RepoCreateFails_ReturnsError(t *testing.T) {
 				t.Fatalf("ListExpiredPlaygroundSessions: %v", err)
 			}
 			if len(sessions) == 0 {
-				t.Error("expected orphaned session row to remain after CreateRepo failure, got none")
+				t.Fatal("expected orphaned session row to remain after CreateRepo failure, got none")
+			}
+
+			// (idea-playground-handler-test-creator-member-assertion)
+			// Step 3 (AddSessionMember as "creator") ran successfully before
+			// step 4 (CreateRepo) failed. The creator member row must persist
+			// alongside the orphaned session row — destruction's anon-account
+			// cleanup discovers anon members via ListAnonymousSessionMemberIDs.
+			orphanSessID := sessions[0].ID
+			anonIDs, err := s.ListAnonymousSessionMemberIDs(ctx, playground.ReservedOrgID, orphanSessID)
+			if err != nil {
+				t.Fatalf("ListAnonymousSessionMemberIDs: %v", err)
+			}
+			if len(anonIDs) == 0 {
+				t.Error("expected creator member row to remain after CreateRepo failure, got none")
 			}
 		})
 	}
