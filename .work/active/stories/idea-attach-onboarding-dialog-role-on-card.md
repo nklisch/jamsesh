@@ -1,7 +1,7 @@
 ---
 id: idea-attach-onboarding-dialog-role-on-card
 kind: story
-stage: review
+stage: done
 tags: [ui, a11y]
 parent: feature-attach-onboarding-a11y-robustness
 depends_on: []
@@ -99,3 +99,13 @@ binding in each card — no change needed to focus management.
   matches the article).
 
 Verified: `npm test -- --run SessionAttachWalkthrough.test.ts` → 26 passed.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Matches design exactly — backdrop is `role="presentation"`, dialog landmark moved to inner `<article>` in both FullCard and CompactCard, focused svelte-ignore comments are scoped and justified, new negative-assertion test pins the invariant. The orchestrator's separate AttachHelpLink.test.ts selector fix (61afa03) is the correct test-integrity response to the moved role.
