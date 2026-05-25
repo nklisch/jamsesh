@@ -1,7 +1,7 @@
 ---
 id: bug-portalinfo-handler-no-constructor-enum-validation
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, security]
 parent: null
 depends_on: []
@@ -137,3 +137,43 @@ closed or sentinel — but skips invalid cases linked to this bug).
 - `internal/portal/portalinfo/handler_test.go` — un-skip subcases,
   retarget table to constructor path
 - (Optional) `cmd/portal/main_test.go` — startup-misconfig assertion
+
+## Implementation notes
+
+- `internal/portal/portalinfo/handler.go` — added
+  `NewHandler(playgroundEnabled bool, landingVariant string) (*Handler, error)`.
+  Validation reuses `openapi.PortalInfoLandingVariant(s).Valid()` so the spec
+  remains the source of truth; invalid input returns
+  `fmt.Errorf("portalinfo: invalid landing_variant %q", landingVariant)` and a
+  nil handler. A doc-comment on the `Handler` struct notes that production
+  wiring must go through `NewHandler`.
+- `cmd/portal/main.go` — the existing wiring site
+  (previously `portalInfoHandler := &portalinfo.Handler{...}`) now calls
+  `portalinfo.NewHandler(cfg.PlaygroundEnabled, cfg.Landing.Variant)`. On
+  error the binary logs `portalinfo handler init failed` with the offending
+  `landing_variant` and exits with status 1, matching the fail-fast
+  startup-error pattern used elsewhere in `main.go`.
+- `internal/portal/portalinfo/handler_test.go` — the table-driven
+  `TestGetPortalInfo_InvalidLandingVariantSurfacesError` was retargeted to
+  call `NewHandler` for every row. The 4 invalid subcases (`""`,
+  `"not-a-real-variant"`, `"Auto"`, `"auto "`) no longer skip — they assert
+  `NewHandler` returns a non-nil error whose message quotes the bad value
+  and that `*Handler` is nil. Valid rows continue to exercise the full
+  response-shape round-trip on a constructor-built handler. Added `fmt` and
+  `strings` imports for the substring-match assertion.
+- The optional `cmd/portal/main_test.go` startup-misconfig assertion was
+  not added — `cmd/portal` does not currently have a `main_test.go`, and
+  the existing `cmd/portal` test package (which is the build-tag-gated
+  `_clock_test.go` family) is not a fit for env-driven startup. The
+  unit-level constructor coverage is the primary trip-wire as the design
+  acknowledged ("treat as a follow-up").
+
+### Verification
+
+- `go build ./...` → clean.
+- `go test ./internal/portal/portalinfo/... ./cmd/portal/... -count 1`
+  → both packages pass.
+- `go test ./internal/portal/portalinfo/... -run
+  TestGetPortalInfo_InvalidLandingVariantSurfacesError -v` → all 7
+  subcases run (no skips), all pass.
+- `go vet ./...` → clean.

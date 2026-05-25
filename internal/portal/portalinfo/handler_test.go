@@ -3,8 +3,10 @@ package portalinfo_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -312,22 +314,16 @@ func TestGetPortalInfo_NoAuthRequired(t *testing.T) {
 }
 
 // TestGetPortalInfo_InvalidLandingVariantSurfacesError is a
-// defense-in-depth regression: the handler holds a plain string and
-// raw-casts it to `openapi.PortalInfoLandingVariant` in GetPortalInfo.
-// If wiring in `cmd/portal/main.go` ever stops feeding from validated
-// config, the handler would silently emit a non-enum value.
+// defense-in-depth regression: every value held on the Handler must
+// satisfy openapi.PortalInfoLandingVariant.Valid() — and the only
+// production path to constructing one is portalinfo.NewHandler, which
+// refuses invalid input.
 //
-// The desired contract is: every value held on the Handler must satisfy
-// `openapi.PortalInfoLandingVariant.Valid()` — either because the
-// constructor refused at construction, or because the runtime path
-// returns an error / sentinel for the invalid case.
-//
-// The handler currently has neither defense (see backlog id
-// `bug-portalinfo-handler-no-constructor-enum-validation`). The
-// invalid-input subcases below are therefore `t.Skip`ped with the
-// backlog id as their reason — they document the missing defense
-// without lying about the current behaviour. Once that bug is fixed
-// the skip lines should be deleted to activate the assertions.
+// The valid subcases assert NewHandler succeeds, returns a populated
+// *Handler, and the response round-trips the variant untouched. The
+// invalid subcases assert NewHandler returns a typed error whose
+// message quotes the offending value, and the returned *Handler is nil
+// so no downstream caller can accidentally use a half-built handler.
 //
 // Story: gate-tests-portalinfo-handler-invalid-enum-defense
 func TestGetPortalInfo_InvalidLandingVariantSurfacesError(t *testing.T) {
@@ -346,17 +342,31 @@ func TestGetPortalInfo_InvalidLandingVariantSurfacesError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			h, err := portalinfo.NewHandler(true, tc.landingVariant)
+
 			if !tc.valid {
-				// Honest skip: the handler raw-casts a string to the enum
-				// with no validation. The fail-closed contract this test
-				// asserts is the desired defense, not the current one.
-				// Tracked: bug-portalinfo-handler-no-constructor-enum-validation.
-				t.Skip("missing defense; see backlog bug-portalinfo-handler-no-constructor-enum-validation")
+				// Invalid input must surface a typed error and return a
+				// nil handler so no caller can accidentally use it.
+				if err == nil {
+					t.Fatalf("NewHandler(%q) returned nil error; want validation failure", tc.landingVariant)
+				}
+				if !strings.Contains(err.Error(), fmt.Sprintf("%q", tc.landingVariant)) {
+					t.Errorf("NewHandler(%q) error message %q does not quote the invalid value",
+						tc.landingVariant, err.Error())
+				}
+				if h != nil {
+					t.Errorf("NewHandler(%q) returned non-nil *Handler on validation failure: %+v",
+						tc.landingVariant, h)
+				}
+				return
 			}
 
-			h := &portalinfo.Handler{
-				PlaygroundEnabled: true,
-				LandingVariant:    tc.landingVariant,
+			// Valid input must succeed.
+			if err != nil {
+				t.Fatalf("NewHandler(%q) returned error: %v", tc.landingVariant, err)
+			}
+			if h == nil {
+				t.Fatalf("NewHandler(%q) returned nil *Handler with nil error", tc.landingVariant)
 			}
 
 			// 1. Direct call: a valid landing variant must round-trip

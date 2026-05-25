@@ -6,6 +6,7 @@ package portalinfo
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"jamsesh/internal/api/openapi"
@@ -34,12 +35,37 @@ func NoCacheMiddleware(next http.Handler) http.Handler {
 // Handler implements the openapi.StrictServerInterface GetPortalInfo method.
 // It holds a config snapshot captured at construction time and never re-reads
 // the portal config — config is treated as immutable post-startup.
+//
+// Production wiring MUST go through NewHandler so the landing-variant string is
+// validated against the OpenAPI enum at construction time. Test fixtures that
+// exercise response-shape behaviour may continue to construct Handler{...}
+// literals directly — the constructor is the only defense the type system
+// gives us, but it's the right one for the production startup path.
 type Handler struct {
 	// PlaygroundEnabled mirrors config.Config.PlaygroundEnabled at startup.
 	PlaygroundEnabled bool
 	// LandingVariant mirrors config.Config.Landing.Variant at startup.
 	// Valid values: "auto", "project", "login".
 	LandingVariant string
+}
+
+// NewHandler constructs a *Handler with a validated LandingVariant. It returns
+// a typed error (with the invalid value quoted) when landingVariant does not
+// satisfy openapi.PortalInfoLandingVariant.Valid(); callers in cmd/portal
+// surface the error at startup so a misconfigured deploy fails fast rather
+// than silently emitting a non-enum value on /api/portal/info.
+//
+// The validator is the generated openapi.PortalInfoLandingVariant(s).Valid()
+// (see internal/api/openapi/server.gen.go) so the source of truth stays the
+// OpenAPI spec.
+func NewHandler(playgroundEnabled bool, landingVariant string) (*Handler, error) {
+	if !openapi.PortalInfoLandingVariant(landingVariant).Valid() {
+		return nil, fmt.Errorf("portalinfo: invalid landing_variant %q", landingVariant)
+	}
+	return &Handler{
+		PlaygroundEnabled: playgroundEnabled,
+		LandingVariant:    landingVariant,
+	}, nil
 }
 
 // GetPortalInfo handles GET /api/portal/info.

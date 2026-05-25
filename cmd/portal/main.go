@@ -753,9 +753,10 @@ func main() {
 	//     to "internal" 500) via httperr.WriteFromError.
 	//   - RequestErrorHandlerFunc: emits a "request.malformed" 400 envelope
 	//     instead of the default plain-text response.
-	portalInfoHandler := &portalinfo.Handler{
-		PlaygroundEnabled: cfg.PlaygroundEnabled,
-		LandingVariant:    cfg.Landing.Variant,
+	portalInfoHandler, err := portalinfo.NewHandler(cfg.PlaygroundEnabled, cfg.Landing.Variant)
+	if err != nil {
+		slog.Error("portalinfo handler init failed", "err", err, "landing_variant", cfg.Landing.Variant)
+		os.Exit(1)
 	}
 
 	strictAPI := openapi.NewStrictHandlerWithOptions(&combinedHandler{
