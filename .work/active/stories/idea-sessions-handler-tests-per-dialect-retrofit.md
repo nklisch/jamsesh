@@ -1,7 +1,7 @@
 ---
 id: idea-sessions-handler-tests-per-dialect-retrofit
 kind: story
-stage: drafting
+stage: implementing
 tags: [portal, sessions, testing]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -69,3 +69,57 @@ Mirror the pattern applied in
 - This is pure mechanical refactor — no behavior changes expected.
 - Tag `refactor` if scoped that way; otherwise the existing `testing`
   tag is appropriate.
+
+## Implementation details
+
+**`internal/portal/sessions/handler_test.go`**:
+1. Delete the `openStore` helper function (the one that calls
+   `storetest.Stores(t)[0].Open(t)` and the comment explaining why it
+   only takes SQLite).
+2. Change `newTestEnv(t *testing.T)` signature to
+   `newTestEnv(t *testing.T, s store.Store) *testEnv`.
+3. Each top-level test function (`func TestX(t *testing.T)`) wraps its
+   body in the dialect loop:
+   ```go
+   for _, h := range storetest.Stores(t) {
+       h := h
+       t.Run(h.Name, func(t *testing.T) {
+           env := newTestEnv(t, h.Open(t))
+           // existing body
+       })
+   }
+   ```
+4. Tests using `newTestEnvWithStore` need a base store for the dialect
+   loop; use `h.Open(t)` as both `handlerStore` base and the wrapping
+   store's delegate.
+5. `newTestEnvWithClock` in `handler_test.go` (around line 850) calls
+   `openStore(t)` — replace with `storetest.Stores(t)` loop or just
+   `storetest.Stores(t)[0].Open(t)` if clock tests don't need Postgres
+   coverage (acceptable — clock behavior is dialect-independent).
+
+**`internal/portal/sessions/clock_test.go`**:
+- Two tests call `newTestEnv(t)`. Update to
+  `newTestEnv(t, storetest.Stores(t)[0].Open(t))` or wrap in the loop.
+  Wrapping is preferred for consistency.
+
+**`internal/portal/sessions/files_test.go`**:
+- `buildFilesEnv` calls `newTestEnv(t)`. Update its signature to accept
+  `store.Store` and pass `h.Open(t)` from the dialect loop in each test.
+
+**`internal/portal/sessions/invites_test.go`**,
+**`internal/portal/sessions/listing_state_test.go`**,
+**`internal/portal/sessions/refmodes_test.go`**:
+- Each test calls `newTestEnv(t)`. Wrap each `func TestX(t)` body in the
+  `storetest.Stores(t)` loop and update calls to `newTestEnv(t, h.Open(t))`.
+
+**`internal/portal/sessions/scope_validation_test.go`**:
+- Tests call pure validation functions — no store, no env. No changes needed.
+
+**Verification**:
+```bash
+grep -n 'newTestEnv(t)' internal/portal/sessions/*_test.go
+# Should return zero results after the retrofit.
+
+go test ./internal/portal/sessions/...
+# Should pass (SQLite only without JAMSESH_TEST_PG_DSN).
+```

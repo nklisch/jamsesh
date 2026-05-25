@@ -1,7 +1,7 @@
 ---
 id: gate-tests-event-discriminator-triad-completeness
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, spec]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -30,3 +30,27 @@ value has a `discriminator.mapping` entry and a matching `oneOf` schema.
 
 ## Test location (suggested)
 `internal/portal/events/spec_drift_test.go`
+
+## Implementation
+
+Add `TestEventDiscriminatorTriad_Completeness` to
+`internal/portal/events/spec_drift_test.go`.
+
+The test loads the YAML using the existing `runtime.Caller(0)`-based path
+(already established in the file — no cwd dependency). It then extracts:
+
+1. `enumTypes` — from `EventEnvelope.properties.type.enum` (existing helper
+   `extractEventEnvelopeTypeEnum` covers this)
+2. `mappingKeys` — from `EventEnvelope.discriminator.mapping` (keys of the
+   mapping object)
+3. `mappingValues` — from `EventEnvelope.discriminator.mapping` (values,
+   e.g. `#/components/schemas/CommitArrivedPayload`)
+4. `oneOfRefs` — from `EventEnvelope.payload.oneOf[*].$ref`
+
+Assertions:
+- `sort(enumTypes) == sort(mappingKeys)` — every enum type has a mapping entry
+- `sort(mappingValues) == sort(oneOfRefs)` — every mapping target appears in
+  oneOf (and vice versa)
+
+Reuse the existing `sortedCopy` and `difference` helpers from the same file.
+Emit a structured diagnostic on failure (same style as the existing test).

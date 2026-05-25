@@ -1,7 +1,7 @@
 ---
 id: gate-tests-spec-drift-cwd-resilience
 kind: story
-stage: drafting
+stage: implementing
 tags: [testing, portal, infra]
 parent: feature-test-spec-drift-and-coverage
 depends_on: []
@@ -30,3 +30,26 @@ Add a sub-test that invokes the comparison from a temp cwd via
 
 ## Test location (suggested)
 `internal/portal/events/spec_drift_test.go`
+
+## Implementation
+
+Add `TestEventTypeConstants_MatchOpenAPIYAML_NonDefaultCwd` (or as a
+`t.Run("from_temp_cwd", ...)` sub-test inside the existing test) to
+`internal/portal/events/spec_drift_test.go`.
+
+Steps:
+1. Check project `go.mod` for minimum Go version. If >= 1.24, use
+   `t.Chdir(t.TempDir())`. If < 1.24, use:
+   ```go
+   orig, _ := os.Getwd()
+   _ = os.Chdir(t.TempDir())
+   t.Cleanup(func() { _ = os.Chdir(orig) })
+   ```
+2. After changing to the temp dir, run the same enum↔AllTypes comparison
+   that the parent test runs.
+3. Consider extracting the shared comparison logic into a private helper
+   `checkSpecDrift(t *testing.T)` to eliminate copy-paste between the two
+   test functions.
+
+The key invariant to verify: `runtime.Caller(0)` returns an absolute path
+even when the process cwd changes, so the YAML file can be found.
