@@ -1,7 +1,7 @@
 ---
 id: gate-tests-frontend-set-playground-context-rune-store
 kind: story
-stage: review
+stage: done
 tags: [testing, ui, playground]
 parent: null
 depends_on: []
@@ -43,3 +43,11 @@ it('clearPlaygroundContext purges the rune-store state', () => { ... });
 - `isAuthenticated true and playgroundContext non-null can coexist` (line 448)
 
 The seam contract is fully documented. No new code written.
+
+## Review notes
+
+Approve. Land mode verified: all 5 claimed tests exist at the claimed line
+numbers in `frontend/src/lib/auth.test.ts` (396, 401, 417, 431, 448). Each
+asserts the real `auth.playgroundContext` rune-store after calling
+`setPlaygroundContext` directly. The 4th and 5th tests pin the important
+orthogonality with `isAuthenticated`. All pass.
