@@ -1,7 +1,7 @@
 ---
 id: feature-auth-signout-backend-revoke-frontend
 kind: story
-stage: implementing
+stage: review
 tags: [security, auth, ui]
 parent: feature-auth-signout-backend-revoke
 depends_on: [feature-auth-signout-backend-revoke-backend]
@@ -143,3 +143,41 @@ test('signOut clears local state even when POST /api/auth/logout returns 401', a
 - [ ] Four new test cases pass.
 - [ ] `Home.test.ts` and `SessionsLanding.test.ts` continue to pass without
   changes (mocks already stub `signOut` entirely).
+
+## Implementation notes
+
+- `frontend/src/lib/auth.svelte.ts`: `signOut` is now `async`.
+- **Design deviation from feature body**: the original design said "call
+  POST /api/auth/logout BEFORE clearing local state". We chose the opposite
+  order to preserve **synchronous local-state clear** for callers (especially
+  `unauthorizedMiddleware` in `client.ts`, which calls `auth.signOut()`
+  without `await`). Sequence is:
+  1. Capture `_token` to a local `capturedToken`.
+  2. Clear all rune state + localStorage + navigate('/login') synchronously.
+  3. Async best-effort POST `/api/auth/logout` with an explicit
+     `Authorization: Bearer <capturedToken>` header (bearerMiddleware can't
+     find the bearer in localStorage anymore — it's been cleared).
+  4. Swallow any error.
+- The `if (capturedToken)` guard prevents a no-op POST when already signed
+  out AND prevents recursion: a 401 from the logout endpoint itself
+  re-invokes signOut via unauthorizedMiddleware, but by then `_token` is
+  null so the recursive capture is empty and the POST is skipped.
+- `frontend/src/lib/auth.test.ts`:
+  - Five existing `auth.signOut()` callsites now use `await auth.signOut()`.
+  - Two existing tests that count fetch calls were updated to allow the
+    extra logout POST fetch (`discards stale /api/me ...`,
+    `signOut while a loadCurrentUser is in-flight ...`).
+  - Four new tests:
+    - `signOut calls POST /api/auth/logout before clearing local state`
+    - `signOut when unauthenticated does not call POST /api/auth/logout`
+    - `signOut clears local state even when POST /api/auth/logout throws`
+    - `signOut clears local state even when POST /api/auth/logout returns 401`
+- Existing screen tests (`client.test.ts`'s 401-interceptor suite) continue
+  to pass because the SYNCHRONOUS state clear preserves their original
+  assertion model — they assert state immediately after `auth.signOut()`
+  is fired (not awaited), which still works.
+
+Verified:
+- `npm test -- --run auth.test.ts` → 29 passed.
+- `npm test -- --run` → 738 passed, 1 skipped.
+- `npm run check` → 0 errors, 1 pre-existing unrelated warning.

@@ -75,7 +75,20 @@ export const auth = {
     localStorage.setItem(REFRESH_KEY, refreshTok);
   },
 
-  signOut(): void {
+  async signOut(): Promise<void> {
+    // Best-effort: tell the server to revoke all tokens for this account.
+    // Capture the bearer FIRST so the server-side call can authenticate;
+    // then clear local state SYNCHRONOUSLY so the UI updates immediately
+    // and callers that don't await still see signed-out state. The endpoint
+    // call itself completes asynchronously and never gates sign-out.
+    // (feature-auth-signout-backend-revoke-frontend)
+    //
+    // The `if (capturedToken)` guard avoids a no-op POST when already
+    // signed out. It also prevents recursion with unauthorizedMiddleware:
+    // a 401 from the logout endpoint itself re-invokes signOut(), but by
+    // then `_token` is already null and the recursive call captures an
+    // empty bearer and skips the POST.
+    const capturedToken = _token;
     _token = null;
     _refresh = null;
     _currentUser = null;
@@ -84,6 +97,18 @@ export const auth = {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
     navigate('/login');
+
+    if (capturedToken) {
+      try {
+        // bearerMiddleware reads from localStorage (now empty); pass the
+        // captured token explicitly so the server can identify the account.
+        await client.POST('/api/auth/logout', {
+          headers: { Authorization: `Bearer ${capturedToken}` },
+        });
+      } catch {
+        // Swallow — local state already cleared.
+      }
+    }
   },
 
   async loadCurrentUser(): Promise<void> {

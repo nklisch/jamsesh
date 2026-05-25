@@ -59,7 +59,7 @@ describe('auth store', () => {
     auth.setTokens('access', 'refresh');
     expect(auth.isAuthenticated).toBe(true);
 
-    auth.signOut();
+    await auth.signOut();
 
     expect(auth.token).toBeNull();
     expect(auth.refresh).toBeNull();
@@ -78,7 +78,7 @@ describe('auth store', () => {
     const { auth } = await import('$lib/auth.svelte');
 
     auth.setTokens('a', 'r');
-    auth.signOut();
+    await auth.signOut();
 
     expect(mockNavigate).toHaveBeenCalledWith('/login');
   });
@@ -276,7 +276,7 @@ describe('auth store', () => {
     await auth.loadCurrentUser();
     expect(auth.orgs).not.toBeNull();
 
-    auth.signOut();
+    await auth.signOut();
 
     expect(auth.orgs).toBeNull();
   });
@@ -339,6 +339,10 @@ describe('auth store', () => {
     });
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockReturnValueOnce(fetchUserA as Promise<Response>)
+      // signOut now fires a best-effort POST /api/auth/logout before
+      // clearing local state (feature-auth-signout-backend-revoke-frontend).
+      // We don't care about its response body; 204 is enough.
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
@@ -359,7 +363,7 @@ describe('auth store', () => {
 
     // signOut must reset _loadingMe to null so the next loadCurrentUser
     // doesn't just await the abandoned promise.
-    auth.signOut();
+    await auth.signOut();
 
     // Resolve the stale user A response now that the token has been cleared.
     // The token-at-start guard inside loadCurrentUser discards this data.
@@ -383,7 +387,8 @@ describe('auth store', () => {
     auth.setTokens('b', 'b');
     await auth.loadCurrentUser();
 
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // 3 fetches: user-A in-flight + signOut's POST /api/auth/logout + user-B load.
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
     expect(auth.currentUser).toEqual({
       id: 'user-b',
       email: 'userb@example.com',
@@ -477,7 +482,11 @@ describe('auth store', () => {
     const fetchPromise = new Promise<Response>((resolve) => {
       resolveFetch = resolve;
     });
-    vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(fetchPromise as Promise<Response>);
+    vi.spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(fetchPromise as Promise<Response>)
+      // signOut best-effort POST /api/auth/logout
+      // (feature-auth-signout-backend-revoke-frontend).
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('user1-access', 'user1-refresh');
@@ -488,7 +497,7 @@ describe('auth store', () => {
     expect(auth.currentUser).toBeNull();
 
     // signOut races the load.
-    auth.signOut();
+    await auth.signOut();
     expect(auth.token).toBeNull();
     expect(auth.orgs).toBeNull();
 
@@ -511,5 +520,82 @@ describe('auth store', () => {
     // previous user's identity onto whoever signs in next.
     expect(auth.currentUser).toBeNull();
     expect(auth.orgs).toBeNull();
+  });
+
+  // --- best-effort backend logout (feature-auth-signout-backend-revoke-frontend) ---
+
+  test('signOut calls POST /api/auth/logout before clearing local state', async () => {
+    vi.doMock('$lib/router.svelte', () => ({
+      navigate: vi.fn(),
+      current: { name: 'sessions', params: {} },
+    }));
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('a-token', 'r-token');
+
+    await auth.signOut();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const req = fetchSpy.mock.calls[0][0] as Request;
+    expect(req.method).toBe('POST');
+    expect(req.url).toMatch(/\/api\/auth\/logout$/);
+    // Token cleared post-call.
+    expect(auth.token).toBeNull();
+  });
+
+  test('signOut when unauthenticated does not call POST /api/auth/logout', async () => {
+    vi.doMock('$lib/router.svelte', () => ({
+      navigate: vi.fn(),
+      current: { name: 'login', params: {} },
+    }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const { auth } = await import('$lib/auth.svelte');
+    // No setTokens — _token is null.
+    await auth.signOut();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('signOut clears local state even when POST /api/auth/logout throws', async () => {
+    vi.doMock('$lib/router.svelte', () => ({
+      navigate: vi.fn(),
+      current: { name: 'sessions', params: {} },
+    }));
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('network down'));
+
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('a', 'r');
+
+    await auth.signOut();
+
+    // Local state cleared regardless of the rejected POST.
+    expect(auth.token).toBeNull();
+    expect(auth.refresh).toBeNull();
+    expect(auth.isAuthenticated).toBe(false);
+  });
+
+  test('signOut clears local state even when POST /api/auth/logout returns 401', async () => {
+    vi.doMock('$lib/router.svelte', () => ({
+      navigate: vi.fn(),
+      current: { name: 'sessions', params: {} },
+    }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'auth.invalid_token', message: 'invalid' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('a', 'r');
+
+    await auth.signOut();
+
+    expect(auth.token).toBeNull();
+    expect(auth.isAuthenticated).toBe(false);
   });
 });
