@@ -1,7 +1,7 @@
 ---
 id: story-portal-visitor-entry-pages-spa-landing
 kind: story
-stage: review
+stage: done
 tags: [ui, portal]
 parent: feature-portal-visitor-entry-pages
 depends_on: [story-portal-visitor-entry-pages-info-endpoint]
@@ -141,3 +141,33 @@ Per the parent feature's Unit 2 acceptance criteria, in full:
 - **`docs/UX.md`** — added "Anonymous visitor at `/`" entry at the top of
   "Portal UI surfaces", documenting the three variants (`project`, `auto`,
   `login`), their render behaviour, the fallback policy, and the mockup path.
+
+## Review (2026-05-24)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**:
+- `data.landing_variant as LandingVariant` type cast in the store —
+  openapi-typescript should already generate the string-enum union, making
+  the cast redundant. Harmless either way.
+- The fallback `console.warn` logs the error object on network failure —
+  benign for an anonymous endpoint, but worth keeping aware of if the
+  endpoint ever grows authentication.
+
+**Notes**: Implementation matches Unit 2 design exactly. The wrapper-object
+rune store + module-level promise coalescing pattern is the right fit for
+the bootstrap-once-cache-forever shape. App.svelte changes are surgical:
+auth-gate gates on `portalInfo.loaded` before deciding variant, and the
+template-side ProjectLanding branch sits before the existing home branch so
+the in-place render takes precedence without disturbing other route
+handling. Mockup-to-Svelte translation faithful to Option 1 (Swiss / ITS).
+Tests are thorough — 30 new tests covering store, component, and the 6
+acceptance-criteria routing combinations. Full frontend suite green at
+723/723.
+
+This story stays in `.work/active/stories/` (no archive move) because its
+parent feature `feature-portal-visitor-entry-pages` is itself at `stage:
+review` (still active). Both children done now; the feature review can
+proceed.
