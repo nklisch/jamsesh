@@ -1,7 +1,7 @@
 ---
 id: gate-tests-hard-cap-idle-timeout-boundary-equality
 kind: story
-stage: review
+stage: done
 tags: [testing, portal, playground]
 parent: null
 depends_on: []
@@ -67,3 +67,13 @@ The tests lock two behaviors:
 Any future change that aligns `reasonFor` to use `!now.Before(...)` would
 correctly produce `"hard_cap"` / `"idle"` at the boundary; the tests would
 need to be updated accordingly, which is the intended forcing function.
+
+## Review notes
+
+Approve. Exemplary "test the truth + park the bug" execution. The story
+premise (SQL uses strict `>`) was wrong; the implementation read the real SQL,
+discovered `<=`, and additionally surfaced a `reasonFor` off-by-one. Tests
+honestly assert `"manual"` (current reality) with inline comments naming the
+mismatch. The bug is parked at
+`bug-playground-worker-reasonFor-off-by-one-at-exact-boundary` with explicit
+"update this test when fixing" guidance. Both tests pass.
