@@ -1,7 +1,7 @@
 ---
 id: gate-tests-portalinfo-method-not-allowed-cors
 kind: story
-stage: implementing
+stage: review
 tags: [testing, portal, api]
 parent: null
 depends_on: []
@@ -42,3 +42,24 @@ func TestGetPortalInfo_WrongMethodReturns405(t *testing.T) {
 `internal/portal/portalinfo/handler_test.go`. CORS depends on whether
 the portal sets CORS headers anywhere — file as `[documentation]` gap
 if absent.
+
+## Implementation notes
+
+- `TestGetPortalInfo_WrongMethodReturns405` walks POST/PUT/DELETE/PATCH
+  against `/api/portal/info` via the existing `testEnv` server and
+  asserts every response is HTTP 405 Method Not Allowed. This relies on
+  chi's default behaviour for routes registered via `.Get()` — the
+  router auto-emits 405 for other verbs on the same path.
+- `TestGetPortalInfo_OptionsPreflight` documents the current
+  CORS-preflight behaviour at `/api/portal/info`. The portal binary
+  installs no CORS middleware on this route, so the test pins what is
+  true today: OPTIONS returns a non-5xx response and
+  `Access-Control-Allow-Origin` is empty. The test comment explicitly
+  flags that this should be flipped to assert positive CORS headers if
+  the portal ever gains a CORS middleware on the public bootstrap
+  surface — surfacing the change here prevents silent CORS regressions.
+- No production code changed. The 405 contract was already implicitly
+  provided by chi's router; the test makes it explicit and regression-proof.
+- Verification: `go test ./internal/portal/portalinfo/... -count 1` →
+  full file passes including both new tests.
+

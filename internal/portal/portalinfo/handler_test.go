@@ -395,6 +395,89 @@ func TestGetPortalInfo_InvalidLandingVariantSurfacesError(t *testing.T) {
 	}
 }
 
+// TestGetPortalInfo_WrongMethodReturns405 asserts that POST/PUT/DELETE on
+// /api/portal/info yields 405 Method Not Allowed (NOT 200, NOT 404).
+// /api/portal/info is the SPA's bootstrap endpoint — a write verb
+// accidentally accepted would be a real bug surface, even if the handler
+// is harmless today, because the route would be silently malformed.
+//
+// Story: gate-tests-portalinfo-method-not-allowed-cors
+func TestGetPortalInfo_WrongMethodReturns405(t *testing.T) {
+	h := &portalinfo.Handler{PlaygroundEnabled: true, LandingVariant: "auto"}
+	env := newTestEnv(t, h)
+
+	methods := []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch}
+	for _, method := range methods {
+		t.Run(method, func(t *testing.T) {
+			req, err := http.NewRequest(method, env.srv.URL+"/api/portal/info", nil)
+			if err != nil {
+				t.Fatalf("new request: %v", err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s /api/portal/info: %v", method, err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusMethodNotAllowed {
+				t.Errorf("%s /api/portal/info: status=%d, want 405", method, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// TestGetPortalInfo_OptionsPreflight documents the current CORS-preflight
+// behaviour at /api/portal/info.
+//
+// The portal binary does NOT install any CORS middleware on this route
+// (search `cmd/portal/main.go` for `Access-Control` — no hits at the time
+// of writing). chi's default router responds to OPTIONS for a registered
+// path with the auto-allowed-methods header but no `Access-Control-*`
+// headers, which means cross-origin browser requests would fail preflight
+// in dev unless the operator runs the SPA from the same origin.
+//
+// Rather than assert a specific CORS contract that doesn't exist, this
+// test pins what IS true today: OPTIONS receives a non-5xx response and
+// no `Access-Control-Allow-Origin` is present. If a future change adds
+// CORS support to the public bootstrap endpoint, the test should be
+// flipped to assert the new headers.
+//
+// Story: gate-tests-portalinfo-method-not-allowed-cors
+func TestGetPortalInfo_OptionsPreflight(t *testing.T) {
+	h := &portalinfo.Handler{PlaygroundEnabled: true, LandingVariant: "auto"}
+	env := newTestEnv(t, h)
+
+	req, err := http.NewRequest(http.MethodOptions, env.srv.URL+"/api/portal/info", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	// Browser-style preflight headers — even though no CORS middleware is
+	// installed, this is the shape the test pins against.
+	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS /api/portal/info: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// The endpoint must respond — not 5xx, not connection-reset. The
+	// specific status (200, 204, 405) depends on chi's routing; pin only
+	// the "doesn't blow up" contract.
+	if resp.StatusCode >= 500 {
+		t.Errorf("OPTIONS /api/portal/info: status=%d, want <500", resp.StatusCode)
+	}
+
+	// Current behaviour: NO Access-Control-Allow-Origin header. If this
+	// flips, the test must be updated to assert the new CORS contract;
+	// surfacing the change here prevents silent CORS regressions on the
+	// public bootstrap surface.
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Access-Control-Allow-Origin: got %q, want empty (no CORS middleware on /api/portal/info today — update this test if CORS support is added intentionally)", got)
+	}
+}
+
 // TestGetPortalInfo_CacheControlNoStore asserts the Cache-Control: no-store
 // header is present so deploy-time config flips (PlaygroundEnabled,
 // LandingVariant) propagate immediately to all browsers and any
