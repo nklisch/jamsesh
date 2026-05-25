@@ -1,7 +1,7 @@
 ---
 id: idea-playground-ws-event-types-missing-from-openapi
 kind: story
-stage: review
+stage: done
 tags: [ui, refactor, openapi, playground]
 parent: null
 depends_on: []
@@ -45,3 +45,13 @@ both idle and hard-cap warnings, plus the standard `session.ended`).
 `grep -c PlaygroundDestructionWarning types.gen.ts` → 5 references).
 
 `playground.activity_reset` and `session.destroyed` are used by `SessionViewShell.svelte`'s WS subscriptions but are absent from `docs/openapi.yaml` and therefore from the generated `types.gen.ts`. This is a spec gap that blocks `story-refactor-replace-inline-event-types-with-openapi-typescript-gen` from switching the inline type annotations to generated types. The fix requires adding `PlaygroundActivityResetPayload` (fields: `last_substantive_activity_at: string`, `idle_timeout_at: string`) and `SessionDestroyedPayload` (empty payload) to the `EventEnvelope` discriminator in `docs/openapi.yaml`, re-running codegen, and then updating `SessionViewShell.svelte` to import the generated types. Additionally, `playground.destruction_warning` / `PlaygroundDestructionWarningPayload` already exists in the YAML but is absent from the generated file, indicating codegen has not been re-run since that schema was added.
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Confirmed stale. `events/types.go:28` and `docs/openapi.yaml:174/216` only list `playground.destruction_warning`; `types.gen.ts:854/1065/1411` includes the corresponding `PlaygroundDestructionWarningPayload`. The proposed event names (`playground.activity_reset`, `session.destroyed`) never landed — the chosen design uses `playground.destruction_warning` with a `reason` discriminator and the standard `session.ended`. No code change needed.
