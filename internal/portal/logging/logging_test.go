@@ -319,6 +319,61 @@ func TestAccessMiddlewareLogsRedactedQuery(t *testing.T) {
 	}
 }
 
+// TestAccessMiddlewareRedactsOAuthQueryParams pins the invariant that the
+// OAuth callback's `code` and `state` query parameters are stripped from
+// the access log's `query` field. Today the OAuth callback is POST with a
+// JSON body so these params never appear in the URL — but a future
+// regression or mis-route that exposes them as query parameters must not
+// leak secret values to disk.
+//
+// (gate-security-oauth-callback-log-scrubbing — defense-in-depth pin)
+func TestAccessMiddlewareRedactsOAuthQueryParams(t *testing.T) {
+	const secretCode = "github_authorization_code_xyz"
+	const secretState = "csrf_nonce_abc"
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/auth/oauth/callback?code="+secretCode+"&state="+secretState, nil)
+
+	logging.Access(nil)(inner).ServeHTTP(w, r)
+
+	line := strings.TrimSpace(buf.String())
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		t.Fatalf("decode log line: %v\nline: %s", err, line)
+	}
+
+	qs, ok := entry["query"].(string)
+	if !ok {
+		t.Fatalf("log missing 'query' field; got %#v", entry["query"])
+	}
+
+	if strings.Contains(qs, secretCode) {
+		t.Errorf("query field leaked raw OAuth code: %q", qs)
+	}
+	if strings.Contains(qs, secretState) {
+		t.Errorf("query field leaked raw OAuth state: %q", qs)
+	}
+	// The parameter names themselves must remain so the log is useful for
+	// debugging; only values are redacted.
+	if !strings.Contains(qs, "code=") {
+		t.Errorf("query field missing 'code=' key: %q", qs)
+	}
+	if !strings.Contains(qs, "state=") {
+		t.Errorf("query field missing 'state=' key: %q", qs)
+	}
+	if !strings.Contains(qs, "<redacted>") {
+		t.Errorf("query field missing redaction sentinel: %q", qs)
+	}
+}
+
 func TestAccessMiddlewareDurationAndBytes(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))

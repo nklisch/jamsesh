@@ -1,7 +1,7 @@
 ---
 id: gate-security-oauth-callback-log-scrubbing
 kind: story
-stage: implementing
+stage: review
 tags: [security, portal, logging, auth]
 parent: feature-server-secret-log-hygiene
 depends_on: []
@@ -109,3 +109,23 @@ func TestAccessMiddlewareRedactsOAuthQueryParams(t *testing.T) {
 - [ ] `TestAccessMiddlewareRedactsOAuthQueryParams` is added to `internal/portal/logging/logging_test.go`
 - [ ] Test passes: neither `code` nor `state` values appear in log output
 - [ ] `<redacted>` sentinel appears in the logged `query` field for both params
+
+## Implementation notes
+
+- Audit confirmed `code` and `state` are already in `sensitiveParams` in
+  `internal/portal/logging/redact.go`; the access middleware already routes
+  the query through `RedactQueryTokens`. Today the callback is POST + JSON
+  body so `code`/`state` never reach the URL — but a future regression
+  (route refactor, mis-route, GET fallback) must not leak.
+- Added `TestAccessMiddlewareRedactsOAuthQueryParams` in
+  `internal/portal/logging/logging_test.go`. The test:
+  - constructs a GET request to `/api/auth/oauth/callback?code=…&state=…`
+    with secret-shaped values;
+  - runs it through `logging.Access(nil)`;
+  - decodes the structured log line;
+  - asserts neither `code` nor `state` raw value appears in `query`,
+    the key names remain (`code=`, `state=`), and the `<redacted>`
+    sentinel is present.
+
+Verified: `go test ./internal/portal/logging/... -count 1` passes; the new
+test alone passes via `-run RedactsOAuth`.
