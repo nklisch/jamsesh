@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-handler-test-stepClock-unused
 kind: story
-stage: review
+stage: done
 tags: [cleanup]
 parent: null
 depends_on: []
