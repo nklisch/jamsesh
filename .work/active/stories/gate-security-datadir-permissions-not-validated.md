@@ -1,7 +1,7 @@
 ---
 id: gate-security-datadir-permissions-not-validated
 kind: story
-stage: review
+stage: done
 tags: [security, plugin, hardening]
 parent: feature-server-secret-log-hygiene
 depends_on: []
@@ -165,3 +165,13 @@ func WriteSessionToken(sessionID string, token []byte) error {
   applies the 0o700 mode literally), so fresh installs see no friction.
 
 Verified: `go test ./cmd/jamsesh/... -count 1` passes (all packages).
+
+## Review (2026-05-25)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Refuse-don't-remediate is the correct posture — silent chmod could mask a configured-shared-dir intent. `checkDirPerms` is small, applied at all three sites (env path, XDG path, session subdir). Tests cover 0700 (accept), 0750/0755 (refuse), and the error message asserts both the actual mode and the `chmod 700` remediation. The test-debt sweep across 19 test files is a forced consequence of `t.TempDir()`'s default 0o755 — the chmod-then-setenv pattern is correct and minimal.
