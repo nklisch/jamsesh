@@ -109,7 +109,7 @@ func (r *Refresher) doRefresh(ctx context.Context) error {
 
 	// Write the new access token to the per-session path when a session is
 	// bound to this CC instance. This is required because the legacy
-	// ${CLAUDE_PLUGIN_DATA}/token file is replaced with a MIGRATED_TO_PER_SESSION
+	// ${data-dir}/token file is replaced with a MIGRATED_TO_PER_SESSION
 	// stub after the unified per-session storage migration runs; writing back to
 	// that path would overwrite the stub and break the migration invariant.
 	//

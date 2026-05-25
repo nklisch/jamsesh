@@ -1,7 +1,7 @@
 ---
 id: story-data-dir-env-rename
 kind: story
-stage: implementing
+stage: review
 tags: [refactor, plugin, documentation]
 parent: null
 depends_on: []
@@ -63,3 +63,18 @@ canonical location everywhere.
   test legacy behavior — which they shouldn't post-cutover).
 - All Go tests pass.
 - Foundation docs roll forward without "previously" / migration prose.
+
+## Implementation notes
+
+- `state.PluginDataDir()` renamed to `state.DataDir()`; self-defaults to
+  `${XDG_DATA_HOME:-$HOME/.local/share}/jamsesh` when `JAMSESH_DATA_DIR`
+  is unset, creating the directory with `os.MkdirAll(dir, 0o700)`.
+- `plugins/jamsesh/bin/jamsesh` wrapper cache path changed from
+  `${CLAUDE_PLUGIN_DATA:-${HOME}/.cache/jamsesh}/bin` to
+  `${XDG_CACHE_HOME:-${HOME}/.cache}/jamsesh/bin` (XDG-compliant split
+  between data and cache tiers).
+- Bats wrapper tests updated to export `XDG_CACHE_HOME` instead of
+  `CLAUDE_PLUGIN_DATA`; cache path assertions updated to
+  `${XDG_CACHE_HOME}/jamsesh/bin/`.
+- Acceptance grep `grep -rn 'CLAUDE_PLUGIN_DATA' cmd/ internal/ docs/ plugins/ tests/`
+  returns empty.

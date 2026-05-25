@@ -242,7 +242,7 @@ func endsInString(hardCap, idleTimeout time.Time) string {
 // readSessionState reads orgID and your ref from the per-session state directory.
 // Missing files silently return empty strings; callers must handle empty orgID.
 func readSessionState(sessionID string) (orgID, yourRef string) {
-	dir, err := state.PluginDataDir()
+	dir, err := state.DataDir()
 	if err != nil {
 		return "", ""
 	}
@@ -260,7 +260,7 @@ func readSessionState(sessionID string) (orgID, yourRef string) {
 // readNickname returns the joiner's nickname for a playground session.
 // If the sidecar file is absent, an empty string is returned.
 func readNickname(sessionID string) string {
-	dir, err := state.PluginDataDir()
+	dir, err := state.DataDir()
 	if err != nil {
 		return ""
 	}

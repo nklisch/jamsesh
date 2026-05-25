@@ -16,13 +16,13 @@ import (
 	"jamsesh/internal/api/openapi"
 )
 
-// setupNewEnv creates a temp CLAUDE_PLUGIN_DATA dir, writes a fake access
+// setupNewEnv creates a temp JAMSESH_DATA_DIR dir, writes a fake access
 // token, and points JAMSESH_PORTAL_URL at the given test server URL.
 // It returns the temp dir path.
 func setupNewEnv(t *testing.T, srvURL string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok-test"), 0o600); err != nil {
 		t.Fatalf("writing token: %v", err)
@@ -226,7 +226,7 @@ func TestNewAction_happyPathMultiOrg(t *testing.T) {
 
 func TestNewAction_nonInteractiveRequiresOrg(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:19998")
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok"), 0o600); err != nil {
 		t.Fatal(err)
@@ -593,13 +593,13 @@ func TestNormalizeScope(t *testing.T) {
 
 // ---- Playground tests ----
 
-// setupPlaygroundEnv creates a temp CLAUDE_PLUGIN_DATA dir WITHOUT an OAuth
+// setupPlaygroundEnv creates a temp JAMSESH_DATA_DIR dir WITHOUT an OAuth
 // token file (playground is unauthenticated) and points JAMSESH_PORTAL_URL at
 // the given test server URL. Returns the temp dir path.
 func setupPlaygroundEnv(t *testing.T, srvURL string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	// Deliberately NO token file — playground must not require auth.
 	return dir
@@ -750,7 +750,7 @@ func TestPlaygroundAction_namePassthrough(t *testing.T) {
 func TestPlaygroundAction_mutuallyExclusiveWithOrg(t *testing.T) {
 	// No server needed — error fires before any network call.
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:19997")
 	// Write a token so buildPortalClient doesn't also error (guard fires first,
 	// but be defensive to keep the test focused).
@@ -912,7 +912,7 @@ func TestPlaygroundAction_pushUsesBearerNotOAuthToken(t *testing.T) {
 
 	// Set up env WITHOUT an OAuth token — playground must not need one.
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	// Capture all git-with-env calls so we can inspect the extraHeader arg.

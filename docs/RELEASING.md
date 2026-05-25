@@ -29,7 +29,7 @@ a `v*` tag to GitHub triggers `.github/workflows/release.yml`, which:
    `plugins/jamsesh/bin/jamsesh` wrapper script in the plugin fetches the
    matching binary from the release's GitHub assets on first run, verifies
    via sha256 + optional cosign, and caches under
-   `${CLAUDE_PLUGIN_DATA}/bin/`.
+   `${XDG_CACHE_HOME:-$HOME/.cache}/jamsesh/bin/`.
 
 The substrate's release-deploy skill (`/agile-workflow:release-deploy`)
 handles steps the maintainer takes locally before pushing the tag —

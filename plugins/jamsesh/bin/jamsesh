@@ -4,8 +4,8 @@
 # On first invocation, downloads the per-arch jamsesh binary matching
 # JAMSESH_PLUGIN_VERSION from the corresponding GitHub release asset,
 # verifies it (sha256 + optional cosign), caches under
-# ${CLAUDE_PLUGIN_DATA}/bin/, and execs it. Subsequent invocations exec
-# directly from cache.
+# ${XDG_CACHE_HOME:-$HOME/.cache}/jamsesh/bin/, and execs it. Subsequent
+# invocations exec directly from cache.
 #
 # Override env vars (advanced):
 #   JAMSESH_BIN_OVERRIDE             absolute path to an already-built binary
@@ -56,7 +56,7 @@ esac
 binary_name="jamsesh-${os}-${arch}${ext}"
 
 # ── 4. Cache hit? ────────────────────────────────────────────────────────────
-cache_dir="${CLAUDE_PLUGIN_DATA:-${HOME}/.cache/jamsesh}/bin"
+cache_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/jamsesh/bin"
 cached="${cache_dir}/jamsesh-${version}-${os}-${arch}${ext}"
 if [[ -x "${cached}" ]]; then
   log "cache hit: ${cached}"

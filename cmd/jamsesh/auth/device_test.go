@@ -30,7 +30,7 @@ func (f *fakeSleeper) sleep(d time.Duration) {
 // on the first poll.
 func TestDeviceFlowHappyPath(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", stateDir)
+	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
 	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -94,7 +94,7 @@ func TestDeviceFlowHappyPath(t *testing.T) {
 // for two polls, then succeeds.
 func TestDeviceFlowAuthorizationPending(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", stateDir)
+	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
 	var pollCount atomic.Int32
 
@@ -146,7 +146,7 @@ func TestDeviceFlowAuthorizationPending(t *testing.T) {
 // add 5 s to the interval.
 func TestDeviceFlowSlowDown(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", stateDir)
+	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
 	var pollCount atomic.Int32
 
@@ -203,7 +203,7 @@ func TestDeviceFlowSlowDown(t *testing.T) {
 // return an error without writing tokens.
 func TestDeviceFlowExpiredToken(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", stateDir)
+	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
 	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -245,7 +245,7 @@ func TestDeviceFlowExpiredToken(t *testing.T) {
 // TestDeviceFlowAccessDenied: server returns access_denied.
 func TestDeviceFlowAccessDenied(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", stateDir)
+	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
 	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -282,7 +282,7 @@ func TestDeviceFlowAccessDenied(t *testing.T) {
 // TestDeviceFlowContextCancellation: cancelling the context stops polling.
 func TestDeviceFlowContextCancellation(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", stateDir)
+	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
 	// A portal that always returns authorization_pending — we'll cancel the
 	// context before it would ever succeed.

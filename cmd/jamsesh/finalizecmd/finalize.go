@@ -91,7 +91,7 @@ func finalizeLocal(ctx context.Context, portalURL, sessionID string) error {
 // `jamsesh join`. Returns an error if the file is missing — this
 // state is required for any portal call that is session-scoped.
 func readOrgIDForSession(sessionID string) (string, error) {
-	dir, err := state.PluginDataDir()
+	dir, err := state.DataDir()
 	if err != nil {
 		return "", err
 	}

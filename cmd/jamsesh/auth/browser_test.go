@@ -13,12 +13,12 @@ import (
 	"testing"
 )
 
-// setupTestStateDir creates a temp directory and sets CLAUDE_PLUGIN_DATA.
+// setupTestStateDir creates a temp directory and sets JAMSESH_DATA_DIR.
 // Returns a cleanup function.
 func setupTestStateDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	return dir
 }
 
@@ -262,7 +262,7 @@ func TestCommandHelpShowsDeviceCodeFlag(t *testing.T) {
 // parameters to the portal's token endpoint.
 func TestExchangeCodeRequest(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", stateDir)
+	t.Setenv("JAMSESH_DATA_DIR", stateDir)
 
 	var gotForm url.Values
 	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

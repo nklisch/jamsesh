@@ -1,6 +1,6 @@
 // Invariant: Running the real `jamsesh new --playground` binary against the
 // real portal creates a playground session, prints the session ID and share
-// URL, persists the anonymous bearer to $CLAUDE_PLUGIN_DATA/sessions/<id>/token,
+// URL, persists the anonymous bearer to $JAMSESH_DATA_DIR/sessions/<id>/token,
 // and the resulting session is visible via GET /api/playground/sessions/{id}.
 // The bare repo also exists on the portal container filesystem at
 // /tmp/jamsesh-repos/orgs/org_playground/sessions/<id>.git (Unit 5
@@ -47,7 +47,7 @@ func TestCLI_JamPlayground(t *testing.T) {
 	// --- Build the real CLI binary ---
 	binPath := binary.Build(t)
 
-	// --- Per-test CLAUDE_PLUGIN_DATA so state writes are isolated ---
+	// --- Per-test JAMSESH_DATA_DIR so state writes are isolated ---
 	pluginDataDir := t.TempDir()
 
 	// --- Init a git repo with one commit on main ---
@@ -68,14 +68,14 @@ func TestCLI_JamPlayground(t *testing.T) {
 
 	// --- Invoke the binary: jamsesh new --playground ---
 	// JAMSESH_PORTAL_URL overrides the portal URL in state.ReadPortalURL().
-	// CLAUDE_PLUGIN_DATA directs all state reads/writes to our tempdir.
+	// JAMSESH_DATA_DIR directs all state reads/writes to our tempdir.
 	// The binary is executed in repoDir so git commands find the working tree.
 	cmd := exec.CommandContext(ctx, binPath, "new", "--playground")
 	cmd.Dir = repoDir
 	cmd.Env = append(
 		minimalEnv(), // only PATH and HOME so git works; avoids real ~/.jamsesh
 		"JAMSESH_PORTAL_URL="+p.URL,
-		"CLAUDE_PLUGIN_DATA="+pluginDataDir,
+		"JAMSESH_DATA_DIR="+pluginDataDir,
 	)
 	out, runErr := cmd.CombinedOutput()
 	if runErr != nil {
@@ -100,7 +100,7 @@ func TestCLI_JamPlayground(t *testing.T) {
 	sessionID := extractPlaygroundSessionID(t, outStr, p.URL)
 	t.Logf("session ID: %s", sessionID)
 
-	// --- Assert per-session state written to CLAUDE_PLUGIN_DATA ---
+	// --- Assert per-session state written to JAMSESH_DATA_DIR ---
 	// writePlaygroundSessionState writes:
 	//   sessions/<id>/token  (written by state.WriteSessionToken before the push)
 	//   sessions/<id>/org_id
@@ -253,7 +253,7 @@ func mustGit(t *testing.T, dir string, args ...string) {
 
 // minimalEnv returns a minimal environment slice containing PATH and HOME so
 // that git and the binary's subprocesses work without inheriting anything that
-// could interfere with the test (e.g. a real CLAUDE_PLUGIN_DATA or
+// could interfere with the test (e.g. a real JAMSESH_DATA_DIR or
 // JAMSESH_PORTAL_URL from the developer's shell).
 func minimalEnv() []string {
 	env := []string{}

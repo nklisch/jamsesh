@@ -8,40 +8,56 @@ import (
 	"testing"
 )
 
-// withPluginData sets CLAUDE_PLUGIN_DATA to dir for the duration of the test
+// withDataDir sets JAMSESH_DATA_DIR to dir for the duration of the test
 // and restores the original value (or unsets) on cleanup.
-func withPluginData(t *testing.T, dir string) {
+func withDataDir(t *testing.T, dir string) {
 	t.Helper()
-	orig, had := os.LookupEnv("CLAUDE_PLUGIN_DATA")
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	orig, had := os.LookupEnv("JAMSESH_DATA_DIR")
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Cleanup(func() {
 		if had {
-			_ = os.Setenv("CLAUDE_PLUGIN_DATA", orig)
+			_ = os.Setenv("JAMSESH_DATA_DIR", orig)
 		} else {
-			_ = os.Unsetenv("CLAUDE_PLUGIN_DATA")
+			_ = os.Unsetenv("JAMSESH_DATA_DIR")
 		}
 	})
 }
 
-// TestPluginDataDir_unset asserts an error when CLAUDE_PLUGIN_DATA is absent.
-func TestPluginDataDir_unset(t *testing.T) {
-	t.Setenv("CLAUDE_PLUGIN_DATA", "")
-	_, err := PluginDataDir()
-	if err == nil {
-		t.Fatal("expected error when CLAUDE_PLUGIN_DATA is empty, got nil")
-	}
+// withPluginData is an alias for withDataDir retained for test-helper compatibility.
+func withPluginData(t *testing.T, dir string) {
+	t.Helper()
+	withDataDir(t, dir)
 }
 
-// TestPluginDataDir_set asserts the env value is returned as-is.
-func TestPluginDataDir_set(t *testing.T) {
-	want := "/tmp/fake-plugin-data"
-	t.Setenv("CLAUDE_PLUGIN_DATA", want)
-	got, err := PluginDataDir()
+// TestDataDir_envOverride asserts JAMSESH_DATA_DIR is honoured when set.
+func TestDataDir_envOverride(t *testing.T) {
+	want := t.TempDir()
+	t.Setenv("JAMSESH_DATA_DIR", want)
+	got, err := DataDir()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got != want {
-		t.Errorf("PluginDataDir() = %q, want %q", got, want)
+		t.Errorf("DataDir() = %q, want %q", got, want)
+	}
+}
+
+// TestDataDir_xdgDefault asserts the XDG fallback path when JAMSESH_DATA_DIR is unset.
+func TestDataDir_xdgDefault(t *testing.T) {
+	t.Setenv("JAMSESH_DATA_DIR", "")
+	xdgBase := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdgBase)
+	got, err := DataDir()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := filepath.Join(xdgBase, "jamsesh")
+	if got != want {
+		t.Errorf("DataDir() = %q, want %q", got, want)
+	}
+	// Directory must have been created.
+	if _, statErr := os.Stat(got); statErr != nil {
+		t.Errorf("DataDir() did not create directory: %v", statErr)
 	}
 }
 

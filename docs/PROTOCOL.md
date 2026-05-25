@@ -413,12 +413,14 @@ All events share a common envelope:
 - `auto-merger.backpressure` — payload: `{session_id, dropped_ref}` (schema: [AutoMergerBackpressurePayload](./openapi.yaml#/components/schemas/AutoMergerBackpressurePayload))
 - `session.created` — payload: full session created event (schema: [SessionCreatedPayload](./openapi.yaml#/components/schemas/SessionCreatedPayload))
 
-## Local state schema (`${CLAUDE_PLUGIN_DATA}/`)
+## Local state schema (`${JAMSESH_DATA_DIR}/`)
 
-The local binary's state on disk.
+The local binary's state on disk. `JAMSESH_DATA_DIR` defaults to
+`${XDG_DATA_HOME:-$HOME/.local/share}/jamsesh` when the environment
+variable is unset.
 
 ```
-${CLAUDE_PLUGIN_DATA}/
+${JAMSESH_DATA_DIR}/
 ├── token                 root-level account OAuth token (mode 0600);
 │                         a `MIGRATED_TO_PER_SESSION` stub for accounts
 │                         whose per-session tokens have superseded it

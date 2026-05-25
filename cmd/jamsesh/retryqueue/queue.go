@@ -33,9 +33,9 @@ type Queue struct {
 }
 
 // Path returns the absolute path of the queue JSON file.
-// The path is ${CLAUDE_PLUGIN_DATA}/sessions/<sessionID>/retry-queue.json.
+// The path is ${data-dir}/sessions/<sessionID>/retry-queue.json.
 func (q *Queue) Path() (string, error) {
-	dir, err := state.PluginDataDir()
+	dir, err := state.DataDir()
 	if err != nil {
 		return "", err
 	}

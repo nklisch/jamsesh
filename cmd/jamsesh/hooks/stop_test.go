@@ -35,7 +35,7 @@ const stopInput = `{"session_id":"cc","transcript_path":""}`
 
 func TestStop_noSession(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("CC_SESSION_ID", "")
 
 	setHookRunGit(t, func(_ ...string) (string, string, int) { return "", "", 0 })

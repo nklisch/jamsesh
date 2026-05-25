@@ -9,10 +9,10 @@ import (
 	"jamsesh/cmd/jamsesh/retryqueue"
 )
 
-// withPluginData sets CLAUDE_PLUGIN_DATA for the duration of the test.
+// withPluginData sets JAMSESH_DATA_DIR for the duration of the test.
 func withPluginData(t *testing.T, dir string) {
 	t.Helper()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 }
 
 func newQueue(t *testing.T, dir string) *retryqueue.Queue {

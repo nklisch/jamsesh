@@ -31,8 +31,8 @@ type fetchSource struct {
 	cleanup func() error
 }
 
-// chooseFetchSource picks local-first when the plugin state file
-// `${CLAUDE_PLUGIN_DATA}/sessions/<sid>/local_path` points to a real git
+// chooseFetchSource picks local-first when the state file
+// `${data-dir}/sessions/<sid>/local_path` points to a real git
 // repo on disk; otherwise falls back to HTTPS by minting an ephemeral
 // fetch-token via the portal and registering a temporary jamsesh remote.
 //
@@ -137,14 +137,14 @@ var removeJamseshRemote = func() error {
 	return fmt.Errorf("git remote remove %s: %w: %s", jamseshRemoteName, err, strings.TrimSpace(out))
 }
 
-// localPathForSession reads ${CLAUDE_PLUGIN_DATA}/sessions/<sid>/local_path
+// localPathForSession reads ${data-dir}/sessions/<sid>/local_path
 // and verifies the recorded path looks like a git repo. Returns
 // (path, true) on success; (_ , false) on any miss (state dir absent,
 // file absent, path missing on disk, path is not a git repo). The
 // errors are intentionally swallowed: local-first is a best-effort
 // optimization and any miss falls back to HTTPS.
 func localPathForSession(sessionID string) (string, bool) {
-	dir, err := state.PluginDataDir()
+	dir, err := state.DataDir()
 	if err != nil {
 		return "", false
 	}

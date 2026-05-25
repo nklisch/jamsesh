@@ -15,7 +15,7 @@ import (
 func setupRefreshDir(t *testing.T, refreshToken string) {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	if err := os.WriteFile(dir+"/refresh_token", []byte(refreshToken), 0o600); err != nil {
 		t.Fatalf("writing refresh_token: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestRefresher_Refresh_WritesTokens(t *testing.T) {
 		t.Fatalf("Refresh error: %v", err)
 	}
 
-	dir := os.Getenv("CLAUDE_PLUGIN_DATA")
+	dir := os.Getenv("JAMSESH_DATA_DIR")
 	gotAccess, _ := os.ReadFile(dir + "/token")
 	gotRefresh, _ := os.ReadFile(dir + "/refresh_token")
 
@@ -121,9 +121,9 @@ func TestRefresher_Refresh_ServerError(t *testing.T) {
 }
 
 func TestRefresher_Refresh_MissingRefreshToken(t *testing.T) {
-	// CLAUDE_PLUGIN_DATA set but no refresh_token file.
+	// JAMSESH_DATA_DIR set but no refresh_token file.
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 
 	r := &Refresher{BaseURL: "http://unused"}
 	err := r.Refresh(context.Background())

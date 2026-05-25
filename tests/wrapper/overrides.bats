@@ -105,11 +105,11 @@ SHIM_EOF
   # Our shim strips the path prefix, so assert the version appears in the
   # wrapper's original URL by checking the log captured BEFORE rewriting.
   # Better: check the cached binary filename which embeds the version.
-  local cached="${CLAUDE_PLUGIN_DATA}/bin/jamsesh-${custom_version}-${_os}-${_arch}"
+  local cached="${XDG_CACHE_HOME}/jamsesh/bin/jamsesh-${custom_version}-${_os}-${_arch}"
   [ -f "${cached}" ] || {
     echo "Expected cached file not found: ${cached}" >&2
     echo "Cache dir contents:" >&2
-    ls "${CLAUDE_PLUGIN_DATA}/bin/" >&2
+    ls "${XDG_CACHE_HOME}/jamsesh/bin/" >&2
     return 1
   }
 }

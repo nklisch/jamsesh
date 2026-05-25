@@ -53,7 +53,7 @@ On success:
    portal-side bare repo (the base SHA is stamped by the portal's
    post-receive hook).
 3. Per-session state files are written to
-   `${CLAUDE_PLUGIN_DATA}/sessions/<session-id>/` (ref, org_id, account_id,
+   `${JAMSESH_DATA_DIR}/sessions/<session-id>/` (ref, org_id, account_id,
    last_seen_seq). The `instance_id` binding happens at first
    `/jamsesh:jam join` — not here, since the user may run
    `jamsesh new` from plain bash without a CC instance attached.
@@ -107,7 +107,7 @@ fires first.
 3. The same flow is available from the CLI as
    `jamsesh new --playground`; the flag binds the new session to the
    playground org and writes the anonymous bearer into the per-session
-   token file at `${CLAUDE_PLUGIN_DATA}/sessions/<id>/token`.
+   token file at `${JAMSESH_DATA_DIR}/sessions/<id>/token`.
 
 ## Flow: joining a playground
 

@@ -16,8 +16,8 @@ type Logger interface {
 }
 
 // MigrateToPerSessionTokens fans out the legacy account-wide token
-// (${CLAUDE_PLUGIN_DATA}/token) into per-session token files at
-// ${CLAUDE_PLUGIN_DATA}/sessions/<id>/token for every session directory that
+// (${data-dir}/token) into per-session token files at
+// ${data-dir}/sessions/<id>/token for every session directory that
 // exists under sessions/.
 //
 // Migration is idempotent and safe to call on every binary invocation:

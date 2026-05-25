@@ -1,6 +1,7 @@
-// Package state provides read/write helpers for the Claude plugin's local
-// data directory, rooted at ${CLAUDE_PLUGIN_DATA}. All credential files are
-// written at mode 0600. All writes are atomic via temp-file + rename.
+// Package state provides read/write helpers for the jamsesh local data
+// directory, rooted at ${JAMSESH_DATA_DIR} (defaults to
+// ${XDG_DATA_HOME:-$HOME/.local/share}/jamsesh when unset). All credential
+// files are written at mode 0600. All writes are atomic via temp-file + rename.
 package state
 
 import (
@@ -19,21 +20,43 @@ import (
 // explicit configuration on first use so the choice is conscious.
 const DefaultPortalURL = "https://jamsesh.dev"
 
-// PluginDataDir returns the value of CLAUDE_PLUGIN_DATA, or an error if
-// the environment variable is unset or empty.
-func PluginDataDir() (string, error) {
-	dir := os.Getenv("CLAUDE_PLUGIN_DATA")
-	if dir == "" {
-		return "", errors.New("CLAUDE_PLUGIN_DATA is not set; this binary must be invoked by the Claude Code plugin runtime")
+// DataDir returns the jamsesh data directory. Resolution order:
+//  1. JAMSESH_DATA_DIR environment variable (if set and non-empty).
+//  2. ${XDG_DATA_HOME}/jamsesh when XDG_DATA_HOME is set and non-empty.
+//  3. ${HOME}/.local/share/jamsesh — XDG base-dir spec default.
+//
+// The directory is created (mkdir -p, mode 0700) if it does not already exist.
+// No error is returned when JAMSESH_DATA_DIR is unset — the XDG default is used.
+func DataDir() (string, error) {
+	if d := os.Getenv("JAMSESH_DATA_DIR"); d != "" {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			return "", fmt.Errorf("creating JAMSESH_DATA_DIR %q: %w", d, err)
+		}
+		return d, nil
+	}
+
+	var base string
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		base = xdg
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolving home directory for data dir: %w", err)
+		}
+		base = filepath.Join(home, ".local", "share")
+	}
+	dir := filepath.Join(base, "jamsesh")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("creating data dir %q: %w", dir, err)
 	}
 	return dir, nil
 }
 
-// Read returns the contents of <PluginDataDir>/<name>. Returns
+// Read returns the contents of <DataDir>/<name>. Returns
 // fs.ErrNotExist (unwrapped from the underlying os error) when the file
 // does not exist so callers can use errors.Is(err, fs.ErrNotExist).
 func Read(name string) ([]byte, error) {
-	dir, err := PluginDataDir()
+	dir, err := DataDir()
 	if err != nil {
 		return nil, err
 	}
@@ -47,11 +70,11 @@ func Read(name string) ([]byte, error) {
 	return data, nil
 }
 
-// Write atomically writes data to <PluginDataDir>/<name> with the given
+// Write atomically writes data to <DataDir>/<name> with the given
 // mode. Atomicity is achieved by writing to a sibling temp file and then
 // renaming it over the target. The temp file is always removed on failure.
 func Write(name string, data []byte, mode fs.FileMode) error {
-	dir, err := PluginDataDir()
+	dir, err := DataDir()
 	if err != nil {
 		return err
 	}
@@ -158,7 +181,7 @@ func ReadCurrentBearer(sessionID string) (string, error) {
 // WriteSessionToken stores the bearer token for the given session at mode 0600.
 // The sessions/<sessionID>/ directory is created if it does not already exist.
 func WriteSessionToken(sessionID string, token []byte) error {
-	dir, err := PluginDataDir()
+	dir, err := DataDir()
 	if err != nil {
 		return err
 	}
@@ -170,9 +193,9 @@ func WriteSessionToken(sessionID string, token []byte) error {
 }
 
 // ListSessions returns the IDs of all sessions that have a subdirectory under
-// ${CLAUDE_PLUGIN_DATA}/sessions/. The order is not guaranteed.
+// ${data-dir}/sessions/. The order is not guaranteed.
 func ListSessions() ([]string, error) {
-	dir, err := PluginDataDir()
+	dir, err := DataDir()
 	if err != nil {
 		return nil, err
 	}
@@ -196,12 +219,12 @@ func ListSessions() ([]string, error) {
 // CurrentSessionID returns the jamsesh session ID bound to the current Claude
 // Code instance, and true. It locates the binding by matching the
 // CLAUDE_SESSION_ID environment variable against the instance_id files stored
-// under ${CLAUDE_PLUGIN_DATA}/sessions/<sessionID>/instance_id.
+// under ${data-dir}/sessions/<sessionID>/instance_id.
 //
 // When CLAUDE_SESSION_ID is not set or no matching binding is found, it returns
 // ("", false) — callers should omit the Jam-Session-Id header in that case.
 func CurrentSessionID() (string, bool) {
-	dir, err := PluginDataDir()
+	dir, err := DataDir()
 	if err != nil {
 		return "", false
 	}
@@ -235,7 +258,7 @@ func CurrentSessionID() (string, bool) {
 
 // ReadPortalURL resolves the portal URL with the following precedence:
 //  1. JAMSESH_PORTAL_URL environment variable
-//  2. ${CLAUDE_PLUGIN_DATA}/portal_url file (trimmed)
+//  2. ${JAMSESH_DATA_DIR}/portal_url file (trimmed)
 //  3. DefaultPortalURL constant
 func ReadPortalURL() (string, error) {
 	if u := os.Getenv("JAMSESH_PORTAL_URL"); u != "" {

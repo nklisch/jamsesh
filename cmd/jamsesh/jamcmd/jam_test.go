@@ -28,11 +28,11 @@ func buildTestApp() *cli.Command {
 	}
 }
 
-// setupTestEnv creates a temp CLAUDE_PLUGIN_DATA dir and sets required env vars.
+// setupTestEnv creates a temp JAMSESH_DATA_DIR dir and sets required env vars.
 func setupTestEnv(t *testing.T, portalURL string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", portalURL)
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok-test"), 0o600); err != nil {
 		t.Fatalf("writing token: %v", err)

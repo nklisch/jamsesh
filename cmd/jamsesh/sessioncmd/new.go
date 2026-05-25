@@ -299,12 +299,12 @@ func pushBaseRef(ctx context.Context, pc *portalclient.Client, sessionID string)
 }
 
 // writeNewSessionState writes the per-session state files under
-// ${CLAUDE_PLUGIN_DATA}/sessions/<sessionID>/. The instance_id binding is NOT
+// ${data-dir}/sessions/<sessionID>/. The instance_id binding is NOT
 // written here because jamsesh new may be run from plain bash without a CC
 // instance attached — binding happens at first attach (via /jamsesh:join or
 // equivalent).
 func writeNewSessionState(session openapi.Session, params CreateParams) error {
-	dir, err := state.PluginDataDir()
+	dir, err := state.DataDir()
 	if err != nil {
 		return err
 	}
@@ -458,7 +458,7 @@ func pushBaseRefWithBearer(baseURL, sessionID, bearer string) error {
 // to bind at create time (no durable account — the anonymous bearer is the
 // credential).
 func writePlaygroundSessionState(session openapi.PlaygroundSessionSummary) error {
-	dir, err := state.PluginDataDir()
+	dir, err := state.DataDir()
 	if err != nil {
 		return err
 	}

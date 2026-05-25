@@ -16,13 +16,13 @@ import (
 	"jamsesh/internal/api/openapi"
 )
 
-// setupHookEnv creates a temp CLAUDE_PLUGIN_DATA dir, writes credentials and
+// setupHookEnv creates a temp JAMSESH_DATA_DIR dir, writes credentials and
 // session state, and points JAMSESH_PORTAL_URL at the given test server URL.
 // Returns the dir path.
 func setupHookEnv(t *testing.T, srvURL, sessionID, orgID, ref, accountID string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	t.Setenv("CC_SESSION_ID", "") // use first-dir fallback
 
@@ -78,9 +78,9 @@ func additionalContext(t *testing.T, r map[string]any) string {
 }
 
 func TestSessionStart_noSession(t *testing.T) {
-	// No CLAUDE_PLUGIN_DATA → no session → empty output.
+	// No JAMSESH_DATA_DIR → no session → empty output.
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:9")
 	t.Setenv("CC_SESSION_ID", "")
 

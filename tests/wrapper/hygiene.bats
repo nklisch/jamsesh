@@ -52,7 +52,7 @@ teardown() {
 
   # The wrapper removes the tmpdir before exec (EXIT trap removed before exec,
   # explicit rm -rf before exec).  No .tmp.* dirs should remain.
-  local cache_bin_dir="${CLAUDE_PLUGIN_DATA}/bin"
+  local cache_bin_dir="${XDG_CACHE_HOME}/jamsesh/bin"
   local orphan_count
   orphan_count=$(find "${cache_bin_dir}" -maxdepth 1 -name '.tmp.*' 2>/dev/null | wc -l)
   [ "${orphan_count}" -eq 0 ]
@@ -70,7 +70,7 @@ teardown() {
   [ "$status" -ne 0 ]  # must fail
 
   # Even on failure the EXIT trap fires and cleans up the tmpdir.
-  local cache_bin_dir="${CLAUDE_PLUGIN_DATA}/bin"
+  local cache_bin_dir="${XDG_CACHE_HOME}/jamsesh/bin"
   local orphan_count
   orphan_count=$(find "${cache_bin_dir}" -maxdepth 1 -name '.tmp.*' 2>/dev/null | wc -l)
   [ "${orphan_count}" -eq 0 ]

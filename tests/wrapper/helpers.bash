@@ -10,12 +10,12 @@
 # ---------------------------------------------------------------------------
 # setup_wrapper_test
 #   Full setup for a wrapper test:
-#     1. Creates an isolated CLAUDE_PLUGIN_DATA dir under BATS_TMPDIR.
+#     1. Creates an isolated XDG_CACHE_HOME dir under BATS_TMPDIR.
 #     2. Creates a per-test shim dir and prepends it to PATH.
 #     3. Creates a per-test mock release dir.
 #     4. Starts a Python HTTP mock release server pointing at the release dir.
 #
-#   Exports: CLAUDE_PLUGIN_DATA, SHIM_DIR, RELEASE_DIR, MOCK_PORT, PATH
+#   Exports: XDG_CACHE_HOME, SHIM_DIR, RELEASE_DIR, MOCK_PORT, PATH
 #
 #   Call this from your test file's setup() function.
 # ---------------------------------------------------------------------------
@@ -24,9 +24,10 @@ setup_wrapper_test() {
   # BATS_TEST_NUMBER is set by bats-core to the sequential test index.
   local test_id="${BATS_TEST_NUMBER:-$$}"
 
-  # Isolated plugin cache dir — no test can see another test's cached binary.
-  export CLAUDE_PLUGIN_DATA="${BATS_TMPDIR}/cache_${test_id}"
-  mkdir -p "${CLAUDE_PLUGIN_DATA}"
+  # Isolated XDG cache dir — no test can see another test's cached binary.
+  # The wrapper caches under ${XDG_CACHE_HOME}/jamsesh/bin/.
+  export XDG_CACHE_HOME="${BATS_TMPDIR}/cache_${test_id}"
+  mkdir -p "${XDG_CACHE_HOME}/jamsesh/bin"
 
   # Shim dir — prepended to PATH so our fake curl/uname/cosign shadow real ones.
   export SHIM_DIR="${BATS_TMPDIR}/shims_${test_id}"
@@ -64,6 +65,7 @@ teardown_wrapper_test() {
     "${BATS_TMPDIR}/cache_${test_id}" \
     "${BATS_TMPDIR}/shims_${test_id}" \
     "${BATS_TMPDIR}/release_${test_id}"
+  unset XDG_CACHE_HOME
 }
 
 # ---------------------------------------------------------------------------

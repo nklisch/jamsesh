@@ -16,7 +16,7 @@ import (
 )
 
 // setupDurableSession creates the per-session state for a single durable session
-// under CLAUDE_PLUGIN_DATA. It writes the per-session token, org_id, and
+// under JAMSESH_DATA_DIR. It writes the per-session token, org_id, and
 // optionally ref. Returns the session dir.
 func setupDurableSession(t *testing.T, dir, sessionID, orgID, yourRef, token string) {
 	t.Helper()
@@ -137,7 +137,7 @@ func TestStatusAction_durableSession(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupDurableSession(t, dir, sessionID, orgID, "jam/"+sessionID+"/acct-001/main", token)
@@ -198,7 +198,7 @@ func TestStatusAction_playgroundSession(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupPlaygroundSession(t, dir, sessionID, nickname, token)
@@ -279,7 +279,7 @@ func TestStatusAction_mixedSessions(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupDurableSession(t, dir, durableSessionID, durableOrgID, "jam/"+durableSessionID+"/acct/main", durableToken)
@@ -327,7 +327,7 @@ func TestStatusAction_missingToken(t *testing.T) {
 
 	// Session dir exists but has no token file.
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:0") // unreachable; should not be hit
 
 	sessDir := filepath.Join(dir, "sessions", sessionID)
@@ -360,7 +360,7 @@ func TestStatusAction_missingToken(t *testing.T) {
 // TestStatusAction_noSessions verifies the friendly "no sessions" message.
 func TestStatusAction_noSessions(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:0")
 
 	// Create an empty sessions directory.
@@ -413,7 +413,7 @@ func TestStatusAction_jsonOutput(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupDurableSession(t, dir, sessionID, orgID, "jam/"+sessionID+"/acct/main", token)
@@ -485,7 +485,7 @@ func TestStatusAction_jsonOutputMixedSessions(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
 	setupDurableSession(t, dir, durableSessionID, durableOrgID, "", durableToken)
@@ -523,7 +523,7 @@ func TestStatusAction_jsonOutputMixedSessions(t *testing.T) {
 // TestStatusAction_noSessionsJSON verifies --json with no sessions returns empty arrays.
 func TestStatusAction_noSessionsJSON(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:0")
 
 	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o700); err != nil {
@@ -560,7 +560,7 @@ func TestStatusAction_noSessionsJSON(t *testing.T) {
 // both the org_id and ref sidecar files.
 func TestReadSessionState_readsRefAndOrgID(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 
 	const sessID = "sess-rs-001"
 	sessDir := filepath.Join(dir, "sessions", sessID)
@@ -584,11 +584,11 @@ func TestReadSessionState_readsRefAndOrgID(t *testing.T) {
 }
 
 // setupStatusEnv writes both the legacy token file and a per-session token
-// into a temp CLAUDE_PLUGIN_DATA dir so status tests cover both lookup paths.
+// into a temp JAMSESH_DATA_DIR dir so status tests cover both lookup paths.
 func setupStatusEnv(t *testing.T, srvURL, sessionID, orgID, yourRef string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	// Unset the CC_SESSION_ID so resolveSession() uses the first-dir fallback.
 	t.Setenv("CC_SESSION_ID", "")

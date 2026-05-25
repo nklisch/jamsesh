@@ -129,12 +129,12 @@ func TestForkAndComment(t *testing.T) {
 	// ---------------------------------------------------------------------------
 
 	// The user-prompt-submit hook reads:
-	//   $CLAUDE_PLUGIN_DATA/token                     – bearer token
-	//   $CLAUDE_PLUGIN_DATA/sessions/<sid>/org_id     – org ID
-	//   $CLAUDE_PLUGIN_DATA/sessions/<sid>/ref        – agent's ref
-	//   $CLAUDE_PLUGIN_DATA/sessions/<sid>/account_id – account ID
-	//   $CLAUDE_PLUGIN_DATA/sessions/<sid>/instance_id – CC instance ID
-	//   $CLAUDE_PLUGIN_DATA/sessions/<sid>/last_seen_seq – event cursor
+	//   $JAMSESH_DATA_DIR/token                     – bearer token
+	//   $JAMSESH_DATA_DIR/sessions/<sid>/org_id     – org ID
+	//   $JAMSESH_DATA_DIR/sessions/<sid>/ref        – agent's ref
+	//   $JAMSESH_DATA_DIR/sessions/<sid>/account_id – account ID
+	//   $JAMSESH_DATA_DIR/sessions/<sid>/instance_id – CC instance ID
+	//   $JAMSESH_DATA_DIR/sessions/<sid>/last_seen_seq – event cursor
 	// The portal URL is resolved from JAMSESH_PORTAL_URL env var (highest priority).
 
 	dataDir := t.TempDir()

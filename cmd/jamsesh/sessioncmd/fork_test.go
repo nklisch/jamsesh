@@ -28,7 +28,7 @@ const cannedForkResp = `{
 func setupSession(t *testing.T, sessionID, portalURL string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", portalURL)
 
 	// Create session state directory.
@@ -143,7 +143,7 @@ func TestForkCommand_withFlags(t *testing.T) {
 
 func TestForkCommand_missingCommitSHA(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 
 	app := &cli.Command{
 		Commands: []*cli.Command{sessioncmd.ForkCommand()},

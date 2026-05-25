@@ -18,12 +18,12 @@ import (
 
 // setupFinalizeRunEnv stages the per-session state files finalize-run
 // reads (org_id sidecar + token + portal URL via env) and returns the
-// CLAUDE_PLUGIN_DATA root. Mirrors the join-time layout written by
+// JAMSESH_DATA_DIR root. Mirrors the join-time layout written by
 // sessioncmd.writeSessionState.
 func setupFinalizeRunEnv(t *testing.T, sessionID, orgID, portalURL string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", portalURL)
 
 	sessDir := filepath.Join(dir, "sessions", sessionID)

@@ -22,7 +22,7 @@ import (
 func setupFetchSourceEnv(t *testing.T, sessionID string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	sessDir := filepath.Join(dir, "sessions", sessionID)
 	if err := os.MkdirAll(sessDir, 0o755); err != nil {
 		t.Fatalf("mkdir session: %v", err)

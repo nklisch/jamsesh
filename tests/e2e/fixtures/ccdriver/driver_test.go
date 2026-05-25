@@ -63,23 +63,23 @@ func TestRunHookInheritsHostPath(t *testing.T) {
 		t.Fatalf("ExtraEnv not forwarded to subprocess: %v", err)
 	}
 
-	// Script 3: confirm that CLAUDE_PLUGIN_DATA is present (appended last,
+	// Script 3: confirm that JAMSESH_DATA_DIR is present (appended last,
 	// so it always overrides any conflicting ExtraEnv value).
-	pluginDataBin := filepath.Join(t.TempDir(), "plugin_data_check")
-	pluginDataScript := "#!/bin/sh\ncat > /dev/null\nif [ -z \"$CLAUDE_PLUGIN_DATA\" ]; then\n  exit 1\nfi\nprintf '{}'\n"
-	if err := os.WriteFile(pluginDataBin, []byte(pluginDataScript), 0o755); err != nil {
-		t.Fatalf("write plugin_data script: %v", err)
+	dataDirBin := filepath.Join(t.TempDir(), "data_dir_check")
+	dataDirScript := "#!/bin/sh\ncat > /dev/null\nif [ -z \"$JAMSESH_DATA_DIR\" ]; then\n  exit 1\nfi\nprintf '{}'\n"
+	if err := os.WriteFile(dataDirBin, []byte(dataDirScript), 0o755); err != nil {
+		t.Fatalf("write data_dir script: %v", err)
 	}
 
 	d3 := &ccdriver.Driver{
-		BinaryPath: pluginDataBin,
+		BinaryPath: dataDirBin,
 		DataDir:    t.TempDir(),
 	}
 	if _, err := d3.SessionEnd(context.Background(), ccdriver.SessionEndInput{
-		SessionID:      "test-plugin-data-001",
+		SessionID:      "test-data-dir-001",
 		TranscriptPath: filepath.Join(t.TempDir(), "transcript.json"),
 	}); err != nil {
-		t.Fatalf("CLAUDE_PLUGIN_DATA not forwarded to subprocess: %v", err)
+		t.Fatalf("JAMSESH_DATA_DIR not forwarded to subprocess: %v", err)
 	}
 
 }

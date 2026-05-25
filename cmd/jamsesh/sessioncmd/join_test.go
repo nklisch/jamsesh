@@ -13,12 +13,12 @@ import (
 	"jamsesh/internal/api/openapi"
 )
 
-// setupJoinEnv creates a temp CLAUDE_PLUGIN_DATA dir, writes a fake access
+// setupJoinEnv creates a temp JAMSESH_DATA_DIR dir, writes a fake access
 // token, and points JAMSESH_PORTAL_URL at the given test server URL.
 func setupJoinEnv(t *testing.T, srvURL string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok-test"), 0o600); err != nil {
 		t.Fatalf("writing token: %v", err)
@@ -234,7 +234,7 @@ func TestJoinAction_inviteURL(t *testing.T) {
 
 func TestJoinAction_missingArg(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:19999")
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok"), 0o600); err != nil {
 		t.Fatal(err)

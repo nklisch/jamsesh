@@ -12,14 +12,14 @@ import (
 	"testing"
 )
 
-// setupInviteEnv creates a temp CLAUDE_PLUGIN_DATA dir with a token file and
+// setupInviteEnv creates a temp JAMSESH_DATA_DIR dir with a token file and
 // points JAMSESH_PORTAL_URL at the given test server URL.
 // It also writes a sessions/<sessionID>/org_id state file when orgID is non-empty.
 // Returns the temp dir path.
 func setupInviteEnv(t *testing.T, srvURL, sessionID, orgID string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", srvURL)
 	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("tok-invite-test"), 0o600); err != nil {
 		t.Fatalf("writing token: %v", err)
@@ -210,7 +210,7 @@ func TestInviteAction_usageError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// No server needed; error fires before any network call.
 			dir := t.TempDir()
-			t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+			t.Setenv("JAMSESH_DATA_DIR", dir)
 			t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:19996")
 			_ = os.WriteFile(filepath.Join(dir, "token"), []byte("tok"), 0o600)
 
@@ -304,7 +304,7 @@ func TestInviteAction_missingOrgFails(t *testing.T) {
 
 	// No server needed; error fires before network.
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("JAMSESH_PORTAL_URL", "http://localhost:19995")
 	_ = os.WriteFile(filepath.Join(dir, "token"), []byte("tok"), 0o600)
 	// Deliberately do NOT write a sessions/<id>/org_id file.

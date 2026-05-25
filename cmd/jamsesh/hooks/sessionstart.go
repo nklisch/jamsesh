@@ -79,7 +79,7 @@ func resolveHookSession() (*sessionState, error) {
 // resolveSessionID returns the jamsesh session ID for the current CC instance.
 // This mirrors sessioncmd.resolveSession, kept local to avoid import cycles.
 func resolveSessionID() (string, error) {
-	dir, err := state.PluginDataDir()
+	dir, err := state.DataDir()
 	if err != nil {
 		return "", err
 	}

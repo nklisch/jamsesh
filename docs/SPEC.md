@@ -63,9 +63,9 @@ Technical boundaries and decisions for jamsesh. Present truth, not roadmap.
 - Handles all Claude Code hook implementations (SessionStart, UserPromptSubmit,
   PreToolUse, PostToolUse filtered to `git commit`, Stop, SessionEnd) and all
   slash commands (which are CC skills that invoke the binary).
-- Stores user-level state in `${CLAUDE_PLUGIN_DATA}/` (persistent across plugin
-  updates) — OAuth tokens, session memberships, per-session ref bindings, last
-  digest sequence numbers.
+- Stores user-level state in `${JAMSESH_DATA_DIR}/` (defaults to
+  `${XDG_DATA_HOME:-$HOME/.local/share}/jamsesh`) — OAuth tokens, session
+  memberships, per-session ref bindings, last digest sequence numbers.
 - Plugin manifest at `plugins/jamsesh/.claude-plugin/plugin.json`, with `.mcp.json` configuring
   the CC MCP client to connect to the portal's HTTPS-MCP endpoint using
   Bearer auth via a `headersHelper` script (so the auth header is read fresh

@@ -15,7 +15,7 @@ type Driver struct {
 	// Required.
 	BinaryPath string
 
-	// DataDir is the value of CLAUDE_PLUGIN_DATA the binary will read.
+	// DataDir is the value of JAMSESH_DATA_DIR the binary will read.
 	// Required; should be a per-test tmpdir (use t.TempDir()).
 	DataDir string
 
@@ -70,7 +70,7 @@ func runHook[I, O any](ctx context.Context, d *Driver, subcmd string, in I) (O, 
 	}
 	cmd := exec.CommandContext(ctx, d.BinaryPath, "hook", subcmd)
 	cmd.Env = append(os.Environ(), d.ExtraEnv...)
-	cmd.Env = append(cmd.Env, "CLAUDE_PLUGIN_DATA="+d.DataDir)
+	cmd.Env = append(cmd.Env, "JAMSESH_DATA_DIR="+d.DataDir)
 	cmd.Stdin = bytes.NewReader(payload)
 	stdout, err := cmd.Output()
 	if err != nil {

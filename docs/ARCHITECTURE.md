@@ -25,7 +25,7 @@ How jamsesh is organized.
 │    subcommands           │   │  • Git smart-HTTP        │
 │  • Local git operations  │   │    (per-session bare     │
 │  • OAuth + token storage │◄──┤     repos on disk)       │
-│    in CLAUDE_PLUGIN_DATA │   │  • Auto-merger workers   │
+│    in JAMSESH_DATA_DIR   │   │  • Auto-merger workers   │
 │  • Talks portal API + git│   │  • Playground destroyer  │
 └──────────────────────────┘   │  • WS gateway (UI)       │
                                │  • SQLite | Postgres     │
@@ -140,9 +140,9 @@ run the appropriate `jamsesh` subcommand:
 **Auth subcommand:**
 
 - `jamsesh auth` — initiates OAuth flow against the configured portal URL,
-  writes the account-wide OAuth token to `${CLAUDE_PLUGIN_DATA}/token`. On the
+  writes the account-wide OAuth token to `${JAMSESH_DATA_DIR}/token`. On the
   next binary invocation (e.g. the next `jamsesh` call), the startup migration
-  fans the token out into `${CLAUDE_PLUGIN_DATA}/sessions/<id>/token` for every
+  fans the token out into `${JAMSESH_DATA_DIR}/sessions/<id>/token` for every
   session directory that exists, then replaces `token` with a
   `MIGRATED_TO_PER_SESSION` stub to indicate that per-session files are now
   canonical.
@@ -152,15 +152,16 @@ run the appropriate `jamsesh` subcommand:
 - `jamsesh mcp-headers` — invoked by CC's MCP `headersHelper` at connection
   time. When the current CC instance has a bound jamsesh session (matched by
   `CLAUDE_SESSION_ID` against `sessions/<id>/instance_id`), reads the bearer
-  from `${CLAUDE_PLUGIN_DATA}/sessions/<id>/token` and emits both
+  from `${JAMSESH_DATA_DIR}/sessions/<id>/token` and emits both
   `Authorization: Bearer <token>` and `Jam-Session-Id: <id>`. Falls back to the
-  legacy account-wide `${CLAUDE_PLUGIN_DATA}/token` when no session binding
+  legacy account-wide `${JAMSESH_DATA_DIR}/token` when no session binding
   exists or the per-session token file is absent.
 
-**Local state layout** under `${CLAUDE_PLUGIN_DATA}/`:
+**Local state layout** under `${JAMSESH_DATA_DIR}/` (defaults to
+`${XDG_DATA_HOME:-$HOME/.local/share}/jamsesh`):
 
 ```
-${CLAUDE_PLUGIN_DATA}/
+${JAMSESH_DATA_DIR}/
 ├── token                                   account-wide OAuth token (mode 0600);
 │                                           contains "MIGRATED_TO_PER_SESSION" once
 │                                           per-session files are canonical
@@ -341,7 +342,7 @@ refs under it. Each Claude Code instance binds to exactly one ref at join:
 ```
 
 Each CC instance has its own working tree and tracks its own ref binding via
-`${CLAUDE_PLUGIN_DATA}/sessions/<jamsesh-session-id>/instance_id`, which holds
+`${JAMSESH_DATA_DIR}/sessions/<jamsesh-session-id>/instance_id`, which holds
 the `CLAUDE_SESSION_ID` of the CC instance that joined. The per-session bearer
 at `sessions/<jamsesh-session-id>/token` is also scoped to that binding.
 Concurrent instances under the same user push to different refs in the same

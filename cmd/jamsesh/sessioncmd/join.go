@@ -222,9 +222,9 @@ func buildCloneURL(portalURL, token, orgID, sessionID string) string {
 }
 
 // writeSessionState persists the per-session state files under
-// ${CLAUDE_PLUGIN_DATA}/sessions/<sessionID>/.
+// ${data-dir}/sessions/<sessionID>/.
 func writeSessionState(sessionID, orgID, targetRef, accountID string) error {
-	dir, err := state.PluginDataDir()
+	dir, err := state.DataDir()
 	if err != nil {
 		return err
 	}

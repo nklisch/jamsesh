@@ -45,7 +45,7 @@ teardown() {
   local wrapper_version
   wrapper_version=$(grep -E '^readonly JAMSESH_PLUGIN_VERSION=' "$(wrapper_bin)" \
     | sed 's/^readonly JAMSESH_PLUGIN_VERSION="\(.*\)"/\1/')
-  local cached="${CLAUDE_PLUGIN_DATA}/bin/jamsesh-${wrapper_version}-${_os}-${_arch}"
+  local cached="${XDG_CACHE_HOME}/jamsesh/bin/jamsesh-${wrapper_version}-${_os}-${_arch}"
   [ -x "${cached}" ]
 }
 

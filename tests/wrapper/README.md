@@ -50,8 +50,9 @@ tests/wrapper/
 
 Each test gets an isolated environment:
 
-- **`CLAUDE_PLUGIN_DATA`** is set to a unique `BATS_TMPDIR`-derived directory
-  per test so no cache leaks between tests.
+- **`XDG_CACHE_HOME`** is set to a unique `BATS_TMPDIR`-derived directory
+  per test so no cache leaks between tests. The wrapper caches the binary
+  under `${XDG_CACHE_HOME}/jamsesh/bin/`.
 - **Mock release server** — a `python3 -m http.server` on an ephemeral port
   serves a fake binary + `checksums.txt` from a per-test temp directory.
   Zero network egress: no requests reach `github.com`.

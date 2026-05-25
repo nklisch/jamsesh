@@ -49,7 +49,7 @@ func runPostToolUse(t *testing.T, inputJSON string) map[string]any {
 
 func TestPostToolUse_nonBash_noOp(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 
 	input := `{"session_id":"cc","tool_name":"Read","tool_input":{"file_path":"/tmp/f"},"tool_response":{"exit_code":0}}`
 	r := runPostToolUse(t, input)
@@ -60,7 +60,7 @@ func TestPostToolUse_nonBash_noOp(t *testing.T) {
 
 func TestPostToolUse_gitStatus_noOp(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 
 	input := buildBashCommitInput("git status", 0)
 	// Command is "git status", not "git commit" → should no-op.
@@ -72,7 +72,7 @@ func TestPostToolUse_gitStatus_noOp(t *testing.T) {
 
 func TestPostToolUse_gitCommitFailed_noOp(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 
 	input := buildBashCommitInput("git commit -m 'fix: thing'", 1) // exit_code=1 → failed commit
 	r := runPostToolUse(t, input)
@@ -84,7 +84,7 @@ func TestPostToolUse_gitCommitFailed_noOp(t *testing.T) {
 func TestPostToolUse_gitCommit_success_noSession(t *testing.T) {
 	// Successful git commit but no jamsesh session → no-op.
 	dir := t.TempDir()
-	t.Setenv("CLAUDE_PLUGIN_DATA", dir)
+	t.Setenv("JAMSESH_DATA_DIR", dir)
 	t.Setenv("CC_SESSION_ID", "")
 
 	setHookRunGit(t, func(_ ...string) (string, string, int) { return "", "", 0 })

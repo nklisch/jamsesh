@@ -66,7 +66,7 @@ func TestMcpHeaders_tokenPresent(t *testing.T) {
 
 	cmd := exec.Command(bin, "mcp-headers")
 	// No CLAUDE_SESSION_ID → no Jam-Session-Id header.
-	cmd.Env = append(os.Environ(), "CLAUDE_PLUGIN_DATA="+dataDir, "CLAUDE_SESSION_ID=")
+	cmd.Env = append(os.Environ(), "JAMSESH_DATA_DIR="+dataDir, "CLAUDE_SESSION_ID=")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("jamsesh mcp-headers: %v (output: %s)", err, out)
@@ -105,7 +105,7 @@ func TestMcpHeaders_tokenAndSession(t *testing.T) {
 
 	cmd := exec.Command(bin, "mcp-headers")
 	cmd.Env = append(os.Environ(),
-		"CLAUDE_PLUGIN_DATA="+dataDir,
+		"JAMSESH_DATA_DIR="+dataDir,
 		"CLAUDE_SESSION_ID="+ccInstanceID,
 	)
 	out, err := cmd.Output()
@@ -139,7 +139,7 @@ func TestMcpHeaders_tokenNoSession(t *testing.T) {
 
 	cmd := exec.Command(bin, "mcp-headers")
 	cmd.Env = append(os.Environ(),
-		"CLAUDE_PLUGIN_DATA="+dataDir,
+		"JAMSESH_DATA_DIR="+dataDir,
 		"CLAUDE_SESSION_ID=some-unbound-instance",
 	)
 	out, err := cmd.Output()
@@ -166,7 +166,7 @@ func TestMcpHeaders_noToken(t *testing.T) {
 	dataDir := t.TempDir() // no token file
 
 	cmd := exec.Command(bin, "mcp-headers")
-	cmd.Env = append(os.Environ(), "CLAUDE_PLUGIN_DATA="+dataDir)
+	cmd.Env = append(os.Environ(), "JAMSESH_DATA_DIR="+dataDir)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 
