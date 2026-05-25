@@ -1,7 +1,7 @@
 ---
 id: gate-docs-pattern-adapter-wrap-helpers-type-name-drift
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
