@@ -1,7 +1,7 @@
 ---
 id: bug-squash-ws-connection-never-closed
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, ui, resource-leak]
 parent: epic-bug-squash-frontend-ws-lifecycle
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: bug-squash-ws-reconnect-cursor-reset
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-ws-lifecycle
 depends_on: []
