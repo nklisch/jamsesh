@@ -148,39 +148,69 @@ case <-idle.C:
 **Files**: `internal/portal/automerger/outcomes.go`, `internal/portal/automerger/worker.go`
 **Story**: `bug-squash-automerger-swallows-merge-emit` (High)
 
-After the durable `SetReference` (success) / `InsertConflictEvent` (conflict),
-retry the `Emit` on transient errors; on exhaustion return a typed sentinel the
-worker logs at ERROR (not Warn) with a recovery hint + metric.
+After the durable `SetReference` (success) / `InsertConflictEvent` (conflict) /
+`MarkConflictEventResolved` (resolve), retry the `Emit` on transient errors; on
+exhaustion return a typed sentinel the worker logs at ERROR (not Warn) with a
+recovery hint + metric.
 
 ```go
-// emitWithRetry retries l.Emit on deperr-transient errors (bounded backoff via
-// a.Clock-driven sleep or a simple capped loop). Returns ErrEmitAfterSideEffect
-// wrapping the last error when all attempts fail AFTER a durable side effect.
+// emitWithRetry retries l.Emit after a durable side effect. It runs on a
+// detached, bounded context (so worker-ctx cancellation during shutdown cannot
+// re-drop the event), classifies transience itself (Emit returns RAW store
+// errors — see codex gate finding), and returns ErrEmitAfterSideEffect wrapping
+// the last error when all attempts fail.
 var ErrEmitAfterSideEffect = errors.New("automerger: side effect committed but event emit failed")
 
-func (a *Applier) emitWithRetry(ctx context.Context, orgID, sessionID, typ string, data []byte) error
+func (a *Applier) emitWithRetry(ctx context.Context, orgID, sessionID, typ string, data []byte) error {
+    emitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), emitGraceTimeout)
+    defer cancel()
+    // bounded loop; retry only when deperr.WrapDBIfTransient(err) is transient.
+    ...
+}
 ```
 
 - `applySuccess`: ref advance → `emitWithRetry(... "merge.succeeded" ...)`.
 - `applyConflict`: insert row → `emitWithRetry(... "conflict.detected" ...)`.
+- `tryResolveConflict`: `MarkConflictEventResolved` → `emitWithRetry(...
+  "conflict.resolved" ...)` (same swallowed-emit class — codex finding #3).
 - `worker.go` `processEvent`: when `Apply` returns `ErrEmitAfterSideEffect`,
   `slog.ErrorContext` with session_id + the advanced SHA + "manual recovery:
-  re-push the source ref", and increment a metric label
-  (`AutoMergerOutcomes{outcome="emit_failed"}`). Other Apply errors stay Warn.
+  re-push the source ref", and increment `AutoMergerOutcomes{outcome="emit_failed"}`
+  (update the metric's help text — it currently lists only
+  succeeded/conflict/backpressure). Other Apply errors stay Warn.
 
-**Implementation Notes**:
-- Classify transient via the existing `deperr` helpers (`errors.Is` against the
-  transient sentinel) — do not retry on a marshal/programming error.
+**Implementation Notes** (incorporating the codex gate):
+- **Emit returns raw errors**: `events.Log.Emit` propagates the bare
+  `WithTx`/store error, NOT a `deperr`-wrapped one. `emitWithRetry` must call
+  `deperr.WrapDBIfTransient(err)` (or a local classifier) itself before deciding
+  to retry — don't `errors.Is` a bare error against the transient sentinel.
+- **Possible duplicate emit is accepted, not prevented**: a commit-phase error
+  returned *after* `tx.Commit` is ambiguous — the row may have committed. A retry
+  can therefore create a second `merge.succeeded`/`conflict.detected`/
+  `conflict.resolved` row with a fresh seq. This is tolerated because these
+  events are idempotent for consumers (keyed on `merge_commit_sha` / event `id`):
+  a duplicate is a no-op replay, strictly better than the silent-drop bug.
+  Acceptance includes a test asserting duplicates are consumer-idempotent.
+- **Detached ctx**: post-side-effect emit runs on `context.WithoutCancel(ctx)` +
+  a bounded `emitGraceTimeout`, so shutdown cancellation between the durable
+  write and the emit doesn't re-introduce the drop.
 - Keep retries small and bounded (e.g. 3 attempts) so a wedged DB doesn't block
-  the session worker; the at-least-once guarantee is best-effort + escalation,
-  with full reconciliation deferred (see Risks).
+  the session worker; full reconciliation (real `replayScan`) stays a parked
+  follow-up (see Risks).
 
 **Acceptance Criteria**:
-- [ ] A transient Emit failure is retried; a persistent one returns
-      `ErrEmitAfterSideEffect` and the worker logs ERROR + increments the metric
-      (not a silent Warn).
+- [ ] A transient Emit failure is retried (on the detached ctx); a persistent
+      one returns `ErrEmitAfterSideEffect` and the worker logs ERROR + increments
+      `emit_failed` (not a silent Warn).
+- [ ] The same path covers `merge.succeeded`, `conflict.detected`, AND
+      `conflict.resolved`.
 - [ ] The draft ref / conflict row state is unchanged by the emit-failure path
       (the side effect is not rolled back; git/DB remain the source of truth).
+- [ ] A duplicate emit (ambiguous-commit retry) is consumer-idempotent — a test
+      asserts two `merge.succeeded` for one mergeSHA produce one effective client
+      state.
+- [ ] Worker-ctx cancellation after the durable write still lets the emit attempt
+      run (detached ctx), within `emitGraceTimeout`.
 
 ---
 
@@ -263,9 +293,39 @@ func runDiff(baseFile, otherFile string) ([]byte, error)
   best-effort) over emit-first or full reconciliation. Rationale: fixes the
   actual silent-drop bug proportionately; defers the heavyweight replayScan as a
   parked follow-up rather than ballooning this feature.
+- **Emit retry semantics (codex gate)**: retry on a detached
+  `context.WithoutCancel`+timeout ctx; classify transience explicitly
+  (`deperr.WrapDBIfTransient`, since `Emit` returns raw errors); TOLERATE a
+  possible duplicate emit on ambiguous commit-phase failure (consumers are
+  idempotent on `merge_commit_sha`/event `id`) rather than adding a dedup store
+  surface; cover `conflict.resolved` too. Rationale: a duplicate replay is
+  strictly better than the silent drop, and detached-ctx prevents shutdown from
+  re-dropping.
 - **diff classification**: extract a `runDiff`/`classifyDiffErr` helper for
   testability rather than inline exit-code handling. Rationale: forcing `diff`
   exit 2 in-process is awkward; a pure classifier is unit-testable.
 
-<!-- Codex feature gate pending. -->
-_Codex (xhigh) feature peer-review gate pending._
+## Other agent review
+
+Codex (cross-model, xhigh) reviewed this feature design. Verdict: Unit 1 (race),
+Unit 3 (errors.Is), Unit 4 (diff) sound as written; Unit 2 (emit) tightened
+before implementation.
+
+**Accepted & applied to Unit 2:**
+- `Emit` returns raw store errors — `emitWithRetry` must classify transience
+  itself via `deperr.WrapDBIfTransient` (not `errors.Is` on a bare error).
+- Retry can double-emit on an ambiguous commit-phase failure — tolerate it
+  (consumers idempotent on `merge_commit_sha`/event id) + test the duplicate is
+  a no-op replay, rather than adding a dedup surface.
+- `conflict.resolved` (`tryResolveConflict`) has the same swallowed-emit bug —
+  covered by the same retry/escalation path.
+- Post-side-effect emit runs on a detached `context.WithoutCancel`+timeout ctx
+  so shutdown cancellation can't re-drop the event.
+- nice-to-have: update the `AutoMergerOutcomes` metric help text for the new
+  `emit_failed` label; add a small `diff` exit-1/2 integration case alongside
+  the pure `classifyDiffErr` unit test.
+
+**Confirmed sound (no change):** the single-`mu`-guarded `sessions` map closes
+the push-after-delete stranding window; spawning the worker under `mu` is
+deadlock-free; no idle re-check missed-wakeup; fanout is not an `Emit` error
+source.
