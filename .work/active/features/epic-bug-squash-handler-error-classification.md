@@ -120,26 +120,33 @@ report-status is a LEGITIMATE 200 (push rejected by hook / non-ff), not a 500.
 
 ```go
 var subprocOut bytes.Buffer
-_, stdoutErr := io.Copy(&subprocOut, stdout)
+_, stdoutErr := io.Copy(&subprocOut, stdout) // io.Copy returns nil on clean EOF
 cmdErr := cmd.Wait()
 stdinErr := <-stdinErrCh
 
-// IO/transport failures (NOT the subprocess closing stdin early on rejection):
 if stdoutErr != nil { /* couldn't read the full report */ 500; return }
-if stdinErr != nil && !isPipeClosedByPeer(stdinErr) { /* our-side body read failed */ 500; return }
 
-if cmdErr != nil {
-    // git-level rejection WITH report-status — 200 + report (unchanged, correct git behavior)
+if cmdErr == nil {
+    // Subprocess exited 0. A stdin feed failure here is inconsistent with
+    // success — fail loudly rather than acknowledge a partially-fed push.
+    if stdinErr != nil { 500; return }
+    // success → sync (EmitForUpdates) → 200 (unchanged, RPO=0 preserved)
+} else {
+    // Non-zero exit. 200 + report-status ONLY when stdout actually carries a
+    // report (git-level rejection: hook reject / non-ff). An empty/truncated/
+    // no-report failure is a crash/kill — 500.
+    if !looksLikeReportStatus(subprocOut.Bytes()) { 500; return }
     w.WriteHeader(http.StatusOK); _, _ = w.Write(subprocOut.Bytes()); return
 }
-// success → sync + 200 (unchanged)
 ```
 
-**Implementation Notes**: `isPipeClosedByPeer` treats `io.ErrClosedPipe` /
-`syscall.EPIPE` as "subprocess closed stdin early" (a rejection signal), which
-defers to `cmdErr`/report-status rather than masking it as 500. A genuine
-tempfile read error (our side) is a 500. The RPO=0 success path
-(EmitForUpdates before 200) is unchanged.
+**Implementation Notes** (codex-tightened): drop the broad EPIPE exception.
+`stdinErr` only matters when `cmdErr == nil` → then it's a 500 (a clean exit
+that didn't consume the full body is impossible-success). When `cmdErr != nil`,
+gate the 200 on `looksLikeReportStatus` (a non-empty git pkt-line report, e.g.
+starts with a 4-hex length prefix / contains `unpack ` or `ng `/`ok `); a
+non-zero exit with no parseable report is a crash → 500. The RPO=0 success path
+(buffer stdout, EmitForUpdates, then 200) is unchanged.
 
 **Acceptance Criteria**:
 - [ ] A simulated stdout-read truncation / our-side stdin read error → 500 (not
@@ -166,10 +173,11 @@ default:
 
 **Implementation Notes**: gate on `r.Context().Err() != nil` (the request ctx),
 NOT on `errors.Is(err, context.DeadlineExceeded)` alone — a store/dep timeout
-with a live request ctx is a real 5xx. Apply the same guard to all three
-middleware default branches. 499 (nginx "client closed request") is a sentinel
-status; the client is already gone so the body is irrelevant. Optionally log at
-debug.
+with a live request ctx is a real 5xx (codex confirmed). Apply the same guard to
+all three middleware default branches via a tiny shared helper. Define a local
+`const statusClientClosedRequest = 499` and `w.WriteHeader(statusClientClosedRequest)`
+— writing it matters because access logging otherwise records the response as
+200; the body is irrelevant (client gone). Optionally log at debug.
 
 **Acceptance Criteria**:
 - [ ] A request whose context is cancelled before the store call returns → 499
@@ -190,12 +198,11 @@ in `githttp/` but different files (receive_pack.go vs auth.go), no conflict.
   stub store error on a live ctx (→500).
 
 ## Risks
-- **Unit 2 EPIPE classification**: distinguishing "subprocess closed stdin on
-  rejection" (defer to report-status, 200) from "our tempfile read failed" (500)
-  is the subtle part — covered by both regression tests above. If
-  `isPipeClosedByPeer` is hard to get right cross-platform, the conservative
-  fallback is to treat any stdinErr as 500 (slightly over-strict but safe; git
-  clients retry) — decide during implementation.
+- **Unit 2 report-status detection**: the subtle part is `looksLikeReportStatus`
+  — correctly recognizing a git pkt-line report so a real rejection stays 200
+  while a crash (non-zero exit, no report) becomes 500. Covered by the two
+  regression tests (rejection-with-report → 200; crash/empty → 500). Keep the
+  detector conservative (a malformed/absent report → 500, fail safe).
 - **Unit 1 dual-dialect `:execrows`**: ensure both adapters return the same
   rows-affected semantics.
 
@@ -210,4 +217,24 @@ in `githttp/` but different files (receive_pack.go vs auth.go), no conflict.
 
 ## Other agent review
 
-_Codex (xhigh) feature peer-review gate pending._
+Codex (cross-model, xhigh) reviewed this design. Verdict: approve with Unit 2
+tightening; Unit 1 solid, Unit 3 minor polish. Confirmed non-issues: `:execrows`
+is correct for both dialects (first consume → 1, race-loser → 0); the existing
+`row.UsedAt != nil` pre-check is harmless; `ExchangeMagicLink` is the only
+production consumer (compile-update interfaces/adapters/tx/generated together);
+reading stdout before `cmd.Wait()` is correct and `io.Copy` returns nil on clean
+EOF (no false 500); RPO=0 preserved; `r.Context().Err()` is the right
+client-abort discriminator.
+
+**Accepted & applied (Unit 2):**
+- EPIPE exception was too broad — `stdinErr` with `cmdErr == nil` is now a 500
+  (don't acknowledge an early-closed/partially-fed push as success).
+- `cmdErr != nil → 200+report` now requires a parseable report-status payload
+  (`looksLikeReportStatus`); a non-zero exit with no report (crash/kill) → 500.
+- **Unit 3 (nice-to-have):** added `const statusClientClosedRequest = 499` +
+  shared helper; documented why writing 499 matters (access-log accuracy).
+
+**Deferred (out of scope, recorded for the run summary):** codex noted adjacent
+client-abort misclassifications outside this feature — bearer-auth canceled
+token validation can become a 503, and receive-pack body-read errors can become
+413. Track as a separate follow-up rather than expanding this feature.
