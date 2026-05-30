@@ -1,7 +1,7 @@
 ---
 id: feature-cli-jam-open-in-browser-osopen-shared-helper
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: feature-cli-jam-open-in-browser
 depends_on: []
@@ -43,3 +43,41 @@ import it.
 - [ ] `go build ./...` and `go vet ./cmd/jamsesh/...` clean; existing
       `auth/browser_test.go` and `finalizecmd` tests pass unchanged.
 - [ ] No leftover unused imports (`goimports` clean).
+
+## Implementation notes
+
+### Files changed
+
+- **Created** `cmd/jamsesh/internal/osopen/osopen.go` — new shared package
+  exporting `Open(rawURL string, errOut io.Writer) error` with `execCommand`
+  test seam and `platformArgv`.
+- **Created** `cmd/jamsesh/internal/osopen/osopen_test.go` — three tests:
+  `TestPlatformArgv`, `TestOpen_GracefulOnStartFailure`,
+  `TestOpen_DetachOnSuccess`.
+- **Modified** `cmd/jamsesh/finalizecmd/browseropen.go` — deleted
+  `defaultOpenURL` (local platform switch); `var openURL` now delegates to
+  `osopen.Open(rawURL, os.Stderr)`. Dropped unused imports (`os/exec`,
+  `runtime`, `io`, `fmt`).
+- **Modified** `cmd/jamsesh/auth/auth.go` — replaced `defaultOpenURL` body
+  (inline platform switch) with a single `return osopen.Open(rawURL,
+  os.Stderr)` call. Dropped unused imports (`os/exec`, `runtime`). The
+  `cfg.openURL` seam and `openURL: defaultOpenURL` wiring are preserved
+  unchanged.
+
+### No-behavior-change confirmation
+
+Both packages preserve their existing injection seams (`auth`'s
+`cfg.openURL`/`defaultOpenURL`; `finalizecmd`'s `var openURL`). The
+`osopen.Open` implementation is a verbatim extraction of the previously inlined
+logic — same platform switches, same graceful-degradation messages, same
+detached goroutine.
+
+### Verification output
+
+```
+go build ./...             — clean (no output)
+go vet ./cmd/jamsesh/...   — clean (no output)
+go test ./cmd/jamsesh/internal/osopen/...   PASS (3/3)
+go test ./cmd/jamsesh/auth/...              PASS (17/17)
+go test ./cmd/jamsesh/finalizecmd/...       PASS (35/35)
+```
