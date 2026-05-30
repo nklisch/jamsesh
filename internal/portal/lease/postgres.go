@@ -172,14 +172,15 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 	m.incHolds(+1)
 
 	h := &pgHandle{
-		sessionID:    sessionID,
-		fencingToken: fencingToken,
-		acquiredAt:   time.Now(),
-		conn:         conn,
-		store:        m.Store,
-		mgr:          m,
-		lost:         make(chan struct{}),
-		done:         make(chan struct{}),
+		sessionID:     sessionID,
+		fencingToken:  fencingToken,
+		acquiredAt:    time.Now(),
+		conn:          conn,
+		store:         m.Store,
+		mgr:           m,
+		lost:          make(chan struct{}),
+		done:          make(chan struct{}),
+		heartbeatDone: make(chan struct{}),
 	}
 	go h.runHeartbeat(m.heartbeatInterval())
 
@@ -200,8 +201,9 @@ type pgHandle struct {
 	store        store.LeaseStore
 	mgr          *PostgresManager // back-reference for metric emission
 
-	lost chan struct{} // closed when the lease is lost (heartbeat failure)
-	done chan struct{} // closed by Release to stop the heartbeat goroutine
+	lost          chan struct{} // closed when the lease is lost (heartbeat failure)
+	done          chan struct{} // closed by Release to stop the heartbeat goroutine
+	heartbeatDone chan struct{} // closed by runHeartbeat on exit; Release waits before touching conn
 
 	once sync.Once // guards the release sequence
 }
@@ -213,13 +215,24 @@ func (h *pgHandle) Lost() <-chan struct{}     { return h.lost }
 // Release relinquishes the lease. Idempotent — safe to call multiple times and
 // safe to call after Lost() has fired. The sequence is:
 //  1. Signal the heartbeat goroutine to stop (via done channel).
-//  2. Advisory unlock (best-effort; the conn may already be dead if Lost fired).
-//  3. Mark the leases row released_at = now() (best-effort).
-//  4. Close the dedicated conn (returns it to the pool).
+//  2. Wait for the heartbeat goroutine to exit (via heartbeatDone channel).
+//     This ensures we are the sole user of h.conn before touching it;
+//     database/sql forbids concurrent use of a single *sql.Conn.
+//     The wait is bounded by one ping-context timeout (= heartbeat interval).
+//  3. Advisory unlock (best-effort; the conn may already be dead if Lost fired).
+//  4. Mark the leases row released_at = now() (best-effort).
+//  5. Close the dedicated conn (returns it to the pool).
 func (h *pgHandle) Release() error {
 	h.once.Do(func() {
 		// Signal the heartbeat goroutine to stop.
 		close(h.done)
+
+		// Wait for the heartbeat goroutine to finish. After close(h.done) the
+		// goroutine exits either immediately (if blocked in select) or after
+		// completing an in-flight PingContext (bounded by the ping ctx timeout =
+		// one heartbeat interval). We must be the sole owner of h.conn before
+		// proceeding — database/sql does not allow concurrent use of one *sql.Conn.
+		<-h.heartbeatDone
 
 		// Emit metrics: decrement active holds and observe hold duration.
 		if h.mgr != nil {
@@ -245,7 +258,10 @@ func (h *pgHandle) Release() error {
 // runHeartbeat pings the dedicated connection every interval. Any ping failure
 // closes Lost() so that consumers abort serving the session. The goroutine
 // exits either when done is closed (Release called) or when the ping fails.
+// On exit it closes heartbeatDone to unblock Release's wait.
 func (h *pgHandle) runHeartbeat(interval time.Duration) {
+	defer close(h.heartbeatDone) // signal Release that we've exited and h.conn is safe to use
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

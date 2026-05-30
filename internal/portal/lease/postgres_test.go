@@ -487,3 +487,50 @@ func TestPostgresCollisionDefensiveCheck(t *testing.T) {
 		t.Errorf("Acquire error = %v; want ErrAlreadyHeld", err)
 	}
 }
+
+// TestPostgresHeartbeatConnRace verifies that Release does not race the
+// heartbeat goroutine on the shared *sql.Conn. The test acquires a lease with
+// a very short heartbeat interval so the ping fires frequently, then calls
+// Release while the heartbeat is likely mid-tick. With -race this detects any
+// concurrent use of the *sql.Conn between the two goroutines.
+//
+// This is the regression test for bug-squash-pghandle-heartbeat-conn-race.
+// Requires a Postgres testcontainer (skipped if Docker is unavailable).
+func TestPostgresHeartbeatConnRace(t *testing.T) {
+	dsn := acquireTestPostgres(t)
+	sessionID := uniqueSession(t)
+	t.Cleanup(func() { cleanupLeaseRow(t, dsn, sessionID) })
+	ctx := context.Background()
+
+	s := openPGStore(t, dsn)
+	pool := openPGPool(t, dsn)
+	sqlDB := openStdlibDB(t, pool)
+
+	// Very short heartbeat so the ping goroutine ticks while we call Release.
+	mgr := &lease.PostgresManager{
+		DB:                sqlDB,
+		Store:             s,
+		PodID:             "pod-race-test",
+		HeartbeatInterval: 5 * time.Millisecond,
+	}
+
+	h, err := mgr.Acquire(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+
+	// Let the heartbeat tick several times so there is a good chance we call
+	// Release while a PingContext is in flight.
+	time.Sleep(30 * time.Millisecond)
+
+	// Release must return cleanly. Under -race, any concurrent use of the
+	// *sql.Conn by runHeartbeat and Release will be reported here.
+	if err := h.Release(); err != nil {
+		t.Errorf("Release: %v", err)
+	}
+
+	// Verify idempotency — a second Release must not panic or error.
+	if err := h.Release(); err != nil {
+		t.Errorf("second Release: %v", err)
+	}
+}
