@@ -1,7 +1,7 @@
 ---
 id: feature-cli-jam-open-in-browser
 kind: feature
-stage: implementing
+stage: review
 tags: [plugin]
 parent: null
 depends_on: []
@@ -395,3 +395,28 @@ Accepted + folded in:
 Rejected:
 - `url.JoinPath`/`PathEscape` for URL builders — keep raw concat to match the
   existing summary builders being extracted; ids are opaque ULIDs. Low value.
+
+## Implementation (orchestrator run, 2026-05-30)
+
+All 3 child stories implemented in dependency order (3 sequential single-item
+waves) and advanced to `review`:
+
+1. `…-osopen-shared-helper` (commit `de4181e`) — created
+   `cmd/jamsesh/internal/osopen` (`Open` + `platformArgv` + `execCommand`
+   seam); migrated `auth` and `finalizecmd` to delegate. No behavior change for
+   either (seams preserved; their existing tests pass unchanged).
+2. `…-cli-open-flag` (commit `cfcb947`) — added non-interactive `--open` to
+   `new` + `join`; extracted `sessionViewURL`/`playgroundJoinURL` builders;
+   added `openURL` seam + `openInBrowser`; wired durable/playground/join paths.
+   55 sessioncmd tests pass, including a non-bare-id `join --open` case and
+   golden-string summary-unchanged guards.
+3. `…-skill-and-docs` (commit `63afc1c`) — `jam` SKILL.md `--open` flags +
+   offer-to-open note; `docs/UX.md` durable create / playground create / durable
+   join flows updated (incl. the playground fresh-participant caveat).
+
+Verification (orchestrator, post-each-wave): `go build ./...` clean,
+`go vet ./cmd/jamsesh/...` clean, `go test ./cmd/jamsesh/internal/osopen/…
+./cmd/jamsesh/auth/… ./cmd/jamsesh/finalizecmd/… ./cmd/jamsesh/sessioncmd/…`
+all pass. No deviations from the design. `--open` is inherited by `jam
+new`/`jam join` via `jamcmd/jam.go`'s fresh command instances (no jam.go
+change needed).
