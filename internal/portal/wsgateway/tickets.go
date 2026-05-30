@@ -50,11 +50,12 @@ type ticket struct {
 //     is consumed, the ticket is still valid because it carries the already-
 //     resolved *store.Account. Acceptable given the 60-second window.
 type TicketStore struct {
-	mu      sync.Mutex // guards the stopCh and started flag
-	entries sync.Map   // map[string]*ticket
-	stopCh  chan struct{}
-	started bool
-	clock   Clock
+	mu       sync.Mutex // guards the stopCh and started flag
+	entries  sync.Map   // map[string]*ticket
+	stopCh   chan struct{}
+	stopOnce sync.Once // guards close(stopCh) so a second Stop() is a no-op
+	started  bool
+	clock    Clock
 }
 
 // NewTicketStore creates a TicketStore that uses the real wall clock.
@@ -88,14 +89,14 @@ func (ts *TicketStore) Start() {
 
 // Stop halts the janitor goroutine. After Stop returns, no further sweeps
 // will occur. Existing entries are not cleared (they expire and are rejected
-// on the next consume attempt).
+// on the next consume attempt). Stop is idempotent — a second call is a no-op.
 func (ts *TicketStore) Stop() {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	if !ts.started {
 		return
 	}
-	close(ts.stopCh)
+	ts.stopOnce.Do(func() { close(ts.stopCh) })
 }
 
 // Issue generates a fresh ticket for the given account and stores it with a

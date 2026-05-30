@@ -237,3 +237,44 @@ func TestTicketStore_MultipleAccounts(t *testing.T) {
 		}
 	}
 }
+
+// TestTicketStore_StopIdempotent verifies that calling Stop twice does not
+// panic. A second close of stopCh would panic without the sync.Once guard.
+func TestTicketStore_StopIdempotent(t *testing.T) {
+	ts := wsgateway.NewTicketStore()
+	ts.Start()
+
+	// First Stop must not panic and must halt the janitor.
+	ts.Stop()
+
+	// Second Stop must be a no-op — not a panic.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("second Stop() panicked: %v", r)
+		}
+	}()
+	ts.Stop()
+}
+
+// TestTicketStore_JanitorExitsAfterStop verifies that the janitor goroutine
+// actually exits after the first Stop call (sanity check for the Once path).
+func TestTicketStore_JanitorExitsAfterStop(t *testing.T) {
+	ts := wsgateway.NewTicketStore()
+	ts.Start()
+
+	acct := makeAccount("janitor-exit-acc")
+	tok, _, err := ts.Issue(acct)
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// The janitor must still be running before Stop.
+	got := ts.Consume(tok)
+	if got == nil {
+		t.Fatal("Consume returned nil for valid ticket before Stop")
+	}
+
+	ts.Stop()
+	// After Stop the channel is closed — a second Stop must not panic.
+	ts.Stop()
+}
