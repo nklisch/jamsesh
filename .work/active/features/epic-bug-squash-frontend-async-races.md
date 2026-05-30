@@ -113,19 +113,39 @@ redundant (drop them — the factory starts clean), and `onDestroy` reads ITS
 instance's `status`/`lock_id` so it can only release the lock it owns. Stale
 async writes after unmount land in the dead (GC'd) instance, harmless.
 
-**Implementation Notes**: `grep` every importer of the 4 singletons — if ONLY
-FinalizeView imports them, the conversion is contained; otherwise each importer
-instantiates its own (and shares via props if they must coordinate). Keep each
-facade's method bodies byte-identical; only the wrapper (module var → closure
-var) changes. Confirm no consumer relied on the module-level singleton identity
-(codex epic-gate caveat).
+**Implementation Notes**: production importer is ONLY `FinalizeView` (codex
+verified); the four finalize **test files import the singletons directly** and
+must convert to `createFinalizeX()` + isolation assertions. Keep each facade's
+method bodies byte-identical; only the wrapper (module var → closure var)
+changes. Also update the `per-instance-factory-rune-store` / `wrapper-object-rune-store`
+pattern doc, which currently says finalize stores stay module-level (now stale).
+
+**Codex must-fix — late server side effect**: factory isolation fixes stale
+*state* writes, but `FinalizeView.onMount` does `await acquireLock();
+startSubscriptions();` — a destroy during that await still (a) acquires a real
+server lock after `onDestroy`, and (b) starts subscriptions post-teardown. Add an
+`alive` generation flag (set false in `onDestroy`); after the `await`, if
+`!alive` → `void finalizeLock.release(orgId, sessionId)` for the late-acquired
+lock and SKIP `startSubscriptions()`:
+
+```ts
+let alive = true;
+onMount(() => { void (async () => {
+  await finalizeLock.acquire(orgId, sessionId, opts);
+  if (!alive) { void finalizeLock.release(orgId, sessionId); return; } // unmounted during acquire
+  startSubscriptions();
+})(); });
+onDestroy(() => { alive = false; /* ...existing teardown... */ });
+```
 
 **Acceptance Criteria**:
-- [ ] Two sequential FinalizeView mounts (session A unmount → session B mount) do
-      not share lock/plan/curation/execution state; B starts clean.
-- [ ] An `acquire`/`refetch` await that resolves after `onDestroy` does not
-      mutate a live instance (it writes to the orphaned one).
+- [ ] Two sequential FinalizeView mounts (A unmount → B mount) do not share
+      lock/plan/curation/execution state; B starts clean.
+- [ ] A destroy DURING `acquireLock()` releases the late-acquired server lock and
+      does NOT call `startSubscriptions()` (alive guard).
 - [ ] `onDestroy` releases only the lock whose `lock_id` the instance holds.
+- [ ] The 4 finalize test files use `createFinalizeX()` and assert cross-instance
+      isolation.
 
 ### Unit 2: ArtifactPane stale-fetch abort guard (High)
 **File**: `frontend/src/lib/components/ArtifactPane.svelte`
@@ -176,27 +196,35 @@ the typed `client.GET('/api/orgs/{orgID}/sessions/{sessionID}/refs')`), and trea
 a failed refs fetch as a surfaced error rather than a silent skip. Delete the
 dead `orgIdFromRef`.
 
-**Implementation Notes**: verify the parent (SessionView/SessionViewShell)
-instantiates `<ForkDialog>` and can pass its `orgId`. If the parent lacks it in
-scope, thread it down.
+**Implementation Notes**: `SessionViewShell` renders `<ForkDialog>` and has
+`orgId` in scope (codex verified) — thread it as a prop. **Codex must-fix**: also
+GATE the fork itself — treat "source ref not found in the refs response" the same
+as a refs-fetch failure and STOP before issuing the fork (the `/mcp` fork call),
+surfacing an error. Otherwise the dialog can still fork without a
+`target_commit_sha` even after the URL is fixed.
 
 **Acceptance Criteria**:
 - [ ] The refs fetch uses the real org id and resolves the selected source ref's
-      tip SHA; a failed fetch surfaces an error (no silent wrong-tip fork).
+      tip SHA; a failed fetch OR an unresolved ref surfaces an error and the fork
+      is NOT issued (no silent wrong-tip fork).
 
 ### Unit 5: CountdownBadge per-tick callback guard (Low)
 **File**: `frontend/src/lib/components/CountdownBadge.svelte`
 **Story**: `bug-squash-countdownbadge-per-tick-write` (Low)
 
 The `$effect` calls `onremainingupdate(...)` every tick (once/sec), driving a
-cross-component write + downstream re-derive. Guard it behind a changed-value
-check so the parent is only notified when the second-rounded remaining actually
-changes (or move the remaining-time math into the parent, which already holds
-`hardCapAt`/`idleTimeoutAt`).
+cross-component write + downstream re-derive. **Codex must-fix**: a
+"second-rounded changed-value guard" is a NO-OP here — the badge ticks once per
+second, so every tick already produces a new rounded value. The real fix is to
+**relocate the remaining-time derivation to the parent**, which already holds
+`hardCapAt`/`idleTimeoutAt`: the parent derives `idleRemainingMs`/`hardCapRemainingMs`
+from its own `now`/timestamps (or a shared countdown store), and CountdownBadge
+becomes display-only — dropping the per-tick child→parent callback entirely.
 
 **Acceptance Criteria**:
-- [ ] `onremainingupdate` fires only when the rounded remaining changes, not on
-      every internal `now` tick.
+- [ ] The parent derives remaining-time from its own timestamps; CountdownBadge
+      no longer pushes a per-tick `onremainingupdate` into the parent (the
+      cross-component per-second write is gone).
 
 ## Implementation Order
 All 5 independent (distinct files) — parallelizable. Unit 1 is the largest
@@ -225,9 +253,29 @@ All 5 independent (distinct files) — parallelizable. Unit 1 is the largest
   isolation fully resolves both cross-session bleed and stale-write hazards.
 - **ArtifactPane: AbortController** over a request-id counter — also cancels the
   in-flight network request, not just the state write.
-- **CountdownBadge**: changed-value guard (minimal) over relocating the math —
-  smallest fix for a Low.
+- **CountdownBadge**: relocate the remaining-time math to the parent (codex: the
+  changed-value guard is a no-op at 1 tick/sec) — removes the per-tick
+  cross-component write at the source.
 
 ## Other agent review
 
-_Codex (xhigh) feature peer-review gate pending._
+Codex (cross-model, xhigh) reviewed this design. Verdict: approve the direction;
+fix Unit 1 lifecycle + Unit 5 acceptance before implementation. Confirmed:
+the factory-rune pattern is valid Svelte 5 here (`createTreeState`,
+`createRefActions`, `createPlaygroundCountdown`, `createCommentComposer`,
+`createNewSessionForm` already use it); production importer of the finalize
+singletons is ONLY FinalizeView; ArtifactPane AbortController is correct;
+`SessionViewShell` has `orgId` to pass to ForkDialog; `$derived` usage is
+confined to `useFinalizeCuration`.
+
+**Accepted & applied:**
+- **Unit 1 (late server side effect)**: added an `alive` generation guard —
+  after `await acquireLock()`, if unmounted, release the late-acquired server
+  lock and skip `startSubscriptions()`. Plus: convert the 4 finalize TEST files
+  to factories; update the pattern doc (it currently says finalize stays
+  module-level).
+- **Unit 4 (fork gating)**: treat an unresolved source ref the same as a
+  refs-fetch failure — STOP before issuing the fork (no `target_commit_sha`),
+  not just fix the URL.
+- **Unit 5 (no-op guard)**: the changed-value guard doesn't help at 1 tick/sec;
+  relocate the remaining-time math to the parent and make the badge display-only.
