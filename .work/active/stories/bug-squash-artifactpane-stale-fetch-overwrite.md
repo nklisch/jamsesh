@@ -1,7 +1,7 @@
 ---
 id: bug-squash-artifactpane-stale-fetch-overwrite
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, ui, async, high]
 parent: epic-bug-squash-frontend-async-races
 depends_on: []

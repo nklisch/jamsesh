@@ -1,7 +1,7 @@
 ---
 id: bug-squash-forkdialog-empty-org-refs-fetch
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-async-races
 depends_on: []
