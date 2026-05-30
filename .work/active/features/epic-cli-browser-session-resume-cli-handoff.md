@@ -47,11 +47,47 @@ browser-side exchange (sibling `…-spa-route`).
   mint call needs.
 - `cmd/jamsesh/portalclient/` — the client to call `POST /api/session-resumes`.
 
-## Open design question (deferred to this feature's design pass)
+## Design decisions
 
-- **CLI surface**: extend `--open` to resume-when-possible, vs a dedicated
-  `--resume` flag, vs a `jamsesh resume` subcommand. (This is the kind of
-  feature-level question the questions-only design pass will settle.)
+(Captured in the questions-only alignment pass, 2026-05-30. CLI-surface choice
+cross-referenced with Codex — see `## Other agent consult`.)
+
+- **CLI surface = (2) + (3)**: `jam new --open` / `jam join --open` **adopt the
+  CLI identity by default** (the session is unambiguous at create/join time),
+  AND add a dedicated **`jamsesh resume [session-id]`** subcommand for the
+  reopen-later case. Bare `jamsesh resume` targets the `ResolveSession()`
+  current CC-instance session; an explicit `<session-id>` disambiguates;
+  `jamsesh status` is the lister. — Mirrors the `kubectl`/`aws --profile`/`gh`/
+  `fly` "act-on-current-context + explicit selector + status lister" convention.
+- **No silent wrong-session resume** [footgun]: bare `jamsesh resume` must only
+  use the `CC_SESSION_ID`→session mapping; if `ResolveSession` would fall back
+  to "first dir" while multiple sessions exist, ERROR with `jamsesh status`
+  guidance rather than guess.
+- **No silent identity-adoption degrade** [footgun]: if `--open` cannot mint a
+  resume token (e.g. portal lacks support, mint fails), either fail with a clear
+  message or open token-free WITH an explicit warning — never silently fall back.
+- **`--open` meaning change accepted**: `--open` now means "open this session in
+  the browser *as me*" (was token-free). This modifies the behavior of the
+  `--open` flag shipped in `feature-cli-jam-open-in-browser`; that's in-scope for
+  this epic. (Not a contradiction of that feature's flag-vs-subcommand choice —
+  `resume` is a distinct reopen-later/multi-session need, not a second "open".)
+- **Token-leak rule still applies**: the resume URL (with `rt` fragment) must
+  never be printed (see Decomposition-review findings); the CLI opens the
+  portal-returned `resume_url` without echoing it.
+
+The full design pass settles: exact flag wiring, the `resume` subcommand
+structure, session-selection UX, and how `--open` detects "resume possible".
+
+## Other agent consult
+
+Codex CLI-surface consult (2026-05-30): recommended (2)+(3) over (1)+(3)
+("`--resume` on new/join is awkward — you're not resuming an existing session,
+you're opening the just-made one as yourself") and over (2)-alone ("doesn't
+solve reopen-the-right-one-later"). Footguns above are its accepted findings.
+
+## Superseded open question
+
+- ~~CLI surface: `--open` vs `--resume` vs `jamsesh resume`~~ — resolved above.
 
 ## Decomposition-review findings (Codex, accepted — fold into this feature's design)
 
