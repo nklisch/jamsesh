@@ -85,11 +85,18 @@ removed sessions close (the macrotask linger absorbs the synchronous
 unsub-all→resubscribe). `sort()` makes the key order-insensitive so reordering
 doesn't churn.
 
-**Acceptance Criteria**:
+**Acceptance Criteria** (codex clarification — this is unsub-all/resub-all +
+linger, NOT a delta map):
 - [ ] A field-only event (e.g. `commit.arrived` → `updateSession`) does NOT
       re-run the subscription effect (no unsubscribe/resubscribe churn).
-- [ ] Adding/removing a session DOES re-run it (subscribes new, unsubscribes
-      gone).
+- [ ] On a genuine id-set change, SURVIVING sessions' sockets stay open (their
+      handlers re-subscribe within the same synchronous effect re-run, cancelling
+      the ws-lifecycle teardown linger); REMOVED sessions' sockets close; ADDED
+      sessions get fresh subscriptions. (Assert socket open/closed state, not a
+      "only the new session subscribed" delta.)
+
+Note: add `untrack` to the `svelte` import (the file currently imports only
+`onMount`).
 
 ### Unit 2: Sequence-guarded per-session refetch
 **File**: `frontend/src/lib/screens/SessionList.svelte`
@@ -115,12 +122,30 @@ function refetchSession(id: string) {
 
 **Implementation Notes**: the guard is per-session (a Map keyed by id), so the
 latest refetch for each session wins regardless of resolve order. Checking
-`error` avoids silently treating a failed GET as success. Clear the map entry on
-unsubscribe/teardown if desired (not required — stale ids are harmless).
+`error` avoids silently treating a failed GET as success. **Codex must-fix**: the
+status-event handlers (`session.finalizing`, `session.ended`) that call
+`updateSession` directly MUST also bump `refetchSeq.get(id)` — otherwise a
+`commit.arrived` refetch already in flight can resolve afterward and OVERWRITE
+the ended/finalizing status with stale data. So any event-derived `updateSession`
+for a session invalidates that session's outstanding GET:
+
+```ts
+function bumpAndUpdate(id: string, patch: Partial<Session> & { id: string }) {
+  refetchSeq.set(id, (refetchSeq.get(id) ?? 0) + 1); // invalidate in-flight GETs for this id
+  updateSession(patch);
+}
+// session.finalizing / session.ended handlers call bumpAndUpdate(...)
+```
+
+The `refetchSeq` Map is component-local and bounded by the SessionList lifetime;
+keep counters monotonic (do NOT reset on id reappearance) so a returning id can't
+accept a stale older response.
 
 **Acceptance Criteria**:
 - [ ] Two overlapping refetches for the same session: only the later-issued one's
       response is applied (earlier late response is dropped).
+- [ ] A `commit.arrived` refetch in flight when `session.ended` fires does NOT
+      overwrite the ended status (the ended handler bumped the seq).
 - [ ] A failed GET does not overwrite existing session state.
 
 ## Implementation Order
@@ -151,4 +176,18 @@ contract) at the feature level.
 
 ## Other agent review
 
-_Codex (xhigh) feature peer-review gate pending._
+Codex (cross-model, xhigh) reviewed this design. Verdict: approve with two
+must-fix clarifications. Confirmed: the `$derived` id-key + `untrack` idiom is
+sound (unchanged string key skips reruns); the ws-lifecycle macrotask linger
+covers ALL surviving sessions (cleanup + rerun body are synchronous before the
+timer fires); `sort()` is on the fresh mapped array; per-session seq guard
+correctly drops older overlapping GETs.
+
+**Accepted & applied:**
+- **Unit 1**: clarified the acceptance — this is unsub-all/resub-all + linger
+  (surviving sockets stay open via synchronous re-subscribe), NOT a delta map;
+  noted the `untrack` import.
+- **Unit 2**: status-event handlers (`session.finalizing`/`session.ended`) bump
+  the per-session `refetchSeq` so an in-flight `commit.arrived` refetch can't
+  resolve later and overwrite the ended status; documented the Map as bounded by
+  component lifetime with monotonic (non-reset) counters.
