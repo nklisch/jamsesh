@@ -1,7 +1,7 @@
 ---
 id: bug-squash-errors-is-not-used-errnotfound
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-automerger-correctness
 depends_on: [bug-squash-automerger-strands-commit-event, bug-squash-automerger-swallows-merge-emit]
@@ -25,3 +25,19 @@ These checks work today only because the dialect adapters return the bare `ErrNo
 if err != store.ErrNotFound { return "", fmt.Errorf("get ref mode: %w", err) }  // worker.go
 if err == store.ErrNotFound { return nil }                                       // outcomes.go
 ```
+
+## Implementation notes
+
+Two one-line fixes:
+1. `worker.go` `refModeForSession` — `if err != store.ErrNotFound` → `if !errors.Is(err, store.ErrNotFound)`.
+2. `outcomes.go` `tryResolveConflict` — `if err == store.ErrNotFound` → `if errors.Is(err, store.ErrNotFound)`.
+
+Both files already imported `errors`; no new imports needed. The `errors` import
+was added to `worker.go` as part of Unit 1 (needed for `isEmitAfterSideEffect`).
+
+Tests added in `errnotfound_test.go` (package `automerger_test`):
+- `TestWorker_RefMode_WrappedErrNotFound_FallsBackToDefault` — wraps ErrNotFound
+  in GetRefMode; worker falls back to DefaultMode="sync" and produces merge.succeeded
+  (not a hard error abort).
+- `TestApply_TryResolveConflict_WrappedErrNotFound_IsNoOp` — wraps ErrNotFound
+  in GetConflictEventByID; Apply returns nil (silent no-op, not an error).
