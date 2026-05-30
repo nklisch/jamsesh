@@ -53,6 +53,23 @@ decision matrix, minor composition reusing existing patterns skips mocking. If
 the feature-design pass finds the error/expiry UX genuinely novel, it may fall
 back to `/ux-ui-design:screens` then.
 
+## Design decisions
+
+(Captured in the questions-only alignment pass, 2026-05-30.)
+
+- **Account-mismatch handling**: if the browser is already authenticated as a
+  *different* account when a resume link is opened, **confirm the switch** with
+  the user before clearing the existing session and adopting the resumed
+  identity. (Guards against accidental identity swaps; pairs with the
+  ambient-auth handling below.)
+- **Error / expiry UX**: an expired / already-used / invalid resume token shows
+  a **generic message + retry hint** ("this resume link expired or was already
+  used — run the command again from your terminal"), with NO detail that
+  distinguishes the cases (no oracle). Stays on the resume route (no redirect).
+
+The full design pass settles: the confirm-switch UI, the exact copy, and how the
+generic-error state composes with the existing `JoinerOutcome` pattern.
+
 ## Decomposition-review findings (Codex, accepted — fold into this feature's design)
 
 - **Guard against ambient browser auth.** [important] The shared API client
