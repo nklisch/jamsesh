@@ -1,7 +1,7 @@
 ---
 id: bug-squash-ratelimit-reservation-cancel
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, portal, concurrency]
 parent: epic-bug-squash-worker-lifecycle
 depends_on: []
