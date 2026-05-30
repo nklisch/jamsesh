@@ -45,6 +45,7 @@ jamsesh new \
   --scope "docs/auth/**"   # writable glob; defaults to '**' (permissive)
   --mode sync              # sync (default) or isolated
   --invite alice@x,bob@x   # optional; invites sent post-create
+  --open                   # optional; opens portal session view in browser after create
 ```
 
 On success:
@@ -59,6 +60,9 @@ On success:
    `jamsesh new` from plain bash without a CC instance attached.
 4. A success summary is printed with the session URL, org, goal, scope,
    mode, and the `jamsesh join <session-id>` command collaborators can run.
+5. If `--open` was passed, the portal session view opens in the default
+   browser. Browser-launch failure degrades gracefully: the URL is printed
+   and the command still exits 0.
 
 If the push fails the session stays **live** with `base_sha: null`. The CLI
 prints the explicit retry command:
@@ -108,6 +112,10 @@ fires first.
    `jamsesh new --playground`; the flag binds the new session to the
    playground org and writes the anonymous bearer into the per-session
    token file at `${JAMSESH_DATA_DIR}/sessions/<id>/token`.
+   Adding `--open` opens the join page (`/playground/s/{id}/join`) in
+   the browser, where a fresh browser participant is minted via the
+   `JoinerPicker` (nickname picker). This is a new identity — it does
+   not resume the CLI's anonymous session identity.
 
 ## Flow: joining a playground
 
@@ -140,7 +148,10 @@ A collaborator received an invite or a join URL.
 5. The SessionStart hook fires, injecting the session goal, writable scope,
    peer ref tips, current draft state, and any unresolved addressed comments
    into the agent's context.
-6. They start prompting their agent normally.
+6. If `--open` was passed, the portal session view opens in the browser.
+   Browser-launch failure degrades gracefully: the URL is printed and the
+   command still exits 0.
+7. They start prompting their agent normally.
 
 ## Flow: an agent turn
 

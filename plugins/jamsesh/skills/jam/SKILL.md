@@ -36,11 +36,24 @@ is needed.
 - `--scope '<glob>'` — writable scope; defaults to `**` if not provided
 - `--mode sync|isolated` — ref mode; defaults to `sync`
 - `--invite alice@x,bob@y` — comma-separated emails to invite at create
+- `--open` — open the created session in your browser (playground → the join page; durable → the session view). Non-interactive; failures print the URL.
 
 **For `jam join`:**
 - `<url-or-id>` — required; the session URL or just the session ID
 - `--as <branch>` — optional ref-branch name (defaults to `main`)
 - `--from <commit>` — optional fork point
+- `--open` — open the joined session in your browser (durable session view).
+
+## Opening in the browser
+
+Both `jam new` and `jam join` accept `--open`. The CLI never prompts — the
+flag is non-interactive. When `jam` is invoked, **offer to open the session
+for the human**: fold the offer into the questions you are already asking
+(org, goal, etc.) and pass `--open` if they say yes.
+
+Playground `new --open` opens the join page (`/playground/s/{id}/join`),
+which mints a **fresh** browser participant via the `JoinerPicker` (nickname
+picker). It does not resume the CLI's anonymous identity.
 
 **Destruction warnings:** when a `playground.destruction_warning`
 event surfaces in your UserPromptSubmit digest (the session is ~5

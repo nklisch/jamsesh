@@ -1,7 +1,7 @@
 ---
 id: feature-cli-jam-open-in-browser-skill-and-docs
 kind: story
-stage: implementing
+stage: review
 tags: [plugin, documentation]
 parent: feature-cli-jam-open-in-browser
 depends_on: [feature-cli-jam-open-in-browser-cli-open-flag]
@@ -32,8 +32,26 @@ Implements **Unit 3** of `feature-cli-jam-open-in-browser`. See the feature body
 
 ## Acceptance criteria
 
-- [ ] `SKILL.md` documents `--open` for both `jam new` and `jam join` and the
+- [x] `SKILL.md` documents `--open` for both `jam new` and `jam join` and the
       agent-offer behavior; describes no interactive CLI prompt.
-- [ ] `docs/UX.md` mentions `--open` in the durable create, playground create,
+- [x] `docs/UX.md` mentions `--open` in the durable create, playground create,
       and durable join flows, including the playground "fresh participant" note.
-- [ ] Copy matches the shipped flag behavior from the `cli-open-flag` story.
+- [x] Copy matches the shipped flag behavior from the `cli-open-flag` story.
+
+## Implementation notes
+
+Files changed:
+
+- `plugins/jamsesh/skills/jam/SKILL.md`: added `--open` bullet under
+  "Optional flags for `jam new`"; added `--open` bullet under "For `jam join`";
+  added new "Opening in the browser" subsection instructing the agent to offer
+  `--open` when invoking `jam`, fold the offer into existing questions, and
+  notes that playground `new --open` mints a fresh browser participant via
+  `JoinerPicker` (does not resume CLI anonymous identity).
+
+- `docs/UX.md`: added `--open` to the durable create flow CLI example block;
+  added step 5 to the durable create on-success list (browser open + graceful
+  degradation); added `--open` note to the playground create flow (step 3)
+  including the fresh-participant caveat; added step 6 to the durable join flow
+  (browser open + graceful degradation, renumbered the final "start prompting"
+  step to 7). No legacy prose; doc describes the present.
