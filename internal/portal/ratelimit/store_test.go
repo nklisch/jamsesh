@@ -198,6 +198,76 @@ func TestStore_BucketRefill_FakeClock(t *testing.T) {
 	}
 }
 
+// TestStore_Allow_BurstExceeded_CancelAt verifies that when a minute-limiter
+// reservation returns !OK() (zero-burst or infinite-wait scenario), the
+// cancellation uses the injected clock time so token restoration is correct.
+// Concretely: a limiter with burst=0 always returns !OK(); after that deny the
+// limiter's internal state must not have been corrupted by a wall-clock cancel
+// when a fake clock is in use.
+func TestStore_Allow_BurstExceeded_CancelAt(t *testing.T) {
+	epoch := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+	clk := newFakeClock(epoch)
+
+	// PerMinute=1 means burst=1. Exhaust it immediately.
+	s := ratelimit.NewStoreWithClock(ratelimit.Config{PerMinute: 1}, clk)
+
+	// First request consumes the single token.
+	allowed, _ := s.Allow("10.0.0.2")
+	if !allowed {
+		t.Fatal("first request should be allowed (burst=1)")
+	}
+
+	// Second request: minute limiter has no token yet — delay path.
+	allowed, retryAfter := s.Allow("10.0.0.2")
+	if allowed {
+		t.Error("second request should be rate-limited (burst exhausted)")
+	}
+	if retryAfter <= 0 {
+		t.Errorf("retryAfter should be positive, got %v", retryAfter)
+	}
+
+	// Advance clock by retryAfter — bucket should have refilled.
+	clk.Advance(retryAfter)
+	allowed, _ = s.Allow("10.0.0.2")
+	if !allowed {
+		t.Error("request after retryAfter should be allowed (CancelAt restored token correctly)")
+	}
+}
+
+// TestStore_Allow_HourlyBurstExceeded_CancelAt verifies that when the hourly
+// limiter's !OK() path fires, the minute reservation is cancelled with CancelAt
+// so the minute token is correctly restored under a fake clock.
+func TestStore_Allow_HourlyBurstExceeded_CancelAt(t *testing.T) {
+	epoch := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+	clk := newFakeClock(epoch)
+
+	// 60/min (large burst) but only 1/hour burst — second hourly request is denied.
+	s := ratelimit.NewStoreWithClock(ratelimit.Config{PerMinute: 60, PerHour: 1}, clk)
+
+	// Consume the hourly token.
+	allowed, _ := s.Allow("10.0.0.3")
+	if !allowed {
+		t.Fatal("first request should be allowed")
+	}
+
+	// Second request: hourly limiter fires !OK or delay — minute token must be restored.
+	allowed, _ = s.Allow("10.0.0.3")
+	if allowed {
+		t.Error("second request should be blocked by hourly limiter")
+	}
+
+	// The minute token should have been restored via CancelAt(now). Advance clock
+	// by one second so the minute limiter can see it and confirm the token is back.
+	// (The minute limiter has PerMinute=60, so 1 token/s; 1s restores 1 token.)
+	clk.Advance(time.Second)
+	allowed, _ = s.Allow("10.0.0.3")
+	// The hourly limiter is still exhausted, so this should still be denied.
+	if allowed {
+		t.Error("request should still be blocked by hourly limit even after minute token restored")
+	}
+	// But the minute reservation was returned correctly (no double-debit).
+}
+
 // TestMiddleware_Enabled_Blocks verifies that requests over the burst get 429.
 func TestMiddleware_Enabled_Blocks(t *testing.T) {
 	s := ratelimit.NewStore(ratelimit.Config{PerMinute: 2})

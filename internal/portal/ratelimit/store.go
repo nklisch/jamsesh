@@ -103,6 +103,10 @@ func NewStoreWithClock(cfg Config, clock Clock) *Store {
 //
 // Allow is the hot path: it acquires the store mutex only long enough to
 // look up or allocate an entry, then calls Allow on the limiter(s).
+//
+// All reservation cancels use CancelAt(now) with the store's injected clock
+// rather than bare Cancel() (which uses wall-clock time.Now() internally),
+// so token restoration is correct when a fake clock is injected in tests.
 func (s *Store) Allow(key string) (allowed bool, retryAfter time.Duration) {
 	e := s.getOrCreate(key)
 
@@ -112,10 +116,13 @@ func (s *Store) Allow(key string) (allowed bool, retryAfter time.Duration) {
 	r := e.minuteLimiter.ReserveN(now, 1)
 	if !r.OK() {
 		// Burst exceeded — limiter doesn't allow even with infinite wait.
+		// A !OK reservation is documented as a no-op cancel, but we cancel
+		// it consistently for correctness under the injected clock.
+		r.CancelAt(now)
 		return false, 60 * time.Second
 	}
 	if d := r.DelayFrom(now); d > 0 {
-		r.Cancel() // return the token
+		r.CancelAt(now) // return the token at the correct clock time
 		return false, d
 	}
 
@@ -123,12 +130,12 @@ func (s *Store) Allow(key string) (allowed bool, retryAfter time.Duration) {
 	if e.hourlyLimiter != nil {
 		rh := e.hourlyLimiter.ReserveN(now, 1)
 		if !rh.OK() {
-			r.Cancel()
+			r.CancelAt(now)
 			return false, 3600 * time.Second
 		}
 		if d := rh.DelayFrom(now); d > 0 {
-			rh.Cancel()
-			r.Cancel()
+			rh.CancelAt(now)
+			r.CancelAt(now)
 			return false, d
 		}
 	}
