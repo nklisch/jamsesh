@@ -1,7 +1,7 @@
 ---
 id: bug-squash-automerger-strands-commit-event
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, portal, concurrency, high]
 parent: epic-bug-squash-automerger-correctness
 depends_on: []
