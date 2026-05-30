@@ -3,6 +3,7 @@ package automerger
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -25,6 +26,12 @@ type workerStore interface {
 	store.RefModeStore
 }
 
+// sessionQueue is the per-session state owned by an active draining goroutine.
+// Membership in Worker.sessions == "a goroutine is actively draining this queue".
+type sessionQueue struct {
+	ch chan events.Event
+}
+
 // Worker is the auto-merger orchestration layer. It subscribes to commit.arrived
 // events from events.Log and, for each sync-mode ref, runs the merge + apply
 // pipeline in a per-session goroutine backed by a bounded queue.
@@ -43,12 +50,16 @@ type Worker struct {
 	// AutoMergerOutcomes{outcome="backpressure"}.
 	Metrics *metrics.Registry
 
+	// onIdleDecision is a test-only hook invoked under mu inside the idle case,
+	// after the len(ch) re-check decision is computed but before acting on it.
+	// In production this is nil. Set before Start() is called.
+	onIdleDecision func(sessionID string, willExit bool)
+
 	// internal state — populated by Start
-	queues  sync.Map  // sessionID -> chan events.Event
-	running sync.Map  // sessionID -> struct{} (sentinel for active goroutine)
-	mu      sync.Mutex
-	wg      sync.WaitGroup
-	unsub   func()
+	mu       sync.Mutex
+	sessions map[string]*sessionQueue // guarded by mu; membership == "worker owns draining"
+	wg       sync.WaitGroup
+	unsub    func()
 }
 
 // Start subscribes to commit.arrived events, performs a no-op replay scan
@@ -62,6 +73,8 @@ func (w *Worker) Start(ctx context.Context) error {
 	if w.QueueSize == 0 {
 		w.QueueSize = 256
 	}
+
+	w.sessions = make(map[string]*sessionQueue)
 
 	// v1: replay scan skipped intentionally. See implementation notes in the
 	// story body for the documented limitation and manual recovery path.
@@ -127,46 +140,37 @@ func (w *Worker) dispatch(ctx context.Context, in <-chan events.Event) {
 // enqueue pushes e onto the per-session queue, creating the queue and starting
 // a session worker goroutine if needed. If the queue is full an
 // auto-merger.backpressure event is emitted instead.
+//
+// The queue creation, worker spawn, and event push all happen under w.mu, so
+// an idle-exiting goroutine cannot interleave between "queue exists" and "push
+// the event" — eliminating the lost-event race that existed with the old
+// two-sync.Map design.
 func (w *Worker) enqueue(ctx context.Context, e events.Event) {
-	// LoadOrStore is atomic but Make(chan) is not. Use a mutex to ensure only
-	// one goroutine creates the channel per session.
 	w.mu.Lock()
-	raw, exists := w.queues.Load(e.SessionID)
-	if !exists {
-		raw = make(chan events.Event, w.QueueSize)
-		w.queues.Store(e.SessionID, raw)
+	sq, ok := w.sessions[e.SessionID]
+	if !ok {
+		sq = &sessionQueue{ch: make(chan events.Event, w.QueueSize)}
+		w.sessions[e.SessionID] = sq
+		w.wg.Add(1)
+		go w.processSessionQueue(ctx, e.SessionID, sq)
 	}
-	w.mu.Unlock()
-
-	ch := raw.(chan events.Event)
+	// Push non-blockingly while still holding the lock. Because the channel is
+	// buffered and the send is non-blocking, holding the lock is safe — we never
+	// block a goroutine while holding mu.
 	select {
-	case ch <- e:
-		w.ensureSessionWorker(ctx, e.SessionID, ch)
+	case sq.ch <- e:
+		w.mu.Unlock()
 	default:
+		w.mu.Unlock()
 		// Queue full — emit backpressure event.
 		w.emitBackpressure(ctx, e)
 	}
 }
 
-// ensureSessionWorker spawns a per-session worker goroutine if one is not
-// already running. The running map acts as the "already-running" guard.
-func (w *Worker) ensureSessionWorker(ctx context.Context, sessionID string, ch chan events.Event) {
-	if _, loaded := w.running.LoadOrStore(sessionID, struct{}{}); loaded {
-		// Already running.
-		return
-	}
-	w.wg.Add(1)
-	go w.processSessionQueue(ctx, sessionID, ch)
-}
-
 // processSessionQueue drains the per-session event channel until idle timeout
 // or ctx cancellation.
-func (w *Worker) processSessionQueue(ctx context.Context, sessionID string, ch chan events.Event) {
+func (w *Worker) processSessionQueue(ctx context.Context, sessionID string, sq *sessionQueue) {
 	defer w.wg.Done()
-	defer func() {
-		// Mark this worker as no longer running so the next event re-spawns.
-		w.running.Delete(sessionID)
-	}()
 
 	idle := time.NewTimer(w.IdleTimeout)
 	defer idle.Stop()
@@ -174,8 +178,15 @@ func (w *Worker) processSessionQueue(ctx context.Context, sessionID string, ch c
 	for {
 		select {
 		case <-ctx.Done():
+			// Clean up the sessions entry so Stop + restart works cleanly,
+			// but do NOT delete if we're just cancelling — leave the slot for
+			// potential future restarts. The entry was created atomically with
+			// the goroutine spawn, so it is safe to remove here.
+			w.mu.Lock()
+			delete(w.sessions, sessionID)
+			w.mu.Unlock()
 			return
-		case e, ok := <-ch:
+		case e, ok := <-sq.ch:
 			if !ok {
 				return
 			}
@@ -188,9 +199,22 @@ func (w *Worker) processSessionQueue(ctx context.Context, sessionID string, ch c
 			idle.Reset(w.IdleTimeout)
 			w.processEvent(ctx, e)
 		case <-idle.C:
-			// Idle: clean up queue entry and exit; next event re-spawns.
-			w.queues.Delete(sessionID)
-			return
+			// Idle: re-check the buffer under mu before deciding to exit.
+			// This closes the race window: enqueue may have pushed an event
+			// after the idle timer fired but before we could consume it here.
+			w.mu.Lock()
+			willExit := len(sq.ch) == 0
+			if w.onIdleDecision != nil {
+				w.onIdleDecision(sessionID, willExit)
+			}
+			if willExit {
+				delete(w.sessions, sessionID)
+				w.mu.Unlock()
+				return
+			}
+			// Events arrived during the race window; keep draining.
+			w.mu.Unlock()
+			idle.Reset(w.IdleTimeout)
 		}
 	}
 }
@@ -316,10 +340,20 @@ func (w *Worker) processEvent(ctx context.Context, e events.Event) {
 		Result:       result,
 		PortalHost:   w.PortalHost,
 	}); err != nil {
-		slog.WarnContext(ctx, "automerger worker: apply failed",
-			"session_id", e.SessionID,
-			"err", err,
-		)
+		if isEmitAfterSideEffect(err) {
+			slog.ErrorContext(ctx, "automerger worker: side effect committed but event emit failed — manual recovery: re-push the source ref",
+				"session_id", e.SessionID,
+				"sha", sha,
+			)
+			if w.Metrics != nil {
+				w.Metrics.AutoMergerOutcomes.WithLabelValues("emit_failed").Inc()
+			}
+		} else {
+			slog.WarnContext(ctx, "automerger worker: apply failed",
+				"session_id", e.SessionID,
+				"err", err,
+			)
+		}
 		return
 	}
 }
@@ -335,7 +369,7 @@ func (w *Worker) refModeForSession(ctx context.Context, sessionID, ref, defaultM
 	if err == nil {
 		return rm.Mode, nil
 	}
-	if err != store.ErrNotFound {
+	if !errors.Is(err, store.ErrNotFound) {
 		return "", fmt.Errorf("get ref mode: %w", err)
 	}
 	return defaultMode, nil
@@ -344,7 +378,7 @@ func (w *Worker) refModeForSession(ctx context.Context, sessionID, ref, defaultM
 // emitBackpressure emits an auto-merger.backpressure event for the session.
 func (w *Worker) emitBackpressure(ctx context.Context, e events.Event) {
 	type backpressurePayload struct {
-		SessionID string `json:"session_id"`
+		SessionID  string `json:"session_id"`
 		DroppedRef string `json:"dropped_ref,omitempty"`
 	}
 	var p openapi.CommitArrivedPayload

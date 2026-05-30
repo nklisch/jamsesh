@@ -1,7 +1,7 @@
 ---
 id: bug-squash-automerger-strands-commit-event
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, concurrency, high]
 parent: epic-bug-squash-automerger-correctness
 depends_on: []
@@ -26,3 +26,31 @@ w.mu.Lock(); raw, exists := w.queues.Load(e.SessionID); ... w.mu.Unlock()
 case ch <- e: w.ensureSessionWorker(ctx, e.SessionID, ch)
 // idle path (NOT under w.mu): case <-idle.C: w.queues.Delete(sessionID); return
 ```
+
+## Implementation notes
+
+Replaced the `queues` + `running` `sync.Map` pair and `ensureSessionWorker` with a single
+`w.mu`-guarded `map[string]*sessionQueue`. Membership in the map is the "a goroutine is
+draining" flag — no separate sentinel needed.
+
+Key design points honoured:
+- `enqueue` creates the `sessionQueue`, inserts it into the map, and spawns the goroutine all
+  under `w.mu`. Pushing is also under the lock (non-blocking, buffered + `default`), so the
+  idle-exit race window is eliminated.
+- The idle case re-checks `len(sq.ch) == 0` under `w.mu` before deleting and exiting. If
+  events arrived during the timer-fire → lock-acquire window, it resets the timer and keeps
+  draining.
+- `onIdleDecision func(sessionID string, willExit bool)` hook (unexported, nil in production)
+  is called under `w.mu` just after the re-check, enabling deterministic race testing from the
+  internal test package.
+- `Start` initialises `w.sessions = make(map[string]*sessionQueue)`.
+- `processSessionQueue` ctx-cancellation path deletes from the map so `Stop` + restart
+  works cleanly.
+
+Tests added:
+- `worker_race_test.go` (package `automerger_test`): `TestWorkerRace_NoStrandedEvents` —
+  4 sessions × 10 events, IdleTimeout=1ms, asserts all 40 events produce outcomes under
+  `-race`.
+- `worker_race_internal_test.go` (package `automerger`): `TestWorkerRace_DeterministicIdleRace` —
+  uses `onIdleDecision` hook to fire a second enqueue while the idle decision is live, asserts
+  both events are processed.
