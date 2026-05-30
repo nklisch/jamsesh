@@ -1,7 +1,14 @@
 ---
-id: bug-scan-finalize-lock-no-transaction
+id: bug-squash-finalize-lock-no-transaction
+kind: story
+stage: drafting
+tags: [bug, portal, error-handling]
+parent: epic-bug-squash
+depends_on: []
+release_binding: null
+gate_origin: null
 created: 2026-05-30
-tags: [bug, error-handling]
+updated: 2026-05-30
 bug_origin: scan
 bug_severity: medium
 bug_domain: error-handling

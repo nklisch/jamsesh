@@ -1,7 +1,14 @@
 ---
-id: bug-scan-automerger-swallows-merge-emit
+id: bug-squash-automerger-swallows-merge-emit
+kind: story
+stage: drafting
+tags: [bug, portal, error-handling, high]
+parent: epic-bug-squash
+depends_on: []
+release_binding: null
+gate_origin: null
 created: 2026-05-30
-tags: [bug, error-handling, high]
+updated: 2026-05-30
 bug_origin: scan
 bug_severity: high
 bug_domain: error-handling

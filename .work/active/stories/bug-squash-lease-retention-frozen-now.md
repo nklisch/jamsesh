@@ -1,7 +1,14 @@
 ---
-id: bug-scan-lease-retention-frozen-now
+id: bug-squash-lease-retention-frozen-now
+kind: story
+stage: drafting
+tags: [bug, portal, time-numbers]
+parent: epic-bug-squash
+depends_on: []
+release_binding: null
+gate_origin: null
 created: 2026-05-30
-tags: [bug, time-numbers]
+updated: 2026-05-30
 bug_origin: scan
 bug_severity: medium
 bug_domain: time-numbers

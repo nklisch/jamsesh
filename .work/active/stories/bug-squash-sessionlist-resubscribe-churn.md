@@ -1,7 +1,14 @@
 ---
-id: bug-scan-sessionlist-resubscribe-churn
+id: bug-squash-sessionlist-resubscribe-churn
+kind: story
+stage: drafting
+tags: [bug, ui, state]
+parent: epic-bug-squash
+depends_on: []
+release_binding: null
+gate_origin: null
 created: 2026-05-30
-tags: [bug, state]
+updated: 2026-05-30
 bug_origin: scan
 bug_severity: medium
 bug_domain: state

@@ -1,7 +1,14 @@
 ---
-id: bug-scan-ratelimit-reservation-cancel
+id: bug-squash-ratelimit-reservation-cancel
+kind: story
+stage: drafting
+tags: [bug, portal, concurrency]
+parent: epic-bug-squash
+depends_on: []
+release_binding: null
+gate_origin: null
 created: 2026-05-30
-tags: [bug, concurrency]
+updated: 2026-05-30
 bug_origin: scan
 bug_severity: low
 bug_domain: concurrency

@@ -1,7 +1,14 @@
 ---
-id: bug-scan-artifactpane-stale-fetch-overwrite
+id: bug-squash-artifactpane-stale-fetch-overwrite
+kind: story
+stage: drafting
+tags: [bug, ui, async, high]
+parent: epic-bug-squash
+depends_on: []
+release_binding: null
+gate_origin: null
 created: 2026-05-30
-tags: [bug, async, high]
+updated: 2026-05-30
 bug_origin: scan
 bug_severity: high
 bug_domain: async

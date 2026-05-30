@@ -1,7 +1,14 @@
 ---
-id: bug-scan-ws-connection-never-closed
+id: bug-squash-ws-connection-never-closed
+kind: story
+stage: drafting
+tags: [bug, ui, resource-leak]
+parent: epic-bug-squash
+depends_on: []
+release_binding: null
+gate_origin: null
 created: 2026-05-30
-tags: [bug, resource-leak]
+updated: 2026-05-30
 bug_origin: scan
 bug_severity: medium
 bug_domain: resource-leak
