@@ -367,7 +367,7 @@ func main() {
 		retentionInterval := time.Duration(cfg.LeaseRetentionIntervalHours) * time.Hour
 		retentionDuration := time.Duration(cfg.LeaseRetentionDays) * 24 * time.Hour
 		go func() {
-			if err := lease.RunRetention(ctx, dbStore, retentionInterval, retentionDuration, time.Now().UTC()); err != nil {
+			if err := lease.RunRetention(ctx, dbStore, retentionInterval, retentionDuration, func() time.Time { return time.Now().UTC() }); err != nil {
 				slog.Info("lease retention goroutine stopped", "reason", err)
 			}
 		}()

@@ -32,7 +32,7 @@ func TestRunRetention_CancelExits(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		// Use a very short interval so the tick fires quickly.
-		done <- lease.RunRetention(ctx, s, 10*time.Millisecond, 30*24*time.Hour, time.Now().UTC())
+		done <- lease.RunRetention(ctx, s, 10*time.Millisecond, 30*24*time.Hour, func() time.Time { return time.Now().UTC() })
 	}()
 
 	// Give the goroutine a moment to start and tick at least once.
@@ -91,11 +91,58 @@ func (s *retentionStub) DeleteReleasedLeasesOlderThan(_ context.Context, before 
 	return nil
 }
 
+// TestRunRetention_CutoffAdvancesEachTick verifies that RunRetention
+// recomputes the cutoff from nowFn on every tick, so the cutoff advances
+// across ticks (not frozen at startup). The test uses a fake nowFn that
+// returns increasing times and asserts that successive calls to
+// DeleteReleasedLeasesOlderThan receive increasing cutoffs.
+func TestRunRetention_CutoffAdvancesEachTick(t *testing.T) {
+	var mu sync.Mutex
+	callCount := 0
+	// nowBase is advanced by 24h on each call to nowFn to simulate wall-clock
+	// advance between ticks.
+	nowBase := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	nowFn := func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		t := nowBase
+		nowBase = nowBase.Add(24 * time.Hour)
+		callCount++
+		return t
+	}
+
+	retention := 30 * 24 * time.Hour
+	stub := newRetentionStub()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lease.RunRetention(ctx, stub, 5*time.Millisecond, retention, nowFn)
+	}()
+
+	// Wait for at least two DeleteReleasedLeasesOlderThan calls.
+	<-stub.notify
+	<-stub.notify
+	cancel()
+	<-done
+
+	stub.mu.Lock()
+	got := stub.called
+	stub.mu.Unlock()
+
+	if len(got) < 2 {
+		t.Fatalf("expected at least 2 calls, got %d", len(got))
+	}
+	// Each successive cutoff must be later than the previous one.
+	if !got[1].After(got[0]) {
+		t.Errorf("cutoff did not advance: first=%v second=%v (want second > first)", got[0], got[1])
+	}
+}
+
 // TestRunRetention_CutoffUsesNow verifies that RunRetention computes the
-// cutoff as now.Add(-retentionAfter) rather than calling time.Now() itself.
-// The test passes a synthetic "now" and asserts that
-// DeleteReleasedLeasesOlderThan receives the expected cutoff — no real
-// wall-clock wait required.
+// cutoff as nowFn().Add(-retentionAfter) rather than using a startup-frozen
+// value. The test passes a nowFn returning a synthetic time and asserts that
+// DeleteReleasedLeasesOlderThan receives the expected cutoff.
 func TestRunRetention_CutoffUsesNow(t *testing.T) {
 	syntheticNow := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
 	retention := 30 * 24 * time.Hour
@@ -106,7 +153,7 @@ func TestRunRetention_CutoffUsesNow(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- lease.RunRetention(ctx, stub, 5*time.Millisecond, retention, syntheticNow)
+		done <- lease.RunRetention(ctx, stub, 5*time.Millisecond, retention, func() time.Time { return syntheticNow })
 	}()
 
 	// Wait for at least one DeleteReleasedLeasesOlderThan call.
@@ -158,7 +205,7 @@ func TestRunRetention_DeletesOldRows(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- lease.RunRetention(retentionCtx, s, 50*time.Millisecond, 30*24*time.Hour, time.Now().UTC())
+		done <- lease.RunRetention(retentionCtx, s, 50*time.Millisecond, 30*24*time.Hour, func() time.Time { return time.Now().UTC() })
 	}()
 
 	// Allow a couple of ticks before cancelling.
