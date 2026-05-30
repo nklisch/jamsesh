@@ -1,7 +1,7 @@
 ---
 id: feature-cli-jam-open-in-browser-skill-and-docs
 kind: story
-stage: review
+stage: done
 tags: [plugin, documentation]
 parent: feature-cli-jam-open-in-browser
 depends_on: [feature-cli-jam-open-in-browser-cli-open-flag]

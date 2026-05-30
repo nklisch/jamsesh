@@ -1,7 +1,7 @@
 ---
 id: feature-cli-jam-open-in-browser-osopen-shared-helper
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: feature-cli-jam-open-in-browser
 depends_on: []

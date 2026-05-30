@@ -1,7 +1,7 @@
 ---
 id: feature-cli-jam-open-in-browser
 kind: feature
-stage: review
+stage: done
 tags: [plugin]
 parent: null
 depends_on: []
@@ -420,3 +420,34 @@ Verification (orchestrator, post-each-wave): `go build ./...` clean,
 all pass. No deviations from the design. `--open` is inherited by `jam
 new`/`jam join` via `jamcmd/jam.go`'s fresh command instances (no jam.go
 change needed).
+
+## Review (2026-05-30)
+
+**Verdict: Approve.** Final cross-model peer-review (Codex, code-level pass over
+`ed4f9f0..HEAD`) found **no blockers and no important issues**. Confirmed: the
+auth/finalize migration preserved both injection seams (`cfg.openURL` default;
+finalize `var openURL`); opened URLs carry no bearer/invite tokens; `--open`
+fires only after create/join success using resolved IDs.
+
+Findings dispositioned:
+- Nit (accepted, fixed `18c7d26`): durable `_summaryUnchanged` test asserted a
+  bare URL substring; tightened to a golden assertion on the full
+  `  URL:    <url>` summary line. Playground summary stays substring-based — its
+  `Ends: in …` line is time-dependent, so a byte-golden would be flaky.
+- Nit (rejected): `org/session` join `--open` test "weak" re: org rediscovery —
+  orthogonal to `--open`'s post-resolution behavior, which it does prove.
+- Nit (rejected): `platformArgv` cross-GOOS coverage — not testable without
+  refactoring the seam to take GOOS as a param; three trivial string literals.
+- Nit (rejected): success-path opener test uses real `true` — harmless and
+  deterministic on CI; a fake-helper-process rewrite isn't worth the complexity.
+
+Verification at done: `go build ./...`, `go vet ./cmd/jamsesh/...`, and
+`go test ./cmd/jamsesh/internal/osopen/… ./cmd/jamsesh/auth/…
+./cmd/jamsesh/finalizecmd/… ./cmd/jamsesh/sessioncmd/…` all pass. All 3 child
+stories approved and advanced to done.
+
+Out-of-scope but noted for the substrate (not a finding against this feature):
+the playground `new --open` "fresh participant" UX (the creator can't resume
+their CLI anonymous identity in the browser) is inherent to the anonymous model
+and is now documented; a future durable-style "resume my session" affordance
+would be separate work.
