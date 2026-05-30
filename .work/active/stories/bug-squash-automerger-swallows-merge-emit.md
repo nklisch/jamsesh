@@ -1,7 +1,7 @@
 ---
 id: bug-squash-automerger-swallows-merge-emit
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, error-handling, high]
 parent: epic-bug-squash-automerger-correctness
 depends_on: []
@@ -27,3 +27,33 @@ if _, err := a.Log.Emit(ctx, ..., "merge.succeeded", data); err != nil {
     return ApplyOutput{}, fmt.Errorf("automerger apply: emit merge.succeeded: %w", err)
 }
 ```
+
+## Implementation notes
+
+Added `ErrEmitAfterSideEffect` sentinel and `emitWithRetry` to `outcomes.go`.
+`emitWithRetry` runs on a detached `context.WithoutCancel(ctx)+emitGraceTimeout` ctx
+so shutdown cancellation cannot re-drop the event. Classifies transience via
+`deperr.WrapDBIfTransient` (because `events.Log.Emit` returns raw store errors,
+not pre-wrapped deperr errors) before deciding to retry. Retries up to
+`emitMaxRetries=3` times; on exhaustion returns `ErrEmitAfterSideEffect` wrapping
+the last error.
+
+Applied to all three emit sites: `merge.succeeded` (`applySuccess`),
+`conflict.detected` (`applyConflict`), and `conflict.resolved` (`tryResolveConflict`).
+
+`worker.go processEvent`: when `Apply` returns `ErrEmitAfterSideEffect`,
+`slog.ErrorContext` (not Warn) with session_id + sha + recovery hint, and
+increments `AutoMergerOutcomes{outcome="emit_failed"}`.
+
+Duplicate emit on ambiguous commit-phase failure is tolerated (consumers keyed
+on `merge_commit_sha` / event `id` are idempotent) — no dedup store added.
+
+Tests added in `emit_retry_test.go`:
+- `TestApply_EmitRetry_TransientSucceedsOnRetry` — failN store, 2 fails then
+  success; Apply returns nil, draft ref advanced, merge.succeeded in log.
+- `TestApply_EmitRetry_AlwaysFailEscalates` — alwaysFail store; Apply returns
+  ErrEmitAfterSideEffect, draft ref still advanced (side effect committed).
+- `TestApply_EmitRetry_ConflictDetected_AlwaysFailEscalates` — same for conflict path.
+- `TestApply_DuplicateEmit_ConsumerIdempotent` — two merge.succeeded events for same
+  merge_commit_sha both carry identical sha; consumer is idempotent.
+- `TestApply_EmitRetry_ConflictResolved_AlwaysFailEscalates` — conflict.resolved path.

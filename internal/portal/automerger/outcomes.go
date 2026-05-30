@@ -3,6 +3,7 @@ package automerger
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -15,10 +16,32 @@ import (
 
 	openapi "jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
+	"jamsesh/internal/portal/deperr"
 	"jamsesh/internal/portal/events"
 	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/portal/prereceive"
 )
+
+// emitGraceTimeout is the total budget for post-side-effect emit retries on a
+// detached context. Kept small enough to avoid holding a session worker goroutine
+// for a long time, but large enough to absorb a transient DB hiccup.
+const emitGraceTimeout = 10 * time.Second
+
+// emitMaxRetries is the maximum number of Emit attempts before escalating to
+// ErrEmitAfterSideEffect.
+const emitMaxRetries = 3
+
+// ErrEmitAfterSideEffect is returned by Apply when the durable side effect
+// (SetReference / InsertConflictEvent / MarkConflictEventResolved) has been
+// committed but every attempt to emit the corresponding event failed. The draft
+// ref / conflict row is unchanged — git/DB remain the source of truth.
+// Recovery: re-push the source ref to trigger a fresh commit.arrived event.
+var ErrEmitAfterSideEffect = errors.New("automerger: side effect committed but event emit failed")
+
+// isEmitAfterSideEffect reports whether err wraps ErrEmitAfterSideEffect.
+func isEmitAfterSideEffect(err error) bool {
+	return errors.Is(err, ErrEmitAfterSideEffect)
+}
 
 // Clock is an injectable time source. Mirrors auth.Clock and tokens.Clock so a
 // single *testclock.AdvanceableClock satisfies all of them. Per-package types
@@ -113,6 +136,39 @@ func (a *Applier) Apply(ctx context.Context, in ApplyInput) (ApplyOutput, error)
 	}
 }
 
+// emitWithRetry emits an event after a durable side effect has already been
+// committed. It runs on a detached context (worker-ctx cancellation cannot
+// re-drop the event), classifies transience itself via deperr.WrapDBIfTransient
+// (because Emit returns raw store errors, not pre-wrapped deperr errors), and
+// retries up to emitMaxRetries times on transient failures.
+//
+// On exhaustion returns ErrEmitAfterSideEffect wrapping the last error.
+// A duplicate emit on ambiguous commit-phase failure is tolerated — consumers
+// are idempotent on merge_commit_sha / event id.
+func (a *Applier) emitWithRetry(ctx context.Context, orgID, sessionID, eventType string, data []byte) error {
+	emitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), emitGraceTimeout)
+	defer cancel()
+
+	var lastErr error
+	for attempt := 0; attempt < emitMaxRetries; attempt++ {
+		_, err := a.Log.Emit(emitCtx, orgID, sessionID, eventType, data)
+		if err == nil {
+			return nil
+		}
+		// Classify: if wrapped as ErrDB by deperr, it's transient.
+		classified := deperr.WrapDBIfTransient(err)
+		if errors.Is(classified, deperr.ErrDB) {
+			// Transient — retry.
+			lastErr = err
+			continue
+		}
+		// Non-transient (business sentinel or unexpected type) — don't retry.
+		lastErr = err
+		break
+	}
+	return fmt.Errorf("%w: %v", ErrEmitAfterSideEffect, lastErr)
+}
+
 // ---------------------------------------------------------------------------
 // Success path
 // ---------------------------------------------------------------------------
@@ -152,14 +208,14 @@ func (a *Applier) applySuccess(ctx context.Context, in ApplyInput) (ApplyOutput,
 		return ApplyOutput{}, fmt.Errorf("automerger apply: store merge commit: %w", err)
 	}
 
-	// Advance the draft ref.
+	// Advance the draft ref (durable side effect).
 	draftRefName := plumbing.NewBranchReferenceName("jam/" + in.Session.ID + "/draft")
 	ref := plumbing.NewHashReference(draftRefName, mergeSHA)
 	if err := in.Repo.Storer.SetReference(ref); err != nil {
 		return ApplyOutput{}, fmt.Errorf("automerger apply: advance draft ref: %w", err)
 	}
 
-	// Emit merge.succeeded.
+	// Emit merge.succeeded with retry on transient failures.
 	payload := openapi.MergeSucceededPayload{
 		SourceSha:      in.SourceCommit.String(),
 		DraftSha:       mergeSHA.String(),
@@ -169,8 +225,8 @@ func (a *Applier) applySuccess(ctx context.Context, in ApplyInput) (ApplyOutput,
 	if err != nil {
 		return ApplyOutput{}, fmt.Errorf("automerger apply: marshal merge.succeeded payload: %w", err)
 	}
-	if _, err := a.Log.Emit(ctx, in.Session.OrgID, in.Session.ID, "merge.succeeded", data); err != nil {
-		return ApplyOutput{}, fmt.Errorf("automerger apply: emit merge.succeeded: %w", err)
+	if err := a.emitWithRetry(ctx, in.Session.OrgID, in.Session.ID, "merge.succeeded", data); err != nil {
+		return ApplyOutput{}, err
 	}
 
 	// Handle Resolves-Conflict trailer on source commit.
@@ -231,7 +287,7 @@ func commitSummary(message string) string {
 func (a *Applier) tryResolveConflict(ctx context.Context, in ApplyInput, eventID, mergeSHA string) error {
 	ev, err := a.Store.GetConflictEventByID(ctx, eventID)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if errors.Is(err, store.ErrNotFound) {
 			// Unknown event-id — silent no-op.
 			return nil
 		}
@@ -256,7 +312,7 @@ func (a *Applier) tryResolveConflict(ctx context.Context, in ApplyInput, eventID
 		return nil
 	}
 
-	// Mark resolved.
+	// Mark resolved (durable side effect).
 	now := a.now()
 	if err := a.Store.MarkConflictEventResolved(ctx, store.MarkConflictEventResolvedParams{
 		ID:                 eventID,
@@ -267,7 +323,7 @@ func (a *Applier) tryResolveConflict(ctx context.Context, in ApplyInput, eventID
 		return fmt.Errorf("mark conflict event resolved: %w", err)
 	}
 
-	// Emit conflict.resolved.
+	// Emit conflict.resolved with retry on transient failures.
 	payload := openapi.ConflictResolvedPayload{
 		EventId:            eventID,
 		ResolvingCommitSha: mergeSHA,
@@ -276,8 +332,8 @@ func (a *Applier) tryResolveConflict(ctx context.Context, in ApplyInput, eventID
 	if err != nil {
 		return fmt.Errorf("marshal conflict.resolved payload: %w", err)
 	}
-	if _, err := a.Log.Emit(ctx, in.Session.OrgID, in.Session.ID, "conflict.resolved", data); err != nil {
-		return fmt.Errorf("emit conflict.resolved: %w", err)
+	if err := a.emitWithRetry(ctx, in.Session.OrgID, in.Session.ID, "conflict.resolved", data); err != nil {
+		return err
 	}
 
 	return nil
@@ -313,6 +369,7 @@ func (a *Applier) applyConflict(ctx context.Context, in ApplyInput) (ApplyOutput
 	now := a.now()
 	eventID := ulid.Make().String()
 
+	// Insert the conflict event (durable side effect).
 	if err := a.Store.InsertConflictEvent(ctx, store.InsertConflictEventParams{
 		ID:           eventID,
 		OrgID:        in.Session.OrgID,
@@ -351,8 +408,10 @@ func (a *Applier) applyConflict(ctx context.Context, in ApplyInput) (ApplyOutput
 	if err != nil {
 		return ApplyOutput{}, fmt.Errorf("automerger apply: marshal conflict.detected payload: %w", err)
 	}
-	if _, err := a.Log.Emit(ctx, in.Session.OrgID, in.Session.ID, "conflict.detected", data); err != nil {
-		return ApplyOutput{}, fmt.Errorf("automerger apply: emit conflict.detected: %w", err)
+
+	// Emit conflict.detected with retry on transient failures.
+	if err := a.emitWithRetry(ctx, in.Session.OrgID, in.Session.ID, "conflict.detected", data); err != nil {
+		return ApplyOutput{}, err
 	}
 
 	// Return the freshly inserted event.
