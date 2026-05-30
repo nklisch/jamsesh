@@ -139,6 +139,8 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (store.Comment, er
 	id := ulid.Make().String()
 
 	var comment store.Comment
+	var allocatedSeq int64
+	var allocatedEventID string
 	err := s.Store.WithTx(ctx, func(tx store.TxStore) error {
 		if err := tx.InsertComment(ctx, store.InsertCommentParams{
 			ID:              id,
@@ -196,6 +198,10 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (store.Comment, er
 			return fmt.Errorf("insert comment.added event: %w", err)
 		}
 
+		// Capture seq and eventID so the fan-out below can carry the real values.
+		allocatedSeq = seq
+		allocatedEventID = eventID
+
 		comment = store.Comment{
 			ID:              id,
 			OrgID:           p.OrgID,
@@ -237,6 +243,8 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (store.Comment, er
 	}
 
 	// Fan out the comment.added event to WebSocket subscribers.
+	// Carry the tx-allocated seq and eventID so the SPA's lastSeenSeq cursor
+	// advances correctly and replay dedup works (seq=0 would never advance it).
 	payloadBytes, _ := json.Marshal(commentAddedPayload{
 		ID:              id,
 		SessionID:       p.SessionID,
@@ -252,8 +260,10 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (store.Comment, er
 		CreatedAt:       now.Format(time.RFC3339Nano),
 	})
 	s.Log.FanOut(events.Event{
+		ID:        allocatedEventID,
 		OrgID:     p.OrgID,
 		SessionID: p.SessionID,
+		Seq:       allocatedSeq,
 		Type:      "comment.added",
 		Payload:   payloadBytes,
 		CreatedAt: now,
@@ -279,6 +289,8 @@ func (s *Service) Resolve(ctx context.Context, p ResolveParams) (store.Comment, 
 		return store.Comment{}, ErrAlreadyResolved
 	}
 
+	var resolveSeq int64
+	var resolveEventID string
 	err = s.Store.WithTx(ctx, func(tx store.TxStore) error {
 		if err := tx.ResolveComment(ctx, store.ResolveCommentParams{
 			ID:                  p.CommentID,
@@ -307,7 +319,7 @@ func (s *Service) Resolve(ctx context.Context, p ResolveParams) (store.Comment, 
 			return fmt.Errorf("allocate seq: %w", err)
 		}
 		eventID := ulid.Make().String()
-		return tx.InsertEvent(ctx, store.InsertEventParams{
+		if err := tx.InsertEvent(ctx, store.InsertEventParams{
 			ID:        eventID,
 			OrgID:     p.OrgID,
 			SessionID: p.SessionID,
@@ -315,7 +327,13 @@ func (s *Service) Resolve(ctx context.Context, p ResolveParams) (store.Comment, 
 			Type:      "comment.resolved",
 			Payload:   string(payload),
 			CreatedAt: now,
-		})
+		}); err != nil {
+			return err
+		}
+		// Capture seq and eventID for the post-commit fan-out.
+		resolveSeq = seq
+		resolveEventID = eventID
+		return nil
 	})
 	if err != nil {
 		return store.Comment{}, err
@@ -328,14 +346,17 @@ func (s *Service) Resolve(ctx context.Context, p ResolveParams) (store.Comment, 
 	resolved.ResolutionNote = p.ResolutionNote
 
 	// Fan out the comment.resolved event to WebSocket subscribers.
+	// Carry the tx-allocated seq and eventID so the SPA replay cursor advances.
 	payloadBytes, _ := json.Marshal(commentResolvedPayload{
 		CommentID:      p.CommentID,
 		ResolvedBy:     p.AccountID,
 		ResolutionNote: p.ResolutionNote,
 	})
 	s.Log.FanOut(events.Event{
+		ID:        resolveEventID,
 		OrgID:     p.OrgID,
 		SessionID: p.SessionID,
+		Seq:       resolveSeq,
 		Type:      "comment.resolved",
 		Payload:   payloadBytes,
 		CreatedAt: now,
@@ -360,14 +381,19 @@ func (s *Service) List(ctx context.Context, p ListParams) ([]store.Comment, stri
 	// Build filter map for cursor validation.
 	filter := listFilterMap(p)
 
-	// Decode cursor if provided.
+	// Decode cursor if provided; first page uses a future sentinel so all rows qualify.
 	before := s.now().Add(time.Second)
+	// maxIDSentinel sorts after every ULID (26 lowercase base32 chars, max char is 'z')
+	// so the keyset condition `id < maxIDSentinel` admits all rows on the first page.
+	const maxIDSentinel = "zzzzzzzzzzzzzzzzzzzzzzzzzz"
+	lastID := maxIDSentinel
 	if p.Cursor != "" {
 		cur, err := pagination.Decode(p.Cursor, filter)
 		if err != nil {
 			return nil, "", fmt.Errorf("decode cursor: %w", err)
 		}
 		before = cur.LastCreatedAt()
+		lastID = cur.LastID
 	}
 
 	resolvedFilter := 0
@@ -387,6 +413,7 @@ func (s *Service) List(ctx context.Context, p ListParams) ([]store.Comment, stri
 		AnchorCommitSHA: p.AnchorCommitSHA,
 		AnchorFilePath:  p.AnchorFilePath,
 		Before:          before,
+		LastID:          lastID,
 		Limit:           limit + 1,
 	})
 	if err != nil {

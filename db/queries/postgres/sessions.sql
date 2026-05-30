@@ -55,9 +55,10 @@ WHERE org_id = $1 AND id = $2;
 SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at, end_reason,
        finalize_locked_by_account_id, last_substantive_activity_at, hard_cap_at, idle_timeout_at
 FROM sessions
-WHERE org_id = $1 AND created_at < $2
-ORDER BY created_at DESC
-LIMIT $3;
+WHERE org_id = $1
+  AND (created_at < $2 OR (created_at = $2 AND id < $3))
+ORDER BY created_at DESC, id DESC
+LIMIT $4;
 
 -- name: NicknameTakenInSession :one
 SELECT COUNT(*) > 0 AS taken

@@ -14,8 +14,8 @@ import (
 type Querier interface {
 	AddOrgMember(ctx context.Context, arg AddOrgMemberParams) error
 	AddSessionMember(ctx context.Context, arg AddSessionMemberParams) error
-	AllocateNextSeq(ctx context.Context, sessionID string) (int32, error)
-	AllocateNextSeqN(ctx context.Context, arg AllocateNextSeqNParams) (int32, error)
+	AllocateNextSeq(ctx context.Context, sessionID string) (int64, error)
+	AllocateNextSeqN(ctx context.Context, arg AllocateNextSeqNParams) (int64, error)
 	CleanupExpiredOAuthState(ctx context.Context, expiresAt time.Time) error
 	ClearFinalizeLock(ctx context.Context, arg ClearFinalizeLockParams) error
 	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error

@@ -1,7 +1,7 @@
 ---
 id: bug-squash-cursor-pagination-drops-rows
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, data-layer]
 parent: epic-bug-squash-data-tx-integrity
 depends_on: []
@@ -26,3 +26,7 @@ WHERE session_id = ? ... AND created_at < ?   -- exclusive bound on created_at O
 ORDER BY created_at DESC                       -- no id tiebreaker; LastID never used
 LIMIT ?;
 ```
+
+## Implementation notes
+
+Updated both SQLite and Postgres `ListCommentsForSession` and `ListSessionsForOrgWithCursor` queries to use keyset `(created_at, id)` pagination. SQLite anonymous `?` passes `before` twice (once per occurrence); Postgres uses numbered `$N` so `$2` is reused. Added `LastID` to `ListCommentsForSessionParams` and `ListSessionsForOrgWithCursorParams` in `store.go`. Updated both dialect adapters (outer + TxStore). First-page sentinel: `before = now()+1s`, `lastID = "zzzzzzzzzzzzzzzzzzzzzzzzzz"` so `id < lastID` admits all rows. Regenerated sqlc for both dialects. Tests: `TestKeysetPaginationCommentsNoDuplicates` and `TestKeysetPaginationSessionsNoDuplicates` (7 rows with identical created_at, 5-row pages, page through asserting each id seen exactly once).

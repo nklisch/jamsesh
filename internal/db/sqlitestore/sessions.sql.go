@@ -289,19 +289,28 @@ const listSessionsForOrgWithCursor = `-- name: ListSessionsForOrgWithCursor :man
 SELECT id, org_id, name, goal, writable_scope, default_mode, base_sha, status, created_at, ended_at, end_reason,
        finalize_locked_by_account_id, last_substantive_activity_at, hard_cap_at, idle_timeout_at
 FROM sessions
-WHERE org_id = ? AND created_at < ?
-ORDER BY created_at DESC
+WHERE org_id = ?
+  AND (created_at < ? OR (created_at = ? AND id < ?))
+ORDER BY created_at DESC, id DESC
 LIMIT ?
 `
 
 type ListSessionsForOrgWithCursorParams struct {
-	OrgID     string    `json:"org_id"`
-	CreatedAt time.Time `json:"created_at"`
-	Limit     int64     `json:"limit"`
+	OrgID       string    `json:"org_id"`
+	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt_2 time.Time `json:"created_at_2"`
+	ID          string    `json:"id"`
+	Limit       int64     `json:"limit"`
 }
 
 func (q *Queries) ListSessionsForOrgWithCursor(ctx context.Context, arg ListSessionsForOrgWithCursorParams) ([]Session, error) {
-	rows, err := q.db.QueryContext(ctx, listSessionsForOrgWithCursor, arg.OrgID, arg.CreatedAt, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listSessionsForOrgWithCursor,
+		arg.OrgID,
+		arg.CreatedAt,
+		arg.CreatedAt_2,
+		arg.ID,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

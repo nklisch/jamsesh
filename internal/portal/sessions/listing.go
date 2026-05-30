@@ -66,6 +66,10 @@ func (h *Handler) ListSessions(ctx context.Context, req openapi.ListSessionsRequ
 
 	// Decode cursor if provided, otherwise start from "now" (first page).
 	before := h.clock.Now().Add(time.Second) // slight future to include now
+	// maxIDSentinel sorts after every ULID so the keyset condition `id < maxIDSentinel`
+	// admits all rows on the first page.
+	const maxIDSentinel = "zzzzzzzzzzzzzzzzzzzzzzzzzz"
+	lastID := maxIDSentinel
 	if req.Params.Cursor != "" {
 		cur, err := pagination.Decode(req.Params.Cursor, filter)
 		if err != nil {
@@ -81,12 +85,14 @@ func (h *Handler) ListSessions(ctx context.Context, req openapi.ListSessionsRequ
 			}), nil
 		}
 		before = cur.LastCreatedAt()
+		lastID = cur.LastID
 	}
 
 	// Fetch one extra row to detect whether there's a next page.
 	rows, err := h.store.ListSessionsForOrgWithCursor(ctx, store.ListSessionsForOrgWithCursorParams{
 		OrgID:  orgID,
 		Before: before,
+		LastID: lastID,
 		Limit:  limit + 1,
 	})
 	if err != nil {

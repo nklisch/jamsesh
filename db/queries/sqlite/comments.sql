@@ -30,6 +30,6 @@ WHERE session_id = ?
   AND (? = 0 OR (? = 1 AND resolved_at IS NOT NULL) OR (? = 2 AND resolved_at IS NULL))
   AND (? = '' OR anchor_commit_sha = ?)
   AND (? = '' OR anchor_file_path = ?)
-  AND created_at < ?
-ORDER BY created_at DESC
+  AND (created_at < ? OR (created_at = ? AND id < ?))
+ORDER BY created_at DESC, id DESC
 LIMIT ?;

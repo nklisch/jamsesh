@@ -103,8 +103,8 @@ WHERE session_id = ?
   AND (? = 0 OR (? = 1 AND resolved_at IS NOT NULL) OR (? = 2 AND resolved_at IS NULL))
   AND (? = '' OR anchor_commit_sha = ?)
   AND (? = '' OR anchor_file_path = ?)
-  AND created_at < ?
-ORDER BY created_at DESC
+  AND (created_at < ? OR (created_at = ? AND id < ?))
+ORDER BY created_at DESC, id DESC
 LIMIT ?
 `
 
@@ -122,6 +122,8 @@ type ListCommentsForSessionParams struct {
 	Column11        interface{}    `json:"column_11"`
 	AnchorFilePath  sql.NullString `json:"anchor_file_path"`
 	CreatedAt       time.Time      `json:"created_at"`
+	CreatedAt_2     time.Time      `json:"created_at_2"`
+	ID              string         `json:"id"`
 	Limit           int64          `json:"limit"`
 }
 
@@ -140,6 +142,8 @@ func (q *Queries) ListCommentsForSession(ctx context.Context, arg ListCommentsFo
 		arg.Column11,
 		arg.AnchorFilePath,
 		arg.CreatedAt,
+		arg.CreatedAt_2,
+		arg.ID,
 		arg.Limit,
 	)
 	if err != nil {

@@ -708,9 +708,10 @@ type ListEventsSinceForDigestParams struct {
 
 // ListSessionsForOrgWithCursorParams are the parameters for cursor-paginated session listing.
 type ListSessionsForOrgWithCursorParams struct {
-	OrgID     string
-	Before    time.Time // exclusive upper bound on created_at
-	Limit     int64
+	OrgID  string
+	Before time.Time // exclusive upper bound on created_at; paired with LastID for keyset
+	LastID string    // tiebreaker: only rows with id < LastID when created_at = Before qualify
+	Limit  int64
 }
 
 // NicknameTakenInSessionParams are the parameters for NicknameTakenInSession.
@@ -1018,6 +1019,7 @@ type ListCommentsForSessionParams struct {
 	AnchorCommitSHA string // empty = no filter
 	AnchorFilePath  string // empty = no filter
 	Before          time.Time
+	LastID          string // tiebreaker for keyset pagination: only rows with id < LastID when created_at = Before qualify
 	Limit           int64
 }
 
