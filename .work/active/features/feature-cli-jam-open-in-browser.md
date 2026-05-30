@@ -32,11 +32,14 @@ updated so the **agent offers** to open the session when `jam` is invoked and
 passes `--open` when the user agrees; the CLI itself stays non-interactive (no
 `[Y/n]` prompt).
 
-Open targets by session kind:
-- Playground (`new --playground`, `join` of a playground session) →
-  `{portalURL}/playground/s/{id}/join`
-- Durable (`new --org …`, `join` of a durable session) →
-  `{portalURL}/orgs/{orgId}/sessions/{sessionId}` (the `session-view` route)
+Open targets by command + session kind:
+- `new --playground` → `{portalURL}/playground/s/{id}/join`
+- `new --org …` (durable) → `{portalURL}/orgs/{orgId}/sessions/{sessionId}`
+  (the `session-view` route)
+- `join` → the durable `session-view` route. **Durable-only** — there is no
+  playground CLI `join`: `joinAction` requires an account token and
+  `parseSessionArg` cannot extract an id from a `/playground/s/{id}/join` URL,
+  so that path is unreachable (see Design decisions).
 
 ## Background / evidence (investigation, 2026-05-30)
 
@@ -68,8 +71,9 @@ re-litigate.)
   offer to open the session when `jam` is invoked and to pass `--open` on the
   user's assent. The offer is conversational (the skill/agent), never a binary
   prompt.
-- **Session-type scope**: both playground and durable, covering `new` (primary)
-  and `join` (symmetric).
+- **Session-type scope**: `new` covers both playground and durable; `join` is
+  durable-only (no playground CLI join exists), so `join --open` opens the
+  durable `session-view` URL.
 - **Failure behavior**: graceful — on any launch failure print the URL so it can
   be pasted, and return success. Reuse the existing `defaultOpenURL` semantics.
 
@@ -105,8 +109,9 @@ re-litigate.)
 1. `jam new --playground --open` opens `{portalURL}/playground/s/{id}/join`
    after the session is created and the base ref pushed.
 2. `jam new --org <id> --open` opens `{portalURL}/orgs/{orgId}/sessions/{id}`.
-3. `jam join <id-or-url> --open` opens the correct URL for the joined session
-   (playground join URL vs durable session-view).
+3. `jam join <id-or-url> --open` opens the durable `session-view` URL for the
+   joined session — regardless of arg form (bare id, `org/session`, or invite
+   URL), and after invite-acceptance + metadata fetch. CLI join is durable-only.
 4. With `--open` omitted, behavior is unchanged (no browser launch).
 5. Browser-launch failure prints the URL and the command still exits `0`.
 6. The opener is hermetically testable via an injectable function var; no real
@@ -310,9 +315,12 @@ Wiring:
   **offer** to open the session when `jam` is invoked (fold the offer into the
   questions the agent already asks for org/goal) and pass `--open` on assent.
   Keep it terse; the CLI never prompts.
-- `docs/UX.md`: reflect the `--open` affordance in the create flow and the
-  playground create flow (rolling-foundation: describe the present, no
-  "previously" prose).
+- `docs/UX.md`: reflect the `--open` affordance in the durable create flow, the
+  playground create flow, AND the durable join flow (rolling-foundation:
+  describe the present, no "previously" prose). Document the playground
+  `new --open` behavior: the opened join page mints a fresh browser participant
+  via `JoinerPicker` — it does NOT resume the CLI's stored anonymous identity
+  (inherent to the anonymous playground model).
 
 **Acceptance Criteria**:
 - [ ] `SKILL.md` documents `--open` for both `jam new` and `jam join` and the
@@ -343,8 +351,15 @@ acceptance (refactor vs new-behavior vs docs), and resumability.
   captured URL; drive without `--open` and assert the capture func was not
   called. Reuse the existing `testEnv`/httptest harness used by the playground
   tests. Add a golden-string check that summaries are unchanged after the
-  builder extraction.
+  builder extraction. For `join`, include at least one non-bare-id arg form
+  (e.g. `org/session`) with `--open` to prove the open is post-resolution and
+  arg-form-agnostic.
 - **Unit 3**: no automated test; reviewer confirms skill/doc copy.
+- **Test hygiene**: tests that override package globals (`execCommand`,
+  `openURL`) must restore them via `t.Cleanup` and must NOT call `t.Parallel`.
+  The `osopen` test is the behavioral proof of graceful degradation; the
+  re-run of unchanged auth/finalize tests is a compile/seam regression guard,
+  not proof of the default-opener's runtime behavior.
 
 ## Risks
 
@@ -357,3 +372,26 @@ acceptance (refactor vs new-behavior vs docs), and resumability.
 - **Low**: `--open` launching a browser in CI/headless — never happens in tests
   (the `openURL`/`execCommand` seams are overridden); in real headless use the
   graceful path prints the URL.
+
+## Other agent review
+
+Pre-implementation cross-model design review (Codex, 2026-05-30, single advisory
+pass at user request). Verdict: change design before implementing — no hard Go
+feasibility blocker. Confirmed: `internal/osopen` import boundary valid; Start +
+goroutine-Wait detach fine for a short-lived CLI; both route shapes correct;
+opened URLs carry no bearer/invite tokens.
+
+Accepted + folded in:
+- Brief/AC contradicted the durable-only `join` decision → tightened brief,
+  scope, and AC #3 (join is durable-only; playground CLI join is unreachable).
+- `join --open` was narrowed to bare-id in the story → AC now covers all arg
+  forms (open is post-resolution); added a non-bare-id `--open` test.
+- Docs AC dropped the join flow → docs Unit/story now include durable join.
+- Playground `new --open` mints a fresh browser participant (no CLI-identity
+  resume) → now documented in the docs story.
+- Nits: test hygiene (`t.Cleanup` restore, no `t.Parallel`); don't oversell
+  unchanged auth/finalize tests as behavioral proof.
+
+Rejected:
+- `url.JoinPath`/`PathEscape` for URL builders — keep raw concat to match the
+  existing summary builders being extracted; ids are opaque ULIDs. Low value.

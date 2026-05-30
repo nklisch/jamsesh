@@ -29,8 +29,12 @@ exact wiring points).
     `newPlaygroundAction` (playground → `playgroundJoinURL`).
 - `cmd/jamsesh/sessioncmd/join.go`:
   - Add `--open` to `JoinCommand`; honor it after the summary print, opening the
-    durable `sessionViewURL`. One-line comment: CLI join is durable-only.
+    durable `sessionViewURL`. One-line comment: CLI join is durable-only. The
+    open is post-resolution (after invite-acceptance + metadata fetch), so it is
+    independent of the arg form (bare id, `org/session`, invite URL).
 - Tests in `new_test.go` / `join_test.go` overriding `sessioncmd.openURL`.
+  Restore overridden globals via `t.Cleanup`; do NOT use `t.Parallel` in tests
+  that mutate `openURL`.
 - Verify `jam new`/`jam join --help` surface `--open` (no `jamcmd/jam.go` change).
 
 ## Acceptance criteria
@@ -38,6 +42,8 @@ exact wiring points).
 - [ ] `new --playground --open` → `openURL` called with `{base}/playground/s/{id}/join`.
 - [ ] `new --org X --open` → `openURL` called with `{base}/orgs/{org}/sessions/{id}`.
 - [ ] `join <id> --open` → `openURL` called with `{base}/orgs/{org}/sessions/{id}`.
+- [ ] `join` with a non-bare-id arg form (e.g. `org/session`) + `--open` opens
+      the same durable session-view URL (proves open is post-resolution).
 - [ ] Omitting `--open` never calls `openURL` (each path).
 - [ ] `--open` with a failing opener still exits 0.
 - [ ] Summary output unchanged after the builder extraction (golden-string guard).
