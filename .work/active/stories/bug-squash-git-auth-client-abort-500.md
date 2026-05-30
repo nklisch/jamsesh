@@ -1,7 +1,7 @@
 ---
 id: bug-squash-git-auth-client-abort-500
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-handler-error-classification
 depends_on: []
