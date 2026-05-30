@@ -1,7 +1,7 @@
 ---
 id: bug-squash-diff-exit-code-ignored
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-automerger-correctness
 depends_on: []
@@ -26,3 +26,24 @@ cmd := exec.Command("diff", "-u", baseFile, otherFile)
 _ = cmd.Run() // diff exits 1 when there are differences — expected (but exit 2 is also swallowed)
 return parseUnifiedDiffAddOnly(out.Bytes())
 ```
+
+## Implementation notes
+
+Extracted two helpers into `heuristics.go`:
+- `classifyDiffErr(err error) error` — pure classifier: nil/exit-0/exit-1 → nil;
+  exit≥2 → error; non-`*exec.ExitError` → error. No subprocess involvement.
+- `runDiff(baseFile, otherFile string) ([]byte, error)` — runs `diff -u` and
+  calls `classifyDiffErr` on the error. Returns stdout bytes on success.
+
+`diffAddOnly` now calls `runDiff` instead of `_ = cmd.Run()`, and propagates
+the returned error to callers. `isNonOverlappingAddition` already propagated
+`diffAddOnly` errors (returns `nil, false`) so no behaviour change there.
+
+Tests added in `diff_exit_code_test.go` (package `automerger`, internal):
+- `TestClassifyDiffErr_Exit0_ReturnsNil` — exit 0 is success.
+- `TestClassifyDiffErr_Exit1_ReturnsNil` — exit 1 (differences) is success.
+- `TestClassifyDiffErr_Exit2_ReturnsError` — exit 2 is a real error.
+- `TestClassifyDiffErr_Exit127_ReturnsError` — any exit ≥ 2 is an error.
+- `TestClassifyDiffErr_NonExitError_ReturnsError` — non-ExitError (missing binary) is an error.
+- `TestDiffAddOnly_HappyPath_IdenticalContent` — identical content, zero hunks.
+- `TestDiffAddOnly_HappyPath_PureAddition` — pure addition, hunks returned correctly.

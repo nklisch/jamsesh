@@ -3,6 +3,8 @@ package automerger
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -198,6 +200,45 @@ type addHunk struct {
 	addedLines    []string // the added line contents (without trailing newline)
 }
 
+// classifyDiffErr classifies a diff subprocess error into acceptable (nil) or
+// a real failure. diff exit codes:
+//
+//   - 0: files are identical
+//   - 1: files differ (expected; not an error)
+//   - 2+: trouble (missing binary, unreadable file, etc.) — returned as an error
+//
+// A non-*exec.ExitError (e.g. diff not on PATH) is also returned as an error.
+func classifyDiffErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		// e.g. exec.ErrNotFound — diff binary not on PATH
+		return fmt.Errorf("diff subprocess: %w", err)
+	}
+	code := exitErr.ExitCode()
+	if code == 0 || code == 1 {
+		// 0 = identical, 1 = differences — both are expected.
+		return nil
+	}
+	return fmt.Errorf("diff subprocess exited with code %d: %w", code, err)
+}
+
+// runDiff runs `diff -u baseFile otherFile` and returns its stdout.
+// Exit codes 0 (identical) and 1 (differences) are treated as success.
+// Exit code >= 2 or a non-*exec.ExitError is returned as an error.
+func runDiff(baseFile, otherFile string) ([]byte, error) {
+	cmd := exec.Command("diff", "-u", baseFile, otherFile)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err := classifyDiffErr(err); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
 // diffAddOnly runs `diff -u base other` and parses the unified diff.
 // Returns a slice of addHunk if and only if ALL changes are pure additions
 // (no deletions or modifications), or nil if any deletion/modification is
@@ -225,12 +266,12 @@ func diffAddOnly(base, other []byte) ([]addHunk, error) {
 		return nil, err
 	}
 
-	cmd := exec.Command("diff", "-u", baseFile, otherFile)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	_ = cmd.Run() // diff exits 1 when there are differences — expected
+	diffOut, err := runDiff(baseFile, otherFile)
+	if err != nil {
+		return nil, err
+	}
 
-	return parseUnifiedDiffAddOnly(out.Bytes())
+	return parseUnifiedDiffAddOnly(diffOut)
 }
 
 // parseUnifiedDiffAddOnly parses a unified diff and returns addHunks when
