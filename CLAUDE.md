@@ -13,9 +13,40 @@ parent, and dependency. Common patterns:
 - `work-view --parent <id>` / `--blocking <id>` — hierarchy / sequencing
 - `work-view --help` for the full flag set
 
-Detailed navigation rules in `.claude/rules/agile-workflow.md` (auto-loaded
-when editing `.work/` or `docs/`). Foundation docs in `docs/` describe the
-system NOW — never add legacy notes; git history is the audit trail.
+Foundation docs in `docs/` describe the system NOW — never add legacy notes;
+git history is the audit trail. Item files are the durable state: update the
+body with implementation discoveries, review findings, blockers, and decisions
+instead of relying on chat history.
+
+Project-level agent rules live in this file (the canonical agent instruction
+file). Do not create or maintain `.claude/rules/*.md` as a source of truth;
+reusable structural patterns belong in `.agents/skills/patterns/`.
+
+Project-specific refactor style conventions belong in this file under
+`## Refactor Style Conventions`. Detailed refactor convention references belong
+in `.agents/skills/refactor-conventions/` and extend `refactor-design`'s
+defaults; they do not replace the built-in scan and they do not create
+standalone plan docs.
+
+### Tag semantics
+
+The `tags` field on items routes them to the right design skill. One tag has
+load-bearing semantics — get this one right:
+
+- **`[refactor]`** — behavior-preserving structural change ONLY. Apply the
+  black-box test: would any observable behavior change for a caller of the
+  public surface? If yes, this is NOT a refactor — drop the tag and let the
+  item route through `feature-design`.
+  - Counts as refactor: extract a helper to dedupe, split a god file, rename
+    for clarity, remove dead code, inline a one-call abstraction.
+  - Does NOT count as refactor (even if it feels "structural"): change an API
+    signature, swap a storage backend with different consistency guarantees,
+    replace a silent failure with an explicit error, split a function in a
+    way that changes call-site contracts, "major rework of X."
+- **`[perf]`** — performance work. Routes to `perf-design`.
+
+All other tags are project-specific (see `.work/CONVENTIONS.md`) and do not
+affect skill routing.
 
 ### Test integrity
 
@@ -39,9 +70,17 @@ When running, writing, or modifying tests:
   code happens to return, no deleting a test as "flaky" without
   root-causing first.
 
-Slash commands (user-invokable):
+Cross-model advisory review: explicit user/project review instructions
+override agile-workflow defaults. When peeragent is available with a different
+model class, large/risky autopilot design decisions may use one advisory pass;
+small/low-risk work skips it. Autopilot also runs a final peer-review loop
+before reporting completion and fixes or files accepted findings first.
+Same-model peers fall back to local sub-agents instead.
+
+Broad entry points:
 `/agile-workflow:ideate`, `/agile-workflow:epicize`,
-`/agile-workflow:autopilot`, `/agile-workflow:release-deploy`.
+autopilot goals such as "Use agile-workflow autopilot to drain --all",
+and `/agile-workflow:release-deploy`.
 <!-- agile-workflow:end -->
 
 <!-- ux-ui-design:installed -->
