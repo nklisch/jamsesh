@@ -389,9 +389,11 @@ func (a *sqliteAdapter) ListSessionsForOrg(ctx context.Context, orgID string) ([
 
 func (a *sqliteAdapter) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
 	rows, err := a.q.ListSessionsForOrgWithCursor(ctx, sqlitestore.ListSessionsForOrgWithCursorParams{
-		OrgID:     p.OrgID,
-		CreatedAt: p.Before,
-		Limit:     p.Limit,
+		OrgID:       p.OrgID,
+		CreatedAt:   p.Before,
+		CreatedAt_2: p.Before, // keyset tiebreaker: repeat boundary created_at
+		ID:          p.LastID,
+		Limit:       p.Limit,
 	})
 	return wrapList(rows, err, mapSQLiteErr, sqliteSession)
 }
@@ -1032,8 +1034,10 @@ type sqliteTxStore struct {
 var _ TxStore = (*sqliteTxStore)(nil)
 
 func (a *sqliteAdapter) WithTx(ctx context.Context, fn func(TxStore) error) error {
-	// BEGIN IMMEDIATE acquires a write-lock upfront — necessary for SQLite to
-	// avoid SQLITE_BUSY when multiple goroutines try to write concurrently.
+	// The SQLite DSN includes _txlock=immediate, which makes the modernc driver
+	// emit BEGIN IMMEDIATE for every BeginTx call. BEGIN IMMEDIATE acquires the
+	// write-lock upfront so concurrent read-then-write transactions cannot
+	// deadlock on lock upgrade (the classic SQLITE_BUSY scenario).
 	tx, err := a.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("store: begin tx: %w", err)
@@ -1154,7 +1158,13 @@ func (s *sqliteTxStore) ListSessionsForOrg(ctx context.Context, orgID string) ([
 	return wrapList(rows, err, mapSQLiteErr, sqliteSession)
 }
 func (s *sqliteTxStore) ListSessionsForOrgWithCursor(ctx context.Context, p ListSessionsForOrgWithCursorParams) ([]Session, error) {
-	rows, err := s.q.ListSessionsForOrgWithCursor(ctx, sqlitestore.ListSessionsForOrgWithCursorParams{OrgID: p.OrgID, CreatedAt: p.Before, Limit: p.Limit})
+	rows, err := s.q.ListSessionsForOrgWithCursor(ctx, sqlitestore.ListSessionsForOrgWithCursorParams{
+		OrgID:       p.OrgID,
+		CreatedAt:   p.Before,
+		CreatedAt_2: p.Before,
+		ID:          p.LastID,
+		Limit:       p.Limit,
+	})
 	return wrapList(rows, err, mapSQLiteErr, sqliteSession)
 }
 func (s *sqliteTxStore) UpdateSessionStatus(ctx context.Context, p UpdateSessionStatusParams) error {
@@ -1662,6 +1672,8 @@ func sqliteListCommentsParams(p ListCommentsForSessionParams) sqlitestore.ListCo
 		Column11:        p.AnchorFilePath,
 		AnchorFilePath:  sql.NullString{String: p.AnchorFilePath, Valid: p.AnchorFilePath != ""},
 		CreatedAt:       p.Before,
+		CreatedAt_2:     p.Before, // keyset tiebreaker: repeat the boundary created_at
+		ID:              p.LastID, // keyset tiebreaker: only rows with id < LastID
 		Limit:           p.Limit,
 	}
 }

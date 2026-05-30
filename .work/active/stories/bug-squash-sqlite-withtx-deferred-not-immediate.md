@@ -1,7 +1,7 @@
 ---
 id: bug-squash-sqlite-withtx-deferred-not-immediate
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, data-layer]
 parent: epic-bug-squash-data-tx-integrity
 depends_on: []
@@ -25,3 +25,7 @@ The comment says `BEGIN IMMEDIATE acquires a write-lock upfront ... to avoid SQL
 // BEGIN IMMEDIATE acquires a write-lock upfront ...  <- comment
 tx, err := a.db.BeginTx(ctx, &sql.TxOptions{})  // zero value == DEFERRED, not IMMEDIATE
 ```
+
+## Implementation notes
+
+Added `_txlock=immediate` to the SQLite DSN in `connect.go:sqliteDSN` via a new `!strings.Contains(query, "_txlock")` guard (same pattern as foreign_keys and busy_timeout). The modernc.org/sqlite v1.50.1 driver honors this parameter and emits `BEGIN IMMEDIATE` for every `BeginTx` call. Updated the `WithTx` comment in `sqlite_adapter.go` to accurately describe the behavior (DSN controls it; no TxOptions needed). Test: `TestSQLiteWithTxImmediateNoDeadlock` in `internal/db/store/withtx_immediate_test.go` — 6 goroutines each do a read-then-write tx against a shared file-backed SQLite with MaxOpenConns=5; all must commit without SQLITE_BUSY.

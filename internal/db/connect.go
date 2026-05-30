@@ -163,6 +163,9 @@ func sqliteDSN(dsn string) string {
 	if !strings.Contains(query, "busy_timeout") {
 		params = append(params, "_pragma=busy_timeout(5000)")
 	}
+	if !strings.Contains(query, "_txlock") {
+		params = append(params, "_txlock=immediate")
+	}
 
 	if len(params) == 0 {
 		return path
