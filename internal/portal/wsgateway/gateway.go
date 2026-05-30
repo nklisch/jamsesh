@@ -128,10 +128,15 @@ func (g *Gateway) fanout(ctx context.Context, ch <-chan events.Event) {
 				select {
 				case c.send <- e:
 				default:
-					// Buffer full — slow consumer. Close once to avoid double-close.
+					// Buffer full — slow consumer. Close once to avoid double-close,
+					// then eagerly unregister so subsequent fanout passes skip this
+					// dead conn rather than retrying until the handler unwinds.
+					// unregister is idempotent (map delete on absent key is safe) so
+					// the handler's deferred unregister still runs harmlessly.
 					c.closeOnce.Do(func() {
 						c.ws.Close(websocket.StatusPolicyViolation, "subscriber too slow")
 					})
+					g.unregister(c)
 				}
 			}
 		}
