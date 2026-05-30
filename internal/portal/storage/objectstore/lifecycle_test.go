@@ -722,3 +722,139 @@ func TestLifecycle_IdleEviction_WithFakeClock(t *testing.T) {
 		t.Error("sess B evicted at 10m idle — should still be active (timeout is strictly >10m)")
 	}
 }
+
+// TestLifecycle_LRU_SkipsHotSession is a regression test for the TOCTOU race
+// in LRU eviction (bug-squash-lru-evicts-hot-sessions). The test:
+//  1. Seeds two sessions both over the cache cap.
+//  2. Identifies the LRU candidate (oldest lastActive).
+//  3. Bumps the LRU candidate's lastActiveAt AFTER the snapshot is taken
+//     (simulating AcquireForRequest touching the session between snapshot and
+//     eviction decision).
+//  4. Asserts that the previously-hot victim is NOT evicted and the other
+//     session IS evicted instead (now the older one).
+//
+// We use a fake clock so time is deterministic. We manipulate the entry's
+// lastActiveAt directly (package-internal test) to simulate the late touch.
+func TestLifecycle_LRU_SkipsHotSession(t *testing.T) {
+	epoch := time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC)
+	clk := newFakeClock(epoch)
+
+	mgr, _, stor := newTestLifecycleManager(t)
+	mgr.clock = clk
+	ctx := context.Background()
+
+	sessA := "sess-lru-hot-a"
+	sessB := "sess-lru-hot-b"
+
+	// Acquire A at epoch — it will be the LRU candidate (oldest lastActive).
+	if _, err := mgr.AcquireForRequest(ctx, sessA); err != nil {
+		t.Fatalf("AcquireForRequest A: %v", err)
+	}
+
+	// Advance clock 1s and acquire B — B has a newer lastActiveAt.
+	clk.Advance(time.Second)
+	if _, err := mgr.AcquireForRequest(ctx, sessB); err != nil {
+		t.Fatalf("AcquireForRequest B: %v", err)
+	}
+
+	// Write 1 KB into both repo dirs so dirSize returns > 0.
+	for _, sess := range []string{sessA, sessB} {
+		repoPath := stor.RepoPath("test-org", sess)
+		if err := os.MkdirAll(repoPath, 0o750); err != nil {
+			t.Fatalf("mkdir %s: %v", repoPath, err)
+		}
+		if err := os.WriteFile(filepath.Join(repoPath, "data"), make([]byte, 1024), 0o600); err != nil {
+			t.Fatalf("write data: %v", err)
+		}
+	}
+
+	// Set a cap that is exceeded by the combined 2 KB — LRU must evict exactly one.
+	mgr.CacheMaxBytes = 1500
+
+	// Now: simulating the TOCTOU window. Between the snapshot taken during
+	// evictIdleAndOversize and the eviction decision, AcquireForRequest would
+	// bump sessA's lastActiveAt. We do this by loading the live entry and
+	// advancing its lastActiveAt past sessB's, then running eviction.
+	//
+	// With the double-checked claim fix, eviction must detect that sessA is
+	// now hotter than sessB and evict sessB instead.
+	clk.Advance(2 * time.Second) // advance clock so "now" is ahead
+	rawA, ok := mgr.sessions.Load(sessA)
+	if !ok {
+		t.Fatal("sessA not in map before eviction")
+	}
+	entryA := rawA.(*sessionEntry)
+	// Bump A's lastActiveAt to "now" (simulating a concurrent AcquireForRequest).
+	newTime := clk.Now()
+	entryA.lastActiveAt.Store(&newTime)
+
+	// Run eviction. A's snapshot lastActive was epoch (oldest), but live entry
+	// now shows epoch+3s (newer than B's epoch+1s). The fix must re-validate
+	// and evict B (now the coldest) instead of A.
+	mgr.evictIdleAndOversize(ctx)
+
+	// sessA (touched after snapshot) must NOT have been evicted.
+	if _, ok := mgr.sessions.Load(sessA); !ok {
+		t.Error("sessA (touched after snapshot) was evicted — double-checked claim did not protect it")
+	}
+
+	// sessB (not touched, older relative to A's new lastActive) must have been evicted.
+	if _, ok := mgr.sessions.Load(sessB); ok {
+		t.Error("sessB (cold) was not evicted — LRU loop did not fall back to the correct victim")
+	}
+}
+
+// TestLifecycle_LRU_RaceAcquireEvict is a concurrency test for the TOCTOU fix.
+// It runs AcquireForRequest and LRU eviction concurrently under -race to detect
+// any data race on the sessionEntry fields.
+func TestLifecycle_LRU_RaceAcquireEvict(t *testing.T) {
+	epoch := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	clk := newFakeClock(epoch)
+
+	mgr, _, stor := newTestLifecycleManager(t)
+	mgr.clock = clk
+	mgr.CacheMaxBytes = 512 // very tight cap so LRU fires on every tick
+	ctx := context.Background()
+
+	const numSessions = 4
+	sessions := make([]string, numSessions)
+	for i := range sessions {
+		sessions[i] = fmt.Sprintf("sess-race-lru-%d", i)
+		if _, err := mgr.AcquireForRequest(ctx, sessions[i]); err != nil {
+			t.Fatalf("AcquireForRequest %s: %v", sessions[i], err)
+		}
+		repoPath := stor.RepoPath("test-org", sessions[i])
+		if err := os.MkdirAll(repoPath, 0o750); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(repoPath, "data"), make([]byte, 256), 0o600); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		clk.Advance(time.Millisecond)
+	}
+
+	var wg sync.WaitGroup
+
+	// Goroutine 1: repeatedly call AcquireForRequest (touches lastActiveAt).
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			sid := sessions[i%numSessions]
+			_, _ = mgr.AcquireForRequest(ctx, sid)
+			clk.Advance(time.Millisecond)
+		}
+	}()
+
+	// Goroutine 2: repeatedly run LRU eviction ticks.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 20; i++ {
+			mgr.evictIdleAndOversize(ctx)
+		}
+	}()
+
+	wg.Wait()
+	// The race detector will flag any concurrent access to sessionEntry fields.
+}

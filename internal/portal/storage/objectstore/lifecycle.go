@@ -155,6 +155,17 @@ func (m *LifecycleManager) AcquireForRequest(ctx context.Context, sessionID stri
 			entry := v.(*sessionEntry)
 			if !entry.releasing.Load() {
 				entry.touchLastActive(m.now())
+				// Double-check: an LRU eviction may have CAS'd releasing=true between
+				// our first check and our touchLastActive. If so, back off and retry so
+				// we don't hand out a handle to a session that is being evicted.
+				if entry.releasing.Load() {
+					select {
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					case <-time.After(10 * time.Millisecond):
+					}
+					continue
+				}
 				return entry.handle, nil
 			}
 			// Entry is in the middle of being released. Wait briefly and retry.
@@ -247,6 +258,11 @@ func (m *LifecycleManager) watchLost(handle lease.Handle, sessionID string) {
 //  5. Delete the session entry.
 //
 // reason is recorded in the eviction metric label and log line.
+//
+// Idle eviction and explicit/lost-lease callers use this entry point.
+// The LRU loop uses a different entry point (see evictIdleAndOversize): it
+// CASes releasing itself to perform the lastActive re-validation before
+// calling releaseClaimed, avoiding a TOCTOU race with AcquireForRequest.
 func (m *LifecycleManager) releaseWithReason(ctx context.Context, sessionID, reason string) error {
 	v, ok := m.sessions.Load(sessionID)
 	if !ok {
@@ -258,6 +274,17 @@ func (m *LifecycleManager) releaseWithReason(ctx context.Context, sessionID, rea
 		return nil // another goroutine is handling the release
 	}
 
+	return m.releaseClaimed(ctx, sessionID, entry, reason)
+}
+
+// releaseClaimed performs steps 2-5 of the release sequence for an entry whose
+// releasing flag has already been CAS'd to true by the caller. It MUST NOT
+// re-CAS — the caller already holds the claim.
+//
+// Split from releaseWithReason so the LRU loop can CAS first, re-validate
+// lastActive on the live entry, and then call releaseClaimed without a second
+// competing CAS (which would prevent the validation from being meaningful).
+func (m *LifecycleManager) releaseClaimed(ctx context.Context, sessionID string, entry *sessionEntry, reason string) error {
 	// Drain in-flight uploads for this session. Bounded at 10s.
 	if m.Syncer != nil {
 		drainCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -415,12 +442,53 @@ func (m *LifecycleManager) evictIdleAndOversize(ctx context.Context) {
 		}
 
 		victim := active[lruIdx]
+
+		// Double-checked claim: CAS releasing first, then re-validate lastActive
+		// on the live entry. This closes the TOCTOU window between snapshot and
+		// decision: AcquireForRequest may have touched lastActiveAt after the
+		// snapshot, making the victim no longer the coldest session.
+		//
+		// Step 1: Load the live entry.
+		raw, entryOK := m.sessions.Load(victim.sessionID)
+		if !entryOK {
+			// Already gone (idle eviction or concurrent release won the race).
+			active = append(active[:lruIdx], active[lruIdx+1:]...)
+			if len(active) == 0 {
+				break
+			}
+			continue
+		}
+		liveEntry := raw.(*sessionEntry)
+
+		// Step 2: CAS claim the releasing flag. If it's already set, another
+		// goroutine is releasing this session; drop it from our list.
+		if !liveEntry.releasing.CompareAndSwap(false, true) {
+			active = append(active[:lruIdx], active[lruIdx+1:]...)
+			if len(active) == 0 {
+				break
+			}
+			continue
+		}
+
+		// Step 3: Re-validate. If lastActive advanced since the snapshot, this
+		// session was touched after we took the snapshot — it is no longer the
+		// coldest candidate. Unclaim and skip it.
+		if liveEntry.lastActive().After(victim.lastActive) {
+			liveEntry.releasing.Store(false) // return the claim
+			active = append(active[:lruIdx], active[lruIdx+1:]...)
+			if len(active) == 0 {
+				break
+			}
+			continue
+		}
+
+		// Claim validated — proceed with eviction.
 		slog.Info("lifecycle: LRU eviction",
 			"session_id", victim.sessionID,
 			"cache_total_bytes", totalBytes,
 			"cache_max_bytes", m.CacheMaxBytes,
 		)
-		_ = m.releaseWithReason(ctx, victim.sessionID, "lru")
+		_ = m.releaseClaimed(ctx, victim.sessionID, liveEntry, "lru")
 
 		// Remove from active slice and continue.
 		active = append(active[:lruIdx], active[lruIdx+1:]...)
