@@ -1231,9 +1231,12 @@ func TestNewAction_openFlagDurable_summaryUnchanged(t *testing.T) {
 		}
 	})
 
+	// Golden assertion on the refactored summary line: the builder extraction
+	// must leave the exact "  URL:    <url>" line (label, indent, URL) intact.
 	expectedSessionURL := srv.URL + "/orgs/" + orgID + "/sessions/" + sessionID
-	if !strings.Contains(output, expectedSessionURL) {
-		t.Errorf("session URL %q not found in output:\n%s", expectedSessionURL, output)
+	expectedURLLine := "  URL:    " + expectedSessionURL + "\n"
+	if !strings.Contains(output, expectedURLLine) {
+		t.Errorf("summary URL line %q not found in output:\n%s", expectedURLLine, output)
 	}
 }
 
