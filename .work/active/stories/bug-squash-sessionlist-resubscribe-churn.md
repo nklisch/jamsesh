@@ -3,7 +3,7 @@ id: bug-squash-sessionlist-resubscribe-churn
 kind: story
 stage: drafting
 tags: [bug, ui, state]
-parent: epic-bug-squash
+parent: epic-bug-squash-frontend-async-races
 depends_on: []
 release_binding: null
 gate_origin: null

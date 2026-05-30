@@ -3,7 +3,7 @@ id: bug-squash-lease-retention-frozen-now
 kind: story
 stage: drafting
 tags: [bug, portal, time-numbers]
-parent: epic-bug-squash
+parent: epic-bug-squash-worker-lifecycle
 depends_on: []
 release_binding: null
 gate_origin: null

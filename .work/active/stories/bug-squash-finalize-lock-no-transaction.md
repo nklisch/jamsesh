@@ -3,7 +3,7 @@ id: bug-squash-finalize-lock-no-transaction
 kind: story
 stage: drafting
 tags: [bug, portal, error-handling]
-parent: epic-bug-squash
+parent: epic-bug-squash-data-tx-integrity
 depends_on: []
 release_binding: null
 gate_origin: null

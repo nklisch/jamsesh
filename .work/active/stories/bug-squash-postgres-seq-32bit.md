@@ -3,7 +3,7 @@ id: bug-squash-postgres-seq-32bit
 kind: story
 stage: drafting
 tags: [bug, portal, data-layer]
-parent: epic-bug-squash
+parent: epic-bug-squash-data-tx-integrity
 depends_on: []
 release_binding: null
 gate_origin: null

@@ -3,7 +3,7 @@ id: bug-squash-receive-pack-truncated-200
 kind: story
 stage: drafting
 tags: [bug, portal, error-handling]
-parent: epic-bug-squash
+parent: epic-bug-squash-handler-error-classification
 depends_on: []
 release_binding: null
 gate_origin: null

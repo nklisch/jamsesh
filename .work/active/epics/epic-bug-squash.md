@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash
 kind: epic
-stage: drafting
+stage: implementing
 tags: [bug, portal, ui]
 parent: null
 depends_on: []
@@ -26,38 +26,82 @@ each child story carries its `bug_severity`, `bug_domain`, and `bug_location`
 metadata plus a one-paragraph capture and code evidence. The full scored report
 lives at `bug-scan-report.md` (repo root, overall score **5.8/10**).
 
-The decomposition is already complete — the 28 child stories exist (see below).
-This epic does not need further `epic-design` decomposition; it needs its
-children designed (or fast-tracked via `/agile-workflow:fix` for the trivial
-ones) and implemented.
-
-## Sequencing
-
-These are **independent fixes** — there is no real `depends_on` graph between
-unrelated bugs, so none is fabricated (that would create false blocking and a
-forced serial order). Priority is expressed three ways instead:
-
-- `bug_severity` frontmatter field on each child,
-- a `high` tag on the 5 High-severity stories (`work-view --tag high --parent epic-bug-squash`),
-- the **recommended order** below: Highs first, then Mediums, then Lows.
-
-Two **hotspots** are worth tackling as a batched design pass each, since their
-findings share code and context:
-
-- **Auto-merger** (`internal/portal/automerger/`) — 4 findings:
-  `bug-squash-automerger-strands-commit-event` (High),
-  `bug-squash-automerger-swallows-merge-emit` (High),
-  `bug-squash-errors-is-not-used-errnotfound` (Low),
-  `bug-squash-diff-exit-code-ignored` (Low). The two Highs touch
-  `worker.go`/`outcomes.go` together.
-- **Frontend WebSocket manager** (`frontend/src/lib/ws.svelte.ts`) — 3 findings:
-  `bug-squash-ws-connection-never-closed` (Medium, leak),
-  `bug-squash-ws-reconnect-cursor-reset` (Medium),
-  `bug-squash-subscribe-floats-open-rejection` (Low). A single rework of the
-  connection lifecycle (ref-counted teardown + reconnect-aware `open()`) likely
-  resolves all three.
+This epic is decomposed into **6 child features** (see `## Decomposition`)
+that group the 28 stories by shared code and a common design pass. Each feature
+gets a `feature-design` pass (with a codex cross-model peer-review gate), then
+its stories are implemented and reviewed.
 
 ## Decomposition
+
+Split by **capability / shared-code seam**, not by layer. Five features are
+independent roots (parallelizable); the frontend async cluster depends on the
+WebSocket-lifecycle rework because its SessionList fixes build on the corrected
+`subscribe`/`close` contract. The two natural hotspots — the auto-merger
+(`internal/portal/automerger/`) and the WS manager (`ws.svelte.ts`) — each
+become their own feature so the related fixes share one design pass.
+
+### Child features
+
+- `epic-bug-squash-automerger-correctness` — auto-merger lost-event race,
+  swallowed emit, error-classification (4 stories: 2H/2L) — depends on: `[]`
+- `epic-bug-squash-worker-lifecycle` — lease/wsgateway/objectstore/ratelimit
+  concurrency & lifecycle (6 stories: 4M/2L) — depends on: `[]`
+- `epic-bug-squash-data-tx-integrity` — pagination keyset, SQLite tx isolation,
+  seq type, tx/event consistency (5 stories: 4M/1L) — depends on: `[]`
+- `epic-bug-squash-handler-error-classification` — magic-link/receive-pack/git-auth
+  status classification (3 stories: 1H/1M/1L) — depends on: `[]`
+- `epic-bug-squash-frontend-ws-lifecycle` — ws.svelte.ts connection lifecycle
+  (3 stories: 2M/1L) — depends on: `[]`
+- `epic-bug-squash-frontend-async-races` — screen/component async + reactive
+  races (7 stories: 2H/4M/1L) — depends on: `[epic-bug-squash-frontend-ws-lifecycle]`
+
+## Design decisions
+
+(Resolved with judgment under autopilot per the queue policy; a codex
+cross-model peer-review gate aligns on these after this decomposition — see
+`## Other agent review`.)
+
+- **Regression test per fix**: every story lands a failing-first regression test
+  before its fix — per the project test-integrity rule; no fix without a test
+  that would have caught it.
+- **Corrected behavior is the intended contract**: fixes that change observable
+  status (receive-pack false-200 → 500; git-auth client-abort → not-5xx;
+  magic-link false-401 → transient 5xx) are deliberate corrections.
+  `feature-design` updates any test asserting the old (wrong) behavior rather
+  than preserving it.
+- **Dual-dialect + migration discipline (data-tx feature)**: schema changes
+  (Postgres `seq` INTEGER → BIGINT; keyset pagination) ship as a forward goose
+  migration with mirrored sqlc regen across sqlite + postgres; widening is
+  additive (no destructive down), validated by the dual-dialect test matrix.
+- **WS lifecycle lands first**: `frontend-ws-lifecycle` is the foundation;
+  `frontend-async-races` depends on its corrected `subscribe`/`close` contract.
+- **Late release binding**: `release_binding` stays `null`; `release-deploy`
+  binds and runs gates later.
+
+## Decomposition risks
+
+- **`automerger-correctness`** carries the riskiest single change — the
+  worker/queue lost-event race needs a lifecycle redesign with race-detector
+  tests; highest blast radius (silent missed merges) if done wrong.
+- **`frontend-async-races`** is the largest (7 stories) and spans many
+  components; `feature-design` may sub-group by screen. Coupling to the WS
+  contract is mitigated by the depends_on edge to `frontend-ws-lifecycle`.
+- **`data-tx-integrity`** includes a Postgres migration; mitigated by additive
+  widening + testcontainers postgres coverage.
+- **Concurrent agent**: another agent is draining `feature-cli-jam-open-in-browser`
+  in `cmd/jamsesh/`. This epic touches `internal/portal/*` and `frontend/*`
+  (plus the `cmd/portal/main.go` retention call site) — disjoint from
+  `cmd/jamsesh/`, so no file conflicts are expected.
+
+## Other agent review
+
+<!-- codex cross-model peer-review gate fills this in after epic-design. -->
+_Pending codex (xhigh) peer-review gate on this decomposition._
+
+## Story inventory (by severity)
+
+Full per-story inventory. Each story is parented to one of the 6 features above;
+severity ordering (Highs first) drives the recommended fix order.
 
 ### High (5) — fix first
 | Story | Domain | Location |
@@ -101,13 +145,14 @@ findings share code and context:
 
 ## Driving this epic
 
-- List children: `.work/bin/work-view --parent epic-bug-squash`
-- Surface the Highs: `.work/bin/work-view --parent epic-bug-squash --tag high`
-- Each child sits at `stage: drafting`. Route through the normal design →
-  implement → review flow, or `/agile-workflow:fix <id>` for the trivial Lows
-  (e.g. `errors-is-not-used-errnotfound`, `diff-exit-code-ignored`,
-  `git-auth-client-abort-500`) which need no design pass.
-- The epic advances to `done` when all 28 children reach `stage: done`.
+- List features: `.work/bin/work-view --parent epic-bug-squash`
+- List a feature's stories: `.work/bin/work-view --parent epic-bug-squash-<feature>`
+- Surface the Highs across the epic: `.work/bin/work-view --tag high` (filter to bug-squash ids)
+- Each feature is at `stage: drafting` → `feature-design` (then a codex gate),
+  which advances it to `implementing` and readies its stories. Then
+  `implement-orchestrator` per feature, then `review`.
+- The epic advances to `done` when all 6 features (and their 28 stories) reach
+  `stage: done`.
 
 ## Source
 

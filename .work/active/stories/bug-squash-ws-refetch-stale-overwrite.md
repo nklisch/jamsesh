@@ -3,7 +3,7 @@ id: bug-squash-ws-refetch-stale-overwrite
 kind: story
 stage: drafting
 tags: [bug, ui, async]
-parent: epic-bug-squash
+parent: epic-bug-squash-frontend-async-races
 depends_on: []
 release_binding: null
 gate_origin: null

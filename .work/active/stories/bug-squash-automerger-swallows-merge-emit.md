@@ -3,7 +3,7 @@ id: bug-squash-automerger-swallows-merge-emit
 kind: story
 stage: drafting
 tags: [bug, portal, error-handling, high]
-parent: epic-bug-squash
+parent: epic-bug-squash-automerger-correctness
 depends_on: []
 release_binding: null
 gate_origin: null

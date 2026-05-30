@@ -3,7 +3,7 @@ id: bug-squash-magic-link-db-error-masked-401
 kind: story
 stage: drafting
 tags: [bug, portal, error-handling, high]
-parent: epic-bug-squash
+parent: epic-bug-squash-handler-error-classification
 depends_on: []
 release_binding: null
 gate_origin: null
