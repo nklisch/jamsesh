@@ -33,12 +33,16 @@ its stories are implemented and reviewed.
 
 ## Decomposition
 
-Split by **capability / shared-code seam**, not by layer. Five features are
-independent roots (parallelizable); the frontend async cluster depends on the
-WebSocket-lifecycle rework because its SessionList fixes build on the corrected
-`subscribe`/`close` contract. The two natural hotspots — the auto-merger
-(`internal/portal/automerger/`) and the WS manager (`ws.svelte.ts`) — each
-become their own feature so the related fixes share one design pass.
+Split by **capability / shared-code seam**, not by layer. Six of the seven
+features are independent roots (parallelizable); only
+`frontend-sessionlist-subscription` depends on the WebSocket-lifecycle rework,
+because its SessionList fixes build on the corrected `subscribe`/`close`
+contract. (The codex decomposition gate split this 2-story concern out of
+`frontend-async-races` so the WS dependency does not block the two independent
+High async fixes — see `## Other agent review`.) The two natural hotspots — the
+auto-merger (`internal/portal/automerger/`) and the WS manager
+(`ws.svelte.ts`) — each become their own feature so related fixes share a design
+pass.
 
 ### Child features
 
@@ -52,8 +56,10 @@ become their own feature so the related fixes share one design pass.
   status classification (3 stories: 1H/1M/1L) — depends on: `[]`
 - `epic-bug-squash-frontend-ws-lifecycle` — ws.svelte.ts connection lifecycle
   (3 stories: 2M/1L) — depends on: `[]`
-- `epic-bug-squash-frontend-async-races` — screen/component async + reactive
-  races (7 stories: 2H/4M/1L) — depends on: `[epic-bug-squash-frontend-ws-lifecycle]`
+- `epic-bug-squash-frontend-async-races` — WS-independent screen/component async
+  + reactive races (5 stories: 2H/2M/1L) — depends on: `[]`
+- `epic-bug-squash-frontend-sessionlist-subscription` — SessionList subscription
+  + event-refetch correctness (2 stories: 2M) — depends on: `[epic-bug-squash-frontend-ws-lifecycle]`
 
 ## Design decisions
 
@@ -63,18 +69,26 @@ cross-model peer-review gate aligns on these after this decomposition — see
 
 - **Regression test per fix**: every story lands a failing-first regression test
   before its fix — per the project test-integrity rule; no fix without a test
-  that would have caught it.
+  that would have caught it. Concurrency stories additionally get `go test -race`
+  coverage and, where practical, a deterministic interleaving harness.
 - **Corrected behavior is the intended contract**: fixes that change observable
-  status (receive-pack false-200 → 500; git-auth client-abort → not-5xx;
-  magic-link false-401 → transient 5xx) are deliberate corrections.
-  `feature-design` updates any test asserting the old (wrong) behavior rather
-  than preserving it.
-- **Dual-dialect + migration discipline (data-tx feature)**: schema changes
-  (Postgres `seq` INTEGER → BIGINT; keyset pagination) ship as a forward goose
-  migration with mirrored sqlc regen across sqlite + postgres; widening is
-  additive (no destructive down), validated by the dual-dialect test matrix.
-- **WS lifecycle lands first**: `frontend-ws-lifecycle` is the foundation;
-  `frontend-async-races` depends on its corrected `subscribe`/`close` contract.
+  status are deliberate corrections, and `feature-design` updates tests asserting
+  the old (wrong) behavior. But the corrections are NARROW (see each feature's
+  `## Design caveats`): receive-pack returns 500 only on IO/truncation failure
+  (git-level rejections still return 200 + report-status); git-auth skips 5xx
+  only for genuine client-abort/request-context cancellation (a store
+  `DeadlineExceeded` stays 5xx); magic-link returns transient 5xx only on a real
+  driver error (a 0-row consume stays a permanent 401).
+- **Dual-dialect + migration discipline (data-tx feature)**: the Postgres `seq`
+  change is a **non-destructive widening** (INTEGER → BIGINT) covering both
+  `events.seq` and `event_seq.next`, with mirrored sqlc regen across
+  sqlite + postgres, removal of the adapter `int32` casts, an existing-row
+  migration test, and a no-destructive-down policy (narrowing would truncate).
+  Keyset pagination threads `cur.LastID` through both dialect queries.
+- **WS lifecycle lands first (scoped)**: `frontend-ws-lifecycle` is the
+  foundation only for `frontend-sessionlist-subscription` (the 2 SessionList
+  stories). The other frontend async fixes (`frontend-async-races`) are
+  WS-independent and parallelizable.
 - **Late release binding**: `release_binding` stays `null`; `release-deploy`
   binds and runs gates later.
 
@@ -95,8 +109,28 @@ cross-model peer-review gate aligns on these after this decomposition — see
 
 ## Other agent review
 
-<!-- codex cross-model peer-review gate fills this in after epic-design. -->
-_Pending codex (xhigh) peer-review gate on this decomposition._
+Codex (cross-model, xhigh) reviewed this decomposition. Verdict: backend
+decomposition sound; the frontend over-constraint was fixed before
+feature-design.
+
+**Accepted & applied:**
+- Split `frontend-sessionlist-subscription` (2 SessionList stories that need the
+  WS contract) out of `frontend-async-races`, so the WS dependency no longer
+  blocks the two independent High async fixes (ArtifactPane, finalize-stores).
+- Pinned narrow-correction caveats into `handler-error-classification`
+  (receive-pack git-rejection vs IO-failure; git-auth client-abort vs store
+  timeout; magic-link 0-row vs driver error, dual-dialect `:execrows`).
+- Tightened the seq-migration decision ("non-destructive widening"; both
+  columns + sqlc regen + int32-cast removal + migration test + no destructive
+  down) in `data-tx-integrity`.
+- Added intra-feature ordering: `finalize-lock-no-transaction` depends_on
+  `sqlite-withtx-deferred-not-immediate`.
+- Recorded the finalize-store pattern caveat (adopt `per-instance-factory-rune-store`).
+
+**Rejected / confirmed non-issues:** `handler-error-classification` is a
+coherent seam (not artificial); no backend cross-feature edges needed
+(automerger / worker-lifecycle / data-tx / handler-error are parallelizable);
+`gateway-slow-consumer-close` (backend) needs no edge to the frontend WS work.
 
 ## Story inventory (by severity)
 

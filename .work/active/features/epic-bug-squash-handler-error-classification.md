@@ -48,6 +48,23 @@ asserting the old (wrong) codes.
 - `bug-squash-receive-pack-truncated-200` — Medium, error-handling — `internal/portal/githttp/receive_pack.go:228`
 - `bug-squash-git-auth-client-abort-500` — Low, error-handling — `internal/portal/githttp/auth.go:47`
 
+## Design caveats (from codex decomposition gate — feature-design must honor)
+- **receive-pack**: the fix is NARROW. Git-level rejections from `git
+  receive-pack` (pre-receive hook reject, non-fast-forward) MUST still return
+  HTTP 200 with the report-status payload — that is the smart-HTTP protocol.
+  Only stdin/stdout copy/truncation/IO failures (and a post-receive failure that
+  occurs before any report-status header is flushed) become HTTP 500. Do not
+  turn protocol-level push rejections into 5xx.
+- **git-auth**: only genuine request-context cancellation / client disconnect
+  may skip the 5xx + error log. A store-side `context.DeadlineExceeded` (a real
+  dependency timeout) MUST remain a 5xx. Decide and document the client-abort
+  convention (no response vs a 499-style metric label) rather than silently
+  swallowing.
+- **magic-link**: behavior change is safe only if a 0-rows-affected consume
+  stays a permanent 401 while a real driver error becomes a transient 5xx —
+  requires `:execrows`/`RETURNING` (or a re-read) mirrored across BOTH sqlite and
+  postgres queries, plus updated single-use/concurrency tests.
+
 <!-- feature-design fills in the rows-affected vs error distinction for
 magic-link, the stdin/stdout error gating for receive-pack, and the
 context-cancellation detection for git auth. -->

@@ -50,5 +50,20 @@ migration.
 - `bug-squash-finalize-lock-no-transaction` — Medium, error-handling — `internal/portal/finalize/lock_acquire.go:187`
 - `bug-squash-postgres-seq-32bit` — Low, data-layer — `db/schema/postgres.sql:118`
 
+## Design caveats (from codex decomposition gate — feature-design must honor)
+- **seq INTEGER→BIGINT is non-destructive *widening*, not "additive"**: the
+  migration must cover BOTH `events.seq` AND `event_seq.next`, regenerate sqlc
+  for both dialects, drop every `int32(...)` cast in the postgres adapter, and
+  ship an existing-row migration test. Goose down policy: no destructive down
+  (a narrowing down-migration would truncate live data) — document the
+  irreversibility. Account for the table-rewrite/lock cost of `ALTER COLUMN
+  TYPE` on Postgres.
+- **Intra-feature ordering**: `bug-squash-sqlite-withtx-deferred-not-immediate`
+  lands before `bug-squash-finalize-lock-no-transaction` (declared via the
+  latter's `depends_on`) — don't wrap new work in `WithTx` while the tx
+  primitive's lock-acquisition behavior is still under repair.
+- **Keyset pagination**: thread `cur.LastID` into both dialect queries and both
+  adapters; keep the sqlite/postgres queries mirrored (`dual-dialect-mirror-queries`).
+
 <!-- feature-design fills in the keyset query rewrite, the migration plan, and
 the dual-dialect test matrix (sqlite + postgres via testcontainers). -->

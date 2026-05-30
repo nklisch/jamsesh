@@ -4,7 +4,7 @@ kind: story
 stage: drafting
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-data-tx-integrity
-depends_on: []
+depends_on: [bug-squash-sqlite-withtx-deferred-not-immediate]
 release_binding: null
 gate_origin: null
 created: 2026-05-30
