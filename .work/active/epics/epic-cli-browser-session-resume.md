@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume
 kind: epic
-stage: drafting
+stage: implementing
 tags: [plugin, portal, ui, security]
 parent: null
 depends_on: [feature-cli-jam-open-in-browser]
@@ -118,18 +118,57 @@ server or in access logs, but remain visible to extensions, history, crash
 restore, copy-paste, screenshots — hence the value must be a transient
 single-use *code*, never the real credential.
 
-## Likely feature decomposition (for epic-design — not yet binding)
+## Decomposition
 
-- **Portal resume-token contract** (`portal`, `security`): the two endpoints,
-  hashed single-use token store with TTL + session/account binding, dual
-  credential issuance (anonymous vs browser-scoped durable). Owns the threat
-  model. Likely the first feature (others depend on the contract).
-- **CLI resume handoff** (`plugin`): mint the resume token, open the browser to
-  the resume route (reuse `osopen`); CLI surface decision (`--resume` vs
-  command). Depends on the portal contract.
-- **SPA resume route** (`ui`): the `/…/resume` route(s), fragment read +
-  `replaceState`, exchange call, store into the correct auth state, error/expiry
-  UX. Depends on the portal contract.
+Split by **independently-deliverable component with a real producer→consumer
+dependency**, not by layer-slice: the portal contract is the shared protocol
+both clients build against, and the CLI and SPA are two *independent* consumers
+(different languages/areas, no shared code, each independently shippable and
+testable). This gives autopilot genuine parallelism — CLI ∥ SPA once the
+contract lands — and avoids straddling every component across a
+playground/durable split (the playground-vs-durable difference is just a
+credential-policy branch inside each component, handled by the contract at
+exchange time). The work closely parallels the existing magic-link
+infrastructure (`magic_link_tokens` store, `MagicLinkExchange.svelte`,
+`IssueAnonymousSessionBearer`), which de-risks all three.
+
+### Child features
+
+- `epic-cli-browser-session-resume-portal-contract` — the two endpoints
+  (mint + exchange), hashed single-use TTL token store, dual credential
+  issuance, threat model — depends on: `[]` (foundation)
+- `epic-cli-browser-session-resume-cli-handoff` — CLI mints the token + opens
+  the browser to the resume route (reuses `osopen`) — depends on:
+  `[epic-cli-browser-session-resume-portal-contract]`
+- `epic-cli-browser-session-resume-spa-route` — `/…/resume` route: fragment
+  read + `replaceState` + exchange + store-into-auth-state + error/expiry UX —
+  depends on: `[epic-cli-browser-session-resume-portal-contract]`
+
+### UI alignment
+
+No net-new mockup at the epic tier: the only UI surface (the SPA resume route)
+is a transitional exchange screen that reuses the existing `MagicLinkExchange` /
+`JoinerOutcome` patterns + the established design system. Noted on the SPA
+feature; `feature-design` may fall back to `/ux-ui-design:screens` only if the
+error/expiry UX proves novel.
+
+### Design questions
+
+No epic-level strategic ambiguities remained at decomposition time — scope,
+mechanism, credential policy, and safeguards were all locked in `## Strategic
+decisions` (user scope answers + Codex consult). Remaining choices are
+feature-level (CLI surface; durable browser-credential mechanism; resume route
+path/shape) and are deferred to the per-feature design passes.
+
+### Decomposition risks
+
+- **Durable browser-scoped credential issuance** (in `…-portal-contract`) is the
+  riskiest unit: minting a browser session from a CLI OAuth bearer must enter
+  the SPA's existing post-login state without exposing the refresh token, and
+  must interact cleanly with the existing OAuth/token model. Flag for careful
+  design + a focused threat-model pass in that feature.
+- Critical path is contract → (CLI ∥ SPA); inherent and acceptable (clients
+  can't precede their contract). The CLI∥SPA parallelism is preserved.
 
 ## Foundation-doc impact (deferred to implementation — per the rolling-foundation present-tense rule)
 
