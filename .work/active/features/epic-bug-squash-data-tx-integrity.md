@@ -87,22 +87,33 @@ but the queries bound only on `created_at < ?` with `ORDER BY created_at DESC` �
 dropping rows that share the boundary `created_at`. Make it a true keyset:
 
 ```sql
--- ListCommentsForSession / ListSessionsForOrgWithCursor (both dialects, mirrored)
+-- postgres (named/numbered ok): $1 = before_created_at, $2 = before_id
+WHERE session_id = $3 /* ...filters... */
+  AND (created_at < $1 OR (created_at = $1 AND id < $2))
+ORDER BY created_at DESC, id DESC LIMIT $4;
+-- sqlite: ANONYMOUS positional `?` ONLY (codex: `?1` aliases earlier params).
+-- Pass the boundary created_at value TWICE (or use sqlc named params :before/:lastid):
 WHERE session_id = ? /* ...filters... */
-  AND (created_at < ?1 OR (created_at = ?1 AND id < ?2))
-ORDER BY created_at DESC, id DESC
-LIMIT ?;
+  AND (created_at < ? OR (created_at = ? AND id < ?))
+ORDER BY created_at DESC, id DESC LIMIT ?;
 ```
 
 Thread `cur.LastID` through the `*Params` structs and both adapters; callers
-pass `cur.LastCreatedAt()` AND `cur.LastID`. The first page (no cursor) keeps a
-sentinel that admits all rows (e.g. max time + max id, or a separate query
-branch as today).
+pass `cur.LastCreatedAt()` (twice for sqlite) AND `cur.LastID`.
 
-**Implementation Notes**: postgres uses `$1/$2`, sqlite uses `?` positional —
-keep the two files mirrored in column/filter/order semantics
-(`dual-dialect-mirror-queries`). Verify `id` (ULID string) DESC ordering is a
-stable total order alongside `created_at`.
+**First-page sentinel (codex must-fix)**: there is NO separate first-page query
+branch — the first page passes a `now()+1s` `created_at` sentinel
+(`comments/service.go` List ~:364, `sessions/listing.go` ~:67). With the new
+`AND id < ?` clause, the first page must ALSO pass a **max-id sentinel** that
+sorts after every ULID (e.g. a string of 0xFF / `"~"`-padded, or
+`strings.Repeat("z", 26)`) so all rows still qualify. Set both sentinels in the
+no-cursor path.
+
+**Implementation Notes**: sqlite anonymous `?` cannot use `?1`; either repeat
+the boundary value or switch the query to sqlc named params. Keep the two
+dialect files mirrored in column/filter/order semantics
+(`dual-dialect-mirror-queries`). ULID `id` DESC is a stable unique tiebreaker;
+add a cross-dialect collation-parity assertion in the test.
 
 **Acceptance Criteria**:
 - [ ] Rows sharing a `created_at` at a page boundary are neither dropped nor
@@ -143,31 +154,38 @@ Same shape as `events/log.go`'s own fan-out.
 **File**: `internal/portal/finalize/lock_acquire.go` (~:187-242)
 **Story**: `bug-squash-finalize-lock-no-transaction` (Medium) — depends on Unit 4
 
-The 4 mutations (InsertFinalizeLock → SupersedeFinalizeLock → SetFinalizeLock →
-UpdateSessionStatus) run outside any tx; a mid-sequence failure leaves partial
-state. Wrap them in `store.WithTx`, preserving the unique-violation→409 path:
+The acquire mutations run outside any tx; a mid-sequence failure leaves partial
+state. **Codex must-fix: the tx must span the WHOLE sequence**, including the
+earlier `ReleaseFinalizeLock` in the stale/override branch (~`lock_acquire.go:131`)
+— otherwise a rollback won't restore the old active lock. Wrap from the release
+through the status update:
 
 ```go
 err := h.store.WithTx(ctx, func(tx store.TxStore) error {
-    if err := tx.InsertFinalizeLock(ctx, ...); err != nil { return err } // bubble ErrUniqueViolation
+    if needRelease { if err := tx.ReleaseFinalizeLock(ctx, ...); err != nil { return err } } // override/stale branch
+    if err := tx.InsertFinalizeLock(ctx, ...); err != nil { return err } // bubbles ErrUniqueViolation
     if supersedeOldID != "" { if err := tx.SupersedeFinalizeLock(ctx, ...); err != nil { return err } }
     if err := tx.SetFinalizeLock(ctx, ...); err != nil { return err }
     if sess.Status == "active" { if err := tx.UpdateSessionStatus(ctx, ...); err != nil { return err } }
     return nil
 })
-if errors.Is(err, store.ErrUniqueViolation) && supersedeOldID != "" {
+// Codex must-fix: the active-lock unique index can be hit by a fresh-insert race
+// too, not only when superseding — return 409 on ErrUniqueViolation regardless.
+if errors.Is(err, store.ErrUniqueViolation) {
     return openapi.AcquireFinalizeLock409JSONResponse(...), nil // race-lost, tx rolled back
 }
 if err != nil { return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: acquire lock tx: %w", err)) }
 // session.finalizing event emitted AFTER commit (tx-emit-then-fanout) — unchanged
 ```
 
-**Implementation Notes**: requires `store.TxStore` to expose
-`InsertFinalizeLock`/`SupersedeFinalizeLock`/`SetFinalizeLock`/`UpdateSessionStatus`
-(verify; add to the TxStore interface + both adapters if missing). The
+**Implementation Notes**: `store.TxStore` already exposes the needed
+finalize/session methods via composed interfaces (codex verified) and both tx
+adapters implement them — no interface widening needed. `WithTx` returns the
+closure error unchanged, so `ErrUniqueViolation` survives the boundary. The
 post-commit `session.finalizing` emit stays outside the tx. Depends on Unit 4
 (SQLite `WithTx` correctness) — don't build new tx usage on the primitive being
-repaired.
+repaired. Decouple the pre-flight READS (existing-lock lookup, session load)
+from the WithTx WRITE block; only the mutations belong in the tx.
 
 **Acceptance Criteria**:
 - [ ] A forced failure at step 2/3/4 rolls back step 1 (no orphaned lock row);
@@ -186,11 +204,12 @@ Add `_txlock=immediate` to the SQLite DSN in `sqliteDSN`:
 // connect.go sqliteDSN: ...&_txlock=immediate (with existing _foreign_keys, busy_timeout)
 ```
 
-**Implementation Notes**: VERIFY modernc.org/sqlite honors `_txlock=immediate`
-as a DSN param (consult the sqlc/connect skill). If unsupported, fall back to
-capping SQLite `MaxOpenConns=1` (serialize writers — matches the
-"effectively single-writer" note in connect.go) and fix the misleading comment.
-Either way the code and the comment must agree.
+**Implementation Notes**: codex verified `modernc.org/sqlite v1.50.1` honors
+`_txlock=immediate` (the driver emits `BEGIN IMMEDIATE`); `busy_timeout` still
+applies while waiting for the write lock. So adding `_txlock=immediate` to the
+DSN is the fix — no fallback needed, though `MaxOpenConns=1` remains an optional
+defense-in-depth for the single-file SQLite default. Make the `WithTx` comment
+match.
 
 **Acceptance Criteria**:
 - [ ] Concurrent read-then-write `WithTx` calls do not spuriously fail with
@@ -212,10 +231,19 @@ ALTER TABLE event_seq  ALTER COLUMN next TYPE BIGINT;
 ```
 
 **Implementation Notes**: update `db/schema/postgres.sql` to `BIGINT`, `make
-generate` so `AllocateNextSeq*` return `int64`, then DELETE the `int32(p.Seq)` /
-`Seq: int32(...)` casts in `postgres_adapter.go`. sqlite already stores 64-bit
-INTEGER, so no sqlite change. Per the codex epic-gate caveat: cover BOTH columns,
-regen, all casts, an existing-row migration test, and a no-destructive-down policy.
+generate` so `AllocateNextSeq*` return `int64`, then DELETE **every** seq-related
+`int32` cast in `postgres_adapter.go` — codex enumerated: `AllocateNextSeqN`,
+`InsertEvent`, `ListEventsSince`, AND `ListEventsSinceForDigest`, in BOTH the
+outer adapter and the tx adapter. sqlite already stores 64-bit INTEGER, so no
+sqlite change. Cover both columns, regen, all casts, an existing-row migration
+test, and a no-destructive-down policy.
+
+**Out-of-scope sibling (codex finding — deferred, NOT in this feature)**: the
+tombstone aggregate fields (`db/schema/postgres.sql` ~:284) are domain `int64`
+but Postgres `INTEGER` with `int32` casts — the same schema/domain mismatch
+class, but NOT one of the 28 bug-scan findings. Explicitly deferred: surfaced in
+the autopilot run summary for the user to park as a new story rather than
+expanding this feature's scope.
 
 **Acceptance Criteria**:
 - [ ] `events.seq` / `event_seq.next` are `BIGINT`; adapter has no `int32` seq casts.
@@ -237,11 +265,12 @@ regen, all casts, an existing-row migration test, and a no-destructive-down poli
 - Unit 5: goose up against a seeded DB; assert rows preserved + BIGINT type.
 
 ## Risks
-- **Unit 4 driver support**: `_txlock=immediate` support in modernc must be
-  verified; `MaxOpenConns=1` is the safe fallback (a small write-throughput hit,
-  acceptable for the SQLite default deployment).
+- **Unit 4**: `_txlock=immediate` confirmed supported by modernc v1.50.1 (codex);
+  `MaxOpenConns=1` is optional defense-in-depth, not a required fallback.
 - **Unit 5 migration lock**: `ALTER COLUMN TYPE BIGINT` rewrites the table on
   Postgres (brief lock). Acceptable at current scale; note in the migration.
+- **Unit 1 first-page sentinel**: forgetting the max-id sentinel would silently
+  drop rows on page 1 — covered by the page-through test starting from no cursor.
 
 ## Design decisions
 - **Keyset over offset**: `(created_at, id)` keyset, not offset pagination —
@@ -255,4 +284,25 @@ regen, all casts, an existing-row migration test, and a no-destructive-down poli
 
 ## Other agent review
 
-_Codex (xhigh) feature peer-review gate pending._
+Codex (cross-model, xhigh) reviewed this design. Verdict: request design changes
+before implementation — applied below. Codex verified facts: modernc v1.50.1
+supports `_txlock=immediate`; `TxStore` already exposes the finalize/session
+methods; no other `created_at < cursor` paginated queries exist (activity/digest
+are seq-based); ULID `id` DESC is a valid tiebreaker.
+
+**Accepted & applied:**
+- **Unit 1**: SQLite must use anonymous `?` (not `?1` — it aliases); pass the
+  boundary `created_at` twice or use named params. Added the missing **max-id
+  first-page sentinel** (the no-cursor path uses a `now()+1s` time sentinel and
+  now also needs a max-id so `AND id < ?` admits all page-1 rows).
+- **Unit 3**: widened the tx to span the WHOLE acquire sequence including the
+  earlier `ReleaseFinalizeLock` (override/stale branch ~:131) — else rollback
+  won't restore the prior lock. 409 now triggers on `ErrUniqueViolation`
+  regardless of `supersedeOldID` (fresh-insert races hit the unique index too).
+- **Unit 5**: enumerated ALL seq `int32` casts to drop — `AllocateNextSeqN`,
+  `InsertEvent`, `ListEventsSince`, `ListEventsSinceForDigest`, outer + tx.
+- **Unit 4**: confirmed `_txlock=immediate` is the fix (no fallback needed).
+
+**Deferred (out of scope, recorded for the run summary):** tombstone aggregate
+fields are the same Postgres-INTEGER vs domain-int64 mismatch (schema ~:284) but
+not a bug-scan finding — to be parked as a separate story by the user.
