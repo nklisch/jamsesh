@@ -335,3 +335,127 @@ func TestJoinAction_missingArg(t *testing.T) {
 		t.Error("expected error when no arg given, got nil")
 	}
 }
+
+// ---- --open flag tests ----
+
+// stubJoinGit is a minimal git stub for join tests (clone + checkout succeed).
+func stubJoinGit(t *testing.T) {
+	t.Helper()
+	origRunGit := runGit
+	origRunGitOutput := runGitOutput
+	origRunGitWithEnv := runGitWithEnv
+	t.Cleanup(func() {
+		runGit = origRunGit
+		runGitOutput = origRunGitOutput
+		runGitWithEnv = origRunGitWithEnv
+	})
+	runGit = func(args ...string) error { return nil }
+	runGitOutput = func(args ...string) (string, error) { return "", nil }
+	runGitWithEnv = func(env []string, args ...string) error { return nil }
+}
+
+// buildJoinMux returns an httptest mux that handles /api/me and the session
+// metadata endpoint for the given org+session.
+func buildJoinMux(accountID, orgID, sessionID string) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
+		writeMeJSON(w, accountID, orgID)
+	})
+	mux.HandleFunc("/api/orgs/"+orgID+"/sessions/"+sessionID, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(openapi.Session{
+			Id:          sessionID,
+			Name:        "Test Session",
+			Goal:        "Test goal",
+			OrgId:       orgID,
+			DefaultMode: openapi.SessionDefaultModeSync,
+		})
+	})
+	return mux
+}
+
+// TestJoinAction_openFlagBareID verifies that --open on a bare-id join calls
+// openURL with the durable session-view URL.
+func TestJoinAction_openFlagBareID(t *testing.T) {
+	const (
+		orgID     = "org-jopen-001"
+		sessionID = "sess-jopen-001"
+		accountID = "acct-jopen-001"
+	)
+
+	srv := httptest.NewServer(buildJoinMux(accountID, orgID, sessionID))
+	defer srv.Close()
+
+	setupJoinEnv(t, srv.URL)
+	stubJoinGit(t)
+	captured := stubOpenURL(t)
+
+	app := buildCLIApp()
+	if err := app.Run(context.Background(), []string{
+		"jamsesh", "join", sessionID, "--open",
+	}); err != nil {
+		t.Fatalf("join returned error: %v", err)
+	}
+
+	expectedURL := srv.URL + "/orgs/" + orgID + "/sessions/" + sessionID
+	if len(*captured) != 1 || (*captured)[0] != expectedURL {
+		t.Errorf("openURL captured = %v, want [%q]", *captured, expectedURL)
+	}
+}
+
+// TestJoinAction_openFlagOrgSlash verifies that --open with an org/session arg
+// form opens the same durable session-view URL (proves open is post-resolution).
+func TestJoinAction_openFlagOrgSlash(t *testing.T) {
+	const (
+		orgID     = "org-jopen-002"
+		sessionID = "sess-jopen-002"
+		accountID = "acct-jopen-002"
+	)
+
+	srv := httptest.NewServer(buildJoinMux(accountID, orgID, sessionID))
+	defer srv.Close()
+
+	setupJoinEnv(t, srv.URL)
+	stubJoinGit(t)
+	captured := stubOpenURL(t)
+
+	app := buildCLIApp()
+	if err := app.Run(context.Background(), []string{
+		"jamsesh", "join", orgID + "/" + sessionID, "--open",
+	}); err != nil {
+		t.Fatalf("join returned error: %v", err)
+	}
+
+	// Whether the arg was bare-id or org/session, the opened URL must be identical.
+	expectedURL := srv.URL + "/orgs/" + orgID + "/sessions/" + sessionID
+	if len(*captured) != 1 || (*captured)[0] != expectedURL {
+		t.Errorf("openURL captured = %v, want [%q]", *captured, expectedURL)
+	}
+}
+
+// TestJoinAction_noOpenFlag verifies that omitting --open does NOT call openURL.
+func TestJoinAction_noOpenFlag(t *testing.T) {
+	const (
+		orgID     = "org-jopen-003"
+		sessionID = "sess-jopen-003"
+		accountID = "acct-jopen-003"
+	)
+
+	srv := httptest.NewServer(buildJoinMux(accountID, orgID, sessionID))
+	defer srv.Close()
+
+	setupJoinEnv(t, srv.URL)
+	stubJoinGit(t)
+	captured := stubOpenURL(t)
+
+	app := buildCLIApp()
+	if err := app.Run(context.Background(), []string{
+		"jamsesh", "join", sessionID,
+	}); err != nil {
+		t.Fatalf("join returned error: %v", err)
+	}
+
+	if len(*captured) != 0 {
+		t.Errorf("openURL should not be called without --open, got: %v", *captured)
+	}
+}

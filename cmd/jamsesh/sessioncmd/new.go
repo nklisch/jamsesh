@@ -20,6 +20,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/urfave/cli/v3"
 
+	"jamsesh/cmd/jamsesh/internal/osopen"
 	"jamsesh/cmd/jamsesh/portalclient"
 	"jamsesh/cmd/jamsesh/state"
 	"jamsesh/internal/api/openapi"
@@ -28,6 +29,26 @@ import (
 // isTTY is a package-level variable so tests can override it without a real terminal.
 var isTTY = func(f *os.File) bool {
 	return isatty.IsTerminal(f.Fd())
+}
+
+// openURL is the browser-open seam; tests override it to avoid a real launch.
+var openURL = func(rawURL string) error { return osopen.Open(rawURL, os.Stderr) }
+
+// openInBrowser prints the URL then launches it; launch failures degrade
+// inside osopen.Open (URL reprinted), so --open never fails the command.
+func openInBrowser(rawURL string) {
+	fmt.Printf("Opening in browser: %s\n", rawURL)
+	_ = openURL(rawURL)
+}
+
+// sessionViewURL builds the portal URL for a durable session's detail page.
+func sessionViewURL(baseURL, orgID, sessionID string) string {
+	return strings.TrimRight(baseURL, "/") + "/orgs/" + orgID + "/sessions/" + sessionID
+}
+
+// playgroundJoinURL builds the portal URL for joining a playground session.
+func playgroundJoinURL(baseURL, sessionID string) string {
+	return strings.TrimRight(baseURL, "/") + "/playground/s/" + sessionID + "/join"
 }
 
 // runGitWithEnv runs git with additional args (including -c flags) and an optional
@@ -62,6 +83,7 @@ func NewCommand() *cli.Command {
 			&cli.StringFlag{Name: "invite", Usage: "Comma-separated emails to invite after creation"},
 			&cli.BoolFlag{Name: "non-interactive", Usage: "Skip all prompts; require all params via flags"},
 			&cli.BoolFlag{Name: "playground", Usage: "Create an ephemeral anonymous playground session (no auth required)"},
+			&cli.BoolFlag{Name: "open", Usage: "Open the session in your browser after creating"},
 		},
 		Action: newAction,
 	}
@@ -132,7 +154,12 @@ func newAction(ctx context.Context, cmd *cli.Command) error {
 	// 7. Print success summary
 	printSuccessSummary(session, params, pc.BaseURL)
 
-	// 8. Update most-recently-used org for next time's prompt pre-selection (best-effort)
+	// 8. If --open flag set, launch the session in the browser (best-effort; never fails the command).
+	if cmd.Bool("open") {
+		openInBrowser(sessionViewURL(pc.BaseURL, session.OrgId, session.Id))
+	}
+
+	// 9. Update most-recently-used org for next time's prompt pre-selection (best-effort)
 	_ = state.Write("last_org_id", []byte(params.OrgID), 0o600)
 
 	return nil
@@ -429,6 +456,12 @@ func newPlaygroundAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	printPlaygroundSummary(resp, baseURL)
+
+	// If --open flag set, launch the playground session in the browser (best-effort; never fails the command).
+	if cmd.Bool("open") {
+		openInBrowser(playgroundJoinURL(baseURL, resp.Session.Id))
+	}
+
 	return nil
 }
 
@@ -509,7 +542,7 @@ func wrapPlaygroundPushError(pushErr error, session openapi.PlaygroundSessionSum
 // printPlaygroundSummary prints a human-readable summary for a newly created
 // playground session, highlighting the share URL, nickname, and expiry.
 func printPlaygroundSummary(resp openapi.PlaygroundSessionCreated, baseURL string) {
-	shareURL := strings.TrimRight(baseURL, "/") + "/playground/s/" + resp.Session.Id + "/join"
+	shareURL := playgroundJoinURL(baseURL, resp.Session.Id)
 	expiresIn := time.Until(resp.ExpiresAt).Round(time.Minute)
 
 	fmt.Printf("Playground session created!\n")
@@ -541,7 +574,7 @@ func wrapPushError(pushErr error, session openapi.Session, baseURL string) error
 
 // printSuccessSummary prints a human-readable summary of the created session.
 func printSuccessSummary(session openapi.Session, params CreateParams, baseURL string) {
-	sessionURL := strings.TrimRight(baseURL, "/") + "/orgs/" + session.OrgId + "/sessions/" + session.Id
+	sessionURL := sessionViewURL(baseURL, session.OrgId, session.Id)
 	fmt.Printf("Session created: %s (%s)\n", session.Name, session.Id)
 	fmt.Printf("  URL:    %s\n", sessionURL)
 	fmt.Printf("  Org:    %s\n", params.OrgID)

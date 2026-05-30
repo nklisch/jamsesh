@@ -1046,3 +1046,226 @@ func TestPlaygroundAction_pushUsesBearerNotOAuthToken(t *testing.T) {
 			expectedB64, capturedGitArgs)
 	}
 }
+
+// ---- --open flag tests ----
+
+// stubOpenURL overrides the openURL seam for the duration of a test and
+// returns a pointer to the captured URL slice. Restored via t.Cleanup.
+// Do NOT use t.Parallel in tests that call this helper.
+func stubOpenURL(t *testing.T) *[]string {
+	t.Helper()
+	var captured []string
+	orig := openURL
+	t.Cleanup(func() { openURL = orig })
+	openURL = func(rawURL string) error {
+		captured = append(captured, rawURL)
+		return nil
+	}
+	return &captured
+}
+
+// TestNewAction_openFlagDurable verifies that --open causes openURL to be called
+// with the durable session-view URL after a successful "jamsesh new --org X --open".
+func TestNewAction_openFlagDurable(t *testing.T) {
+	const (
+		orgID     = "org-open-001"
+		sessionID = "sess-open-001"
+		accountID = "acct-open-001"
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
+		writeMeJSON(w, accountID, orgID)
+	})
+	mux.HandleFunc("/api/orgs/"+orgID+"/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writeSessionJSON(w, sampleSession(orgID, sessionID))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupNewEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	stubIsTTY(t, false)
+	captured := stubOpenURL(t)
+
+	app := buildCLIApp()
+	if err := app.Run(context.Background(), []string{
+		"jamsesh", "new", "--org", orgID, "--open",
+	}); err != nil {
+		t.Fatalf("new returned error: %v", err)
+	}
+
+	expectedURL := srv.URL + "/orgs/" + orgID + "/sessions/" + sessionID
+	if len(*captured) != 1 || (*captured)[0] != expectedURL {
+		t.Errorf("openURL captured = %v, want [%q]", *captured, expectedURL)
+	}
+}
+
+// TestNewAction_noOpenFlagDurable verifies that omitting --open does NOT call openURL.
+func TestNewAction_noOpenFlagDurable(t *testing.T) {
+	const (
+		orgID     = "org-open-002"
+		sessionID = "sess-open-002"
+		accountID = "acct-open-002"
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
+		writeMeJSON(w, accountID, orgID)
+	})
+	mux.HandleFunc("/api/orgs/"+orgID+"/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writeSessionJSON(w, sampleSession(orgID, sessionID))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupNewEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	stubIsTTY(t, false)
+	captured := stubOpenURL(t)
+
+	app := buildCLIApp()
+	if err := app.Run(context.Background(), []string{
+		"jamsesh", "new", "--org", orgID,
+	}); err != nil {
+		t.Fatalf("new returned error: %v", err)
+	}
+
+	if len(*captured) != 0 {
+		t.Errorf("openURL should not be called without --open, got: %v", *captured)
+	}
+}
+
+// TestNewAction_openFlagPlayground verifies that --open causes openURL to be
+// called with the playground join URL after "jamsesh new --playground --open".
+func TestNewAction_openFlagPlayground(t *testing.T) {
+	const sessionID = "sess-pg-open-001"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writePlaygroundJSON(w, samplePlaygroundResp(sessionID))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupPlaygroundEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	captured := stubOpenURL(t)
+
+	app := buildCLIApp()
+	if err := app.Run(context.Background(), []string{
+		"jamsesh", "new", "--playground", "--open",
+	}); err != nil {
+		t.Fatalf("new --playground --open returned error: %v", err)
+	}
+
+	expectedURL := srv.URL + "/playground/s/" + sessionID + "/join"
+	if len(*captured) != 1 || (*captured)[0] != expectedURL {
+		t.Errorf("openURL captured = %v, want [%q]", *captured, expectedURL)
+	}
+}
+
+// TestNewAction_noOpenFlagPlayground verifies that omitting --open on the
+// playground path does NOT call openURL.
+func TestNewAction_noOpenFlagPlayground(t *testing.T) {
+	const sessionID = "sess-pg-open-002"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writePlaygroundJSON(w, samplePlaygroundResp(sessionID))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupPlaygroundEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	captured := stubOpenURL(t)
+
+	app := buildCLIApp()
+	if err := app.Run(context.Background(), []string{
+		"jamsesh", "new", "--playground",
+	}); err != nil {
+		t.Fatalf("new --playground returned error: %v", err)
+	}
+
+	if len(*captured) != 0 {
+		t.Errorf("openURL should not be called without --open, got: %v", *captured)
+	}
+}
+
+// TestNewAction_openFlagDurable_summaryUnchanged is a golden-string guard that
+// verifies the summary output is identical after extracting sessionViewURL.
+func TestNewAction_openFlagDurable_summaryUnchanged(t *testing.T) {
+	const (
+		orgID     = "org-open-003"
+		sessionID = "sess-open-003"
+		accountID = "acct-open-003"
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
+		writeMeJSON(w, accountID, orgID)
+	})
+	mux.HandleFunc("/api/orgs/"+orgID+"/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writeSessionJSON(w, sampleSession(orgID, sessionID))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupNewEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	stubIsTTY(t, false)
+	stubOpenURL(t) // suppress real browser launch
+
+	app := buildCLIApp()
+	output := captureStdout(t, func() {
+		if err := app.Run(context.Background(), []string{
+			"jamsesh", "new", "--org", orgID,
+		}); err != nil {
+			t.Fatalf("new returned error: %v", err)
+		}
+	})
+
+	expectedSessionURL := srv.URL + "/orgs/" + orgID + "/sessions/" + sessionID
+	if !strings.Contains(output, expectedSessionURL) {
+		t.Errorf("session URL %q not found in output:\n%s", expectedSessionURL, output)
+	}
+}
+
+// TestNewAction_openFlagPlayground_summaryUnchanged is a golden-string guard
+// that verifies the playground summary output is identical after extracting
+// playgroundJoinURL.
+func TestNewAction_openFlagPlayground_summaryUnchanged(t *testing.T) {
+	const sessionID = "sess-pg-open-003"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writePlaygroundJSON(w, samplePlaygroundResp(sessionID))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupPlaygroundEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	stubOpenURL(t) // suppress real browser launch
+
+	app := buildCLIApp()
+	output := captureStdout(t, func() {
+		if err := app.Run(context.Background(), []string{
+			"jamsesh", "new", "--playground",
+		}); err != nil {
+			t.Fatalf("new --playground returned error: %v", err)
+		}
+	})
+
+	expectedURL := srv.URL + "/playground/s/" + sessionID + "/join"
+	if !strings.Contains(output, expectedURL) {
+		t.Errorf("playground join URL %q not found in output:\n%s", expectedURL, output)
+	}
+}

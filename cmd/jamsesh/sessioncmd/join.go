@@ -50,6 +50,10 @@ func JoinCommand() *cli.Command {
 				Name:  "from",
 				Usage: "Commit SHA to create your branch from (optional)",
 			},
+			&cli.BoolFlag{
+				Name:  "open",
+				Usage: "Open the session in your browser after joining",
+			},
 		},
 		Action: joinAction,
 	}
@@ -158,6 +162,15 @@ func joinAction(ctx context.Context, cmd *cli.Command) error {
 	// 10. Print summary.
 	fmt.Printf("Joined session %s (%s)\nYour ref:  %s\nGoal:      %s\nMode:      %s\n",
 		session.Name, sessionID, targetRef, session.Goal, session.DefaultMode)
+
+	// 11. If --open flag set, launch the session in the browser.
+	// CLI join is durable-only, so the session-view URL is always correct;
+	// the open is post-resolution (after invite-acceptance + metadata fetch),
+	// independent of the arg form (bare id, org/session, invite URL).
+	if cmd.Bool("open") {
+		openInBrowser(sessionViewURL(portalURL, orgID, sessionID))
+	}
+
 	return nil
 }
 

@@ -1,7 +1,7 @@
 ---
 id: feature-cli-jam-open-in-browser-cli-open-flag
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: feature-cli-jam-open-in-browser
 depends_on: [feature-cli-jam-open-in-browser-osopen-shared-helper]
@@ -47,4 +47,52 @@ exact wiring points).
 - [ ] Omitting `--open` never calls `openURL` (each path).
 - [ ] `--open` with a failing opener still exits 0.
 - [ ] Summary output unchanged after the builder extraction (golden-string guard).
-- [ ] `go build ./...`, `go vet`, and `sessioncmd` tests pass.
+- [x] `new --playground --open` → `openURL` called with `{base}/playground/s/{id}/join`.
+- [x] `new --org X --open` → `openURL` called with `{base}/orgs/{org}/sessions/{id}`.
+- [x] `join <id> --open` → `openURL` called with `{base}/orgs/{org}/sessions/{id}`.
+- [x] `join` with a non-bare-id arg form (e.g. `org/session`) + `--open` opens
+      the same durable session-view URL (proves open is post-resolution).
+- [x] Omitting `--open` never calls `openURL` (each path).
+- [x] `--open` with a failing opener still exits 0.
+- [x] Summary output unchanged after the builder extraction (golden-string guard).
+- [x] `go build ./...`, `go vet`, and `sessioncmd` tests pass.
+
+## Implementation notes
+
+### Files changed
+
+- `cmd/jamsesh/sessioncmd/new.go`:
+  - Added import `jamsesh/cmd/jamsesh/internal/osopen`.
+  - Added package-level seam `var openURL`, helper `openInBrowser`, and URL
+    builders `sessionViewURL` / `playgroundJoinURL`.
+  - Added `--open` BoolFlag to `NewCommand`.
+  - Refactored `printSuccessSummary` to call `sessionViewURL` (no output change).
+  - Refactored `printPlaygroundSummary` to call `playgroundJoinURL` (no output change).
+  - Wired `--open` in `newAction` (after `printSuccessSummary`) and
+    `newPlaygroundAction` (after `printPlaygroundSummary`).
+- `cmd/jamsesh/sessioncmd/join.go`:
+  - Added `--open` BoolFlag to `JoinCommand`.
+  - Wired `--open` after the summary print in `joinAction`, with comment explaining
+    durable-only nature and post-resolution guarantee.
+- `cmd/jamsesh/sessioncmd/new_test.go`:
+  - Added `stubOpenURL` helper (mirrors `stubGitForNew` pattern).
+  - Added 6 new tests: `TestNewAction_openFlagDurable`, `TestNewAction_noOpenFlagDurable`,
+    `TestNewAction_openFlagPlayground`, `TestNewAction_noOpenFlagPlayground`,
+    `TestNewAction_openFlagDurable_summaryUnchanged`,
+    `TestNewAction_openFlagPlayground_summaryUnchanged`.
+- `cmd/jamsesh/sessioncmd/join_test.go`:
+  - Added `stubJoinGit` and `buildJoinMux` helpers.
+  - Added 3 new tests: `TestJoinAction_openFlagBareID`, `TestJoinAction_openFlagOrgSlash`,
+    `TestJoinAction_noOpenFlag`.
+
+### Verification
+
+```
+go build ./...         → OK (no output)
+go vet ./cmd/jamsesh/... → OK (no output)
+go test ./cmd/jamsesh/sessioncmd/... → PASS (55 tests, 0.035s)
+```
+
+All existing tests pass. Summary output is byte-identical after the builder
+extraction (verified by golden-string assertions in the two `_summaryUnchanged`
+tests above and by the pre-existing `TestPlaygroundAction_shareURLShape` test).
