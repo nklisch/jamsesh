@@ -28,10 +28,12 @@ the feature body.
 - Mint: `AccountFromContext` + `checkSessionMembership(org_id, session_id,
   account)` (mirror `internal/portal/finalize/fetch_token.go`); 401/403/404
   matrix. Generate a random token; store `sha256(token)` + binding via Unit 1;
-  return `{ resume_token, resume_url, expires_in: 60, session_id }` where
-  `resume_url` is the canonical route with the `rt` fragment (single source of
-  truth — see feature body Design decisions).
-- Wire into `cmd/portal` and `internal/portal/ratelimit`.
+  return ONLY `{ resume_url, expires_in: 60, session_id }` where `resume_url` is
+  the canonical route with the `rt` fragment (single source of truth — see
+  feature body Design decisions). Do NOT return a standalone `resume_token`
+  field (the raw token appears once, in the fragment).
+- Wire `POST /api/session-resumes` under the **bearer-middleware** route group;
+  add a rate limit via `internal/portal/ratelimit`.
 
 ## Acceptance criteria
 
@@ -40,6 +42,7 @@ the feature body.
 - [ ] Success stores a HASHED token bound to account+session; raw token never
       logged.
 - [ ] Response `resume_url` carries the `rt` fragment + the canonical path
-      (playground vs durable per session kind).
+      (playground vs durable per session kind); no standalone token field.
+- [ ] Mounted under bearer middleware (not the public group) and rate-limited.
 - [ ] `expires_in` reflects the 60s TTL.
 - [ ] `go build ./...`, `go vet`, sqlc/oapi generate clean; handler tests pass.

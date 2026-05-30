@@ -60,8 +60,15 @@ back to `/ux-ui-design:screens` then.
 - **Account-mismatch handling**: if the browser is already authenticated as a
   *different* account when a resume link is opened, **confirm the switch** with
   the user before clearing the existing session and adopting the resumed
-  identity. (Guards against accidental identity swaps; pairs with the
-  ambient-auth handling below.)
+  identity. The exchange response carries identity metadata (`account_id` +
+  `display_name`, added to the contract in the final review) so the SPA detects
+  the mismatch WITHOUT a second `/me` probe.
+- **Durable adoption is access-only** [final-review]: the contract returns an
+  `IssueShortLived` access token with NO refresh, but the current durable setter
+  `auth.setTokens(access, refresh)` expects both. The full design must add an
+  access-only adoption path that clears any stale refresh / cached current-user
+  and handles the 1h access expiry cleanly (re-resume / re-login), rather than
+  reusing `setTokens` as-is.
 - **Error / expiry UX**: an expired / already-used / invalid resume token shows
   a **generic message + retry hint** ("this resume link expired or was already
   used — run the command again from your terminal"), with NO detail that

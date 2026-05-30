@@ -99,8 +99,10 @@ solve reopen-the-right-one-later"). Footguns above are its accepted findings.
   "Opening your session in the browser…"), and the open-failure fallback must
   also avoid printing the tokened URL. Add explicit acceptance criteria for
   redacted/no-print resume URLs.
-- **Use the contract-owned route shape + `rt` fragment key** (defined in
-  `…-portal-contract`) when building the URL — don't invent a divergent shape.
+- **Open the portal-returned `resume_url` VERBATIM — do not build it.** Mint
+  returns the fully-formed `resume_url` (fragment + canonical path); the CLI
+  opens that string and never constructs the route itself (eliminates drift).
+  The only CLI-built display text is token-free (e.g. the bare session URL).
 - **Durable mint** must send `org_id` + `session_id` so the portal can do the
   membership check (the durable CLI bearer is account-scoped, not session-bound).
 

@@ -165,10 +165,17 @@ CREATE TABLE resume_tokens (
     used_at     DATETIME
 );
 ```
-Queries (mirror `magic_link_tokens.sql`, dual-dialect per
-`dual-dialect-mirror-queries`): `CreateResumeToken :one`,
-`GetResumeTokenByHash :one`, `ConsumeResumeToken :exec` (atomic single-use:
-`UPDATE … SET used_at=? WHERE id=? AND used_at IS NULL`).
+Queries (dual-dialect per `dual-dialect-mirror-queries`): `CreateResumeToken
+:one`, `GetResumeTokenByHash :one`, and a **winner-returning** consume —
+`ConsumeResumeToken :one` doing `UPDATE resume_tokens SET used_at=? WHERE
+token_hash=? AND used_at IS NULL AND expires_at > ? RETURNING *`. ⚠ Do NOT copy
+`magic_link_tokens`'s `ConsumeResumeToken :exec` — the generated `:exec` discards
+rows-affected, so two concurrent exchanges could both read-unused, both consume
+with nil error, and both issue credentials. The exchange handler treats
+"`RETURNING` produced a row" as the single-use **winner** signal; a zero-row
+result (already used / expired) issues NO credential. (The combined
+validate+expiry+consume in one statement also removes a TOCTOU between the
+GetByHash check and the consume.)
 
 **Acceptance**: dual-dialect parity (identical names/columns/org-scoping); sqlc
 generates clean; adapter methods covered; `ConsumeResumeToken` is atomic
@@ -180,24 +187,32 @@ single-use (second consume affects 0 rows).
 handler package (new `internal/portal/sessionresume/` — keeps the surface
 distinct), `cmd/portal` wiring, `internal/portal/ratelimit` wiring.
 
-`POST /api/session-resumes` (auth: CLI bearer) — body `{ org_id, session_id }`;
-`AccountFromContext` + `checkSessionMembership` (401/403/404 like fetch-token);
-generate a random token, store `sha256` hash + binding, return
-`{ resume_token, resume_url, expires_in, session_id }`. Rate-limited.
+`POST /api/session-resumes` (auth: CLI bearer, under bearer middleware) — body
+`{ org_id, session_id }`; `AccountFromContext` + `checkSessionMembership`
+(401/403/404 like fetch-token); generate a random token, store `sha256` hash +
+binding, return **only** `{ resume_url, expires_in, session_id }`. The raw token
+appears ONCE, inside `resume_url`'s fragment — do NOT also return a separate
+`resume_token` field (redundant secret surface + drift risk now that `resume_url`
+is the single source of truth). Rate-limited.
 
-**Acceptance**: non-member → 403; unknown session → 404; no bearer → 401; success
-stores a hashed (never raw) token bound to account+session and returns a
-`resume_url` with the `rt` fragment + the canonical path; token never logged.
+**Acceptance**: mounted under bearer middleware; non-member → 403; unknown
+session → 404; no bearer → 401; success stores a hashed (never raw) token bound
+to account+session and returns a `resume_url` with the `rt` fragment + the
+canonical path; response has no standalone token field; token never logged.
 
 ### Unit 3: exchange endpoint + dual credential issuance  ⚠ trickiest
 **Story**: `epic-cli-browser-session-resume-portal-contract-exchange-credential`
 **Files**: the resume handler (exchange op), `internal/portal/tokens/` (new
 method), exchange tests.
 
-`POST /api/session-resumes/exchange` — UNAUTHENTICATED (ignore ambient auth);
-body `{ resume_token }`; look up by `sha256` hash; reject if missing / expired /
-already used (generic failure); atomic `ConsumeResumeToken`; then branch on the
-bound account's `is_anonymous`:
+`POST /api/session-resumes/exchange` — mounted in the PUBLIC route group, its
+own rate limit, UNAUTHENTICATED: the resume token is the sole credential and any
+ambient `Authorization` header is ignored. Body `{ resume_token }`; the
+**winner-returning** `ConsumeResumeToken` (Unit 1) does lookup-by-hash +
+not-used + not-expired + consume in ONE atomic statement — a returned row is the
+single-use winner; a zero-row result → generic failure, NO credential issued (no
+oracle distinguishing missing/expired/used). Then branch on the consumed row's
+bound account `is_anonymous`:
 - durable → `tokens.IssueShortLived(accountID, AccessTokenTTL)`;
 - playground → new method:
 ```go
@@ -206,17 +221,25 @@ bound account's `is_anonymous`:
 // expiring at the session hard-cap. Mirrors IssueAnonymousSessionBearer minus
 // the account-creation step, so the issued token is shape-identical to the
 // CLI's original anonymous bearer (kind=anonymous_session_bearer, session_id FK).
+// Preconditions (fail-fast): account.is_anonymous MUST be true; the account MUST
+// already be a member of sessionID; the session MUST be active with positive
+// remaining TTL. A durable (non-anonymous) account is rejected here.
 IssueAnonymousSessionBearerForExistingAccount(ctx, accountID, sessionID string, ttl time.Duration) (rawToken string, expiresAt time.Time, err error)
 ```
-Return `{ bearer, expires_at, session_id, org_id, kind: playground|durable }` so
-the SPA routes + picks the auth-state setter.
+Return `{ bearer, expires_at, session_id, org_id, kind: playground|durable,
+account_id, display_name }` — the identity metadata (account_id + display) lets
+the SPA detect a mismatch with an already-logged-in account and run its
+confirm-switch (spa-route Design decisions) WITHOUT a second `/me` probe.
 
-**Acceptance**: expired/used/unknown token → generic 401/410 (no oracle); ambient
-`Authorization` header ignored; durable exchange returns an `IssueShortLived`
-access token (no refresh in the response); playground exchange returns a bearer
-for the SAME anonymous account+session (NO new `accounts` row created — assert
-account count unchanged) that Validate accepts as a session member; single-use
-(second exchange of the same token → failure).
+**Acceptance**: mounted public + rate-limited + ignores ambient `Authorization`;
+expired/used/unknown token → generic failure (no oracle); single-use enforced
+under CONCURRENT exchange (only the `RETURNING`-winner issues a credential — two
+parallel exchanges of one token yield exactly one bearer); durable exchange
+returns an `IssueShortLived` access token (no refresh in the response);
+playground exchange returns a bearer for the SAME anonymous account+session (NO
+new `accounts` row — assert account count unchanged) that Validate accepts as a
+session member; the new tokens method rejects a non-anonymous account and a
+non-member/ended-session.
 
 ## Implementation Order
 
@@ -259,3 +282,30 @@ epic-level parallelism is CLI ∥ SPA after this whole feature lands.
   types), `docs/SECURITY.md` (resume-token flow + threat model),
   `docs/ARCHITECTURE.md` (CLI→browser handoff — assigned to this feature),
   `docs/SPEC.md` if a new constraint emerges. Written when the endpoints land.
+
+## Final-review findings (Codex, accepted — folded above)
+
+Final cross-model design review (Codex, 2026-05-30). **Verdict was Block** on a
+real consume-race; fixed in the design before any code:
+- [BLOCKER, fixed] `ConsumeResumeToken` is now a winner-returning `:one`
+  (`UPDATE … WHERE token_hash=? AND used_at IS NULL AND expires_at > ?
+  RETURNING *`) — the generated `:exec` precedent discards rows-affected and
+  would let concurrent exchanges double-issue. Only the `RETURNING`-winner
+  issues a credential. (Units 1 + 3.)
+- [important, fixed] Mint returns only `resume_url` (+ `expires_in`,
+  `session_id`) — dropped the redundant `resume_token` field. (Unit 2.)
+- [important, fixed] Exchange response carries identity metadata
+  (`account_id`, `display_name`) so the SPA can confirm an account-mismatch
+  switch without a `/me` probe. (Unit 3 → consumed by spa-route.)
+- [important, fixed] New anon-existing-account tokens method has explicit
+  fail-fast preconditions (is_anonymous, existing session membership, active
+  positive-TTL session; durable rejected). (Unit 3.)
+- [important, fixed] Route mounting is now AC: mint under bearer middleware;
+  exchange in the public group + own rate limit + ignores ambient auth.
+  (Units 2 + 3.)
+
+Confirmed safe (no change needed): CSRF/open-redirect are not primary risks
+(bearer headers not cookies; same-origin exchange; resume routes carry no
+external return target); `Referrer-Policy: no-referrer` is already global
+(`internal/portal/router/security_headers.go`); playground authz checks session
+membership after token validation (`internal/portal/handlerauth/handlerauth.go`).
