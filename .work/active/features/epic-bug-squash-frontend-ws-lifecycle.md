@@ -100,9 +100,13 @@ cursor-invalidation semantics are unchanged.
 
 **Implementation Notes**: add `teardownTimer` to `ConnectionRecord`. The linger
 (macrotask `setTimeout(...,0)`) absorbs the synchronous effect
-cleanup→re-subscribe window (cleanup unsubscribes all, the re-run re-subscribes
-and cancels the pending teardown). Tearing down genuinely drops `lastSeenSeq`
-(intended "left the view" cursor invalidation, per the existing `close()` doc).
+cleanup→re-subscribe window — codex verified against the Svelte 5 effect docs
+that effects re-run in a microtask with teardown immediately before the rerun,
+so a macrotask timer cannot fire between cleanup and the synchronous rerun body.
+Tearing down genuinely drops `lastSeenSeq` (intended "left the view" cursor
+invalidation, per the existing `close()` doc). Also prune the empty per-type
+`Set` on unsubscribe so long-lived churn across event types doesn't accumulate
+empty sets.
 
 **Acceptance Criteria**:
 - [ ] Unsubscribing the LAST handler for a session closes the ws, clears the
@@ -122,16 +126,41 @@ existing record:
 ```ts
 async function open(sessionId: string): Promise<WebSocket | null> {
   const existing = records.get(sessionId);
-  if (existing) return existing.ws; // open OR mid-reconnect — the reconnect loop owns it; do NOT overwrite
-  // ...only create a fresh record when none exists...
+  if (existing) return existing.ws; // open OR mid-reconnect — reconnect loop owns it; do NOT overwrite
+
+  if (!auth.token) { setStatus(sessionId, null); return null; } // Unit 3
+  const ticket = await fetchTicket();
+  // POST-TICKET GUARD (codex must-fix): a teardown/close/unsubscribe may have
+  // landed during the await. Re-check BEFORE constructing the socket.
+  if (!ticket) return null;
+  const now = records.get(sessionId);
+  if (now) return now.ws;                       // someone created/owns a record meanwhile
+  if (handlerCount(sessionId) === 0) return null; // last handler left during the await — don't orphan a socket
+  // ...only now create the fresh record + WebSocket...
+}
+
+// reopen(): identity-guard every async gap (codex must-fix)
+async function reopen(sessionId: string): Promise<void> {
+  const rec = records.get(sessionId);
+  if (!rec) return;
+  const ticket = await fetchTicket();
+  if (!ticket) { /* drop as today */ return; }
+  // require the SAME record AND live handlers — a teardown+fresh-subscribe may
+  // have replaced rec during the await; an old reopen must not attach an orphan.
+  if (records.get(sessionId) !== rec || handlerCount(sessionId) === 0) return;
+  // ...construct socket, attachListeners...
 }
 ```
 
 **Implementation Notes**: a lingering record always means "open or reconnecting"
 (the close handler deletes the record on a non-reconnectable/closedByUs close),
 so returning `existing.ws` (possibly null) without recreating preserves
-`lastSeenSeq` and the in-flight `reconnectTimer`. The post-ticket re-check in
-`open()` (`maybeExisting`) similarly must not overwrite a now-existing record.
+`lastSeenSeq` and the in-flight `reconnectTimer`. **Codex async-cancellation
+must-fixes**: (a) `open()` must re-check after `fetchTicket()` and abort
+(return null, create nothing) if the record reappeared OR all handlers left;
+(b) `reopen()` must verify `records.get(sessionId) === rec` (identity, not just
+existence) and `handlerCount > 0` after its await, else an in-flight reopen
+attaches an orphan socket after a teardown + fresh resubscribe.
 
 **Acceptance Criteria**:
 - [ ] Calling `subscribe`/`open` for a session whose record is mid-reconnect
@@ -180,7 +209,12 @@ whole feature is a prerequisite for `epic-bug-squash-frontend-sessionlist-subscr
   code, ws=null, timer pending); call subscribe → assert `lastSeenSeq` preserved
   and only one timer.
 - Unit 3: stub `auth.token` falsy; `open()` resolves null, no throw (assert no
-  unhandled rejection), no record created.
+  unhandled rejection), no record created. Also assert the documented limitation:
+  a pre-token handler stays registered but does NOT auto-open when a token later
+  appears (a new subscribe/open is required).
+- Async cancellation (codex must-fix): unsubscribe/close WHILE `fetchTicket()` is
+  in flight → `open()`/`reopen()` create no socket (mock a deferred ticket
+  promise; tear down before it resolves; assert no `WebSocket` constructed).
 
 ## Risks
 - **Linger duration**: `setTimeout(0)` absorbs the synchronous effect re-run; if
@@ -202,4 +236,21 @@ whole feature is a prerequisite for `epic-bug-squash-frontend-sessionlist-subscr
 
 ## Other agent review
 
-_Codex (xhigh) feature peer-review gate pending._
+Codex (cross-model, xhigh) reviewed this design. Verdict: approve with the async
+cancellation guards as must-fix. Confirmed non-issues: `setTimeout(0)` linger IS
+sufficient (verified against Svelte 5 `$effect` docs — teardown runs immediately
+before the synchronous rerun, so a macrotask can't fire between); no page-unload
+leak; `if (existing) return existing.ws` is correct across all states once the
+reopen identity guard exists; `open()` is private so returning null (vs throwing)
+is the right contract repair.
+
+**Accepted & applied:**
+- **Unit 1 (async leak)**: `open()` now re-checks AFTER `fetchTicket()` — if a
+  record reappeared, reuse it; if `handlerCount === 0`, return null and create no
+  socket (handles unsubscribe/close during the ticket await).
+- **Unit 1+2 (orphan reopen)**: `reopen()` now requires `records.get(id) === rec`
+  (identity, not existence) and `handlerCount > 0` after its await, so an
+  in-flight reopen can't attach an orphan socket after a teardown + fresh
+  resubscribe.
+- **Unit 1 (nice-to-have)**: prune empty per-type handler sets on unsubscribe.
+- **Unit 3 (nice-to-have)**: test the documented late-token limitation.
