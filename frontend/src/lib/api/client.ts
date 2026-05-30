@@ -2,9 +2,31 @@ import createClient, { type Middleware } from 'openapi-fetch';
 import type { paths } from './types.gen';
 import { auth } from '$lib/auth.svelte';
 
+// Reserved org id for anonymous playground sessions. Mirrors
+// playground.ReservedOrgID on the server (reserved-org-id-local-const-mirror).
+const PLAYGROUND_ORG_ID = 'org_playground';
+
+// bearerForRequest picks the token to attach. Anonymous playground participants
+// hold a session-scoped bearer in auth.playgroundContext rather than an account
+// access token, so for playground-scoped requests that bearer must be used: it
+// would otherwise be shadowed by a coexisting signed-in account token (yielding
+// auth.not_a_member) or simply never sent (a signed-out joiner has no
+// auth.token). All other requests use the account token as before.
+function bearerForRequest(pathname: string): string | null {
+  const pg = auth.playgroundContext;
+  if (
+    pg &&
+    (pathname.startsWith('/api/playground/') ||
+      pathname.startsWith(`/api/orgs/${PLAYGROUND_ORG_ID}/`))
+  ) {
+    return pg.bearer;
+  }
+  return auth.token;
+}
+
 const bearerMiddleware: Middleware = {
   onRequest({ request }) {
-    const token = auth.token;
+    const token = bearerForRequest(new URL(request.url).pathname);
     if (token) request.headers.set('Authorization', `Bearer ${token}`);
     return request;
   },

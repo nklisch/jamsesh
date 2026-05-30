@@ -97,6 +97,96 @@ describe('client — Bearer middleware', () => {
   });
 });
 
+describe('client — playground bearer selection', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function captureFetch(): { current: () => Request | null } {
+    let captured: Request | null = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      captured = input as Request;
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    return { current: () => captured };
+  }
+
+  test('attaches the playground bearer for /api/playground/* requests', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+
+    const { client } = await import('./client');
+    const cap = captureFetch();
+
+    await client.GET('/api/playground/sessions/{id}', { params: { path: { id: 's1' } } });
+
+    expect(cap.current()!.headers.get('Authorization')).toBe('Bearer pg-bearer');
+  });
+
+  test('attaches the playground bearer for /api/orgs/org_playground/* requests', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+
+    const { client } = await import('./client');
+    const cap = captureFetch();
+
+    await client.GET('/api/orgs/{orgID}/sessions/{sessionID}', {
+      params: { path: { orgID: 'org_playground', sessionID: 's1' } },
+    });
+
+    expect(cap.current()!.headers.get('Authorization')).toBe('Bearer pg-bearer');
+  });
+
+  test('a signed-in account token does NOT shadow the playground bearer on playground requests', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('account-token', 'account-refresh');
+    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+
+    const { client } = await import('./client');
+    const cap = captureFetch();
+
+    await client.GET('/api/playground/sessions/{id}', { params: { path: { id: 's1' } } });
+
+    expect(cap.current()!.headers.get('Authorization')).toBe('Bearer pg-bearer');
+  });
+
+  test('non-playground requests still use the account token when a playground context exists', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('account-token', 'account-refresh');
+    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+
+    const { client } = await import('./client');
+    const cap = captureFetch();
+
+    await client.GET('/api/me');
+
+    expect(cap.current()!.headers.get('Authorization')).toBe('Bearer account-token');
+  });
+
+  test('org-scoped requests to a non-playground org use the account token, not the playground bearer', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('account-token', 'account-refresh');
+    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+
+    const { client } = await import('./client');
+    const cap = captureFetch();
+
+    await client.GET('/api/orgs/{orgID}/sessions/{sessionID}', {
+      params: { path: { orgID: 'org_real', sessionID: 's9' } },
+    });
+
+    expect(cap.current()!.headers.get('Authorization')).toBe('Bearer account-token');
+  });
+});
+
 describe('client — 401 interceptor', () => {
   beforeEach(() => {
     localStorage.clear();
