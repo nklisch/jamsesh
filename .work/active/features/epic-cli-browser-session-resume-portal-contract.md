@@ -73,8 +73,39 @@ The feature-design pass settles: exact package placement (new
 browser-scoped credential mechanism (new token `kind` vs reuse of an existing
 issuance path), schema, and per-endpoint tests.
 
+## Decomposition-review findings (Codex, accepted — fold into this feature's design)
+
+- **Playground exchange must NOT mint a new participant.** The goal is to resume
+  the CLI's *existing* anonymous identity. `tokens.IssueAnonymousSessionBearer`
+  creates a *fresh* anonymous account + member row — calling it at exchange time
+  would defeat the purpose. This feature must issue a browser bearer for the
+  **existing** anonymous account/session bound to the resume token (a new
+  issuance path that reuses the account the token was minted under). [BLOCKER]
+- **Durable mint authorization must be explicit.** Durable CLI bearers are
+  *account-scoped* OAuth tokens, not session-bound (per
+  `cmd/jamsesh/state/state.go` per-session fallback). The mint request must carry
+  `org_id` + `session_id` and do a membership check — mirror
+  `internal/portal/finalize/fetch_token.go` — rather than assume a session-bound
+  durable bearer.
+- **The resume route path + fragment key (`rt`) are part of THIS contract.**
+  Define them here (single source of truth) so both consumers
+  (`…-cli-handoff` builds the URL, `…-spa-route` registers the route) reference
+  one definition and can be designed independently without drifting. This
+  resolves the launch-URL coupling without adding a CLI→SPA dependency edge.
+- **Durable browser-scoped credential is a distinct design unit (likely its own
+  story).** Settle: response schema, token kind + TTL, whether the SPA receives
+  an access-only browser session vs the existing `setTokens(access, refresh)`
+  pair (do NOT hand the refresh token to the SPA), revocation semantics, and how
+  it enters the SPA's post-login state.
+- **Exchange must be safe against ambient browser auth (server side).** A browser
+  already logged in as another account may send an unrelated `Authorization`
+  header to the public exchange. Define server behavior: treat exchange as
+  unauthenticated (the resume token is the sole credential) and reject/ignore a
+  mismatched ambient bearer. (Client side handled in `…-spa-route`.)
+
 ## Foundation-doc roll-forward (at implementation, per present-tense rule)
 
 `docs/openapi.yaml` (+ generated types), `docs/SECURITY.md` (resume-token flow +
-threat model), `docs/SPEC.md` if a new constraint emerges. Not written until the
-endpoints exist.
+threat model), `docs/ARCHITECTURE.md` (the CLI→browser handoff component/flow —
+assigned to this feature), `docs/SPEC.md` if a new constraint emerges. Not
+written until the endpoints exist.

@@ -170,6 +170,34 @@ path/shape) and are deferred to the per-feature design passes.
 - Critical path is contract → (CLI ∥ SPA); inherent and acceptable (clients
   can't precede their contract). The CLI∥SPA parallelism is preserved.
 
+## Other agent review (decomposition, Codex, 2026-05-30)
+
+Cross-model peer review of the decomposition (single advisory pass).
+**Verdict: approve the 3-feature cut, with changes** — the shape is right (not a
+layer-slice anti-pattern; CLI and SPA are independent consumers of the
+contract). All findings accepted and folded into the feature bodies under each
+feature's `## Decomposition-review findings`:
+
+- [blocker] CLI must not leak the resume token to terminal scrollback (the
+  existing `openInBrowser` prints the full URL) → `…-cli-handoff`.
+- [blocker] Playground exchange must issue a bearer for the **existing**
+  anonymous account, not mint a new participant via
+  `IssueAnonymousSessionBearer` → `…-portal-contract`.
+- [important] Launch route path + `rt` fragment key are part of the **contract**
+  (single source of truth) — resolves the CLI/SPA launch coupling without a new
+  dependency edge → `…-portal-contract` (referenced by both consumers).
+- [important] Durable browser-scoped credential = a distinct design unit/story
+  (schema, token kind/TTL, no refresh-token-to-SPA, post-login state) →
+  `…-portal-contract`.
+- [important] Durable mint must carry org/session + membership check (durable
+  CLI bearers are account-scoped) → `…-portal-contract` + `…-cli-handoff`.
+- [important] Exchange must handle ambient browser auth (shared client attaches
+  `auth.token`) → `…-spa-route` (client) + `…-portal-contract` (server).
+- [nit] `ARCHITECTURE.md` roll-forward assigned to `…-portal-contract`.
+
+Sizing confirmed: portal-contract is large but appropriate as a feature
+(feature-design splits it into stories); CLI and SPA are not too thin.
+
 ## Foundation-doc impact (deferred to implementation — per the rolling-foundation present-tense rule)
 
 This epic introduces an unbuilt flow, so foundation docs are NOT pre-written at

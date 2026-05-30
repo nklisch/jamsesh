@@ -53,6 +53,23 @@ decision matrix, minor composition reusing existing patterns skips mocking. If
 the feature-design pass finds the error/expiry UX genuinely novel, it may fall
 back to `/ux-ui-design:screens` then.
 
+## Decomposition-review findings (Codex, accepted — fold into this feature's design)
+
+- **Guard against ambient browser auth.** [important] The shared API client
+  (`frontend/src/lib/api/client.ts`) attaches `auth.token` to every request. A
+  user already logged in as another account would send an unrelated
+  `Authorization` header to the public exchange. The exchange call must use a
+  bare/unauthenticated fetch (the resume token is the sole credential), and the
+  route must define behavior on account mismatch (e.g. clear existing auth
+  before adopting the resumed identity, or surface a mismatch error).
+- **Use the contract-owned route path + `rt` fragment key** (defined in
+  `…-portal-contract`) for the route registration — single source of truth with
+  the CLI.
+- **Branch the store-into-auth-state by session kind**: playground →
+  `auth.setPlaygroundContext` (in-memory rune); durable → the SPA post-login
+  state (access-only browser session — the SPA must not expect the CLI's refresh
+  token from the exchange).
+
 ## Foundation-doc roll-forward (at implementation)
 
 `docs/UX.md` (the resume landing in the create/join journeys); `docs/SECURITY.md`

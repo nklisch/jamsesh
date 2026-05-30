@@ -53,6 +53,21 @@ browser-side exchange (sibling `…-spa-route`).
   `--resume` flag, vs a `jamsesh resume` subcommand. (This is the kind of
   feature-level question the questions-only design pass will settle.)
 
+## Decomposition-review findings (Codex, accepted — fold into this feature's design)
+
+- **Do NOT leak the resume token to terminal scrollback.** [BLOCKER] The resume
+  URL carries the single-use token in its fragment, and the existing
+  `openInBrowser` (`cmd/jamsesh/sessioncmd/new.go`) *prints* `Opening in
+  browser: <url>`. This feature must NOT reuse that helper verbatim for the
+  resume URL — print a token-free message (e.g. the bare session URL, or
+  "Opening your session in the browser…"), and the open-failure fallback must
+  also avoid printing the tokened URL. Add explicit acceptance criteria for
+  redacted/no-print resume URLs.
+- **Use the contract-owned route shape + `rt` fragment key** (defined in
+  `…-portal-contract`) when building the URL — don't invent a divergent shape.
+- **Durable mint** must send `org_id` + `session_id` so the portal can do the
+  membership check (the durable CLI bearer is account-scoped, not session-bound).
+
 ## Foundation-doc roll-forward (at implementation)
 
 `docs/UX.md` (the resume step in the create/join CLI flows); the `/jamsesh:jam`
