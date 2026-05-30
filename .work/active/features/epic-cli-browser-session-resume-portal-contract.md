@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-portal-contract
 kind: feature
-stage: drafting
+stage: implementing
 tags: [portal, security]
 parent: epic-cli-browser-session-resume
 depends_on: []
@@ -103,9 +103,159 @@ issuance path), schema, and per-endpoint tests.
   unauthenticated (the resume token is the sole credential) and reject/ignore a
   mismatched ambient bearer. (Client side handled in `…-spa-route`.)
 
-## Foundation-doc roll-forward (at implementation, per present-tense rule)
+## Architectural choice
 
-`docs/openapi.yaml` (+ generated types), `docs/SECURITY.md` (resume-token flow +
-threat model), `docs/ARCHITECTURE.md` (the CLI→browser handoff component/flow —
-assigned to this feature), `docs/SPEC.md` if a new constraint emerges. Not
-written until the endpoints exist.
+Mirror the **magic-link token infrastructure**, which already solves "hashed,
+single-use, TTL token + exchange for a credential": a `resume_tokens` table
+shaped like `magic_link_tokens`, a mint endpoint shaped like
+`finalize.IssueFetchToken` (account-from-context + `checkSessionMembership`),
+and an exchange endpoint shaped like the magic-link exchange. Credentials reuse
+the existing `tokens.Service`: durable → `IssueShortLived` (the exact
+fetch-token mechanism — a short-TTL `oauth_tokens` access row, no refresh);
+playground → a new shape-preserving method that issues a session-scoped bearer
+for the **existing** anonymous account.
+
+Rejected: a bespoke token subsystem (re-solves what magic-link already does);
+putting the durable credential behind a new `oauth_tokens.kind` (the bearer
+middleware already honours per-row `expires_at`, so `IssueShortLived` needs no
+new kind — confirmed by fetch-token).
+
+The **mint response returns the fully-formed `resume_url`** (fragment embedded),
+so the CLI opens it verbatim and never constructs the route — this makes the
+portal the single source of truth for the route shape + `rt` fragment key and
+eliminates CLI/SPA drift (resolves the Codex launch-route finding).
+
+## Design decisions
+
+(No Phase-4.5 user checkpoint — scope/mechanism/credential-policy/safeguards were
+locked in the epic; the codebase precedents pin the rest. Knobs decided here:)
+- **Resume route shape (canonical)**: playground →
+  `/playground/s/{sessionId}/resume#rt=<token>`; durable →
+  `/orgs/{orgId}/sessions/{sessionId}/resume#rt=<token>`. Fragment key `rt`.
+  Returned pre-built as `resume_url` by mint.
+- **Resume-token TTL**: 60s (mid 30–120s range).
+- **Durable browser credential**: `IssueShortLived(accountID, AccessTokenTTL=1h)`
+  — access-only, no refresh to the SPA; SPA re-resumes / re-logs-in on expiry.
+- **Playground browser credential**: a session-scoped bearer for the existing
+  anonymous account, TTL = remaining time to the session hard-cap (mirrors the
+  original anonymous bearer). Requires a new `tokens.Service` method (Unit 3).
+- **Exchange is unauthenticated**: the resume token is the sole credential; the
+  handler ignores any ambient `Authorization` header (no account-from-context).
+- **Mint authorization**: `tokens.AccountFromContext` + `checkSessionMembership`
+  (mirror finalize) — works for durable (account-scoped bearer) and playground
+  (anonymous account is a session member); body carries `org_id`+`session_id`.
+
+## Implementation Units
+
+### Unit 1: `resume_tokens` dual-dialect store
+**Story**: `epic-cli-browser-session-resume-portal-contract-token-store`
+**Files**: `db/schema/{sqlite,postgres}.sql`,
+`db/queries/{sqlite,postgres}/resume_tokens.sql`, regenerated sqlc, store
+adapter methods in `internal/db/store/`.
+
+```sql
+CREATE TABLE resume_tokens (
+    id          TEXT PRIMARY KEY,
+    token_hash  TEXT NOT NULL UNIQUE,
+    session_id  TEXT NOT NULL,
+    org_id      TEXT NOT NULL,
+    account_id  TEXT NOT NULL,   -- minting account (durable user OR existing anon account)
+    issued_at   DATETIME NOT NULL,
+    expires_at  DATETIME NOT NULL,
+    used_at     DATETIME
+);
+```
+Queries (mirror `magic_link_tokens.sql`, dual-dialect per
+`dual-dialect-mirror-queries`): `CreateResumeToken :one`,
+`GetResumeTokenByHash :one`, `ConsumeResumeToken :exec` (atomic single-use:
+`UPDATE … SET used_at=? WHERE id=? AND used_at IS NULL`).
+
+**Acceptance**: dual-dialect parity (identical names/columns/org-scoping); sqlc
+generates clean; adapter methods covered; `ConsumeResumeToken` is atomic
+single-use (second consume affects 0 rows).
+
+### Unit 2: contract + mint endpoint
+**Story**: `epic-cli-browser-session-resume-portal-contract-endpoints-mint`
+**Files**: `docs/openapi.yaml` (BOTH ops + types — generated), the resume
+handler package (new `internal/portal/sessionresume/` — keeps the surface
+distinct), `cmd/portal` wiring, `internal/portal/ratelimit` wiring.
+
+`POST /api/session-resumes` (auth: CLI bearer) — body `{ org_id, session_id }`;
+`AccountFromContext` + `checkSessionMembership` (401/403/404 like fetch-token);
+generate a random token, store `sha256` hash + binding, return
+`{ resume_token, resume_url, expires_in, session_id }`. Rate-limited.
+
+**Acceptance**: non-member → 403; unknown session → 404; no bearer → 401; success
+stores a hashed (never raw) token bound to account+session and returns a
+`resume_url` with the `rt` fragment + the canonical path; token never logged.
+
+### Unit 3: exchange endpoint + dual credential issuance  ⚠ trickiest
+**Story**: `epic-cli-browser-session-resume-portal-contract-exchange-credential`
+**Files**: the resume handler (exchange op), `internal/portal/tokens/` (new
+method), exchange tests.
+
+`POST /api/session-resumes/exchange` — UNAUTHENTICATED (ignore ambient auth);
+body `{ resume_token }`; look up by `sha256` hash; reject if missing / expired /
+already used (generic failure); atomic `ConsumeResumeToken`; then branch on the
+bound account's `is_anonymous`:
+- durable → `tokens.IssueShortLived(accountID, AccessTokenTTL)`;
+- playground → new method:
+```go
+// IssueAnonymousSessionBearerForExistingAccount mints a session-scoped bearer
+// for an EXISTING anonymous account (no new account row), pinned to sessionID,
+// expiring at the session hard-cap. Mirrors IssueAnonymousSessionBearer minus
+// the account-creation step, so the issued token is shape-identical to the
+// CLI's original anonymous bearer (kind=anonymous_session_bearer, session_id FK).
+IssueAnonymousSessionBearerForExistingAccount(ctx, accountID, sessionID string, ttl time.Duration) (rawToken string, expiresAt time.Time, err error)
+```
+Return `{ bearer, expires_at, session_id, org_id, kind: playground|durable }` so
+the SPA routes + picks the auth-state setter.
+
+**Acceptance**: expired/used/unknown token → generic 401/410 (no oracle); ambient
+`Authorization` header ignored; durable exchange returns an `IssueShortLived`
+access token (no refresh in the response); playground exchange returns a bearer
+for the SAME anonymous account+session (NO new `accounts` row created — assert
+account count unchanged) that Validate accepts as a session member; single-use
+(second exchange of the same token → failure).
+
+## Implementation Order
+
+1. Unit 1 (`…-token-store`) — depends on: `[]`
+2. Unit 2 (`…-endpoints-mint`) — depends on: `[…-token-store]` (owns the openapi
+   contract for both ops + the mint handler)
+3. Unit 3 (`…-exchange-credential`) — depends on: `[…-endpoints-mint]` (needs the
+   generated exchange-op types + the store; isolates the trickiest credential
+   logic + the new tokens method)
+
+Mostly sequential (shared handler package + generated openapi types). The
+epic-level parallelism is CLI ∥ SPA after this whole feature lands.
+
+## Testing
+
+- Unit 1: dual-dialect store tests (both sqlite + postgres adapters); atomic
+  single-use consume; round-trip hash storage. Reuse the `testenv-harness-struct`
+  + `dual-dialect-mirror-queries` patterns.
+- Unit 2: handler tests via the `strict-server-partial-handler-shim` pattern;
+  membership 401/403/404 matrix (mirror `finalize` fetch-token tests); assert the
+  stored token is hashed and the response `resume_url` shape; assert the token is
+  absent from logs.
+- Unit 3: the security-critical surface — expired/used/unknown → generic error;
+  ambient-auth-ignored; **playground exchange creates NO new account** (assert
+  `accounts` row count unchanged, same account_id as the minting bearer);
+  durable exchange returns access-only; single-use enforced under concurrent
+  exchange (atomic consume).
+
+## Risks
+
+- **Playground existing-account bearer (Unit 3)** is the riskiest: the new
+  tokens method must produce a token shape-identical to the original anonymous
+  bearer (kind + session_id FK) so existing playground authz accepts it. The
+  implementing story must verify playground authorization actually keys off the
+  account's session membership (and/or the token's session_id FK) before
+  finalizing the method — read the playground bearer-validation path first.
+- **Token-in-logs**: the raw token must never hit logs (mint response, exchange
+  body, error paths). Enforced in handler tests.
+- Foundation-doc roll-forward (deferred): `docs/openapi.yaml` (+ generated
+  types), `docs/SECURITY.md` (resume-token flow + threat model),
+  `docs/ARCHITECTURE.md` (CLI→browser handoff — assigned to this feature),
+  `docs/SPEC.md` if a new constraint emerges. Written when the endpoints land.
