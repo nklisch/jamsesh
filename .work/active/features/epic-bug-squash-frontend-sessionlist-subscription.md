@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-frontend-sessionlist-subscription
 kind: feature
-stage: drafting
+stage: implementing
 tags: [bug, ui]
 parent: epic-bug-squash
 depends_on: [epic-bug-squash-frontend-ws-lifecycle]
@@ -46,6 +46,109 @@ WS dependency does not block the independent async fixes.
 - `bug-squash-ws-refetch-stale-overwrite` — Medium, async — `frontend/src/lib/screens/SessionList.svelte:78`
 - `bug-squash-sessionlist-resubscribe-churn` — Medium, state — `frontend/src/lib/screens/SessionList.svelte:68`
 
-<!-- feature-design fills in the stable-id-set effect key and the per-fetch
-sequence-guard idiom (mirroring useFinalizePlan._patchSeq), building on the
-ws-lifecycle subscribe/close contract. -->
+## Architectural choice
+
+**Two coordinated fixes in `SessionList.svelte`**, building on the ws-lifecycle
+ref-counted `subscribe`/`close` contract (this feature's `depends_on`). Same
+file — bundle in one worktree. No new abstraction.
+
+## Implementation Units
+
+### Unit 1: Stabilize the subscription effect on the session-id SET
+**File**: `frontend/src/lib/screens/SessionList.svelte`
+**Story**: `bug-squash-sessionlist-resubscribe-churn` (Medium)
+
+The `$effect` iterates `sessions`, so it depends on the whole array; every event
+calls `updateSession` → reassigns `sessions` → re-runs the effect → tears down
+and re-subscribes all 4·N subscriptions. Key the effect on a stable derived of
+the id SET so it re-runs only when sessions are added/removed:
+
+```ts
+const sessionIdsKey = $derived(sessions.map((s) => s.id).sort().join(','));
+
+$effect(() => {
+  sessionIdsKey; // the ONLY reactive dependency — a field update doesn't change it
+  const ids = untrack(() => sessions.map((s) => s.id));
+  const unsubs: (() => void)[] = [];
+  for (const id of ids) {
+    for (const type of TYPES) unsubs.push(subscribe(id, type, makeHandler(id, type)));
+  }
+  return () => { for (const u of unsubs) u(); };
+});
+```
+
+**Implementation Notes**: read `sessions` inside the effect via `untrack(...)`
+so only `sessionIdsKey` is tracked. The handler bodies call `updateSession` /
+the guarded refetch (Unit 2). On a genuine id-set change the effect re-runs and
+unsubscribes the old set — with ws-lifecycle's ref-counted teardown, sockets for
+removed sessions close (the macrotask linger absorbs the synchronous
+unsub-all→resubscribe). `sort()` makes the key order-insensitive so reordering
+doesn't churn.
+
+**Acceptance Criteria**:
+- [ ] A field-only event (e.g. `commit.arrived` → `updateSession`) does NOT
+      re-run the subscription effect (no unsubscribe/resubscribe churn).
+- [ ] Adding/removing a session DOES re-run it (subscribes new, unsubscribes
+      gone).
+
+### Unit 2: Sequence-guarded per-session refetch
+**File**: `frontend/src/lib/screens/SessionList.svelte`
+**Story**: `bug-squash-ws-refetch-stale-overwrite` (Medium)
+
+The event-driven refetch fires concurrent unsequenced GETs whose late responses
+can clobber newer state, and only checks `data` (ignores `error`). Add a
+per-session monotonic guard (mirrors `useFinalizePlan._patchSeq`):
+
+```ts
+const refetchSeq = new Map<string, number>();
+function refetchSession(id: string) {
+  const seq = (refetchSeq.get(id) ?? 0) + 1;
+  refetchSeq.set(id, seq);
+  void client.GET('/api/orgs/{orgID}/sessions/{sessionID}', { params: { path: { orgID: orgId, sessionID: id } } })
+    .then(({ data, error }) => {
+      if (refetchSeq.get(id) !== seq) return; // a newer refetch superseded this one
+      if (data) updateSession(data);
+      // else: leave prior state; optionally surface `error` (best-effort refresh)
+    });
+}
+```
+
+**Implementation Notes**: the guard is per-session (a Map keyed by id), so the
+latest refetch for each session wins regardless of resolve order. Checking
+`error` avoids silently treating a failed GET as success. Clear the map entry on
+unsubscribe/teardown if desired (not required — stale ids are harmless).
+
+**Acceptance Criteria**:
+- [ ] Two overlapping refetches for the same session: only the later-issued one's
+      response is applied (earlier late response is dropped).
+- [ ] A failed GET does not overwrite existing session state.
+
+## Implementation Order
+Both units in SessionList.svelte — one coordinated change, bundle in one
+worktree. Feature `depends_on` ws-lifecycle (the corrected subscribe/close
+contract) at the feature level.
+
+## Testing (vitest + jsdom)
+- Unit 1: mock `subscribe` (count calls); fire a field-update event → assert NO
+  new subscribe/unsubscribe calls; add a session → assert exactly the new
+  session's subscriptions are added.
+- Unit 2: mock `client.GET` with two deferred resolves; trigger refetch twice;
+  resolve in reverse order → assert only the later one is applied; resolve with
+  `error` → assert no overwrite.
+
+## Risks
+- **Ordering vs ws-lifecycle**: implementing before ws-lifecycle's ref-counted
+  teardown would mean the effect's unsubscribe doesn't close sockets — hence the
+  feature-level `depends_on`. With teardown in place, the stabilized effect
+  re-runs rarely, so teardown churn is minimal.
+
+## Design decisions
+- **Stable id-set key + untrack** over `untrack(() => sessions)` alone — keying
+  on the derived id string makes the re-run condition explicit (set membership),
+  not just suppressing the dependency.
+- **Per-session seq guard** over a global one — sessions refetch independently;
+  a global counter would cross-cancel unrelated sessions.
+
+## Other agent review
+
+_Codex (xhigh) feature peer-review gate pending._

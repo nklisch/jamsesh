@@ -1,10 +1,10 @@
 ---
 id: bug-squash-ws-refetch-stale-overwrite
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-sessionlist-subscription
-depends_on: []
+depends_on: [epic-bug-squash-frontend-ws-lifecycle]
 release_binding: null
 gate_origin: null
 created: 2026-05-30
