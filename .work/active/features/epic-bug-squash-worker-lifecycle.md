@@ -84,8 +84,9 @@ h.once.Do(func() {
 **Implementation Notes**: after `close(h.done)` the goroutine returns either
 immediately (blocked in select) or after finishing an in-flight ping (bounded by
 the ping ctx timeout = interval), so the wait is bounded. The `lost`-path exit
-also closes `heartbeatDone` via the same defer. Initialize `heartbeatDone` in
-`newPgHandle` alongside `done`/`lost`.
+also closes `heartbeatDone` via the same defer. Initialize `heartbeatDone` where
+`pgHandle` is constructed inline in `Acquire` (there is no `newPgHandle` helper
+today), alongside `done`/`lost`, and before `go h.runHeartbeat(...)`.
 
 **Acceptance Criteria**:
 - [ ] No concurrent use of `h.conn` by Release and the heartbeat (verified under
@@ -182,16 +183,24 @@ should guard against deleting into a nil/absent inner map.
 **File**: `internal/portal/ratelimit/store.go`
 **Story**: `bug-squash-ratelimit-reservation-cancel` (Low)
 
-The `!r.OK()` early return omits `r.Cancel()` (every other branch cancels):
+The `!r.OK()` early return omits a cancel; AND (codex gate) every cancel must be
+`CancelAt(now)` with the store's injected clock — bare `Cancel()` is
+`CancelAt(time.Now())` (wall clock), which restores tokens incorrectly under the
+fake clock used in tests and is inconsistent with `ReserveN(now, 1)`:
 
 ```go
+now := s.clock.Now()
 r := e.minuteLimiter.ReserveN(now, 1)
-if !r.OK() { r.Cancel(); return false, 60 * time.Second }
+if !r.OK() { r.CancelAt(now); return false, 60 * time.Second }
+if d := r.DelayFrom(now); d > 0 { r.CancelAt(now); return false, d }
+// hourly branch: rh.CancelAt(now); r.CancelAt(now)
 ```
 
-**Implementation Notes**: a `!OK` reservation is a documented no-op in
-`golang.org/x/time/rate`, so this is a consistency/clarity fix, not a behavior
-change. The two-limiter sequence stays best-effort under concurrency (documented).
+**Implementation Notes**: change ALL existing `r.Cancel()`/`rh.Cancel()` to
+`CancelAt(now)` (lines ~118/126/131) plus add the missing `!OK` cancel. A `!OK`
+reservation is a documented no-op, so the deny decision is unchanged; the
+`CancelAt(now)` switch is the correctness fix for clock-injected token
+restoration. The two-limiter sequence stays best-effort under concurrency.
 
 **Acceptance Criteria**:
 - [ ] All early-return paths in `Allow` cancel any reservation they hold; the
@@ -204,28 +213,52 @@ change. The two-limiter sequence stays best-effort under concurrency (documented
 **Story**: `bug-squash-lru-evicts-hot-sessions` (Medium)
 
 The LRU loop evicts from a stale `active` snapshot; a session touched by
-`AcquireForRequest` after the snapshot is still evicted. Re-validate the chosen
-victim against the live entry before releasing:
+`AcquireForRequest` after the snapshot is still evicted. A naive "re-read
+lastActive then release" still has a TOCTOU (codex gate): `AcquireForRequest`
+checks `!releasing` then touches+returns the handle, and that can interleave
+with the LRU re-read either side of the `releasing` CAS in `releaseWithReason`.
+The correct fix is a **double-checked claim**, splitting `releaseWithReason`
+into the CAS + the post-CAS work, and re-checking on the acquire side too:
 
 ```go
+// releaseWithReason stays the public entry: Load -> CAS releasing -> releaseClaimed.
+// New internal helper does steps 2-5 assuming the claim is already held:
+func (m *LifecycleManager) releaseClaimed(ctx context.Context, sessionID string, entry *sessionEntry, reason string) error
+
+// LRU loop: claim FIRST, then validate the claimed entry.
 victim := active[lruIdx]
 raw, ok := m.sessions.Load(victim.sessionID)
-if !ok || raw.(*sessionEntry).releasing.Load() ||
-    raw.(*sessionEntry).lastActive().After(victim.lastActive) {
-    // gone, already releasing, or touched since the snapshot — not a cold victim
-    active = append(active[:lruIdx], active[lruIdx+1:]...)
-    if len(active) == 0 { break }
-    continue
+if !ok { drop victim; continue }
+entry := raw.(*sessionEntry)
+if !entry.releasing.CompareAndSwap(false, true) { drop victim; continue } // already releasing
+if entry.lastActive().After(victim.lastActive) {
+    entry.releasing.Store(false) // touched since the snapshot — unclaim, not a cold victim
+    drop victim; continue
 }
-_ = m.releaseWithReason(ctx, victim.sessionID, "lru")
-active = append(active[:lruIdx], active[lruIdx+1:]...)
+_ = m.releaseClaimed(ctx, victim.sessionID, entry, "lru")
+drop victim
 ```
 
-**Implementation Notes**: skipping a touched victim can leave the cache briefly
-over `CacheMaxBytes`; the next tick re-evaluates with fresh data. The loop still
-terminates (each iteration removes one candidate). Idle eviction (the first
-pass) already CAS-guards via `releasing`; this adds the same liveness discipline
-to LRU.
+```go
+// AcquireForRequest: re-check releasing AFTER touching, so a claim that landed
+// concurrently with our touch is honored (back off instead of using the handle).
+if !entry.releasing.Load() {
+    entry.touchLastActive(m.now())
+    if entry.releasing.Load() { // an eviction claimed us during the touch — wait/retry
+        select { case <-ctx.Done(): return nil, ctx.Err(); case <-time.After(10*time.Millisecond): }
+        continue
+    }
+    return entry.handle, nil
+}
+```
+
+**Implementation Notes**: once the LRU CAS sets `releasing=true`, no new acquire
+will touch the entry (acquire waits on `releasing`); the post-CAS `lastActive`
+re-check catches a touch that landed *before* the claim; the acquire-side
+post-touch re-check catches a touch that landed *after* the claim. Together they
+close both orderings — this is the standard double-checked claim. `releaseClaimed`
+must NOT re-CAS (the caller already claimed). Idle eviction (first pass) keeps
+calling `releaseWithReason` (which still CASes).
 
 **Acceptance Criteria**:
 - [ ] A session touched (lastActiveAt bumped) after the snapshot but before the
@@ -256,8 +289,11 @@ different files so they don't conflict.
 - **Unit 1 wait bound**: if the heartbeat ping hangs longer than its ctx timeout
   (shouldn't — `PingContext` honors ctx), Release waits one interval. Acceptable;
   documented.
-- **Unit 6 over-cap window**: skipping touched victims can transiently exceed the
-  cap until the next tick — intended (correctness over aggressiveness).
+- **Unit 6 soft cap for hot sets**: LRU never force-evicts an actively-used
+  session. If every candidate keeps being touched each tick, the cache can stay
+  over `CacheMaxBytes` indefinitely (not just "until next tick"). This is
+  intended — the cap is soft for the live working set; eviction targets cold
+  sessions only. Documented so it isn't mistaken for a leak.
 
 ## Design decisions
 - **No shared worker abstraction**: per-file local fixes over a unifying helper —
@@ -271,5 +307,26 @@ different files so they don't conflict.
   live-read rewrite — proportionate; matches the idle pass's existing
   `releasing` discipline.
 
-<!-- Codex feature gate pending. -->
-_Codex (xhigh) feature peer-review gate pending._
+## Other agent review
+
+Codex (cross-model, xhigh) reviewed this design. Verdict: sound after two
+must-fixes. Units 1/2/3/4 confirmed sound (Unit 1 deadlock-free across normal /
+immediate / in-flight-ping / Lost exits; Unit 4 unregister-from-fanout safe; no
+double-close).
+
+**Accepted & applied:**
+- **Unit 6 (TOCTOU)**: a bare re-read still races acquire's check-touch-return.
+  Replaced with a double-checked claim — LRU CASes `releasing` first then
+  re-validates `lastActive` (via a new `releaseClaimed` helper), and
+  `AcquireForRequest` re-checks `releasing` after `touchLastActive`. Closes both
+  interleavings.
+- **Unit 5 (`CancelAt`)**: the store uses an injected clock, so all reservation
+  cancels must be `CancelAt(now)` (bare `Cancel()` = wall-clock `time.Now()`,
+  wrong under the fake clock) — applied to all branches plus the new `!OK` cancel.
+- **Unit 6 over-cap (nice-to-have)**: documented honestly — the cap is soft for
+  the live working set; hot sessions are never force-evicted.
+- **Unit 1 wording**: `pgHandle` is built inline in `Acquire` (no `newPgHandle`);
+  init `heartbeatDone` there.
+
+**Confirmed sound (no change):** Unit 1 wait is bounded + deadlock-free; Unit 4
+fanout→unregister is lock-safe; Unit 3 `sync.Once`; Unit 2 `nowFn`.
