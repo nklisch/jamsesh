@@ -1,7 +1,7 @@
 ---
 id: bug-squash-sqlite-withtx-deferred-not-immediate
 kind: story
-stage: drafting
+stage: implementing
 tags: [bug, portal, data-layer]
 parent: epic-bug-squash-data-tx-integrity
 depends_on: []
