@@ -1,7 +1,7 @@
 ---
 id: bug-squash-ticketstore-stop-double-close
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, concurrency]
 parent: epic-bug-squash-worker-lifecycle
 depends_on: []
@@ -28,3 +28,11 @@ func (ts *TicketStore) Stop() {
     close(ts.stopCh)   // started never reset -> second Stop re-closes -> panic
 }
 ```
+
+## Implementation notes
+
+Added `stopOnce sync.Once` field to `TicketStore`. `Stop` now calls
+`ts.stopOnce.Do(func() { close(ts.stopCh) })` — a second call is a no-op, no
+panic. Added `TestTicketStore_StopIdempotent` (panics on double-close without the
+fix) and `TestTicketStore_JanitorExitsAfterStop` (confirms janitor still exits
+after first Stop). Build/vet/`-race` clean: `go test -race ./internal/portal/wsgateway/...`.

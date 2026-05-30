@@ -1,7 +1,7 @@
 ---
 id: bug-squash-lru-evicts-hot-sessions
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, concurrency]
 parent: epic-bug-squash-worker-lifecycle
 depends_on: []
@@ -28,3 +28,19 @@ m.sessions.Range(func(k, v any) bool {
     active = append(active, candidate{...})  // stale snapshot used later for LRU eviction
 })
 ```
+
+## Implementation notes
+
+Split `releaseWithReason` into CAS + `releaseClaimed(ctx, sessionID, entry, reason)`.
+`releaseClaimed` performs steps 2-5 (drain, handle.Release, RemoveAll, sessions.Delete,
+metrics) without re-CAS. The LRU loop now: (1) loads the live entry from `sessions.Load`,
+(2) CASes `releasing=false→true`, skipping if already claimed, (3) re-validates
+`liveEntry.lastActive().After(victim.lastActive)` and restores the claim
+(`releasing.Store(false)`) if the session was touched since the snapshot, (4) calls
+`releaseClaimed`. `AcquireForRequest` now double-checks `entry.releasing.Load()` after
+`touchLastActive` and retries if an eviction claimed the entry during the touch.
+`releaseWithReason` (called by idle eviction, watchLost, shutdown) still CASes internally
+and calls `releaseClaimed`. Added `TestLifecycle_LRU_SkipsHotSession` (deterministic
+fake-clock test confirming the hot session is not evicted) and
+`TestLifecycle_LRU_RaceAcquireEvict` (-race concurrency test). Build/vet/`-race` clean:
+`go test -race ./internal/portal/storage/objectstore/...`.

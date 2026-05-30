@@ -1,7 +1,7 @@
 ---
 id: bug-squash-lease-retention-frozen-now
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, time-numbers]
 parent: epic-bug-squash-worker-lifecycle
 depends_on: []
@@ -26,3 +26,14 @@ case <-ticker.C:
     cutoff := now.Add(-retentionAfter)   // `now` captured once at startup, never advances
     if err := s.DeleteReleasedLeasesOlderThan(ctx, cutoff); err != nil { ... }
 ```
+
+## Implementation notes
+
+Changed `RunRetention` signature: `now time.Time` → `nowFn func() time.Time`. The
+cutoff is now recomputed as `nowFn().Add(-retentionAfter)` on every tick so it
+advances with wall time across long-running pods. Updated `cmd/portal/main.go` to
+pass `func() time.Time { return time.Now().UTC() }`. Updated all test call sites.
+Added `TestRunRetention_CutoffAdvancesEachTick` which uses a nowFn that increments
+by 24h on each call and asserts that successive cutoffs are strictly increasing.
+The existing `TestRunRetention_CutoffUsesNow` was updated to use the new
+`func() time.Time` signature. Build/vet/`-race` clean: `go test -race ./internal/portal/lease/...`.

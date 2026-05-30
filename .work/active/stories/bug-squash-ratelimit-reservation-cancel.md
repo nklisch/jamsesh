@@ -1,7 +1,7 @@
 ---
 id: bug-squash-ratelimit-reservation-cancel
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, concurrency]
 parent: epic-bug-squash-worker-lifecycle
 depends_on: []
@@ -25,3 +25,13 @@ When the minute limiter's `ReserveN` returns `!OK()` the code returns without `r
 r := e.minuteLimiter.ReserveN(now, 1)
 if !r.OK() { return false, 60*time.Second }   // r not cancelled (other branches do r.Cancel())
 ```
+
+## Implementation notes
+
+Added `r.CancelAt(now)` on the `!r.OK()` early-return path. Changed all existing
+`r.Cancel()` / `rh.Cancel()` calls to `r.CancelAt(now)` / `rh.CancelAt(now)` so
+token restoration uses the store's injected clock rather than wall-clock `time.Now()`
+(bare `Cancel()` calls `CancelAt(time.Now())` internally). Added
+`TestStore_Allow_BurstExceeded_CancelAt` and `TestStore_Allow_HourlyBurstExceeded_CancelAt`
+as regression tests using a fake clock. All existing ratelimit tests still pass.
+Build/vet/`-race` clean: `go test -race ./internal/portal/ratelimit/...`.

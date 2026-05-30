@@ -1,7 +1,7 @@
 ---
 id: bug-squash-gateway-slow-consumer-close
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, concurrency]
 parent: epic-bug-squash-worker-lifecycle
 depends_on: []
@@ -29,3 +29,13 @@ default:
     // c not unregistered here; fanout keeps trying until handler ctx unwinds
 }
 ```
+
+## Implementation notes
+
+Added `g.unregister(c)` immediately after `c.closeOnce.Do(ws.Close)` in the
+`default` (slow-consumer) branch of `fanout`. `unregister` takes `g.mu` (write
+lock); this is safe because fanout iterates a pre-snapshot `list`, not the live
+map. Double-unregister (fanout + handler defer) is a no-op (map delete on absent
+key). Added `TestHandler_SlowConsumer_UnregisteredAfterClose` which floods the
+buffer and verifies the dead conn receives a 1008 close, confirming the fix path
+is exercised. Build/vet/`-race` clean: `go test -race ./internal/portal/wsgateway/...`.

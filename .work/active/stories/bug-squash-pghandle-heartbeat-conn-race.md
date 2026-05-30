@@ -1,7 +1,7 @@
 ---
 id: bug-squash-pghandle-heartbeat-conn-race
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, concurrency]
 parent: epic-bug-squash-worker-lifecycle
 depends_on: []
@@ -30,3 +30,15 @@ func (h *pgHandle) Release() error {
     })
 }
 ```
+
+## Implementation notes
+
+Added `heartbeatDone chan struct{}` to `pgHandle`; initialized inline in `Acquire`
+alongside `done`/`lost` and before `go h.runHeartbeat(...)`. `runHeartbeat` now
+defers `close(h.heartbeatDone)` so Release can wait for the goroutine to exit.
+`Release` does `close(h.done)` then `<-h.heartbeatDone` before touching `h.conn`
+(advisory unlock, MarkLeaseReleased, conn.Close). The wait is bounded by one
+ping-context timeout (= heartbeat interval). Added `TestPostgresHeartbeatConnRace`
+which acquires with a 5ms heartbeat, waits 30ms (several ticks), then calls Release;
+run under `-race` with the Postgres testcontainer — passed cleanly. The Postgres
+testcontainer was available and ran successfully (Docker present).
