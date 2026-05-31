@@ -1,7 +1,7 @@
 ---
 id: release-v0.5.0
 kind: release
-stage: quality-gate
+stage: released
 tags: []
 parent: null
 depends_on: []
@@ -91,3 +91,13 @@ updated: 2026-05-31
 - **gate-cruft** (2026-05-31) — 10 cleanup findings (1 high confidence, 9 medium confidence, 0 low confidence); created 10 cleanup items.
 - **gate-docs** (2026-05-31) — 6 rolling-foundation findings (4 foundation-doc assertions, 1 changelog gap, 1 generated-contract regen); created 6 documentation items.
 - **gate-patterns** (2026-05-31) — 4 patterns extracted, 1 inconsistency item created; skipped 1 candidate pattern because it conflicts with the security gate.
+
+## Release summary
+
+- Shipped: 2026-05-31
+- Mapping: tag-based
+- Version commit: `1a442bf5` (`release-prep: v0.5.0`)
+- Tag: `v0.5.0` pushed to `origin`
+- Items shipped: 101 work items plus this release record
+- Gates run: security, tests, cruft, docs, patterns
+- Gate outcomes: all release-bound gate items reached `stage: done` before shipping
