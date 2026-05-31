@@ -1,8 +1,13 @@
 // Playground-mode countdown state + WS subscription management.
 //
-// Holds the countdown dates (hard-cap, idle-timeout) and the
-// remaining-time snapshots fed back from CountdownBadge. Also
-// registers the playground.destruction_warning and session.ended WS
+// Holds the countdown dates (hard-cap, idle-timeout) and derives the
+// remaining-time values (idleRemainingMs, hardCapRemainingMs) from a
+// per-instance `now` clock updated by a 1-second setInterval and the Page
+// Visibility API. The parent (SessionViewShell) passes these derived values
+// directly to CountdownBadge as props — CountdownBadge is display-only and no
+// longer pushes per-tick onremainingupdate callbacks into the parent.
+//
+// Also registers the playground.destruction_warning and session.ended WS
 // handlers when mountSubscriptions() is called from onMount.
 //
 // Uses the wrapper-object-rune-store pattern via a factory so that each
@@ -40,9 +45,20 @@ export function createPlaygroundCountdown(sessionId: string) {
   let _hardCapAt = $state<Date | null>(null);
   let _idleTimeoutAt = $state<Date | null>(null);
 
-  // Current remaining times (ms) — set by CountdownBadge via onremainingupdate.
-  let _idleRemainingMs = $state<number>(Infinity);
-  let _hardCapRemainingMs = $state<number>(Infinity);
+  // Per-instance clock — driven by a 1-second setInterval registered in
+  // mountSubscriptions(). The interval and visibility listener are tightly
+  // coupled to the component lifecycle; they are cleaned up in the return
+  // value of mountSubscriptions() (called as the onMount return fn).
+  let _now = $state(Date.now());
+
+  // Remaining times derived from the per-instance clock and the deadline dates.
+  // These replace the old onremainingupdate child→parent callback.
+  let _idleRemainingMs = $derived(
+    _idleTimeoutAt ? Math.max(0, _idleTimeoutAt.getTime() - _now) : Infinity,
+  );
+  let _hardCapRemainingMs = $derived(
+    _hardCapAt ? Math.max(0, _hardCapAt.getTime() - _now) : Infinity,
+  );
 
   return {
     get isPlayground(): boolean {
@@ -72,27 +88,30 @@ export function createPlaygroundCountdown(sessionId: string) {
       _idleTimeoutAt = new Date(s.idle_timeout_at);
     },
 
-    /** Feed back remaining-time snapshots from CountdownBadge. */
-    updateRemaining(idleMs: number, hardMs: number) {
-      _idleRemainingMs = idleMs;
-      _hardCapRemainingMs = hardMs;
-    },
-
     /**
-     * Register WS subscriptions for playground events.
+     * Register WS subscriptions and the per-instance clock for playground events.
      * Call from onMount; use the returned cleanup fn as the onMount return value.
      *
-     * Subscribes to:
-     *   playground.destruction_warning — updates the relevant timer's deadline
-     *     when the server detects < 5-minute proximity to destruction. The
-     *     `reason` field selects idle vs hard-cap; `ends_at` is the precise
-     *     deadline. (PROTOCOL.md canonical fields: reason, ends_at,
-     *     remaining_seconds, session_id)
-     *   session.ended — navigates to the tombstone page when the session
-     *     is destroyed (reason may be 'timeout' for playground idle/hard-cap
-     *     destruction). (PROTOCOL.md canonical fields: reason, final_branch_name)
+     * Registers:
+     *   • A 1-second setInterval that advances `_now`, driving the $derived
+     *     remaining-time values.
+     *   • Page Visibility API handler to snap `_now` to Date.now() when the
+     *     tab returns from background, correcting throttle-accumulated drift.
+     *   • playground.destruction_warning — updates the relevant timer's deadline.
+     *   • session.ended — navigates to the tombstone page.
      */
     mountSubscriptions(): () => void {
+      const interval = setInterval(() => {
+        _now = Date.now();
+      }, 1000);
+
+      function handleVisibility() {
+        if (document.visibilityState === 'visible') {
+          _now = Date.now();
+        }
+      }
+      document.addEventListener('visibilitychange', handleVisibility);
+
       const unsubWarning = subscribe(
         sessionId,
         'playground.destruction_warning',
@@ -118,6 +137,8 @@ export function createPlaygroundCountdown(sessionId: string) {
       );
 
       return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVisibility);
         unsubWarning();
         unsubEnded();
       };

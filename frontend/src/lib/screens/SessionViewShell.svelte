@@ -165,14 +165,11 @@
     <div class="chrome-spacer"></div>
 
     {#if playground.isPlayground && playground.hardCapAt && playground.idleTimeoutAt}
-      <!-- Countdown badge replaces org-name in playground mode.
-           lastSubstantiveActivityAt is accepted by CountdownBadge for interface
-           compatibility; idleTimeoutAt already incorporates it server-side. -->
+      <!-- Countdown badge: parent derives remaining times from its own clock;
+           badge is display-only and accepts pre-computed ms values. -->
       <CountdownBadge
-        hardCapAt={playground.hardCapAt}
-        idleTimeoutAt={playground.idleTimeoutAt}
-        lastSubstantiveActivityAt={playground.idleTimeoutAt}
-        onremainingupdate={(idleMs, hardMs) => playground.updateRemaining(idleMs, hardMs)}
+        idleRemainingMs={playground.idleRemainingMs}
+        hardCapRemainingMs={playground.hardCapRemainingMs}
       />
     {/if}
 

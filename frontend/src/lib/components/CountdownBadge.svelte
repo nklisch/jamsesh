@@ -1,58 +1,23 @@
 <script lang="ts">
-  // CountdownBadge — client-side countdown ticker for playground sessions.
+  // CountdownBadge — display-only countdown badge for playground sessions.
   //
-  // Displays two timers:
-  //   • hard cap: time until the session's absolute wall-clock limit fires
-  //   • idle: time until the session is destroyed for inactivity
+  // Accepts pre-computed remaining-time values in milliseconds from the parent
+  // (SessionViewShell via createPlaygroundCountdown). The parent holds the
+  // clock and derives remaining times; this component only formats and renders.
   //
   // Props:
-  //   hardCapAt               — absolute Date when the hard cap fires
-  //   idleTimeoutAt           — absolute Date when idle destruction fires,
-  //                             computed from lastSubstantiveActivityAt
-  //   lastSubstantiveActivityAt — mutable: replaced on playground.activity_reset
-  //
-  // A 1-second setInterval drives a `now` $state rune; $derived runes compute
-  // the two remaining-time values. On Page Visibility API visibilitychange →
-  // visible, we recompute `now` from Date.now() to correct backgrounded-tab
-  // throttle drift.
-  //
-  // The badge exposes `idleRemaining` and `hardCapRemaining` (ms) to the parent
-  // so SessionViewShell can conditionally render DestructionWarningBanner without
-  // duplicating the math.
-  //
-  import { onMount } from 'svelte';
+  //   idleRemainingMs    — milliseconds until idle destruction
+  //   hardCapRemainingMs — milliseconds until hard-cap destruction
 
   let {
-    hardCapAt,
-    idleTimeoutAt,
-    lastSubstantiveActivityAt,
-    onremainingupdate,
+    idleRemainingMs,
+    hardCapRemainingMs,
   }: {
-    hardCapAt: Date;
-    idleTimeoutAt: Date;
-    lastSubstantiveActivityAt: Date;
-    /** Called whenever the computed remaining values change (on each tick). */
-    onremainingupdate?: (idleMs: number, hardCapMs: number) => void;
+    idleRemainingMs: number;
+    hardCapRemainingMs: number;
   } = $props();
 
-  // `now` is the single reactive clock — updated by the interval and on
-  // visibility restore.
-  let now = $state(Date.now());
-
-  // idleTimeoutAt is passed directly from the parent. When the parent receives
-  // a playground.activity_reset WS event it replaces this prop, which triggers
-  // the $derived chain below to recompute. We read it inside $derived so Svelte
-  // tracks the reactive dependency correctly.
-  let idleRemainingMs = $derived(Math.max(0, idleTimeoutAt.getTime() - now));
-  let hardCapRemainingMs = $derived(Math.max(0, hardCapAt.getTime() - now));
-
-  // Notify parent on each recompute.
-  $effect(() => {
-    onremainingupdate?.(idleRemainingMs, hardCapRemainingMs);
-  });
-
   // Whether either timer is within the warning threshold (< 5 min).
-  // Used to switch the badge to an "urgent" visual state.
   const WARN_THRESHOLD_MS = 5 * 60 * 1000;
   let isUrgent = $derived(
     idleRemainingMs < WARN_THRESHOLD_MS || hardCapRemainingMs < WARN_THRESHOLD_MS,
@@ -71,27 +36,6 @@
 
   let hardCapFormatted = $derived(formatMs(hardCapRemainingMs));
   let idleFormatted = $derived(formatMs(idleRemainingMs));
-
-  onMount(() => {
-    const interval = setInterval(() => {
-      now = Date.now();
-    }, 1000);
-
-    // Page Visibility API: on returning from a backgrounded tab, snap `now`
-    // to Date.now() to correct any throttle-accumulated drift before the next
-    // interval tick.
-    function handleVisibility() {
-      if (document.visibilityState === 'visible') {
-        now = Date.now();
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  });
 </script>
 
 <span
