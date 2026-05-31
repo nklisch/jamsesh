@@ -1,7 +1,7 @@
 ---
 id: bug-squash-subscribe-floats-open-rejection
 kind: story
-stage: review
+stage: done
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-ws-lifecycle
 depends_on: []

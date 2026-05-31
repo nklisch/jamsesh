@@ -1,7 +1,7 @@
 ---
 id: bug-squash-pghandle-heartbeat-conn-race
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, concurrency]
 parent: epic-bug-squash-worker-lifecycle
 depends_on: []

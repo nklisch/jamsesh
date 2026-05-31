@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-worker-lifecycle
 kind: feature
-stage: review
+stage: done
 tags: [bug, portal]
 parent: epic-bug-squash
 depends_on: []

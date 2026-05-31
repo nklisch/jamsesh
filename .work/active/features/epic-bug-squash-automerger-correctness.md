@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-automerger-correctness
 kind: feature
-stage: review
+stage: done
 tags: [bug, portal]
 parent: epic-bug-squash
 depends_on: []

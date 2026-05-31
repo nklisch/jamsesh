@@ -1,7 +1,7 @@
 ---
 id: bug-squash-postgres-seq-32bit
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, data-layer]
 parent: epic-bug-squash-data-tx-integrity
 depends_on: []

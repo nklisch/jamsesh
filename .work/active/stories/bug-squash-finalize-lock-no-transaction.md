@@ -1,7 +1,7 @@
 ---
 id: bug-squash-finalize-lock-no-transaction
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-data-tx-integrity
 depends_on: [bug-squash-sqlite-withtx-deferred-not-immediate]

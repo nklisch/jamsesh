@@ -1,7 +1,7 @@
 ---
 id: bug-squash-errors-is-not-used-errnotfound
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-automerger-correctness
 depends_on: [bug-squash-automerger-strands-commit-event, bug-squash-automerger-swallows-merge-emit]

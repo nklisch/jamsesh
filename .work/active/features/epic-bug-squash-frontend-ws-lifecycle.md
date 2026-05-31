@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-frontend-ws-lifecycle
 kind: feature
-stage: review
+stage: done
 tags: [bug, ui]
 parent: epic-bug-squash
 depends_on: []

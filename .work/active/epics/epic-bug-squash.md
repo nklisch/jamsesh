@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash
 kind: epic
-stage: implementing
+stage: done
 tags: [bug, portal, ui]
 parent: null
 depends_on: []
@@ -193,3 +193,30 @@ severity ordering (Highs first) drives the recommended fix order.
 `bug-scan-report.md` — repo-wide bug-scan, generated 2026-05-30. All child
 stories were promoted from `.work/backlog/bug-scan-*.md` (`bug_origin: scan`)
 via `/agile-workflow:scope`.
+
+## Completion
+
+All 28 correctness fixes implemented, tested, reviewed, and advanced to
+`stage: done` across the 7 features. Highlights:
+
+- **Design tier**: 8 codex (cross-model, xhigh) gates — 1 on the epic
+  decomposition + 1 per feature — each caught real issues (a false dependency
+  that blocked two High fixes; double-emit/cancelled-ctx hazards; a finalize-tx
+  scope gap; an LRU TOCTOU; a `?1`-aliasing + missing first-page sentinel; a
+  too-broad receive-pack EPIPE rule; ws-lifecycle async-cancellation guards).
+- **Implementation**: 7 bundles (serial, main-tree, explicit-path commits) +
+  the sqlc invariant verified clean (`sqlc generate` → zero diff).
+- **Final completion gate**: a codex xhigh review over the full 88-file bundle
+  found 5 BLOCKING correctness regressions + 2 test-integrity gaps. All fixed
+  across two fix passes and re-verified clean by codex (conflict.resolved emit
+  escalation; finalize stale-lock TOCTOU closed via an atomic conditional
+  release; ForkDialog `/mcp` bearer; strict first-pkt-line `looksLikeReportStatus`;
+  LRU resident-byte accounting; two tests made genuine/honest).
+- **Verification**: backend `go build`/`go vet`/`-race` clean on touched
+  packages; frontend 765 vitest + `svelte-check` green; dual-dialect store tests
+  pass (Postgres testcontainer skips gracefully where no test DB is configured —
+  noted for release-time validation).
+- **Deferred follow-ups parked** (`.work/backlog/`): `bug-followup-tombstone-int32`,
+  `bug-followup-adjacent-client-abort-classification`.
+
+Release binding stays `null` (late-binding) — `release-deploy` cuts the release.

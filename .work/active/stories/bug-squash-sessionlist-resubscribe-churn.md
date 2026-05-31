@@ -1,7 +1,7 @@
 ---
 id: bug-squash-sessionlist-resubscribe-churn
 kind: story
-stage: review
+stage: done
 tags: [bug, ui, state]
 parent: epic-bug-squash-frontend-sessionlist-subscription
 depends_on: [epic-bug-squash-frontend-ws-lifecycle]

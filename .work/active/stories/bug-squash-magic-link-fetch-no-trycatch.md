@@ -1,7 +1,7 @@
 ---
 id: bug-squash-magic-link-fetch-no-trycatch
 kind: story
-stage: review
+stage: done
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-async-races
 depends_on: []
