@@ -531,9 +531,12 @@ func TestJoinAction_openFlagMintAndOpen(t *testing.T) {
 		t.Errorf("openURL (fallback) should not be called on mint success, got: %v", *capturedFallback)
 	}
 
-	// Mint must have used a Bearer token.
-	if !strings.HasPrefix(*capturedAuthPtr, "Bearer ") {
-		t.Errorf("mint request missing Bearer auth header, got: %q", *capturedAuthPtr)
+	// Mint must have used EXACTLY the per-session bearer written above
+	// ("sess-bearer-join"), not any legacy account token. This guards against
+	// the account-token fallback regression.
+	wantMintAuth := "Bearer sess-bearer-join"
+	if *capturedAuthPtr != wantMintAuth {
+		t.Errorf("mint Authorization = %q, want %q (exact per-session bearer)", *capturedAuthPtr, wantMintAuth)
 	}
 
 	// SECURITY: neither stdout nor stderr may contain the resume_url or #rt= fragment.

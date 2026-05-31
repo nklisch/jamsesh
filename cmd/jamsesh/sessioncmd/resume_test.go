@@ -360,6 +360,132 @@ func TestResumeAction_mintFailureNoFallback(t *testing.T) {
 	}
 }
 
+// TestResumeAction_playgroundMissingBearer verifies that when a playground
+// session (org_id == "org_playground") has no per-session bearer stored, the
+// command fails locally with a clear error and does NOT attempt a mint at all —
+// i.e. does NOT fall back to the legacy account token.
+func TestResumeAction_playgroundMissingBearer(t *testing.T) {
+	const (
+		sessionID = "sess-resume-pg-nobearer-001"
+		// playgroundOrgID = "org_playground" — use the package const.
+	)
+
+	var mintCalled bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/session-resumes", func(w http.ResponseWriter, r *http.Request) {
+		mintCalled = true
+		http.Error(w, "should not be called", http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// Set up env with org_id=org_playground but NO token file.
+	dir := t.TempDir()
+	t.Setenv("JAMSESH_DATA_DIR", dir)
+	_ = os.Chmod(dir, 0o700)
+	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
+	t.Setenv("CLAUDE_SESSION_ID", "")
+
+	sessDir := filepath.Join(dir, "sessions", sessionID)
+	if err := os.MkdirAll(sessDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// Write org_id = org_playground, but deliberately omit the token file.
+	if err := os.WriteFile(filepath.Join(sessDir, "org_id"), []byte("org_playground"), 0o600); err != nil {
+		t.Fatalf("write org_id: %v", err)
+	}
+
+	capturedOpen := stubOpenSilent(t)
+
+	var stdout, stderr string
+	app := buildResumeApp()
+	stdout, stderr = captureStdoutAndStderr(t, func() {
+		err := app.Run(context.Background(), []string{"jamsesh", "resume", sessionID})
+		if err == nil {
+			t.Fatal("expected error for playground session with missing bearer, got nil")
+		}
+		// Must cite the session id and hint at jamsesh status.
+		if !strings.Contains(err.Error(), sessionID) {
+			t.Errorf("error should cite session id, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "jamsesh status") {
+			t.Errorf("error should hint at jamsesh status, got: %v", err)
+		}
+		// Must NOT contain "no playground credential" coming from an account-token mint attempt.
+		// The key ACs: (1) error is local, (2) mint was never called.
+	})
+
+	// Mint endpoint must NEVER be reached — no fallback to account token.
+	if mintCalled {
+		t.Error("mint endpoint must NOT be called when playground bearer is missing; got a mint attempt (account-token fallback?)")
+	}
+
+	// Nothing must be opened.
+	if len(*capturedOpen) != 0 {
+		t.Errorf("openSilent should not be called, got: %v", *capturedOpen)
+	}
+
+	// SECURITY: no token leak.
+	assertNoHashRT(t, "stdout", stdout)
+	assertNoHashRT(t, "stderr", stderr)
+}
+
+// TestResumeAction_playgroundHappyPath verifies that when a playground session
+// has a per-session anonymous bearer stored, resume succeeds: it uses EXACTLY
+// the per-session bearer (not the legacy account token) on the mint request
+// and opens the exact resume_url.
+func TestResumeAction_playgroundHappyPath(t *testing.T) {
+	const (
+		sessionID     = "sess-resume-pg-happy-001"
+		anonBearer    = "anon-bearer-playground-resume-secret"
+		resumeURL     = "https://portal.example.com/resume#rt=pgresumesecrettoken"
+	)
+
+	var capturedAuthHdr string
+	mux := http.NewServeMux()
+	serveMintOK(mux, sessionID, resumeURL, &capturedAuthHdr)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// Set up env: org_id=org_playground + per-session token.
+	dir := setupResumeEnv(t, srv.URL, sessionID, "org_playground")
+	// Overwrite the token written by setupResumeEnv with the specific anon bearer.
+	if err := os.WriteFile(
+		filepath.Join(dir, "sessions", sessionID, "token"),
+		[]byte(anonBearer), 0o600,
+	); err != nil {
+		t.Fatalf("write anon bearer: %v", err)
+	}
+
+	// Also write a legacy account token to verify it is NOT used.
+	if err := os.WriteFile(
+		filepath.Join(dir, "token"),
+		[]byte("legacy-account-token-must-not-be-used"), 0o600,
+	); err != nil {
+		t.Fatalf("write legacy token: %v", err)
+	}
+
+	capturedOpen := stubOpenSilent(t)
+
+	app := buildResumeApp()
+	if err := app.Run(context.Background(), []string{
+		"jamsesh", "resume", sessionID,
+	}); err != nil {
+		t.Fatalf("playground resume returned error: %v", err)
+	}
+
+	// The exact resume_url must have been opened.
+	if len(*capturedOpen) != 1 || (*capturedOpen)[0] != resumeURL {
+		t.Errorf("openSilent captured = %v, want [%q]", *capturedOpen, resumeURL)
+	}
+
+	// SECURITY: mint must use EXACTLY the per-session anon bearer, never the legacy token.
+	wantAuth := "Bearer " + anonBearer
+	if capturedAuthHdr != wantAuth {
+		t.Errorf("mint Authorization = %q, want %q (playground anon bearer, not legacy account token)", capturedAuthHdr, wantAuth)
+	}
+}
+
 // TestResumeAction_successUsesPerSessionBearer verifies that the mint request
 // uses the per-session bearer token (not any account-wide token).
 func TestResumeAction_successUsesPerSessionBearer(t *testing.T) {

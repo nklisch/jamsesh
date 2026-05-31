@@ -83,6 +83,27 @@ func resumeAction(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no org_id found for session %q; run `jamsesh status` to inspect sessions", sessionID)
 	}
 
+	// Playground sessions use an anonymous per-session bearer — they never have
+	// a durable OAuth account token. Guard explicitly: if the per-session bearer
+	// is missing, fail with a clear local error rather than letting portalclient
+	// silently fall back to the legacy account token, which would be the wrong
+	// credential class and could attempt a mint with a durable OAuth token.
+	if orgID == playgroundOrgID {
+		if _, err := state.ReadSessionToken(sessionID); err != nil {
+			return fmt.Errorf(
+				"no playground credential for session %q; run `jamsesh status` to inspect sessions",
+				sessionID,
+			)
+		}
+		// Build a per-session client with NO refresh wiring — anon playground
+		// bearers are non-refreshable.
+		pc := &portalclient.Client{
+			BaseURL:   portalURL,
+			SessionID: sessionID,
+		}
+		return mintAndOpenResume(ctx, pc, orgID, sessionID)
+	}
+
 	pc := &portalclient.Client{
 		BaseURL:   portalURL,
 		SessionID: sessionID,

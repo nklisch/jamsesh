@@ -1378,11 +1378,12 @@ func TestNewAction_openFlagDurable_mintAndOpen(t *testing.T) {
 		t.Errorf("openURL (fallback) should not be called on mint success, got: %v", *capturedFallback)
 	}
 
-	// The mint endpoint must have been called with the durable OAuth bearer
-	// (Bearer tok-test — the account-level token from setupNewEnv, since the
-	// per-session token written above takes precedence via ReadCurrentBearer).
-	if !strings.HasPrefix(mintAuthHdr, "Bearer ") {
-		t.Errorf("mint request missing Bearer auth header, got: %q", mintAuthHdr)
+	// The mint endpoint must have been called with EXACTLY the per-session bearer
+	// written above ("sess-bearer-durable"), not the legacy account token from
+	// setupNewEnv. This guards against the account-token fallback regression.
+	wantMintAuth := "Bearer sess-bearer-durable"
+	if mintAuthHdr != wantMintAuth {
+		t.Errorf("mint Authorization = %q, want %q (exact per-session bearer)", mintAuthHdr, wantMintAuth)
 	}
 
 	// SECURITY: Neither stdout nor stderr may contain the resume_url or #rt= fragment.
