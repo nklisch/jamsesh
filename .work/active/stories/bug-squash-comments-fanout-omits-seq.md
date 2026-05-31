@@ -1,7 +1,7 @@
 ---
 id: bug-squash-comments-fanout-omits-seq
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-data-tx-integrity
 depends_on: []
@@ -26,3 +26,7 @@ seq, err := tx.AllocateNextSeq(ctx, p.SessionID)   // real seq stored on DB row
 ...
 s.Log.FanOut(events.Event{ OrgID: ..., Type: "comment.added", Payload: ..., CreatedAt: now })  // Seq unset -> 0
 ```
+
+## Implementation notes
+
+Added outer `allocatedSeq int64` and `allocatedEventID string` vars in both `Create` and `Resolve`. Inside the tx closure, assign `allocatedSeq = seq` and `allocatedEventID = eventID` after `InsertEvent` succeeds. Post-commit `FanOut` now passes `ID: allocatedEventID, Seq: allocatedSeq` (mirrors events/log.go's own insertAndPublish pattern). Tests: `TestCommentsFanoutCarriesSeqOnCreate` and `TestCommentsFanoutCarriesSeqOnResolve` in `internal/portal/comments/fanout_seq_test.go` — subscribe before Create/Resolve, assert fanned-out event has Seq > 0 and non-empty ID.
