@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-frontend-async-races
 kind: feature
-stage: implementing
+stage: review
 tags: [bug, ui]
 parent: epic-bug-squash
 depends_on: []
@@ -279,3 +279,7 @@ confined to `useFinalizeCuration`.
   not just fix the URL.
 - **Unit 5 (no-op guard)**: the changed-value guard doesn't help at 1 tick/sec;
   relocate the remaining-time math to the parent and make the badge display-only.
+
+## Implementation summary
+
+All 5 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
