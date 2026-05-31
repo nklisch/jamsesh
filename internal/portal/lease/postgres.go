@@ -3,9 +3,7 @@ package lease
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -85,13 +83,27 @@ func (m *PostgresManager) observeHoldDuration(d time.Duration) {
 // Sequence:
 //  1. Check out a dedicated *sql.Conn (advisory locks are session-scoped).
 //  2. SELECT pg_try_advisory_lock(hashtext($session_id)) — false → ErrAlreadyHeld.
-//  3. Defensive hashtext-collision check: if the leases row has a different
-//     pod_id and released_at IS NULL, release the lock and return ErrAlreadyHeld.
-//     This MUST run before the upsert; the upsert's ON CONFLICT DO UPDATE would
-//     overwrite pod_id, making a post-upsert check permanently vacuous.
-//  4. Issue a fencing token via the jamsesh_lease_fencing_tokens sequence.
-//  5. Upsert the leases row.
-//  6. Spawn heartbeat goroutine; return *pgHandle.
+//     This is the ONLY contention gate, and it covers both cases that block a
+//     takeover: (a) a live holder of THIS session still owns the lock, and
+//     (b) a true cross-session hashtext collision — a DIFFERENT session_id that
+//     hashes to the same int32 — because both colliding sessions contend on the
+//     same advisory-lock key, so the second caller's try fails.
+//  3. Issue a fencing token via the jamsesh_lease_fencing_tokens sequence.
+//  4. Upsert the leases row (ON CONFLICT DO UPDATE) — this completes a takeover
+//     by overwriting pod_id / fencing_token and re-nulling released_at.
+//  5. Spawn heartbeat goroutine; return *pgHandle.
+//
+// Reaching step 3 means we hold the advisory lock, which proves there is no live
+// holder. Any leftover same-session row with released_at IS NULL is therefore a
+// STALE row from a holder that exited without clearing released_at (SIGKILL,
+// connection drop, ungraceful drain) — its session-scoped lock auto-released on
+// connection death. That row is reclaimable, and the step-4 upsert reclaims it.
+// We deliberately do NOT inspect the existing row to "detect a collision": a
+// same-session row can never prove a cross-session collision (the colliding row
+// would carry a different session_id), and a true collision is already excluded
+// at step 2. An earlier version read the row here and refused takeover whenever
+// pod_id differed and released_at was NULL — that was a false positive that made
+// a survivor unable to ever take over a dead holder's lease.
 func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle, error) {
 	// Step 1: dedicate a connection for this lease's lifetime.
 	conn, err := m.DB.Conn(ctx)
@@ -114,37 +126,13 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 		return nil, ErrAlreadyHeld
 	}
 
-	// Step 3: hashtext collision defensive check (before upsert).
-	// Read the existing leases row, if any. A different pod_id with
-	// released_at IS NULL means two different session_id strings happened to
-	// hash to the same int32 — extremely rare but documented. We must check
-	// BEFORE the upsert because the upsert (ON CONFLICT DO UPDATE) would
-	// overwrite the pod_id, making the check permanently vacuous.
-	var rowPodID string
-	var rowReleasedAt *time.Time
-	err = conn.QueryRowContext(ctx,
-		"SELECT pod_id, released_at FROM leases WHERE session_id = $1", sessionID,
-	).Scan(&rowPodID, &rowReleasedAt)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		// Couldn't verify — conservative fail.
-		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
-		conn.Close() //nolint:errcheck
-		m.incAcquires("error")
-		return nil, fmt.Errorf("lease: collision check query: %w", err)
-	}
-	if rowPodID != m.PodID && rowReleasedAt == nil && rowPodID != "" {
-		slog.Warn("lease: hashtext collision detected; releasing advisory lock",
-			"session_id", sessionID,
-			"our_pod_id", m.PodID,
-			"holding_pod_id", rowPodID,
-		)
-		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
-		conn.Close() //nolint:errcheck
-		m.incAcquires("conflict")
-		return nil, ErrAlreadyHeld
-	}
+	// We now hold the advisory lock, so there is no live holder for this session
+	// (the lock is session-scoped and auto-releases when the holder's PG
+	// connection dies). A leftover same-session row with released_at IS NULL is a
+	// stale dead-holder row; the step-4 upsert reclaims it. See the Acquire doc
+	// comment for why we do not (and cannot) treat that row as a collision here.
 
-	// Step 4: issue fencing token.
+	// Step 3: issue fencing token.
 	fencingToken, err := m.Store.IssueLeaseFencingToken(ctx)
 	if err != nil {
 		// Best-effort advisory unlock before returning.
@@ -154,7 +142,7 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 		return nil, fmt.Errorf("lease: issue fencing token: %w", err)
 	}
 
-	// Step 5: upsert the leases row.
+	// Step 4: upsert the leases row (reclaims any stale same-session row).
 	if _, err := m.Store.InsertLease(ctx, store.InsertLeaseParams{
 		SessionID:    sessionID,
 		PodID:        m.PodID,
@@ -166,7 +154,7 @@ func (m *PostgresManager) Acquire(ctx context.Context, sessionID string) (Handle
 		return nil, fmt.Errorf("lease: upsert lease row: %w", err)
 	}
 
-	// Step 6: emit success metrics and build the handle.
+	// Step 5: emit success metrics and build the handle.
 	m.incAcquires("ok")
 	m.incFencingTokens()
 	m.incHolds(+1)

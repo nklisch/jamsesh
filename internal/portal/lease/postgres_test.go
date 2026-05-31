@@ -390,101 +390,99 @@ func TestPostgresReleaseAfterLostIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestPostgresCollisionDefensiveCheck verifies that Acquire returns
-// ErrAlreadyHeld when the leases row contains a different pod_id with
-// released_at IS NULL (simulating a hashtext collision).
+// TestPostgresReclaimsStaleSameSessionRow verifies that a survivor pod takes
+// over a lease whose previous holder exited without clearing released_at — the
+// SIGKILL / ungraceful-drain case. After the holder's PG connection dies, its
+// session-scoped advisory lock auto-releases, but the leases row lingers with
+// pod_id = <dead holder> and released_at IS NULL. A survivor that wins
+// pg_try_advisory_lock MUST reclaim that row (overwrite pod_id + fencing_token,
+// re-null released_at) rather than refuse the takeover.
 //
-// This test pre-inserts the row directly via SQL to bypass the advisory lock
-// (which the real pod would hold), then releases the advisory lock while
-// keeping the row in place, and verifies that a fresh Acquire from a different
-// pod returns ErrAlreadyHeld.
-func TestPostgresCollisionDefensiveCheck(t *testing.T) {
+// TEST-DEBT NOTE: an earlier test (TestPostgresCollisionDefensiveCheck) set up
+// this exact state — same session_id, advisory lock free, a different pod_id
+// with released_at IS NULL — and asserted ErrAlreadyHeld, calling it a "hashtext
+// collision". That assertion ENCODED THE BUG (feature
+// e2e-cloud-native-multipod-suite-red-lease-migration): a same-session row can
+// never prove a cross-session hashtext collision (the colliding row would carry
+// a DIFFERENT session_id), and a true collision is already excluded at step 2
+// because both colliding sessions contend on the same advisory-lock key. The
+// false positive made a survivor unable to ever take over a dead holder's lease.
+// This test now asserts the corrected takeover behavior.
+func TestPostgresReclaimsStaleSameSessionRow(t *testing.T) {
 	dsn := acquireTestPostgres(t)
 	sessionID := uniqueSession(t)
 	t.Cleanup(func() { cleanupLeaseRow(t, dsn, sessionID) })
 	ctx := context.Background()
 
-	// Pre-insert a leases row as pod-original, simulating a different pod that
-	// holds the lease. We insert the row without holding the advisory lock —
-	// the purpose is to simulate the state AFTER a hashtext collision where
-	// pod-collision has acquired the advisory lock (on a different session_id
-	// that happens to hash to the same value) and the row exists for
-	// sessionID with pod-original as the owner.
-	//
-	// To test the collision check path we need:
-	//   - pod-collision to acquire the advisory lock (pg_try_advisory_lock succeeds)
-	//   - the leases row to have pod_id != pod-collision AND released_at IS NULL
-	//
-	// We achieve this by:
-	//   1. Using mgr-collision to acquire the lease (gets the lock + row with
-	//      pod_id = "pod-collision").
-	//   2. Manually updating the leases row to have pod_id = "pod-original"
-	//      (different pod) while keeping released_at NULL.
-	//   3. Releasing the advisory lock (via pg_advisory_unlock) but NOT the
-	//      leases row — simulating the split-brain window.
-	//   4. Attempting Acquire from pod-collision again — it will get the advisory
-	//      lock (it was released), see a row with pod_id = "pod-original", and
-	//      return ErrAlreadyHeld.
-
-	// Step 1: acquire with pod-collision to create the row.
-	mgr1, pool := newManager(t, dsn, "pod-collision")
-	h1, err := mgr1.Acquire(ctx, sessionID)
+	// Build the stale dead-holder state:
+	//   1. mgr-dead acquires the lease (advisory lock + row, pod_id = "pod-dead").
+	//   2. Stamp the row pod_id = "pod-dead" with released_at = NULL (it already
+	//      is, but make the intent explicit) — this is what a holder that died
+	//      ungracefully leaves behind.
+	//   3. Release the advisory lock WITHOUT marking released_at, mirroring a
+	//      connection-death auto-release. (h.Release() marks released_at = now(),
+	//      so we re-null it afterwards to reproduce the SIGKILL residue.)
+	mgrDead, pool := newManager(t, dsn, "pod-dead")
+	hDead, err := mgrDead.Acquire(ctx, sessionID)
 	if err != nil {
-		t.Fatalf("initial Acquire: %v", err)
+		t.Fatalf("initial Acquire (pod-dead): %v", err)
 	}
+	deadToken := hDead.FencingToken()
 
-	// Step 2: tamper — update the row's pod_id to "pod-original" while holding
-	// the lock. We use a separate admin connection.
+	// Release frees the advisory lock (as a connection death would) but also
+	// marks released_at = now(); re-null it so the row looks like an unclean exit.
+	if err := hDead.Release(); err != nil {
+		t.Fatalf("Release hDead: %v", err)
+	}
 	{
 		adminConn, err := pool.Acquire(ctx)
 		if err != nil {
 			t.Fatalf("acquire admin conn: %v", err)
 		}
 		_, err = adminConn.Exec(ctx,
-			"UPDATE leases SET pod_id = 'pod-original', released_at = NULL WHERE session_id = $1",
+			"UPDATE leases SET pod_id = 'pod-dead', released_at = NULL WHERE session_id = $1",
 			sessionID)
 		adminConn.Release()
 		if err != nil {
-			h1.Release() //nolint:errcheck
-			t.Fatalf("tamper leases row: %v", err)
+			t.Fatalf("reproduce unclean-exit row: %v", err)
 		}
 	}
 
-	// Step 3: release the advisory lock from the handle (but the row still has
-	// pod_id = "pod-original"). We call Release which also calls
-	// pg_advisory_unlock and MarkLeaseReleased — but MarkLeaseReleased sets
-	// released_at = now(). We need released_at to remain NULL so the collision
-	// check triggers. Override: release the lock manually first, then skip
-	// the MarkLeaseReleased effect by re-nulling released_at.
-	//
-	// Simpler approach: just call h1.Release() (which marks released_at),
-	// then re-null it in the admin conn. The collision check only fires when
-	// released_at IS NULL.
-	if err := h1.Release(); err != nil {
-		t.Fatalf("Release h1: %v", err)
+	// A survivor with a DIFFERENT pod_id wins the advisory lock (it is free) and
+	// must reclaim the stale row — not return ErrAlreadyHeld.
+	mgrSurvivor, _ := newManager(t, dsn, "pod-survivor")
+	hSurvivor, err := mgrSurvivor.Acquire(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("survivor Acquire should reclaim stale dead-holder lease; got error: %v", err)
 	}
+	defer hSurvivor.Release() //nolint:errcheck
+
+	// The takeover must mint a fresh, strictly greater fencing token.
+	if got := hSurvivor.FencingToken(); got <= deadToken {
+		t.Errorf("survivor FencingToken() = %d; want > dead holder's token %d", got, deadToken)
+	}
+
+	// The row must now be owned by the survivor with released_at re-nulled.
 	{
 		adminConn, err := pool.Acquire(ctx)
 		if err != nil {
-			t.Fatalf("acquire admin conn: %v", err)
+			t.Fatalf("acquire admin conn (verify): %v", err)
 		}
-		_, err = adminConn.Exec(ctx,
-			"UPDATE leases SET released_at = NULL WHERE session_id = $1", sessionID)
+		var podID string
+		var releasedAt *time.Time
+		err = adminConn.QueryRow(ctx,
+			"SELECT pod_id, released_at FROM leases WHERE session_id = $1", sessionID,
+		).Scan(&podID, &releasedAt)
 		adminConn.Release()
 		if err != nil {
-			t.Fatalf("re-null released_at: %v", err)
+			t.Fatalf("verify reclaimed row: %v", err)
 		}
-	}
-
-	// Step 4: try Acquire with pod-collision — advisory lock is free (released
-	// by h1.Release), but the leases row has pod_id = "pod-original" with
-	// released_at = NULL. The collision check must return ErrAlreadyHeld.
-	_, err = mgr1.Acquire(ctx, sessionID)
-	if err == nil {
-		t.Fatal("Acquire should have returned ErrAlreadyHeld for collision; got nil")
-	}
-	if err != lease.ErrAlreadyHeld {
-		t.Errorf("Acquire error = %v; want ErrAlreadyHeld", err)
+		if podID != "pod-survivor" {
+			t.Errorf("reclaimed row pod_id = %q; want %q", podID, "pod-survivor")
+		}
+		if releasedAt != nil {
+			t.Errorf("reclaimed row released_at = %v; want NULL (active)", releasedAt)
+		}
 	}
 }
 
