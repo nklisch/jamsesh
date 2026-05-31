@@ -48,7 +48,16 @@ func TestCLI_JamPlayground(t *testing.T) {
 	binPath := binary.Build(t)
 
 	// --- Per-test JAMSESH_DATA_DIR so state writes are isolated ---
+	// state.DataDir() enforces 0700-or-tighter permissions on JAMSESH_DATA_DIR
+	// (gate-security-datadir-permissions-not-validated). t.TempDir() creates its
+	// numbered leaf with os.Mkdir(.., 0o777), so under a 0022 umask the dir is
+	// 0755 and `jamsesh new --playground` exits 1 with "unsafe permissions 0755"
+	// while writing the session token. Tighten to 0700 (what a real operator
+	// does: the error message literally says "chmod 700").
 	pluginDataDir := t.TempDir()
+	if err := os.Chmod(pluginDataDir, 0o700); err != nil {
+		t.Fatalf("chmod pluginDataDir 0700: %v", err)
+	}
 
 	// --- Init a git repo with one commit on main ---
 	// `jamsesh new --playground` calls `git rev-parse --git-dir` and

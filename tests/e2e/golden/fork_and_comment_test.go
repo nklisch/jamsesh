@@ -138,6 +138,15 @@ func TestForkAndComment(t *testing.T) {
 	// The portal URL is resolved from JAMSESH_PORTAL_URL env var (highest priority).
 
 	dataDir := t.TempDir()
+	// The jamsesh binary's state.DataDir() enforces 0700-or-tighter permissions
+	// on JAMSESH_DATA_DIR (gate-security-datadir-permissions-not-validated).
+	// t.TempDir() creates its numbered leaf with os.Mkdir(.., 0o777), so under a
+	// 0022 umask the dir is 0755 and the hook's resolveHookSession() fails the
+	// perms check, silently no-ops, and emits an empty additionalContext. Tighten
+	// to 0700 (what a real operator does: the error message says "chmod 700").
+	if err := os.Chmod(dataDir, 0o700); err != nil {
+		t.Fatalf("chmod dataDir 0700: %v", err)
+	}
 	agentBRef := fmt.Sprintf("jam/%s/%s/main", sessionID, agentBID)
 	seedPluginState(t, dataDir, agentB.AccessToken, sessionID, orgID, agentBRef, agentBID)
 

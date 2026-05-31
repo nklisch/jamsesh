@@ -347,10 +347,20 @@ func TestFinalizeLockStateMachine(t *testing.T) {
 	acquireFinalizeLockExpect409(ctx, t, p, bob.AccessToken, orgID, sessionID)
 
 	// 4. Alice patches the lock with minimal curation state.
+	//
+	// base_sha must be a syntactically-valid 40-char lowercase-hex SHA-1: the
+	// portal's PatchFinalizeLock handler validates it via ValidateBaseSHA
+	// (internal/portal/finalize/escape.go), a security-hardening check that
+	// rejects malformed values (including the empty string) with 400
+	// session.invalid_base_sha — see the unit test
+	// TestPatchFinalizeLock_RejectsMalformedBaseSHA. This state-machine test
+	// does not execute the plan, so any well-formed SHA-1 satisfies the
+	// handler; use a deterministic all-zero-ish hex constant.
+	const validBaseSHA = "0123456789abcdef0123456789abcdef01234567"
 	updatedLock := patchFinalizeLock(ctx, t, p, alice.AccessToken, orgID, sessionID, lockID, patchLockRequest{
 		SelectedCommitShas: []string{},
 		TargetBranch:       "jamsesh/sm-test",
-		BaseSha:            "",
+		BaseSha:            validBaseSHA,
 		Mode:               "preserve",
 		CommitMessage:      "",
 	})

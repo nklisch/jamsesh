@@ -123,12 +123,21 @@ func resolveSessionID() (string, error) {
 // buildPortalClient constructs a portalclient.Client from local state with
 // the token-refresh path wired in so that 401 responses trigger a singleflight
 // refresh before the request is retried.
-func buildPortalClient() (*portalclient.Client, error) {
+//
+// sessionID scopes the client to the per-session token store. This is
+// load-bearing: MigrateToPerSessionTokens (run from main() on every binary
+// invocation) fans the legacy account-wide ${data-dir}/token out into
+// per-session files and then replaces the legacy file with the
+// MIGRATED_TO_PER_SESSION stub. A client built without a sessionID reads that
+// stub via ReadCurrentBearer("") and every authenticated call 401s. Passing the
+// resolved session id makes attachBearer read sessions/<id>/token first,
+// matching the session-scoped pattern in sessioncmd (join/status/resume).
+func buildPortalClient(sessionID string) (*portalclient.Client, error) {
 	portalURL, err := state.ReadPortalURL()
 	if err != nil {
 		return nil, fmt.Errorf("resolving portal URL: %w", err)
 	}
-	pc := &portalclient.Client{BaseURL: portalURL}
+	pc := &portalclient.Client{BaseURL: portalURL, SessionID: sessionID}
 	portalclient.WireRefresh(pc)
 	return pc, nil
 }
@@ -143,7 +152,7 @@ func handleSessionStart(ctx context.Context, _ sessionStartInput) (sessionStartO
 		return sessionStartOutput{}, nil
 	}
 
-	pc, err := buildPortalClient()
+	pc, err := buildPortalClient(ss.SessionID)
 	if err != nil {
 		return sessionStartOutput{}, err
 	}

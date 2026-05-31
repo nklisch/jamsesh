@@ -228,7 +228,7 @@ func handleUserPromptSubmit(ctx context.Context, _ userPromptSubmitInput) (userP
 		return userPromptSubmitOutput{}, fmt.Errorf("user-prompt-submit: reading lastSeq: %w", err)
 	}
 
-	pc, err := buildPortalClient()
+	pc, err := buildPortalClient(ss.SessionID)
 	if err != nil {
 		return userPromptSubmitOutput{}, err
 	}
