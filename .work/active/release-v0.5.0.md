@@ -86,3 +86,4 @@ updated: 2026-05-31
 
 ## Gate runs
 
+- **gate-security** (2026-05-31) — 4 findings returned (0 critical, 1 high, 2 medium, 1 low); created 1 new high-priority release item, skipped 3 already-tracked backlog findings.
