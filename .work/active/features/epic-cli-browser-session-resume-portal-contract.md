@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-portal-contract
 kind: feature
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-cli-browser-session-resume
 depends_on: []
@@ -367,3 +367,11 @@ defect; all findings accepted and fixed before advancing to done:
   `resume_tokens` (account/session deletion cleans up tokens).
 - [good] single-use path airtight; exchange public + ambient-auth-ignored;
   durable no-refresh + identity metadata; hash-only persistence.
+
+Fix landed (commit `2bf88ee`). Codex xhigh **confirm pass**: blocker resolved
+(playground mint/exchange work session-only; durable unchanged; concurrency test
+real + `-race`-clean; `UsedAt` hardened; clock wired) — surfaced ONE new
+important issue: the FK migrations could fail on pre-existing **orphan**
+`resume_tokens`. Fixed (commit after): sqlite recreate copies only rows with a
+live account+session; postgres deletes orphans before `ADD CONSTRAINT`.
+`internal/db` migration suite + sessionresume `-race` green. **Feature → done.**

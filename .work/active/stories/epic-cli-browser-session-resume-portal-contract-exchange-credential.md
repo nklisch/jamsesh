@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-portal-contract-exchange-credential
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-cli-browser-session-resume-portal-contract
 depends_on: [epic-cli-browser-session-resume-portal-contract-endpoints-mint]

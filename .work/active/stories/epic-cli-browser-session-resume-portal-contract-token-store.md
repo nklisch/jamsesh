@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-portal-contract-token-store
 kind: story
-stage: review
+stage: done
 tags: [portal, security]
 parent: epic-cli-browser-session-resume-portal-contract
 depends_on: []
