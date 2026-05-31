@@ -5,10 +5,10 @@ stage: done
 tags: [plugin, portal, ui, security]
 parent: null
 depends_on: [feature-cli-jam-open-in-browser]
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # CLI → browser session resume (adopt the CLI's identity in the browser)

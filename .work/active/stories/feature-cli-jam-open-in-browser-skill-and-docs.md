@@ -5,10 +5,10 @@ stage: done
 tags: [plugin, documentation]
 parent: feature-cli-jam-open-in-browser
 depends_on: [feature-cli-jam-open-in-browser-cli-open-flag]
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # Skill offer-to-open + UX.md roll-forward

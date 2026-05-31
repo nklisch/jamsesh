@@ -5,10 +5,10 @@ stage: done
 tags: [plugin]
 parent: epic-cli-browser-session-resume-cli-handoff
 depends_on: [epic-cli-browser-session-resume-cli-handoff-mint-open-adopt]
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # `jamsesh resume [session-id]` subcommand

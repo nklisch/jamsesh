@@ -5,10 +5,10 @@ stage: done
 tags: [portal, security]
 parent: epic-cli-browser-session-resume
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # Portal resume-token contract

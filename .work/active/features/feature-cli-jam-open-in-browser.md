@@ -5,10 +5,10 @@ stage: done
 tags: [plugin]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # Open a jam session in the browser (`--open` flag + agent offer)

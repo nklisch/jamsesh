@@ -5,10 +5,10 @@ stage: done
 tags: [bug, ui, async, high]
 parent: epic-bug-squash-frontend-async-races
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 bug_origin: scan
 bug_severity: high
 bug_domain: async

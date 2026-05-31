@@ -5,7 +5,7 @@ stage: done
 tags: [portal, infra, testing, bug]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: [e2e-cloud-native-multipod-suite-red-objectstore-sync, e2e-cloud-native-multipod-suite-red-lease-migration, e2e-cloud-native-multipod-suite-red-router-redispatch]
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
 updated: 2026-05-31

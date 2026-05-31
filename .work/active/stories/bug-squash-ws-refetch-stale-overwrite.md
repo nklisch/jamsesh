@@ -5,10 +5,10 @@ stage: done
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-sessionlist-subscription
 depends_on: [epic-bug-squash-frontend-ws-lifecycle]
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 bug_origin: scan
 bug_severity: medium
 bug_domain: async

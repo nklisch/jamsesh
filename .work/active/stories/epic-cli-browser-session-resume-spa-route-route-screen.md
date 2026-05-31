@@ -5,10 +5,10 @@ stage: done
 tags: [ui]
 parent: epic-cli-browser-session-resume-spa-route
 depends_on: [epic-cli-browser-session-resume-spa-route-auth-access-only]
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # Resume routes + `ResumeExchange.svelte`

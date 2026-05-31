@@ -5,10 +5,10 @@ stage: done
 tags: [bug, portal, ui]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # Bug Squash: correctness findings from the 2026-05-30 repo-wide bug-scan

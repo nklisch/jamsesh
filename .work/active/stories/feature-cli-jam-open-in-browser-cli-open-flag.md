@@ -5,10 +5,10 @@ stage: done
 tags: [plugin]
 parent: feature-cli-jam-open-in-browser
 depends_on: [feature-cli-jam-open-in-browser-osopen-shared-helper]
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # Add `--open` to `jam new` and `jam join`

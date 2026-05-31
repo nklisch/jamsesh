@@ -5,7 +5,7 @@ stage: done
 tags: [portal, testing, bug]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
 updated: 2026-05-31

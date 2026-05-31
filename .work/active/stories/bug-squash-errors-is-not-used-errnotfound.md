@@ -5,10 +5,10 @@ stage: done
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-automerger-correctness
 depends_on: [bug-squash-automerger-strands-commit-event, bug-squash-automerger-swallows-merge-emit]
-release_binding: null
+release_binding: v0.5.0
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 bug_origin: scan
 bug_severity: low
 bug_domain: error-handling
