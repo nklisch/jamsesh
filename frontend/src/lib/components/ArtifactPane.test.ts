@@ -162,4 +162,52 @@ describe('ArtifactPane', () => {
       expect(screen.getByTitle('src/components/Foo.svelte')).toBeInTheDocument();
     });
   });
+
+  // ── Regression: stale-fetch abort guard (Unit 2) ──────────────────────────
+
+  it('stale-response is not written: selecting B while A is in-flight shows B content', async () => {
+    // Deferred promise for file A (slow response).
+    let resolveA!: (r: Response) => void;
+    const fetchA = new Promise<Response>((res) => { resolveA = res; });
+
+    // File B resolves immediately.
+    const fetchB = Promise.resolve({
+      ok: true,
+      json: async () => ({ content: 'content-of-B', mime: 'text/plain', is_binary: false }),
+    } as Response);
+
+    vi.mocked(fetch)
+      .mockReturnValueOnce(fetchA)   // first call: file A
+      .mockReturnValueOnce(fetchB);  // second call: file B
+
+    const { rerender } = renderPane({ selectedSha: 'sha-a', selectedPath: 'a.ts' });
+
+    // Kick off fetch B by changing the selected path — this causes the $effect
+    // to re-run and abort the A request.
+    await rerender({
+      orgId: 'org-1',
+      sessionId: 'sess-1',
+      selectedSha: 'sha-b',
+      selectedPath: 'b.ts',
+    });
+
+    // Wait for B to render.
+    await waitFor(() => {
+      expect(screen.getByText('content-of-B')).toBeInTheDocument();
+    });
+
+    // Now resolve A's deferred promise (stale). Because the signal was aborted,
+    // neither content nor error should be written.
+    resolveA({
+      ok: true,
+      json: async () => ({ content: 'content-of-A', mime: 'text/plain', is_binary: false }),
+    } as Response);
+
+    // Give microtasks a tick to flush; A's then-callback should short-circuit.
+    await new Promise((r) => setTimeout(r, 0));
+
+    // B's content should still be visible; A's content must not have overwritten it.
+    expect(screen.queryByText('content-of-A')).not.toBeInTheDocument();
+    expect(screen.getByText('content-of-B')).toBeInTheDocument();
+  });
 });

@@ -32,28 +32,32 @@
     }
     loading = true;
     loadError = null;
+    const controller = new AbortController();
     const url =
       `/api/orgs/${orgId}/sessions/${sessionId}/files` +
       `?commit=${encodeURIComponent(selectedSha)}&path=${encodeURIComponent(selectedPath)}`;
     const token = auth.token;
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch(url, { headers })
+    fetch(url, { headers, signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then((data: { content: string; mime: string; is_binary: boolean }) => {
+        if (controller.signal.aborted) return;
         content = data.content;
         isBinary = data.is_binary;
         mime = data.mime;
       })
       .catch((e: unknown) => {
+        if (controller.signal.aborted) return;
         loadError = e instanceof Error ? e.message : 'Failed to load file.';
       })
       .finally(() => {
-        loading = false;
+        if (!controller.signal.aborted) loading = false;
       });
+    return () => controller.abort();
   });
 
   // Reset selection when file changes.

@@ -1,7 +1,7 @@
 ---
 id: bug-squash-artifactpane-stale-fetch-overwrite
 kind: story
-stage: implementing
+stage: review
 tags: [bug, ui, async, high]
 parent: epic-bug-squash-frontend-async-races
 depends_on: []
@@ -28,3 +28,16 @@ $effect(() => {
   fetch(url, { headers }).then((r) => ...).then((data) => { content = data.content; ... });
 });
 ```
+
+## Implementation notes
+
+Added an `AbortController` scoped to each `$effect` run. The cleanup return
+calls `controller.abort()`, cancelling any in-flight request when the file
+selection changes. State writes in the `.then()` and `.catch()` callbacks are
+gated by `controller.signal.aborted`; `.finally()` also skips setting
+`loading=false` when aborted. This prevents a slow response for file A from
+overwriting the content of the currently-selected file B.
+
+A regression test was added: select file A (deferred), switch to B (resolves
+immediately), verify B's content is visible, then resolve A's deferred response
+and confirm A's content does not overwrite B.
