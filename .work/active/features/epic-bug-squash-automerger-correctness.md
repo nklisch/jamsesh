@@ -333,3 +333,20 @@ source.
 ## Implementation summary
 
 All 4 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
+
+## Final-gate fix
+
+**Finding 1 (BLOCKING): `conflict.resolved` emit swallowed after side effect.**
+`applySuccess` in `outcomes.go` Warn-logged and continued when `tryResolveConflict`
+returned `ErrEmitAfterSideEffect`. Fixed: added `errors.Is(err, ErrEmitAfterSideEffect)`
+check before the existing Warn path; escalates with `slog.ErrorContext` +
+`AutoMergerOutcomes{outcome="emit_failed"}` metric increment and returns the error.
+Non-emit Resolves-Conflict failures remain best-effort Warn.
+
+**Finding 6 (TEST-INTEGRITY): `emit_retry_test.go` ~:423 claimed `conflict.resolved`
+coverage but only tested the `merge.succeeded` emit path.**
+Added `TestApply_EmitRetry_ConflictResolved_EscalatesOnEmitFailure`: uses a
+`failAfterNStore` that allows exactly 1 successful `WithTx` call (merge.succeeded)
+then always fails, so the conflict.resolved emit is actually exercised. Asserts
+`ErrEmitAfterSideEffect` returned AND the conflict row is marked resolved (durable
+side effect committed before the failed emit).

@@ -358,9 +358,123 @@ func TestApply_DuplicateEmit_ConsumerIdempotent(t *testing.T) {
 // TestApply_EmitRetry_ConflictResolved_AlwaysFailEscalates
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// failAfterNStore: succeeds first N WithTx calls then always fails.
+// Used to let merge.succeeded emit succeed but fail conflict.resolved.
+// ---------------------------------------------------------------------------
+
+// failAfterNStore wraps a real store.Store and makes WithTx fail after
+// successCount successful calls (the (successCount+1)th call and beyond fail).
+type failAfterNStore struct {
+	store.Store
+	successCount atomic.Int64 // counts remaining successes before failing
+	errMsg       string
+}
+
+func (f *failAfterNStore) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	if f.successCount.Add(-1) >= 0 {
+		return f.Store.WithTx(ctx, fn)
+	}
+	return errors.New(f.errMsg)
+}
+
+// TestApply_EmitRetry_ConflictResolved_EscalatesOnEmitFailure verifies that
+// when merge.succeeded emits successfully but the subsequent conflict.resolved
+// emit exhausts all retries, Apply returns ErrEmitAfterSideEffect (escalation
+// must NOT be swallowed). The conflict row must have been marked resolved
+// (durable side effect committed) before the emit attempt.
+func TestApply_EmitRetry_ConflictResolved_EscalatesOnEmitFailure(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t)
+	sess := seedSession(t, s)
+
+	if err := s.EnsureEventSeqRow(ctx, sess.ID); err != nil {
+		t.Fatalf("ensure event_seq row: %v", err)
+	}
+
+	conflictID := "conflict-evt-resolved-escalate"
+	now := time.Now().UTC()
+	if err := s.InsertConflictEvent(ctx, store.InsertConflictEventParams{
+		ID:           conflictID,
+		OrgID:        sess.OrgID,
+		SessionID:    sess.ID,
+		SourceCommit: "aaaa",
+		DraftTip:     "bbbb",
+		Ancestor:     "cccc",
+		Conflicts:    `[{"file":"file.txt","ranges":[]}]`,
+		AddressedTo:  `["@alice/feat"]`,
+		Status:       "open",
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("insert conflict event: %v", err)
+	}
+
+	// Allow exactly 1 successful WithTx call (merge.succeeded emit) then always fail.
+	// emitWithRetry for merge.succeeded calls WithTx 1 time on first success;
+	// subsequent calls for conflict.resolved fail immediately.
+	failAfterFirst := &failAfterNStore{
+		Store:  s,
+		errMsg: "transient: fail conflict.resolved emit",
+	}
+	failAfterFirst.successCount.Store(1) // 1 success allowed (merge.succeeded)
+
+	log := events.New(failAfterFirst)
+
+	// Build a clean-merge repo with a Resolves-Conflict trailer.
+	repo, repoDir := initRepoExt(t)
+	base := commitFiles(t, repo, repoDir, nil, map[string][]byte{"file.txt": []byte("base\n")}, "base")
+	draft := commitFiles(t, repo, repoDir, base, map[string][]byte{
+		"file.txt": []byte("base\n"), "extra.txt": []byte("extra\n"),
+	}, "draft: add extra")
+
+	sourceMsg := "source: fix conflict\n\nResolves-Conflict: " + conflictID + "\n"
+	source := commitFilesWithMessage(t, repo, repoDir, base, map[string][]byte{
+		"file.txt": []byte("base\n"), "file-s.txt": []byte("source\n"),
+	}, sourceMsg)
+
+	result := runMerge(t, repo, source.Hash, draft.Hash, base.Hash)
+	if result.Kind != automerger.CleanMerge {
+		t.Fatalf("expected CleanMerge, got %s", result.Kind)
+	}
+
+	// applier uses s (real) for store ops (InsertConflictEvent, MarkConflictEventResolved),
+	// but the event log is backed by failAfterFirst (which fails after the first WithTx).
+	applier := automerger.NewApplier(s, log)
+	_, err := applier.Apply(ctx, automerger.ApplyInput{
+		Repo:         repo,
+		Session:      sess,
+		SourceRef:    "refs/heads/jam/sess-1/alice/feat",
+		SourceCommit: source.Hash,
+		DraftTip:     draft.Hash,
+		Ancestor:     base.Hash,
+		Result:       result,
+		PortalHost:   "jamsesh.test",
+	})
+
+	// The conflict.resolved emit exhausted retries → Apply must escalate with
+	// ErrEmitAfterSideEffect (not silently Warn and continue).
+	if err == nil {
+		t.Fatal("Apply must return ErrEmitAfterSideEffect when conflict.resolved emit fails after side effect")
+	}
+	if !errors.Is(err, automerger.ErrEmitAfterSideEffect) {
+		t.Errorf("expected ErrEmitAfterSideEffect (conflict.resolved path), got: %v", err)
+	}
+
+	// The conflict row must have been marked resolved (durable side effect committed
+	// before the emit attempt).
+	ev, getErr := s.GetConflictEventByID(ctx, conflictID)
+	if getErr != nil {
+		t.Fatalf("GetConflictEventByID after Apply: %v", getErr)
+	}
+	if ev.Status != "resolved" {
+		t.Errorf("conflict event status = %q after Apply; want %q (durable side effect must precede emit)", ev.Status, "resolved")
+	}
+}
+
 // TestApply_EmitRetry_ConflictResolved_AlwaysFailEscalates verifies that the
 // conflict.resolved path also escalates via ErrEmitAfterSideEffect when Emit
-// always fails.
+// always fails. This exercises the merge.succeeded emit path (which fails
+// first), confirming that path also escalates correctly.
 func TestApply_EmitRetry_ConflictResolved_AlwaysFailEscalates(t *testing.T) {
 	ctx := context.Background()
 	s := openTestStore(t)
@@ -387,7 +501,7 @@ func TestApply_EmitRetry_ConflictResolved_AlwaysFailEscalates(t *testing.T) {
 		t.Fatalf("insert conflict event: %v", err)
 	}
 
-	// alwaysFailStore for Emit calls.
+	// alwaysFailStore for Emit calls — merge.succeeded fails immediately.
 	alwaysFail := &alwaysFailStore{Store: s}
 	log := events.New(alwaysFail)
 
@@ -421,9 +535,6 @@ func TestApply_EmitRetry_ConflictResolved_AlwaysFailEscalates(t *testing.T) {
 	})
 
 	// The merge.succeeded emit fails → Apply returns ErrEmitAfterSideEffect.
-	// The conflict.resolved path is only reached if merge.succeeded succeeds,
-	// so the sentinel is from the merge.succeeded path in this case.
-	// Both are covered by the same emitWithRetry — either returns the sentinel.
 	if err == nil {
 		t.Fatal("Apply must return error when Emit always fails")
 	}

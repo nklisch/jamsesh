@@ -233,7 +233,22 @@ func (a *Applier) applySuccess(ctx context.Context, in ApplyInput) (ApplyOutput,
 	sourceTrailers := prereceive.Trailers(sourceCommit.Message)
 	if eventID, ok := sourceTrailers["Resolves-Conflict"]; ok && eventID != "" {
 		if err := a.tryResolveConflict(ctx, in, eventID, mergeSHA.String()); err != nil {
-			// Log but don't fail the overall Apply — the merge succeeded.
+			if errors.Is(err, ErrEmitAfterSideEffect) {
+				// The conflict row was marked resolved (durable side effect committed)
+				// but the conflict.resolved emit exhausted all retries. Escalate so the
+				// caller can record the failure — do not swallow an emit-after-side-effect.
+				slog.ErrorContext(ctx, "automerger: conflict.resolved emit failed after side effect",
+					"event_id", eventID,
+					"session_id", in.Session.ID,
+					"err", err,
+				)
+				if a.Metrics != nil {
+					a.Metrics.AutoMergerOutcomes.WithLabelValues("emit_failed").Inc()
+				}
+				return ApplyOutput{}, err
+			}
+			// Non-emit failures (e.g. DB lookup errors, wrong session) are best-effort:
+			// the merge succeeded and the conflict row update may not have committed yet.
 			slog.WarnContext(ctx, "automerger: Resolves-Conflict closure failed",
 				"event_id", eventID,
 				"session_id", in.Session.ID,
