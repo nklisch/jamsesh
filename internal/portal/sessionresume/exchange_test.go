@@ -3,9 +3,12 @@ package sessionresume_test
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,9 +32,9 @@ import (
 //   - an anonymous account (playground path)
 //   - a durable account (durable path)
 type exchangeEnv struct {
-	s       store.Store
-	sqlDB   interface{} // unused in exchange; kept for symmetry
-	clock   *fakeClock
+	s     store.Store
+	rawDB *sql.DB // underlying *sql.DB for direct account-row counting
+	clock *fakeClock
 	handler *sessionresume.Handler
 	tokSvc  tokens.Service
 
@@ -54,7 +57,7 @@ func newExchangeEnv(t *testing.T) *exchangeEnv {
 	t.Helper()
 	ctx := context.Background()
 
-	s, _, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
+	s, rawDB, err := db.Open(ctx, "sqlite", ":memory:", db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -94,11 +97,6 @@ func newExchangeEnv(t *testing.T) *exchangeEnv {
 	anonAcct, err := s.GetAccountByID(ctx, anonID)
 	if err != nil {
 		t.Fatalf("GetAccountByID (anon): %v", err)
-	}
-	if err := s.AddOrgMember(ctx, store.AddOrgMemberParams{
-		OrgID: pgOrgID, AccountID: anonID, Role: "member", CreatedAt: now,
-	}); err != nil {
-		t.Fatalf("add anon org member: %v", err)
 	}
 	if err := s.AddSessionMember(ctx, store.AddSessionMemberParams{
 		OrgID: pgOrgID, SessionID: pgSessID, AccountID: anonID, Role: "member", JoinedAt: now,
@@ -140,6 +138,7 @@ func newExchangeEnv(t *testing.T) *exchangeEnv {
 
 	return &exchangeEnv{
 		s:             s,
+		rawDB:         rawDB,
 		clock:         clk,
 		handler:       handler,
 		tokSvc:        tokSvc,
@@ -187,24 +186,18 @@ func (e *exchangeEnv) mintResumeToken(t *testing.T, orgID, sessionID, accountID 
 	return ""
 }
 
-// countAccounts returns the number of account rows in the store.
+// countAccounts returns the total number of rows in the accounts table.
+// It uses a direct SQL query against the underlying *sql.DB so that a stray
+// new anonymous account created during exchange would always be caught —
+// regardless of whether the new account happens to be an org member of any
+// of the test orgs.
 func (e *exchangeEnv) countAccounts(t *testing.T) int {
 	t.Helper()
-	ctx := context.Background()
-	// Use ListSessionMembershipsForAccount with a sentinel ID as a proxy —
-	// instead, walk from known IDs. We use ListOAuthTokensForAccount on a
-	// dummy ID to probe the store layer is live, then count via a direct
-	// store method.
-	// The cleanest approach: list org members for playground org and durable org.
-	pgMembers, err := e.s.ListOrgMembers(ctx, e.pgOrgID)
-	if err != nil {
-		t.Fatalf("ListOrgMembers(pg): %v", err)
+	var n int
+	if err := e.rawDB.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM accounts`).Scan(&n); err != nil {
+		t.Fatalf("countAccounts: %v", err)
 	}
-	durMembers, err := e.s.ListOrgMembers(ctx, e.durOrgID)
-	if err != nil {
-		t.Fatalf("ListOrgMembers(dur): %v", err)
-	}
-	return len(pgMembers) + len(durMembers)
+	return n
 }
 
 func timePtr(t time.Time) *time.Time { return &t }
@@ -367,46 +360,153 @@ func TestExchangeSessionResume_GenericFailure_SameErrorShape(t *testing.T) {
 }
 
 // TestExchangeSessionResume_SingleUseUnderConcurrency verifies that exactly
-// one of two back-to-back exchanges of the same token wins (gets a bearer)
-// and the other gets the generic 401. The single-use property is guaranteed
-// by the atomic winner-returning ConsumeResumeToken (UPDATE…RETURNING WHERE
-// used_at IS NULL): once one caller consumes the token, the row is marked
-// used_at IS NOT NULL and all subsequent callers see zero rows = ErrNotFound.
+// one of N parallel exchanges of the same token wins (gets a bearer) and the
+// rest get the generic 401. The single-use property is guaranteed by the
+// atomic winner-returning ConsumeResumeToken (UPDATE…RETURNING WHERE
+// used_at IS NULL): exactly one goroutine's UPDATE matches the row; all others
+// see zero rows → ErrNotFound.
 //
-// Note: true parallel goroutines with a SQLite :memory: store are avoided
-// because the in-memory DB uses a single-connection pool by default, which
-// serialises writes anyway. The sequential back-to-back test exercises the
-// exact same code path — the consume is atomic regardless of goroutine
-// concurrency.
+// A file-backed SQLite DB with MaxOpenConns=8 is used so goroutines genuinely
+// race on separate connections. The _txlock=immediate DSN parameter
+// (injected by db.Open) gives each BEGIN IMMEDIATE an upfront write-lock,
+// preventing SQLITE_BUSY deadlocks while preserving the single-winner property.
 func TestExchangeSessionResume_SingleUseUnderConcurrency(t *testing.T) {
-	env := newExchangeEnv(t)
 	ctx := context.Background()
 
-	rawToken := env.mintResumeToken(t, env.pgOrgID, env.pgSessID, env.anonAcct.ID)
+	// File-backed DB with multiple connections so goroutines race for real.
+	dbPath := filepath.Join(t.TempDir(), "concurrent_exchange.db")
+	s, _, err := db.Open(ctx, "sqlite", dbPath, db.PoolConfig{MaxOpenConns: 8})
+	if err != nil {
+		t.Fatalf("open file-backed sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
 
-	// First exchange — winner.
-	resp1, err := env.handler.ExchangeSessionResume(ctx, openapi.ExchangeSessionResumeRequestObject{
-		Body: &openapi.ExchangeSessionResumeJSONRequestBody{ResumeToken: rawToken},
+	clk := &fakeClock{t: time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)}
+	tokSvc := tokens.NewWithClock(s, clk)
+	handler := sessionresume.NewWithClock(s, tokSvc, "https://portal.example.com", clk)
+
+	now := clk.Now()
+	const pgOrgID = "org_playground"
+	pgSessID := ulid.Make().String()
+
+	// Seed: playground org → session → anon account → session member.
+	if _, err := s.CreateProtectedOrg(ctx, store.CreateProtectedOrgParams{
+		ID: pgOrgID, Name: "playground", Slug: "playground", CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("create playground org: %v", err)
+	}
+	if _, err := s.CreateSession(ctx, store.CreateSessionParams{
+		ID: pgSessID, OrgID: pgOrgID, Name: "pg-conc", Goal: "conc",
+		WritableScope: `["**"]`, DefaultMode: "sync", Status: "active",
+		CreatedAt: now, HardCapAt: timePtr(now.Add(4 * time.Hour)),
+	}); err != nil {
+		t.Fatalf("create pg session: %v", err)
+	}
+	_, anonID, _, err := tokSvc.IssueAnonymousSessionBearer(ctx, pgSessID, "conc-otter", 4*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueAnonymousSessionBearer: %v", err)
+	}
+	if err := s.AddSessionMember(ctx, store.AddSessionMemberParams{
+		OrgID: pgOrgID, SessionID: pgSessID, AccountID: anonID, Role: "member", JoinedAt: now,
+	}); err != nil {
+		t.Fatalf("add anon session member: %v", err)
+	}
+
+	// Mint a single resume token — the prize all goroutines race for.
+	anonAcct, err := s.GetAccountByID(ctx, anonID)
+	if err != nil {
+		t.Fatalf("GetAccountByID: %v", err)
+	}
+	anonCtx := tokens.ContextWithAccount(ctx, &anonAcct)
+	mintResp, err := handler.CreateSessionResume(anonCtx, openapi.CreateSessionResumeRequestObject{
+		Body: &openapi.CreateSessionResumeJSONRequestBody{
+			OrgId: pgOrgID, SessionId: pgSessID,
+		},
 	})
 	if err != nil {
-		t.Fatalf("first exchange error: %v", err)
+		t.Fatalf("CreateSessionResume: %v", err)
+	}
+	mr, ok := mintResp.(openapi.CreateSessionResume200JSONResponse)
+	if !ok {
+		t.Fatalf("mint returned %T, want 200", mintResp)
+	}
+	resumeURL := mr.ResumeUrl
+	var rawToken string
+	for i, c := range resumeURL {
+		if c == '#' {
+			rawToken = resumeURL[i+4:]
+			break
+		}
+	}
+	if rawToken == "" {
+		t.Fatalf("no #rt= fragment in resume_url %q", resumeURL)
 	}
 
-	// Second exchange of same token — loser (token already consumed).
-	resp2, err := env.handler.ExchangeSessionResume(ctx, openapi.ExchangeSessionResumeRequestObject{
-		Body: &openapi.ExchangeSessionResumeJSONRequestBody{ResumeToken: rawToken},
-	})
-	if err != nil {
-		t.Fatalf("second exchange error: %v", err)
+	const N = 8
+	type result struct {
+		resp openapi.ExchangeSessionResumeResponseObject
+		err  error
+	}
+	results := make([]result, N)
+	var wg sync.WaitGroup
+	wg.Add(N)
+
+	// startGun ensures all goroutines begin exchanging simultaneously.
+	var startGun sync.WaitGroup
+	startGun.Add(1)
+	ready := make(chan struct{})
+
+	for i := 0; i < N; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			// Signal ready and wait for the start gun.
+			ready <- struct{}{}
+			startGun.Wait()
+
+			resp, err := handler.ExchangeSessionResume(ctx, openapi.ExchangeSessionResumeRequestObject{
+				Body: &openapi.ExchangeSessionResumeJSONRequestBody{ResumeToken: rawToken},
+			})
+			results[i] = result{resp: resp, err: err}
+		}()
 	}
 
-	if _, ok := resp1.(openapi.ExchangeSessionResume200JSONResponse); !ok {
-		t.Errorf("first exchange (winner): expected 200, got %T", resp1)
+	// Wait until all goroutines are ready, then release them together.
+	for i := 0; i < N; i++ {
+		<-ready
 	}
-	if r, ok := resp2.(openapi.ExchangeSessionResume401JSONResponse); !ok {
-		t.Errorf("second exchange (loser): expected 401, got %T", resp2)
-	} else if r.Error != "auth.invalid_token" {
-		t.Errorf("loser error code = %q, want auth.invalid_token", r.Error)
+	startGun.Done()
+	wg.Wait()
+
+	// Tally winners (200) and losers (401).
+	winners := 0
+	losers := 0
+	for i, r := range results {
+		if r.err != nil {
+			t.Errorf("goroutine %d: unexpected error: %v", i, r.err)
+			continue
+		}
+		switch resp := r.resp.(type) {
+		case openapi.ExchangeSessionResume200JSONResponse:
+			winners++
+			if resp.AccountId != anonID {
+				t.Errorf("goroutine %d winner: account_id = %q, want %q", i, resp.AccountId, anonID)
+			}
+		case openapi.ExchangeSessionResume401JSONResponse:
+			losers++
+			if resp.Error != "auth.invalid_token" {
+				t.Errorf("goroutine %d loser: error = %q, want auth.invalid_token", i, resp.Error)
+			}
+		default:
+			t.Errorf("goroutine %d: unexpected response type %T", i, r.resp)
+		}
+	}
+
+	if winners != 1 {
+		t.Errorf("concurrent exchange: %d winners, want exactly 1 (single-use violated)", winners)
+	}
+	if losers != N-1 {
+		t.Errorf("concurrent exchange: %d losers, want %d", losers, N-1)
 	}
 }
 

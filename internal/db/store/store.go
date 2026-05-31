@@ -453,9 +453,14 @@ type CreateResumeTokenParams struct {
 // ConsumeResumeTokenParams carries the token hash and the current time.
 // The adapter passes Now as the lower bound for expires_at > Now in the
 // atomic UPDATE…RETURNING statement.
+//
+// UsedAt is a non-pointer time.Time to guarantee that ConsumeResumeToken
+// always marks the row used. A nil UsedAt would produce a NULL used_at
+// column, leaving the token apparently un-consumed and re-consumable.
+// Callers must pass a valid non-zero Now; the adapter derives UsedAt from
+// the same Now value.
 type ConsumeResumeTokenParams struct {
 	TokenHash string
-	UsedAt    *time.Time
 	Now       time.Time
 }
 

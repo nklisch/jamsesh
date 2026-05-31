@@ -732,9 +732,10 @@ func (a *sqliteAdapter) GetResumeTokenByHash(ctx context.Context, tokenHash stri
 }
 
 func (a *sqliteAdapter) ConsumeResumeToken(ctx context.Context, p ConsumeResumeTokenParams) (ResumeToken, error) {
+	usedAt := p.Now // always non-null — ConsumeResumeToken must mark the token used
 	row, err := a.q.ConsumeResumeToken(ctx, sqlitestore.ConsumeResumeTokenParams{
 		TokenHash: p.TokenHash,
-		UsedAt:    p.UsedAt,
+		UsedAt:    &usedAt,
 		ExpiresAt: p.Now,
 	})
 	return wrap1(row, err, mapSQLiteErr, sqliteResumeToken)
@@ -1387,7 +1388,8 @@ func (s *sqliteTxStore) GetResumeTokenByHash(ctx context.Context, tokenHash stri
 	return wrap1(row, err, mapSQLiteErr, sqliteResumeToken)
 }
 func (s *sqliteTxStore) ConsumeResumeToken(ctx context.Context, p ConsumeResumeTokenParams) (ResumeToken, error) {
-	row, err := s.q.ConsumeResumeToken(ctx, sqlitestore.ConsumeResumeTokenParams{TokenHash: p.TokenHash, UsedAt: p.UsedAt, ExpiresAt: p.Now})
+	usedAt := p.Now // always non-null
+	row, err := s.q.ConsumeResumeToken(ctx, sqlitestore.ConsumeResumeTokenParams{TokenHash: p.TokenHash, UsedAt: &usedAt, ExpiresAt: p.Now})
 	return wrap1(row, err, mapSQLiteErr, sqliteResumeToken)
 }
 

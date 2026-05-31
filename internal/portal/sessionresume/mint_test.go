@@ -495,11 +495,6 @@ func TestCreateSessionResume_Success_PlaygroundOrg(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create anon account: %v", err)
 	}
-	if err := s.AddOrgMember(ctx, store.AddOrgMemberParams{
-		OrgID: playgroundOrgID, AccountID: callerID, Role: "member", CreatedAt: now,
-	}); err != nil {
-		t.Fatalf("add org member: %v", err)
-	}
 	if _, err := s.CreateSession(ctx, store.CreateSessionParams{
 		ID: sessID, OrgID: playgroundOrgID, Name: "pg-test", Goal: "playground",
 		WritableScope: `["**"]`, DefaultMode: "sync", Status: "active", CreatedAt: now,

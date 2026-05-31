@@ -729,9 +729,10 @@ func (a *postgresAdapter) GetResumeTokenByHash(ctx context.Context, tokenHash st
 }
 
 func (a *postgresAdapter) ConsumeResumeToken(ctx context.Context, p ConsumeResumeTokenParams) (ResumeToken, error) {
+	usedAt := p.Now // always non-null — ConsumeResumeToken must mark the token used
 	row, err := a.q.ConsumeResumeToken(ctx, pgstore.ConsumeResumeTokenParams{
 		TokenHash: p.TokenHash,
-		UsedAt:    p.UsedAt,
+		UsedAt:    &usedAt,
 		ExpiresAt: p.Now,
 	})
 	return wrap1(row, err, mapPostgresErr, pgResumeToken)
@@ -1379,7 +1380,8 @@ func (s *postgresTxStore) GetResumeTokenByHash(ctx context.Context, tokenHash st
 	return wrap1(row, err, mapPostgresErr, pgResumeToken)
 }
 func (s *postgresTxStore) ConsumeResumeToken(ctx context.Context, p ConsumeResumeTokenParams) (ResumeToken, error) {
-	row, err := s.q.ConsumeResumeToken(ctx, pgstore.ConsumeResumeTokenParams{TokenHash: p.TokenHash, UsedAt: p.UsedAt, ExpiresAt: p.Now})
+	usedAt := p.Now // always non-null
+	row, err := s.q.ConsumeResumeToken(ctx, pgstore.ConsumeResumeTokenParams{TokenHash: p.TokenHash, UsedAt: &usedAt, ExpiresAt: p.Now})
 	return wrap1(row, err, mapPostgresErr, pgResumeToken)
 }
 

@@ -664,8 +664,15 @@ func main() {
 		finalizeHandler = finalize.New(dbStore, storageSvc, eventLog, tokenSvc, cfg.PortalURL)
 	}
 
-	// Build the session-resume handler (mint endpoint).
-	sessionResumeHandler := sessionresume.New(dbStore, tokenSvc, cfg.PortalURL)
+	// Build the session-resume handler (mint + exchange endpoints). In e2etest
+	// builds, inject the advanceable clock so /test/clock-advance affects the
+	// 60-second resume-token TTL check. Mirrors the finalize handler wiring above.
+	var sessionResumeHandler *sessionresume.Handler
+	if c := testClk.sessionresumeClock(); c != nil {
+		sessionResumeHandler = sessionresume.NewWithClock(dbStore, tokenSvc, cfg.PortalURL, c)
+	} else {
+		sessionResumeHandler = sessionresume.New(dbStore, tokenSvc, cfg.PortalURL)
+	}
 
 	// Build the MCP endpoint. Auth is handled by the SDK's
 	// auth.RequireBearerToken middleware wired inside Handler(). In e2etest

@@ -20,23 +20,34 @@ const (
 	memberSessionNotFound
 )
 
-// checkSessionMembership verifies the caller is a member of both the org
-// and the session. Returns a verdict and any unexpected error. Session-not-
-// found returns memberSessionNotFound (handlers translate to 404).
+// checkSessionMembership verifies the caller is a member of the session,
+// and for non-playground orgs also verifies org membership. Returns a verdict
+// and any unexpected error. Session-not-found returns memberSessionNotFound
+// (handlers translate to 404).
+//
+// Playground (anonymous) accounts are session members only — they are never
+// added to the playground org's org_members table, so gating on org membership
+// would produce a spurious 403 for every real anonymous bearer. This mirrors
+// handlerauth.RequireAnonymousSessionMember (session-only) vs
+// handlerauth.RequireOrgMember (org path).
 //
 // Replicates finalize.checkSessionMembership (which is package-private to
 // finalize). The two copies are intentional — the helper is package-private
 // and cannot be shared without creating an import or re-exporting it.
 func checkSessionMembership(ctx context.Context, s sessionResumeStore, orgID, sessionID, accountID string) (membershipVerdict, error) {
-	if _, err := s.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: accountID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return memberNotOrgMember, nil
+	if orgID != playgroundOrgID {
+		// Durable orgs: verify org membership first.
+		if _, err := s.GetOrgMember(ctx, store.GetOrgMemberParams{
+			OrgID:     orgID,
+			AccountID: accountID,
+		}); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return memberNotOrgMember, nil
+			}
+			return memberOK, err
 		}
-		return memberOK, err
 	}
+	// Both durable and playground: verify session membership.
 	if _, err := s.GetSessionMember(ctx, store.GetSessionMemberParams{
 		OrgID:     orgID,
 		SessionID: sessionID,

@@ -83,9 +83,9 @@ CREATE TABLE magic_link_tokens (
 CREATE TABLE resume_tokens (
     id          TEXT PRIMARY KEY,
     token_hash  TEXT NOT NULL UNIQUE,
-    session_id  TEXT NOT NULL,
+    session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     org_id      TEXT NOT NULL,
-    account_id  TEXT NOT NULL,
+    account_id  TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     issued_at   DATETIME NOT NULL,
     expires_at  DATETIME NOT NULL,
     used_at     DATETIME

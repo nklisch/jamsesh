@@ -18,6 +18,50 @@ import (
 	"jamsesh/internal/db/store"
 )
 
+// seedResumeTokenFixtures creates the org, account, and session rows that
+// resume_tokens FKs reference (account_id → accounts, session_id → sessions).
+// All resume-token tests must call this to satisfy the FK constraints added by
+// migration 00020_resume_tokens_fk.
+const (
+	rtOrgID     = "org-rt-test"
+	rtAccountID = "acc-rt-test"
+	rtSessionID = "sess-rt-test"
+)
+
+func seedResumeTokenFixtures(t *testing.T, s store.Store, now time.Time) {
+	t.Helper()
+	ctx := context.Background()
+
+	if _, err := s.CreateOrg(ctx, store.CreateOrgParams{
+		ID:        rtOrgID,
+		Name:      "RT Test Org",
+		Slug:      "rt-test-org",
+		CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("seedResumeTokenFixtures: CreateOrg: %v", err)
+	}
+	if _, err := s.CreateAccount(ctx, store.CreateAccountParams{
+		ID:          rtAccountID,
+		Email:       "rt-test@example.com",
+		DisplayName: "RT Test User",
+		CreatedAt:   now,
+	}); err != nil {
+		t.Fatalf("seedResumeTokenFixtures: CreateAccount: %v", err)
+	}
+	if _, err := s.CreateSession(ctx, store.CreateSessionParams{
+		ID:            rtSessionID,
+		OrgID:         rtOrgID,
+		Name:          "RT Test Session",
+		Goal:          "resume token tests",
+		WritableScope: `["**"]`,
+		DefaultMode:   "sync",
+		Status:        "active",
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("seedResumeTokenFixtures: CreateSession: %v", err)
+	}
+}
+
 // TestResumeTokenCreateAndGet verifies basic Create + GetByHash round-trip
 // including all binding columns (session_id, org_id, account_id).
 func TestResumeTokenCreateAndGet(t *testing.T) {
@@ -28,12 +72,14 @@ func TestResumeTokenCreateAndGet(t *testing.T) {
 			s := tt.Open(t)
 
 			now := time.Now().UTC().Truncate(time.Second)
+			seedResumeTokenFixtures(t, s, now)
+
 			p := store.CreateResumeTokenParams{
 				ID:        nextID("rt"),
 				TokenHash: "hash-create-get-" + tt.Name,
-				SessionID: "sess-01",
-				OrgID:     "org-01",
-				AccountID: "acc-01",
+				SessionID: rtSessionID,
+				OrgID:     rtOrgID,
+				AccountID: rtAccountID,
 				IssuedAt:  now,
 				ExpiresAt: now.Add(5 * time.Minute),
 				UsedAt:    nil,
@@ -83,13 +129,15 @@ func TestResumeTokenConsumeWinner(t *testing.T) {
 			s := tt.Open(t)
 
 			now := time.Now().UTC().Truncate(time.Second)
+			seedResumeTokenFixtures(t, s, now)
+
 			hash := "hash-consume-winner-" + tt.Name
 			_, err := s.CreateResumeToken(ctx, store.CreateResumeTokenParams{
 				ID:        nextID("rt"),
 				TokenHash: hash,
-				SessionID: "sess-win",
-				OrgID:     "org-win",
-				AccountID: "acc-win",
+				SessionID: rtSessionID,
+				OrgID:     rtOrgID,
+				AccountID: rtAccountID,
 				IssuedAt:  now,
 				ExpiresAt: now.Add(5 * time.Minute),
 				UsedAt:    nil,
@@ -98,10 +146,8 @@ func TestResumeTokenConsumeWinner(t *testing.T) {
 				t.Fatalf("CreateResumeToken: %v", err)
 			}
 
-			usedAt := now.Add(time.Minute)
 			winner, err := s.ConsumeResumeToken(ctx, store.ConsumeResumeTokenParams{
 				TokenHash: hash,
-				UsedAt:    &usedAt,
 				Now:       now,
 			})
 			if err != nil {
@@ -110,8 +156,8 @@ func TestResumeTokenConsumeWinner(t *testing.T) {
 			if winner.TokenHash != hash {
 				t.Errorf("winner TokenHash: got %q, want %q", winner.TokenHash, hash)
 			}
-			if winner.SessionID != "sess-win" {
-				t.Errorf("winner SessionID: got %q, want %q", winner.SessionID, "sess-win")
+			if winner.SessionID != rtSessionID {
+				t.Errorf("winner SessionID: got %q, want %q", winner.SessionID, rtSessionID)
 			}
 			if winner.UsedAt == nil {
 				t.Error("winner UsedAt: expected non-nil, got nil")
@@ -130,13 +176,15 @@ func TestResumeTokenSingleUse(t *testing.T) {
 			s := tt.Open(t)
 
 			now := time.Now().UTC().Truncate(time.Second)
+			seedResumeTokenFixtures(t, s, now)
+
 			hash := "hash-single-use-" + tt.Name
 			_, err := s.CreateResumeToken(ctx, store.CreateResumeTokenParams{
 				ID:        nextID("rt"),
 				TokenHash: hash,
-				SessionID: "sess-su",
-				OrgID:     "org-su",
-				AccountID: "acc-su",
+				SessionID: rtSessionID,
+				OrgID:     rtOrgID,
+				AccountID: rtAccountID,
 				IssuedAt:  now,
 				ExpiresAt: now.Add(5 * time.Minute),
 				UsedAt:    nil,
@@ -145,10 +193,8 @@ func TestResumeTokenSingleUse(t *testing.T) {
 				t.Fatalf("CreateResumeToken: %v", err)
 			}
 
-			usedAt := now.Add(time.Minute)
 			cp := store.ConsumeResumeTokenParams{
 				TokenHash: hash,
-				UsedAt:    &usedAt,
 				Now:       now,
 			}
 
@@ -175,6 +221,8 @@ func TestResumeTokenExpiredNotConsumed(t *testing.T) {
 			s := tt.Open(t)
 
 			now := time.Now().UTC().Truncate(time.Second)
+			seedResumeTokenFixtures(t, s, now)
+
 			hash := "hash-expired-" + tt.Name
 
 			// Issue a token that expired 1 minute ago.
@@ -182,9 +230,9 @@ func TestResumeTokenExpiredNotConsumed(t *testing.T) {
 			_, err := s.CreateResumeToken(ctx, store.CreateResumeTokenParams{
 				ID:        nextID("rt"),
 				TokenHash: hash,
-				SessionID: "sess-exp",
-				OrgID:     "org-exp",
-				AccountID: "acc-exp",
+				SessionID: rtSessionID,
+				OrgID:     rtOrgID,
+				AccountID: rtAccountID,
 				IssuedAt:  now.Add(-2 * time.Minute),
 				ExpiresAt: pastExpiry,
 				UsedAt:    nil,
@@ -193,10 +241,8 @@ func TestResumeTokenExpiredNotConsumed(t *testing.T) {
 				t.Fatalf("CreateResumeToken: %v", err)
 			}
 
-			usedAt := now
 			_, err = s.ConsumeResumeToken(ctx, store.ConsumeResumeTokenParams{
 				TokenHash: hash,
-				UsedAt:    &usedAt,
 				Now:       now, // now > expires_at → WHERE expires_at > now is false
 			})
 			if !errors.Is(err, store.ErrNotFound) {
@@ -216,10 +262,8 @@ func TestResumeTokenUnknownHash(t *testing.T) {
 			s := tt.Open(t)
 
 			now := time.Now().UTC()
-			usedAt := now
 			_, err := s.ConsumeResumeToken(ctx, store.ConsumeResumeTokenParams{
 				TokenHash: "no-such-hash-" + tt.Name,
-				UsedAt:    &usedAt,
 				Now:       now,
 			})
 			if !errors.Is(err, store.ErrNotFound) {
@@ -256,13 +300,15 @@ func TestResumeTokenUniqueHash(t *testing.T) {
 			s := tt.Open(t)
 
 			now := time.Now().UTC().Truncate(time.Second)
+			seedResumeTokenFixtures(t, s, now)
+
 			hash := "hash-unique-" + tt.Name
 			p := store.CreateResumeTokenParams{
 				ID:        nextID("rt"),
 				TokenHash: hash,
-				SessionID: "sess-dup",
-				OrgID:     "org-dup",
-				AccountID: "acc-dup",
+				SessionID: rtSessionID,
+				OrgID:     rtOrgID,
+				AccountID: rtAccountID,
 				IssuedAt:  now,
 				ExpiresAt: now.Add(5 * time.Minute),
 			}

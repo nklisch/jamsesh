@@ -13,6 +13,7 @@ import (
 	"jamsesh/internal/portal/finalize"
 	"jamsesh/internal/portal/mcpendpoint"
 	"jamsesh/internal/portal/playground"
+	"jamsesh/internal/portal/sessionresume"
 	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/tokens"
@@ -93,6 +94,12 @@ func (p *testClockProvider) sessionsClock() sessions.Clock { return nil }
 // interface so the comparison against nil in main.go is well-defined
 // (no typed-nil trap).
 func (p *testClockProvider) playgroundClock() playground.Clock { return nil }
+
+// sessionresumeClock returns nil. main.go interprets nil as "use the real
+// clock" and falls back to sessionresume.New. The return type is the concrete
+// sessionresume.Clock interface so the comparison against nil in main.go is
+// well-defined (no typed-nil trap).
+func (p *testClockProvider) sessionresumeClock() sessionresume.Clock { return nil }
 
 // mountTestEndpointsHook returns nil in production builds. router.New
 // skips the /test r.Route call when MountTest is nil, so the /test

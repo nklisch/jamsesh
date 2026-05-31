@@ -13,6 +13,7 @@ import (
 	"jamsesh/internal/portal/finalize"
 	"jamsesh/internal/portal/mcpendpoint"
 	"jamsesh/internal/portal/playground"
+	"jamsesh/internal/portal/sessionresume"
 	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/testclock"
@@ -94,6 +95,12 @@ func (p *testClockProvider) sessionsClock() sessions.Clock { return p.clock }
 // per-sweep "what's expired" query. Without this wiring, advancing
 // the clock has zero effect on playground session expiry decisions.
 func (p *testClockProvider) playgroundClock() playground.Clock { return p.clock }
+
+// sessionresumeClock returns the clock to inject into the sessionresume.Handler.
+// Implements sessionresume.Clock. Same shared AdvanceableClock — advancing
+// once moves the 60-second resume-token TTL check forward, enabling
+// full-portal clock-advance tests to exercise token expiry.
+func (p *testClockProvider) sessionresumeClock() sessionresume.Clock { return p.clock }
 
 // mountTestEndpoints registers POST /clock-advance on r. The portal
 // router invokes this inside r.Route("/test", ...), so the public

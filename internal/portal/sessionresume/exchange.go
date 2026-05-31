@@ -45,10 +45,8 @@ func (h *Handler) ExchangeSessionResume(ctx context.Context, req openapi.Exchang
 	hash := hashResumeToken(rawToken)
 
 	now := h.clock.Now()
-	usedAt := now
 	consumed, err := h.store.ConsumeResumeToken(ctx, store.ConsumeResumeTokenParams{
 		TokenHash: hash,
-		UsedAt:    &usedAt,
 		Now:       now,
 	})
 	if err != nil {
@@ -61,9 +59,15 @@ func (h *Handler) ExchangeSessionResume(ctx context.Context, req openapi.Exchang
 	}
 
 	// Fetch the account bound to the consumed token so we can branch on
-	// is_anonymous and get the display_name.
+	// is_anonymous and get the display_name. If the account was deleted after
+	// the token was minted (rare but possible), return the generic failure
+	// rather than a wrapped DB error — callers must not be able to distinguish
+	// this case from an unknown/expired token.
 	acct, err := h.store.GetAccountByID(ctx, consumed.AccountID)
 	if err != nil {
+		if isNotFound(err) {
+			return exchangeGenericFailure, nil
+		}
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessionresume: get account: %w", err))
 	}
 
