@@ -4,7 +4,7 @@ import { auth } from '$lib/auth.svelte';
 
 const bearerMiddleware: Middleware = {
   onRequest({ request }) {
-    const token = auth.token;
+    const token = auth.token ?? auth.playgroundContext?.bearer;
     if (token) request.headers.set('Authorization', `Bearer ${token}`);
     return request;
   },

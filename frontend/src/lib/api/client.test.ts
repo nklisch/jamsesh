@@ -71,6 +71,75 @@ describe('client — Bearer middleware', () => {
     expect(captured!.headers.get('Authorization')).toBeNull();
   });
 
+  test('attaches playground bearer when auth.token is null but playgroundContext.bearer is set', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    // No durable token — playground context only.
+    auth.setPlaygroundContext({ sessionId: 'sess-pg', bearer: 'pg-bearer-xyz', nickname: 'Alice' });
+
+    const { client } = await import('./client');
+
+    let captured: Request | null = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      captured = input as Request;
+      return new Response(
+        JSON.stringify({ ticket: 't', expires_in_seconds: 60 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    await client.POST('/api/auth/ws-ticket', {});
+
+    expect(captured).not.toBeNull();
+    expect(captured!.headers.get('Authorization')).toBe('Bearer pg-bearer-xyz');
+  });
+
+  test('omits Authorization header when both auth.token and playgroundContext are null', async () => {
+    // No tokens set, no playground context.
+    const { client } = await import('./client');
+
+    let captured: Request | null = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      captured = input as Request;
+      return new Response(
+        JSON.stringify({
+          access_token: 'a',
+          refresh_token: 'b',
+          access_expires_at: '',
+          refresh_expires_at: '',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    await client.POST('/api/auth/refresh', { body: { refresh_token: 'r' } });
+
+    expect(captured).not.toBeNull();
+    expect(captured!.headers.get('Authorization')).toBeNull();
+  });
+
+  test('durable auth.token wins over playgroundContext.bearer when both are set', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('durable-token', 'durable-refresh');
+    auth.setPlaygroundContext({ sessionId: 'sess-pg', bearer: 'pg-bearer-xyz', nickname: 'Alice' });
+
+    const { client } = await import('./client');
+
+    let captured: Request | null = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      captured = input as Request;
+      return new Response(
+        JSON.stringify({ ticket: 't', expires_in_seconds: 60 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    await client.POST('/api/auth/ws-ticket', {});
+
+    expect(captured).not.toBeNull();
+    // Durable token takes precedence (auth.token ?? bearer — token is non-null).
+    expect(captured!.headers.get('Authorization')).toBe('Bearer durable-token');
+  });
+
   test('updates the header when setTokens is called after client is created', async () => {
     const { auth } = await import('$lib/auth.svelte');
     const { client } = await import('./client');
