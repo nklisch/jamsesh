@@ -280,9 +280,13 @@ func Start(ctx context.Context, t *testing.T, opts Options) *Portal {
 		}
 		// Best-effort terminate the half-started container before retrying so we
 		// do not leak it (GenericContainer may return a non-nil container on a
-		// readiness failure).
+		// readiness failure). Use a fresh, short cleanup context: the caller's
+		// ctx may already be canceled (test deadline/cancel), which would make
+		// Terminate(ctx) a no-op and leak the container during a long run.
 		if c != nil {
-			_ = c.Terminate(ctx)
+			termCtx, cancelTerm := context.WithTimeout(context.Background(), 30*time.Second)
+			_ = c.Terminate(termCtx)
+			cancelTerm()
 			c = nil
 		}
 		if attempt < startupMaxAttempts {

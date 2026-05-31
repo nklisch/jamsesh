@@ -147,7 +147,12 @@ func (s *ManifestStore) Load(ctx context.Context, sessionID string) (Manifest, s
 
 	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return Manifest{}, "", fmt.Errorf("objectstore: unmarshal manifest for session %q: %w", sessionID, err)
+		// A body that does not unmarshal is corrupt, not a transient backend
+		// error — surface it as ErrCorruptManifest (matching the Load contract
+		// above) so callers fail fast instead of mistaking it for anything else.
+		return Manifest{}, "", fmt.Errorf(
+			"objectstore: manifest for session %q does not unmarshal (%v): %w",
+			sessionID, err, ErrCorruptManifest)
 	}
 
 	// Validate the decoded manifest. encoding/json is lenient: a body of `null`,
@@ -196,6 +201,14 @@ func (s *ManifestStore) Load(ctx context.Context, sessionID string) (Manifest, s
 //
 // On success, Save returns the new ETag assigned by the Backend.
 func (s *ManifestStore) Save(ctx context.Context, m Manifest, ifMatch string, now time.Time) (string, error) {
+	// Self-guard (empty session_id): never persist a manifest that Load would
+	// later reject as corrupt. An empty SessionID would also write to the bogus
+	// ManifestKey("") key, so fail fast before any I/O.
+	if m.SessionID == "" {
+		return "", fmt.Errorf(
+			"objectstore: refusing to save manifest with empty session_id: %w", ErrCorruptManifest)
+	}
+
 	// Fencing-token pre-flight: load on-disk manifest and compare tokens.
 	//
 	// We deliberately load directly here rather than trusting the caller's
@@ -226,6 +239,16 @@ func (s *ManifestStore) Save(ctx context.Context, m Manifest, ifMatch string, no
 	m.UpdatedAt = now
 	if m.Version == 0 {
 		m.Version = 1
+	}
+
+	// Self-guard (schema version): after normalizing a zero version, refuse any
+	// remaining non-current version so Save cannot persist a manifest that Load
+	// would reject as corrupt. Keeps the readable-manifest invariant local to
+	// the writer rather than relying on every caller.
+	if m.Version != manifestSchemaVersion {
+		return "", fmt.Errorf(
+			"objectstore: refusing to save manifest for session %q with unsupported schema version %d (want %d): %w",
+			m.SessionID, m.Version, manifestSchemaVersion, ErrCorruptManifest)
 	}
 
 	data, err := json.Marshal(m)

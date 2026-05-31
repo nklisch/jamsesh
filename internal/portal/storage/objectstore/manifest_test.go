@@ -233,6 +233,7 @@ func TestManifestStore_Load_Corrupt(t *testing.T) {
 		name string
 		body string
 	}{
+		{"malformed JSON", `{not valid json`},
 		{"null JSON", `null`},
 		{"empty object", `{}`},
 		{"unknown version 99", `{"version":99,"session_id":"sess-corrupt","packs":[],"refs":{}}`},
@@ -256,6 +257,24 @@ func TestManifestStore_Load_Corrupt(t *testing.T) {
 				t.Fatalf("Load(corrupt %q) error = %v; want ErrCorruptManifest", tc.name, err)
 			}
 		})
+	}
+}
+
+// TestManifestStore_Save_RejectsCorrupt verifies that Save is self-guarding: it
+// refuses to persist a manifest that Load would later reject as corrupt (empty
+// session_id, or an unsupported non-zero schema version), keeping the
+// readable-manifest invariant local to the writer.
+func TestManifestStore_Save_RejectsCorrupt(t *testing.T) {
+	store := newStore(newMemBackend())
+
+	_, err := store.Save(context.Background(), Manifest{SessionID: "", Version: 1}, "", time.Now().UTC())
+	if !errors.Is(err, ErrCorruptManifest) {
+		t.Errorf("Save empty session_id: got %v; want ErrCorruptManifest", err)
+	}
+
+	_, err = store.Save(context.Background(), Manifest{SessionID: "sess-bad-ver", Version: 99}, "", time.Now().UTC())
+	if !errors.Is(err, ErrCorruptManifest) {
+		t.Errorf("Save unsupported version 99: got %v; want ErrCorruptManifest", err)
 	}
 }
 
