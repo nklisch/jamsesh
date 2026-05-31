@@ -11,6 +11,12 @@ import (
 	"jamsesh/internal/portal/httperr"
 )
 
+// statusClientClosedRequest is the de-facto standard HTTP status code for
+// "client closed the connection before the server finished". Mirrors the
+// constant of the same name in the githttp package; kept local to avoid
+// an import cycle.
+const statusClientClosedRequest = 499
+
 type ctxKey struct{}
 type rawBearerCtxKey struct{}
 
@@ -36,6 +42,14 @@ func BearerMiddleware(svc Service) func(http.Handler) http.Handler {
 				case errors.Is(err, ErrInvalidToken), errors.Is(err, ErrRevokedToken):
 					httperr.Write(w, r, httperr.ErrInvalidToken())
 				default:
+					// Gate on request-context cancellation: a client that
+					// disconnected mid-validation is not a server error.
+					// A genuine store/dep timeout on a live request context
+					// must still be routed through the dep translator (503).
+					if r.Context().Err() != nil {
+						w.WriteHeader(statusClientClosedRequest)
+						return
+					}
 					// Route through the dep translator so transient DB
 					// failures from svc.Validate surface as the typed
 					// dep.db_unavailable 503 envelope (with Retry-After: 2)

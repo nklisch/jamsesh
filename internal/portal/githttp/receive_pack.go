@@ -96,8 +96,17 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 
 	bodySize, err := io.Copy(bodyFile, limitedBody)
 	if err != nil {
+		// Discriminate on the request context: a client that disconnected
+		// mid-upload is not a server fault and must not be reported as 413.
+		// A genuine MaxBytesReader cap-exceeded error on a live context is
+		// the only other expected failure, so it stays 413.
+		if r.Context().Err() != nil {
+			writeClientAbort(w)
+			return
+		}
 		// MaxBytesReader returns a specific error when the cap is exceeded;
-		// treat any error as "too large" since that is the only likely failure.
+		// treat any other read error as "too large" since that is the only
+		// other likely failure on a live context.
 		http.Error(w, "pack exceeds size limit", http.StatusRequestEntityTooLarge)
 		return
 	}

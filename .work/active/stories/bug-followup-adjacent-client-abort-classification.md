@@ -1,7 +1,7 @@
 ---
 id: bug-followup-adjacent-client-abort-classification
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, error-handling]
 parent: null
 depends_on: []
@@ -27,3 +27,32 @@ really client aborts. Apply the same `r.Context().Err()`-based client-abort
 discrimination (499 / no-5xx) used in `bug-squash-git-auth-client-abort-500`.
 Low severity (alert-hygiene), but completes the client-abort classification
 sweep.
+
+## Implementation notes
+
+Mirrored `bug-squash-git-auth-client-abort-500` (commit 05f0d88) for two
+adjacent spots.
+
+**(a) BearerMiddleware — `internal/portal/tokens/middleware.go`**
+
+Added `const statusClientClosedRequest = 499` (local copy; import-cycle prevents
+reusing the githttp one). In the `default:` branch of the `switch` on
+`svc.Validate` error, gate on `r.Context().Err() != nil`: cancelled ctx →
+`w.WriteHeader(499)` + return; live ctx → existing `httperr.WriteFromError` with
+`deperr.WrapDBIfTransient` (503 unchanged).
+
+Tests: `internal/portal/tokens/bearer_client_abort_test.go`
+- `TestBearerMiddleware_CancelledContext_Returns499`: cancelled ctx → 499 (was 503)
+- `TestBearerMiddleware_LiveCtx_StoreError_Still503`: live ctx + store error → 503 unchanged
+
+**(b) receive_pack body-read — `internal/portal/githttp/receive_pack.go`**
+
+After `io.Copy(bodyFile, limitedBody)` returns an error, gate on
+`r.Context().Err() != nil`: cancelled ctx → `writeClientAbort(w)` (499); live
+ctx → `http.Error(w, "pack exceeds size limit", 413)` unchanged.
+
+Tests: `internal/portal/githttp/receive_pack_body_abort_test.go`
+- `TestReceivePack_BodyReadError_CancelledContext_Returns499`: body reader cancels
+  ctx on first Read → handler returns 499 (was 413)
+- `TestReceivePack_BodyReadError_LiveContext_Returns413`: oversized body on live
+  ctx → 413 unchanged
