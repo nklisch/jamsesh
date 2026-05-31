@@ -12,6 +12,20 @@ import (
 	"jamsesh/internal/portal/tokens"
 )
 
+// statusClientClosedRequest is the de-facto standard HTTP status code for
+// "client closed the connection before the server finished". Writing it matters
+// because access logging otherwise records the response as 200. The body is
+// irrelevant — the client is gone — so we write the header only.
+const statusClientClosedRequest = 499
+
+// writeClientAbort writes a 499 Client Closed Request status to w. Call this
+// instead of the default 500 branch when the request context has been
+// cancelled, indicating a client disconnect rather than a server error.
+// Do NOT log at ERROR level; a client abort is not a server fault.
+func writeClientAbort(w http.ResponseWriter) {
+	w.WriteHeader(statusClientClosedRequest)
+}
+
 type accountCtxKey struct{}
 
 // AccountFromContext retrieves the *store.Account attached by basicAuth.
@@ -45,7 +59,14 @@ func (h *Handler) basicAuth(next http.Handler) http.Handler {
 				errors.Is(err, tokens.ErrRevokedToken):
 				writeBasicUnauthorized(w)
 			default:
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				// Gate on request-context cancellation: a client that disconnected
+				// mid-handshake is not a server error. A store/dep timeout on a live
+				// request context stays 5xx.
+				if r.Context().Err() != nil {
+					writeClientAbort(w)
+				} else {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+				}
 			}
 			return
 		}
@@ -84,7 +105,11 @@ func (h *Handler) requireSessionMember(next http.Handler) http.Handler {
 				writeBasicUnauthorized(w)
 				return
 			}
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			if r.Context().Err() != nil {
+				writeClientAbort(w)
+			} else {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -107,7 +132,11 @@ func (h *Handler) checkArchived(next http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			if r.Context().Err() != nil {
+				writeClientAbort(w)
+			} else {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
 			return
 		}
 
