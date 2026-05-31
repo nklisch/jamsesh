@@ -433,6 +433,114 @@ func TestAcquireFinalizeLock_ConcurrentOverrides_OnlyOneWins(t *testing.T) {
 	}
 }
 
+// staleLockRefreshStore wraps a real store but returns a synthetic stale lock
+// from GetActiveFinalizeLockForSession (simulating the preflight snapshot), while
+// GetFinalizeLockByID (called in-tx) returns the real (fresh) row.
+//
+// This directly models the TOCTOU window: preflight sees stale → holder
+// refreshes → in-tx re-read sees fresh.
+type staleLockRefreshStore struct {
+	store.Store
+	staleSnapshot store.FinalizeLock // returned by GetActiveFinalizeLockForSession
+}
+
+func (s *staleLockRefreshStore) GetActiveFinalizeLockForSession(_ context.Context, _ string) (store.FinalizeLock, error) {
+	return s.staleSnapshot, nil
+}
+
+// WithTx delegates to the real store so in-tx reads use the live DB row.
+func (s *staleLockRefreshStore) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	return s.Store.WithTx(ctx, fn)
+}
+
+// TestAcquireFinalizeLock_StaleLockRefreshedMidTx is a regression test for the
+// TOCTOU window in branch-3 (stale-lock takeover). When the lock holder
+// refreshes last_activity_at AFTER the preflight read (which decided the lock
+// was stale) but BEFORE the in-tx release, the takeover must be aborted and
+// a 409 returned. The stale lock row must NOT be released.
+func TestAcquireFinalizeLock_StaleLockRefreshedMidTx(t *testing.T) {
+	env := newFinalizeEnv(t)
+	ctx := context.Background()
+
+	// Seed a lock that is currently FRESH in the real DB (i.e. it has been
+	// refreshed recently by its holder).
+	staleLockID := ulid.Make().String()
+	now := time.Now().UTC()
+	freshTime := now // fresh in the DB
+	if err := env.store.InsertFinalizeLock(ctx, store.InsertFinalizeLockParams{
+		ID:                  staleLockID,
+		OrgID:               env.orgID,
+		SessionID:           env.sessID,
+		AcquiredByAccountID: env.otherID,
+		AcquiredAt:          freshTime.Add(-35 * time.Minute), // acquired long ago
+		LastActivityAt:      freshTime,                        // but refreshed just now
+		SelectedCommitSHAs:  "[]",
+		Mode:                "squash",
+	}); err != nil {
+		t.Fatalf("seed fresh lock: %v", err)
+	}
+	if err := env.store.SetFinalizeLock(ctx, store.SetFinalizeLockParams{
+		OrgID:     env.orgID,
+		ID:        env.sessID,
+		AccountID: &env.otherID,
+	}); err != nil {
+		t.Fatalf("seed sessions pointer: %v", err)
+	}
+
+	// Build a synthetic stale snapshot (what the preflight would have seen
+	// before the holder refreshed the lock).
+	staleSnapshot := store.FinalizeLock{
+		ID:                  staleLockID,
+		OrgID:               env.orgID,
+		SessionID:           env.sessID,
+		AcquiredByAccountID: env.otherID,
+		AcquiredAt:          freshTime.Add(-35 * time.Minute),
+		LastActivityAt:      freshTime.Add(-31 * time.Minute), // stale in snapshot
+		SelectedCommitSHAs:  "[]",
+		Mode:                "squash",
+	}
+
+	// Wrap the store: preflight sees the stale snapshot; in-tx reads see the
+	// real (fresh) DB row.
+	wrappedStore := &staleLockRefreshStore{
+		Store:         env.store,
+		staleSnapshot: staleSnapshot,
+	}
+	depHandler := newFinalizeHandlerWith(t, wrappedStore, env.store)
+
+	// AcquireFinalizeLock sees stale snapshot at preflight → tries to take over
+	// → in-tx re-read sees fresh → must return 409, NOT release the lock.
+	resp, err := depHandler.AcquireFinalizeLock(env.callerCtx, openapi.AcquireFinalizeLockRequestObject{
+		OrgID:     env.orgID,
+		SessionID: env.sessID,
+		// No override — this is branch 3 (stale takeover), not branch 5.
+	})
+	if err != nil {
+		t.Fatalf("acquire returned Go error: %v", err)
+	}
+	if _, ok := resp.(openapi.AcquireFinalizeLock409JSONResponse); !ok {
+		t.Errorf("expected 409 (stale lock was refreshed mid-tx), got %T", resp)
+	}
+
+	// The stale lock must NOT have been released (tx was rolled back).
+	lock, err := env.store.GetFinalizeLockByID(ctx, staleLockID)
+	if err != nil {
+		t.Fatalf("GetFinalizeLockByID: %v", err)
+	}
+	if lock.ReleasedAt != nil {
+		t.Errorf("stale lock released_at = %v; expected nil (takeover must not release a refreshed lock)", lock.ReleasedAt)
+	}
+
+	// Exactly one active lock must remain (the original).
+	activeLock, activeErr := env.store.GetActiveFinalizeLockForSession(ctx, env.sessID)
+	if activeErr != nil {
+		t.Fatalf("GetActiveFinalizeLockForSession: %v", activeErr)
+	}
+	if activeLock.ID != staleLockID {
+		t.Errorf("active lock ID = %q; want original lock %q (no new lock should have been inserted)", activeLock.ID, staleLockID)
+	}
+}
+
 func TestAcquireFinalizeLock_Unauthenticated(t *testing.T) {
 	env := newFinalizeEnv(t)
 	resp, err := env.handler.AcquireFinalizeLock(context.Background(), openapi.AcquireFinalizeLockRequestObject{

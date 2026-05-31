@@ -24,6 +24,12 @@ import (
 // loser. The session's active lock is held by whichever caller won the race.
 var ErrOverrideRaceLost = errors.New("finalize: override race lost — another caller inserted the active lock first")
 
+// errStaleLockRefreshed is a private sentinel returned from inside the tx
+// closure when a preflight-stale lock was refreshed by its holder between the
+// preflight read and the in-tx re-read. The tx is rolled back and the caller
+// receives a 409 (lock_held_by_other).
+var errStaleLockRefreshed = errors.New("finalize: stale lock was refreshed before in-tx re-read")
+
 // AcquireFinalizeLock implements POST
 // /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock.
 //
@@ -165,13 +171,35 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 	// Pre-flight READS (existing-lock lookup, session load) are kept OUTSIDE the
 	// tx above; only mutations belong in the closure.
 	existingID := "" // captured for use inside tx closure
+	staleRelease := false
 	if hadExisting {
 		existingID = existing.ID
+		// Branch 3 (stale takeover): the preflight decided the lock was expired.
+		// We must re-check staleness INSIDE the tx to close the TOCTOU window
+		// where the holder refreshes last_activity_at between the preflight read
+		// and the in-tx release. Override (branch 5) does not need this guard
+		// because it applies regardless of freshness.
+		staleRelease = supersedeOldID == "" // only branch 3, not branch 5
 	}
 	err = h.store.WithTx(ctx, func(tx store.TxStore) error {
 		// Branch 3 or 5: release the current lock (stale or override) first so
 		// InsertFinalizeLock can satisfy the unique partial index.
 		if hadExisting {
+			// Branch 3 (stale takeover only): re-read the lock in-tx and verify it
+			// is still expired. If the holder refreshed last_activity_at after the
+			// preflight read, abort the takeover — return errStaleLockRefreshed so
+			// the caller sends a 409.
+			if staleRelease {
+				live, err := tx.GetFinalizeLockByID(ctx, existingID)
+				if err != nil {
+					return fmt.Errorf("in-tx re-read stale lock: %w", err)
+				}
+				if !IsLockExpired(live.LastActivityAt, now) {
+					// Holder refreshed the lock between preflight and tx — abort.
+					return errStaleLockRefreshed
+				}
+			}
+
 			if err := tx.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
 				ID:         existingID,
 				ReleasedAt: now,
@@ -226,6 +254,20 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 
 		return nil
 	})
+	// Return 409 when the stale lock was refreshed between preflight and tx
+	// (TOCTOU: holder is still alive — do not takeover).
+	if errors.Is(err, errStaleLockRefreshed) {
+		details := map[string]interface{}{
+			"held_by_account_id": existing.AcquiredByAccountID,
+			"lock_id":            existing.ID,
+			"expires_at":         LockExpiresAt(existing.LastActivityAt).Format(time.RFC3339Nano),
+		}
+		return openapi.AcquireFinalizeLock409JSONResponse(openapi.ErrorEnvelope{
+			Error:   "finalize.lock_held_by_other",
+			Message: "another member holds the finalize lock for this session",
+			Details: details,
+		}), nil
+	}
 	// Return 409 on unique-violation regardless of supersedeOldID — a fresh-insert
 	// race (no prior override release) also hits the unique partial index.
 	if errors.Is(err, store.ErrUniqueViolation) {

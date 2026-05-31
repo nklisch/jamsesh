@@ -310,3 +310,23 @@ not a bug-scan finding — to be parked as a separate story by the user.
 ## Implementation summary
 
 All 5 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
+
+## Final-gate fix
+
+**Finding 2 (BLOCKING): Finalize stale-lock takeover decided outside the tx (TOCTOU).**
+`lock_acquire.go`: the preflight `GetActiveFinalizeLockForSession` decides a lock is
+stale, but by the time the tx runs, the holder may have refreshed `last_activity_at`.
+The existing `ReleaseFinalizeLock` guards only on `id + released_at IS NULL` — it does
+not re-check staleness.
+
+Fix (in-tx re-read approach, no SQL change needed): in the branch-3 stale-takeover
+path (`staleRelease = supersedeOldID == ""`), added `tx.GetFinalizeLockByID` inside
+the `WithTx` closure; if `IsLockExpired(live.LastActivityAt, now)` is false (holder
+refreshed), returns the new private `errStaleLockRefreshed` sentinel, rolling back the
+tx and returning a 409 `finalize.lock_held_by_other`. Branch-5 (override) is
+unaffected.
+
+Added `TestAcquireFinalizeLock_StaleLockRefreshedMidTx`: uses a `staleLockRefreshStore`
+wrapper where `GetActiveFinalizeLockForSession` returns the stale snapshot (what the
+preflight sees) while in-tx `GetFinalizeLockByID` returns the live fresh row. Asserts
+the lock is NOT released and a 409 is returned.
