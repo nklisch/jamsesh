@@ -1,14 +1,14 @@
 ---
 id: story-fix-playground-joiner-401-bounce
 kind: story
-stage: review
+stage: done
 tags: [bug]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # Playground joiner gets 401-bounced after a successful /join
@@ -108,3 +108,15 @@ artifacts or fork. Tracked in
 `.work/backlog/playground-rawfetch-components-bypass-bearer.md`. The earlier
 phrasing claiming "every playground-scoped request" is corrected by this note —
 coverage is "every request that goes through the shared client".
+
+## Review (2026-05-31)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Substrate fast-lane story review. Implementation notes include green
+frontend verification (`788` tests passed across `56` files) plus `svelte-check`
+with `0` errors / `0` warnings. Lens walk skipped per fast-lane story policy.
