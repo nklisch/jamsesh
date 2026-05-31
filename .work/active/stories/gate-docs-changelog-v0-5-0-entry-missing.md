@@ -1,7 +1,7 @@
 ---
 id: gate-docs-changelog-v0-5-0-entry-missing
 kind: story
-stage: review
+stage: done
 tags: [documentation]
 parent: null
 depends_on: []
@@ -43,3 +43,13 @@ Implemented in the consolidated v0.5.0 gate-drain pass. The pass addressed this 
 - `npm run check` — 0 errors; one pre-existing `ModeSwitchDialog.svelte` warning.
 - `npm run build` — pass; same pre-existing Svelte warning.
 - Stale-string scans for raw-fetch/OpenAPI TODOs, EventEnvelope payload-count drift, and `git -c http.extraHeader` docs/comments passed after generated OpenAPI Go/TypeScript refresh.
+
+## Review (2026-05-31)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Story fast-lane review. Verification evidence is present in the implementation record and reports green targeted Go tests, frontend tests, Svelte check, frontend build, and stale-string scans. Release-bound item remains active for `v0.5.0` deploy packaging.
