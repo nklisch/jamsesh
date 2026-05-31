@@ -1712,6 +1712,59 @@ components:
           type: string
           description: The session the CLI is resuming into.
 
+    SessionResumeExchangeRequest:
+      type: object
+      required: [resume_token]
+      description: |
+        Request body for POST /api/session-resumes/exchange. Presents the
+        single-use resume token (extracted from the URL fragment by the SPA)
+        to receive a session-scoped credential.
+      properties:
+        resume_token:
+          type: string
+          description: |
+            The raw single-use resume token extracted from the URL fragment
+            (`#rt=<token>`). This is the credential; it is consumed atomically
+            on exchange.
+
+    SessionResumeExchangeResponse:
+      type: object
+      required: [bearer, expires_at, session_id, org_id, kind, account_id, display_name]
+      description: |
+        Response body for POST /api/session-resumes/exchange (200 OK).
+        Contains the issued credential and session context.
+      properties:
+        bearer:
+          type: string
+          description: |
+            The issued session credential.
+            - playground (kind=playground): an anonymous-session bearer, valid
+              for the remaining session hard-cap duration.
+            - durable (kind=durable): a short-lived access token (AccessTokenTTL),
+              no refresh token.
+        expires_at:
+          type: string
+          format: date-time
+          description: When the issued bearer expires.
+        session_id:
+          type: string
+          description: The session this credential grants access to.
+        org_id:
+          type: string
+          description: The org that owns the session.
+        kind:
+          type: string
+          enum: [playground, durable]
+          description: |
+            "playground" when the account is anonymous (playground session);
+            "durable" when the account has a persistent identity.
+        account_id:
+          type: string
+          description: The account ID for which the credential was issued.
+        display_name:
+          type: string
+          description: The display name of the account.
+
     SessionResumeResponse:
       type: object
       required: [resume_url, expires_in, session_id]
@@ -3469,6 +3522,37 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/session-resumes/exchange:
+    post:
+      summary: Exchange a single-use resume token for a session credential
+      description: |
+        Presents the raw resume token (extracted by the SPA from the URL
+        fragment `#rt=<token>`) and receives a session-scoped credential.
+
+        This endpoint is **unauthenticated** — the resume token is the sole
+        credential. Any ambient Authorization header is ignored.
+
+        The token is consumed atomically (winner-returning UPDATE…RETURNING).
+        All failure cases (expired, already-used, unknown) return the same
+        generic error shape — no oracle distinguishing the three cases.
+      operationId: exchangeSessionResume
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionResumeExchangeRequest'
+      responses:
+        '200':
+          description: Token exchanged; credential issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResumeExchangeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/playground/sessions/{id}/tombstone:
     get:

@@ -246,6 +246,9 @@ func (m *magicLinkOnlyStrict) GetPortalInfo(_ context.Context, _ openapi.GetPort
 func (m *magicLinkOnlyStrict) CreateSessionResume(_ context.Context, _ openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
 	panic("not wired")
 }
+func (m *magicLinkOnlyStrict) ExchangeSessionResume(_ context.Context, _ openapi.ExchangeSessionResumeRequestObject) (openapi.ExchangeSessionResumeResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*magicLinkOnlyStrict)(nil)
 

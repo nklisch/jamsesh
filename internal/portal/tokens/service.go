@@ -55,6 +55,20 @@ type Service interface {
 	// revocation; if it does not match the token's owner, ErrForbidden is
 	// returned so callers can emit a 403.
 	Revoke(ctx context.Context, callerAccountID string, rawToken string, revokeAll bool) error
+	// IssueAnonymousSessionBearerForExistingAccount mints a session-scoped
+	// bearer for an EXISTING anonymous account (no new account row). The
+	// bearer shape is identical to the one IssueAnonymousSessionBearer
+	// produces (same CreateAnonymousBearer row). The bearer's expires_at is
+	// set to now+ttl.
+	//
+	// Preconditions:
+	//   - the account must exist (ErrInvalidToken when not found)
+	//   - the account must be anonymous / IsAnonymous=true (ErrForbidden
+	//     when a durable account is supplied — durable accounts must use
+	//     IssueShortLived instead)
+	//
+	// Returns rawToken (to give to the client), expiresAt on success.
+	IssueAnonymousSessionBearerForExistingAccount(ctx context.Context, accountID, sessionID string, ttl time.Duration) (rawToken string, expiresAt time.Time, err error)
 	// RevokeAnonymousBearer revokes the anonymous bearer identified by the
 	// given raw token AND hard-deletes its associated anonymous account.
 	// Idempotent — returns nil when the token is already absent. Used by the

@@ -42,6 +42,10 @@ func (m *mockService) Revoke(_ context.Context, _ string, _ string, _ bool) erro
 	return errors.New("not implemented")
 }
 
+func (m *mockService) IssueAnonymousSessionBearerForExistingAccount(_ context.Context, _, _ string, _ time.Duration) (string, time.Time, error) {
+	return "", time.Time{}, errors.New("not implemented")
+}
+
 func (m *mockService) RevokeAnonymousBearer(_ context.Context, _ string) error {
 	return errors.New("not implemented")
 }

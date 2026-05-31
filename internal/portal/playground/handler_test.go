@@ -213,6 +213,9 @@ func (h *playgroundOnlyStrict) GetPortalInfo(_ context.Context, _ openapi.GetPor
 func (h *playgroundOnlyStrict) CreateSessionResume(_ context.Context, _ openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
 	panic("not wired")
 }
+func (h *playgroundOnlyStrict) ExchangeSessionResume(_ context.Context, _ openapi.ExchangeSessionResumeRequestObject) (openapi.ExchangeSessionResumeResponseObject, error) {
+	panic("not wired")
+}
 
 // Compile-time check that playgroundOnlyStrict satisfies the full interface.
 var _ openapi.StrictServerInterface = (*playgroundOnlyStrict)(nil)
@@ -251,6 +254,9 @@ func (s *failingTokensService) Refresh(ctx context.Context, refreshToken string)
 }
 func (s *failingTokensService) Revoke(ctx context.Context, callerAccountID string, rawToken string, revokeAll bool) error {
 	return s.real.Revoke(ctx, callerAccountID, rawToken, revokeAll)
+}
+func (s *failingTokensService) IssueAnonymousSessionBearerForExistingAccount(ctx context.Context, accountID, sessionID string, ttl time.Duration) (string, time.Time, error) {
+	return s.real.IssueAnonymousSessionBearerForExistingAccount(ctx, accountID, sessionID, ttl)
 }
 func (s *failingTokensService) RevokeAnonymousBearer(ctx context.Context, rawToken string) error {
 	return s.real.RevokeAnonymousBearer(ctx, rawToken)

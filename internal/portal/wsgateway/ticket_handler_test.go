@@ -167,6 +167,9 @@ func (h *wsTicketOnlyHandler) GetPortalInfo(_ context.Context, _ openapi.GetPort
 func (h *wsTicketOnlyHandler) CreateSessionResume(_ context.Context, _ openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
 	panic("not wired")
 }
+func (h *wsTicketOnlyHandler) ExchangeSessionResume(_ context.Context, _ openapi.ExchangeSessionResumeRequestObject) (openapi.ExchangeSessionResumeResponseObject, error) {
+	panic("not wired")
+}
 
 // Ensure wsTicketOnlyHandler satisfies the interface at compile time.
 var _ openapi.StrictServerInterface = (*wsTicketOnlyHandler)(nil)

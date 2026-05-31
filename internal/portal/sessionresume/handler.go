@@ -20,12 +20,13 @@ type realClock struct{}
 func (realClock) Now() time.Time { return time.Now().UTC() }
 
 // sessionResumeStore is the minimal store interface consumed by Handler and the
-// package-private helper functions (checkSessionMembership).
+// package-private helper functions (checkSessionMembership, ExchangeSessionResume).
 type sessionResumeStore interface {
 	store.SessionStore
 	store.SessionMemberStore
 	store.OrgMemberStore
 	store.ResumeTokenStore
+	store.AccountStore
 }
 
 // Handler implements the openapi.StrictServerInterface methods that the

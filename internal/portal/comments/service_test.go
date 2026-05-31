@@ -168,6 +168,9 @@ func (c *commentsOnlyStrict) GetPortalInfo(_ context.Context, _ openapi.GetPorta
 func (c *commentsOnlyStrict) CreateSessionResume(_ context.Context, _ openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
 	panic("not wired")
 }
+func (c *commentsOnlyStrict) ExchangeSessionResume(_ context.Context, _ openapi.ExchangeSessionResumeRequestObject) (openapi.ExchangeSessionResumeResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*commentsOnlyStrict)(nil)
 

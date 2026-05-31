@@ -178,6 +178,9 @@ func (stubStrict) GetPortalInfo(_ context.Context, _ openapi.GetPortalInfoReques
 func (stubStrict) CreateSessionResume(_ context.Context, _ openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
 	return nil, nil
 }
+func (stubStrict) ExchangeSessionResume(_ context.Context, _ openapi.ExchangeSessionResumeRequestObject) (openapi.ExchangeSessionResumeResponseObject, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Helper: build a test router wired with the real strict handler pipeline.

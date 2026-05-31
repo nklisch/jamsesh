@@ -228,6 +228,11 @@ func (c *combinedHandler) CreateSessionResume(ctx context.Context, req openapi.C
 	return c.SessionResumeHandler.CreateSessionResume(ctx, req)
 }
 
+// ExchangeSessionResume delegates to the session-resume handler.
+func (c *combinedHandler) ExchangeSessionResume(ctx context.Context, req openapi.ExchangeSessionResumeRequestObject) (openapi.ExchangeSessionResumeResponseObject, error) {
+	return c.SessionResumeHandler.ExchangeSessionResume(ctx, req)
+}
+
 // MarkSessionShipped delegates to the finalize handler.
 func (c *combinedHandler) MarkSessionShipped(ctx context.Context, req openapi.MarkSessionShippedRequestObject) (openapi.MarkSessionShippedResponseObject, error) {
 	return c.FinalizeHandler.MarkSessionShipped(ctx, req)
@@ -984,6 +989,7 @@ func main() {
 				// Session-membership enforced inside the handler.
 				r.With(sessionResumeRL).Post("/session-resumes", apiWrapper.CreateSessionResume)
 
+
 				// Playground — GET session requires a valid anonymous bearer
 				// (issued at create/join time). The handler validates membership.
 				r.Get("/playground/sessions/{id}", apiWrapper.GetPlaygroundSession)
@@ -995,6 +1001,12 @@ func main() {
 			// Cache-Control: no-store so deploy-time toggles propagate immediately
 			// (gate-security-portalinfo-no-cachecontrol-no-store).
 			r.With(portalinfo.NoCacheMiddleware).Get("/portal/info", apiWrapper.GetPortalInfo)
+
+			// Session-resume exchange: unauthenticated — the resume token IS the
+			// credential. Rate-limited per source IP to prevent replay-flood attacks
+			// against the single-use consume path.
+			sessionResumeExchangeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
+			r.With(sessionResumeExchangeRL).Post("/session-resumes/exchange", apiWrapper.ExchangeSessionResume)
 
 			// Playground — unauthenticated: create and join issue fresh bearers,
 			// tombstone is public (no credential needed to read destruction summary).

@@ -261,6 +261,57 @@ func (s *service) IssueAnonymousSessionBearer(ctx context.Context, sessionID, ni
 	return rawToken, accountID, expiresAt, nil
 }
 
+// IssueAnonymousSessionBearerForExistingAccount mints a session-scoped bearer
+// for an existing anonymous account. No new account row is created. The bearer
+// shape is identical to IssueAnonymousSessionBearer (same CreateAnonymousBearer
+// row with kind='anonymous_session_bearer').
+//
+// Returns ErrInvalidToken when the account is not found.
+// Returns ErrForbidden when the account exists but is not anonymous (IsAnonymous=false).
+func (s *service) IssueAnonymousSessionBearerForExistingAccount(ctx context.Context, accountID, sessionID string, ttl time.Duration) (string, time.Time, error) {
+	if accountID == "" {
+		return "", time.Time{}, errors.New("tokens: accountID must not be empty")
+	}
+	if sessionID == "" {
+		return "", time.Time{}, errors.New("tokens: sessionID must not be empty")
+	}
+
+	// Look up the account; it must exist and be anonymous.
+	acct, err := s.store.GetAccountByID(ctx, accountID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return "", time.Time{}, ErrInvalidToken
+		}
+		return "", time.Time{}, fmt.Errorf("tokens: look up account: %w", err)
+	}
+	if !acct.IsAnonymous {
+		// Durable accounts must use IssueShortLived — reject here to prevent
+		// a long-lived playground bearer being issued for a durable identity.
+		return "", time.Time{}, ErrForbidden
+	}
+
+	raw, hash, err := generateToken()
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("tokens: generate bearer: %w", err)
+	}
+
+	now := s.clock.Now().UTC()
+	expiresAt := now.Add(ttl)
+
+	if _, err := s.store.CreateAnonymousBearer(ctx, store.CreateAnonymousBearerParams{
+		ID:        "tok_" + uuid.New().String(),
+		AccountID: accountID,
+		TokenHash: hash,
+		SessionID: sessionID,
+		IssuedAt:  now,
+		ExpiresAt: expiresAt,
+	}); err != nil {
+		return "", time.Time{}, fmt.Errorf("tokens: create anon bearer: %w", err)
+	}
+
+	return raw, expiresAt, nil
+}
+
 func (s *service) Revoke(ctx context.Context, callerAccountID string, raw string, revokeAll bool) error {
 	row, err := s.store.GetOAuthTokenByHash(ctx, hashToken(raw))
 	if err != nil {

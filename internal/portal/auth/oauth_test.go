@@ -186,6 +186,9 @@ func (o *oauthOnlyStrict) GetPortalInfo(_ context.Context, _ openapi.GetPortalIn
 func (o *oauthOnlyStrict) CreateSessionResume(_ context.Context, _ openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
 	panic("not wired")
 }
+func (o *oauthOnlyStrict) ExchangeSessionResume(_ context.Context, _ openapi.ExchangeSessionResumeRequestObject) (openapi.ExchangeSessionResumeResponseObject, error) {
+	panic("not wired")
+}
 
 var _ openapi.StrictServerInterface = (*oauthOnlyStrict)(nil)
 
