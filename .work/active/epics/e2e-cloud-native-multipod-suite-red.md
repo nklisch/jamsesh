@@ -8,7 +8,7 @@ depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-31
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # e2e suite broadly red: cloud-native multi-pod router/lease/object-storage tests
@@ -149,3 +149,33 @@ feature — the only common harness crash (prometheus parse) is already fixed.
 - **Fuzz may grow an arc.** If fuzz characterization uncovers deep product
   input-handling bugs, split them out as a separate item rather than ballooning
   the fuzz feature.
+
+## Implementation discoveries (2026-05-31)
+
+Progress so far (this autopilot run):
+
+- **`fuzz` → review (suite green).** Fixed a real product bug: `ManifestStore.Load`
+  silently accepted corrupt manifests → dropped history; now fails fast with
+  `ErrCorruptManifest` (hardened via Codex review so `Save` is self-guarding too).
+- **`objectstore-sync` → review.** The "empty SHA prerequisite" was a test-only
+  ref-name mismatch (short `jam/...` vs full `refs/heads/jam/...`); fixed. Write
+  path is genuinely synchronous (RPO=0). Filed latent
+  `portal-rest-refs-no-cross-pod-hydration`.
+- **`lease-migration` → review.** Fixed a lease-takeover false "hashtext
+  collision" (`postgres.go`) that blocked every survivor takeover after an
+  unclean holder exit. Survivors now hydrate (the `503` symptom is gone).
+
+Never-green peeling exposed two NEW root causes, filed as child stories:
+
+- `handoff-nonfastforward-post-hydration-push` — with hydration working, the
+  handoff tests (+ stale-fencing, lease-acquire-and-fence) now fail at a
+  post-handoff `non-fast-forward` push. Next layer of the handoff tests; needs
+  product-vs-test classification (gitclient default-branch vs hydrate HEAD).
+- `lease-holder-killed-eager-vs-request-driven-slo` — `lease_holder_killed_test.go`
+  asserts eager background migration, but acquisition is request-driven by
+  design. Architecture decision needed (fix the test to trigger acquisition, or
+  add a background failover loop) — do NOT game the test.
+
+Remaining planned features: `router-redispatch` (independent), `cluster-smoke`
+(integration gate; will also hit the non-fast-forward push). The two new stories
+gate the handoff/lease suites going fully green.
