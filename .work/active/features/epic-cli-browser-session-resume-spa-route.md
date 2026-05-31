@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-spa-route
 kind: feature
-stage: drafting
+stage: implementing
 tags: [ui]
 parent: epic-cli-browser-session-resume
 depends_on: [epic-cli-browser-session-resume-portal-contract]
@@ -99,3 +99,116 @@ generic-error state composes with the existing `JoinerOutcome` pattern.
 `docs/UX.md` (the resume landing in the create/join journeys); `docs/SECURITY.md`
 note on the fragment-strip / referrer-policy / same-origin-exchange client-side
 safeguards (alongside the contract feature's server-side threat model).
+
+## Other agent review (Codex xhigh advisory, 2026-05-30)
+
+Accepted points folded into the design below:
+- **Playground bearer gap [verify first].** `auth.setPlaygroundContext` stores
+  `bearer`, but `bearerMiddleware` only sends `auth.token`, and `session-view`
+  needs auth. The resume screen's playground adoption must MIRROR exactly what
+  the working `JoinerPicker.svelte` does on a successful join (it works in
+  production) — do NOT reinvent the playground-bearer wiring. Read JoinerPicker's
+  success path and replicate.
+- **Confirm-switch is post-exchange** (the single-use token is already consumed
+  when we learn the identity). On decline → show the generic retry hint (run the
+  command again); do NOT persist the returned bearer until confirmed; keep only
+  display-safe fields (`display_name`) in reactive `$state`, never the bearer/token.
+- **Confirm only when an existing identity is present.** No durable token AND no
+  playground context → adopt directly (the common case). `auth.currentUser?.id`
+  exists and differs from response `account_id` → confirm. `isAuthenticated` but
+  `currentUser` null → confirm conservatively (no `/me` probe). Existing
+  playground context has no `account_id` → treat as unknown → confirm
+  conservatively.
+- **Bare fetch** for the exchange: hand-rolled `fetch('/api/session-resumes/
+  exchange', {method:'POST', credentials:'omit', headers JSON, body})` — NOT the
+  shared `client` (its `bearerMiddleware` would attach another account's bearer).
+- **Navigate from the response**, not route params: playground →
+  `/orgs/org_playground/sessions/{session_id}`, durable →
+  `/orgs/{org_id}/sessions/{session_id}` (encode segments; reuse `session-view`).
+- **Strip `#rt` immediately** via `history.replaceState(null,'',pathname+search)`;
+  never log/render the token or bearer; don't put the full exchange response in
+  reactive state.
+- Svelte footguns: `onMount` (not `$effect`) for the exchange; union state
+  `exchanging | confirming | error` (`view-state-union-machine`); add the auth
+  method via the `wrapper-object-rune-store`; clear `_loadingMe`/cached user/orgs
+  when replacing auth state. V1 durable expiry stays simple (no 1h warning; 401
+  later signs out).
+
+## Architectural choice
+
+Mirror `MagicLinkExchange.svelte` (the shipped transitional token-exchange
+screen) for the resume route, with a `confirming` state added for the
+account-mismatch guard and a bare (un-authed) fetch for the exchange. A new
+`auth.setAccessOnly` method handles durable adoption (access-only, no refresh).
+Two stories split by surface: the shared auth method (Story A, focused tests on
+auth semantics) and the route+screen (Story B).
+
+## Implementation Units
+
+### Unit 1: `auth.setAccessOnly` (durable access-only adoption)
+**Story**: `epic-cli-browser-session-resume-spa-route-auth-access-only`
+**File**: `frontend/src/lib/auth.svelte.ts` (+ `auth.test.ts`)
+
+```ts
+// On the wrapper-object rune store `auth`:
+// setAccessOnly adopts a durable browser session that has NO refresh token
+// (resume exchange returns access-only). Sets _token; CLEARS _refresh +
+// localStorage refresh; clears cached current-user/orgs + _loadingMe so the
+// next /me runs fresh as the adopted account.
+setAccessOnly(access: string): void
+```
+
+**Acceptance**:
+- [ ] `setAccessOnly` sets `auth.token`, and `auth.refresh` is null + the
+      `jamsesh.refresh` localStorage key is removed.
+- [ ] Any cached current-user/orgs + `_loadingMe` are cleared (next `/me` is fresh).
+- [ ] `auth.token` persists to `jamsesh.token` (consistent with `setTokens`).
+
+### Unit 2: resume routes + `ResumeExchange.svelte`
+**Story**: `epic-cli-browser-session-resume-spa-route-route-screen`
+**Files**: `frontend/src/lib/router.svelte.ts`, `frontend/src/lib/screens/ResumeExchange.svelte`,
+`frontend/src/lib/App.svelte` (route→screen switch), `docs/UX.md` + `docs/SECURITY.md` (roll-forward)
+
+- Routes (public, `requiresAuth:false`, mounted before `session-view`):
+  `/playground/s/{sessionId}/resume` and `/orgs/{orgId}/sessions/{sessionId}/resume`.
+- `ResumeExchange.svelte` (mirror MagicLinkExchange): `onMount` → read `#rt` from
+  `location.hash`; missing → error. `history.replaceState(null,'',pathname+search)`
+  to strip. Bare `fetch` POST `/api/session-resumes/exchange` `{resume_token}`,
+  `credentials:'omit'`. On success: decide confirm (per the rules above);
+  `confirming` → user accepts → adopt; declines → generic retry hint. Adopt:
+  playground → mirror JoinerPicker's success handling; durable →
+  `auth.setAccessOnly(bearer)`. Then `navigate` from the response. On
+  failure/expired/used → generic error + retry hint (no oracle).
+- Roll forward `docs/UX.md` (resume landing) + `docs/SECURITY.md` (client-side
+  fragment-strip / bare-fetch / no-token-logging safeguards).
+
+**Acceptance**:
+- [ ] Bare fetch sends NO `Authorization` header; `#rt` stripped before any other
+      nav/asset; token/bearer never logged or rendered.
+- [ ] Success (no existing identity) adopts directly + navigates (playground via
+      JoinerPicker's path; durable via `setAccessOnly`).
+- [ ] Existing differing/unconfirmable identity → `confirming`; accept adopts,
+      decline shows retry hint and does NOT persist the bearer.
+- [ ] Expired/used/invalid token → generic error + retry hint (no oracle).
+- [ ] Public route flags; navigation paths derived from the response.
+
+## Implementation Order
+
+1. Unit 1 (`…-auth-access-only`) — depends on: `[]`
+2. Unit 2 (`…-route-screen`) — depends on: `[…-auth-access-only]`
+
+## Testing
+
+- Unit 1: `auth.test.ts` — setAccessOnly sets token, clears refresh +
+  localStorage refresh + cached user/orgs/_loadingMe; token persisted.
+- Unit 2: `ResumeExchange.test.ts` (jsdom; `spa-test-module-mock-barrel` +
+  `window-location-defineproperty-stub`): bare-fetch-no-Authorization; `#rt`
+  strip; success adopt+navigate (playground + durable); confirm accept/decline
+  (decline → no bearer persisted + retry hint); generic error on bad token.
+
+## Risks
+
+- **Playground bearer wiring** — the single biggest integration risk; mitigated
+  by mirroring the shipped JoinerPicker success path rather than reinventing.
+- **Post-exchange confirm consumes the token** — decline can't be undone; the UX
+  must make "run the command again" clear. Acceptable (single-use is the point).
