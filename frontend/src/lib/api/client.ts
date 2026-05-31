@@ -4,6 +4,13 @@ import { auth } from '$lib/auth.svelte';
 
 const bearerMiddleware: Middleware = {
   onRequest({ request }) {
+    // Respect an explicit per-request Authorization header — never overwrite it.
+    // signOut() clears _token then POSTs /logout with the *captured* durable
+    // bearer explicitly; the playground fallback below must not replace it.
+    if (request.headers.has('Authorization')) return request;
+    // Durable token wins; fall back to the in-memory anonymous playground
+    // bearer so playground (anonymous) sessions authenticate via the shared
+    // client (session GET, WS ticket, etc.).
     const token = auth.token ?? auth.playgroundContext?.bearer;
     if (token) request.headers.set('Authorization', `Bearer ${token}`);
     return request;

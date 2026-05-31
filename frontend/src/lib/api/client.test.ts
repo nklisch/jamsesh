@@ -140,6 +140,30 @@ describe('client — Bearer middleware', () => {
     expect(captured!.headers.get('Authorization')).toBe('Bearer durable-token');
   });
 
+  test('does NOT overwrite an explicit Authorization header (signOut sends the captured durable bearer)', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    // Mimic the post-signOut state: durable token cleared, but a playground
+    // context lingers. The explicit header must survive.
+    auth.setPlaygroundContext({ sessionId: 'sess-pg', bearer: 'pg-bearer-xyz', nickname: 'Alice' });
+
+    const { client } = await import('./client');
+
+    let captured: Request | null = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      captured = input as Request;
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+
+    await client.POST('/api/auth/logout', {
+      headers: { Authorization: 'Bearer captured-durable-token' },
+    });
+
+    expect(captured).not.toBeNull();
+    // The explicit captured durable bearer wins — the playground fallback must
+    // NOT replace it.
+    expect(captured!.headers.get('Authorization')).toBe('Bearer captured-durable-token');
+  });
+
   test('updates the header when setTokens is called after client is created', async () => {
     const { auth } = await import('$lib/auth.svelte');
     const { client } = await import('./client');
