@@ -1,7 +1,7 @@
 ---
 id: bug-followup-adjacent-client-abort-classification
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, error-handling]
 parent: null
 depends_on: []

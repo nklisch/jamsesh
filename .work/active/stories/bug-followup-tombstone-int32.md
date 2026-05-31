@@ -1,7 +1,7 @@
 ---
 id: bug-followup-tombstone-int32
 kind: story
-stage: review
+stage: done
 tags: [bug, portal, data-layer]
 parent: null
 depends_on: []
