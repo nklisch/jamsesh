@@ -1,7 +1,7 @@
 ---
 id: bug-squash-finalize-lock-no-transaction
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-data-tx-integrity
 depends_on: [bug-squash-sqlite-withtx-deferred-not-immediate]
@@ -27,3 +27,7 @@ h.store.SupersedeFinalizeLock(...)  // step 2
 h.store.SetFinalizeLock(...)        // step 3
 h.store.UpdateSessionStatus(...)    // step 4 — no enclosing tx
 ```
+
+## Implementation notes
+
+Added `WithTx` to `finalizeStore` interface in `handler.go`. Restructured `AcquireFinalizeLock`: pre-flight reads (existing lock, session) stay outside the tx; branch 2 (idempotent) and branch 4 (409 held-by-other) return early before the tx. Branch 3 (stale) and branch 5 (override) both enter `WithTx` which does ReleaseFinalizeLock (for the existing lock) → InsertFinalizeLock → SupersedeFinalizeLock (branch 5 only) → SetFinalizeLock → UpdateSessionStatus (if active). `session.finalizing` emit stays post-commit. Return 409 on `ErrUniqueViolation` regardless of `supersedeOldID` (fresh-insert races also hit the unique index). Updated `testFinalizeStore` and `failingReleaseLockStore` in test helpers to add `WithTx`. Tests: `TestAcquireFinalizeLock_TxRollbackOnMidSequenceFailure` (injects error on InsertFinalizeLock, asserts stale lock's released_at is nil and stale lock is still the active lock), `TestAcquireFinalizeLock_UniqueViolationReturns409Regardless` (injects ErrUniqueViolation, asserts 409 response).

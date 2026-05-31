@@ -249,6 +249,9 @@ func (f *failingReleaseLockStore) GetAccountByGitHubUserID(ctx context.Context, 
 func (f *failingReleaseLockStore) UpdateAccountDisplayName(ctx context.Context, p store.UpdateAccountDisplayNameParams) error {
 	return f.realStore.UpdateAccountDisplayName(ctx, p)
 }
+func (f *failingReleaseLockStore) WithTx(ctx context.Context, fn func(store.TxStore) error) error {
+	return f.realStore.WithTx(ctx, fn)
+}
 
 func TestReleaseFinalizeLock_DBUnavailable_WrapsAsDepDB(t *testing.T) {
 	env := newFinalizeEnv(t)

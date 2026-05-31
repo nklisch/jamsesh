@@ -161,6 +161,7 @@ type testFinalizeStore interface {
 	store.SessionMemberStore
 	store.OrgMemberStore
 	store.AccountStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
 }
 
 // newFinalizeHandlerWith builds a finalize.Handler backed by the supplied

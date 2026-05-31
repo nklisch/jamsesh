@@ -1,6 +1,7 @@
 package finalize
 
 import (
+	"context"
 	"time"
 
 	"jamsesh/internal/db/store"
@@ -29,6 +30,7 @@ type finalizeStore interface {
 	store.SessionMemberStore
 	store.OrgMemberStore
 	store.AccountStore
+	WithTx(ctx context.Context, fn func(store.TxStore) error) error
 }
 
 // Handler implements the openapi.StrictServerInterface methods that the

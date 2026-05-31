@@ -123,22 +123,13 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 	emitFinalizing := false
 
 	if hadExisting {
-		// Branch 2: caller already holds an active lock — idempotent.
+		// Branch 2: caller already holds an active lock — idempotent (read-only, no tx needed).
 		if existing.AcquiredByAccountID == acc.ID {
 			return openapi.AcquireFinalizeLock201JSONResponse(lockStatus(existing, true)), nil
 		}
 
-		// Branch 3: stale lock — release and proceed.
-		if IsLockExpired(existing.LastActivityAt, now) {
-			if err := h.store.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
-				ID:         existing.ID,
-				ReleasedAt: now,
-			}); err != nil {
-				return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: release stale lock: %w", err))
-			}
-			hadExisting = false
-		} else if !override {
-			// Branch 4: fresh, held by another member, no override — 409.
+		// Branch 4: fresh lock, held by another member, no override — 409 (no mutation).
+		if !IsLockExpired(existing.LastActivityAt, now) && !override {
 			details := map[string]interface{}{
 				"held_by_account_id": existing.AcquiredByAccountID,
 				"lock_id":            existing.ID,
@@ -149,33 +140,16 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 				Message: "another member holds the finalize lock for this session",
 				Details: details,
 			}), nil
+		}
+
+		// Branch 3: stale lock; branch 5: override. Both proceed to the tx below.
+		// stale: hadExisting=true, IsLockExpired=true → needRelease=true, supersedeOldID=""
+		// override: hadExisting=true, fresh, override=true → needRelease=true, supersedeOldID=existing.ID
+		if IsLockExpired(existing.LastActivityAt, now) {
+			// Branch 3: stale — release inside the tx, no supersede marker needed.
+			// supersedeOldID stays ""
 		} else {
-			// Branch 5: fresh, held by another member, override.
-			//
-			// The unique partial index on (session_id) WHERE
-			// superseded_by_lock_id IS NULL AND released_at IS NULL means we
-			// cannot INSERT the new row while the existing row is still "active"
-			// (both columns NULL). The self-FK on superseded_by_lock_id prevents
-			// setting it before the new row exists. Resolution: release the
-			// existing row first (removes it from the unique index's scope), then
-			// INSERT, then set superseded_by_lock_id on the released row so the
-			// audit trail is preserved. The existing row ends up with both
-			// released_at and superseded_by_lock_id set; the active-lock query
-			// (released_at IS NULL AND superseded_by_lock_id IS NULL) correctly
-			// excludes it.
-			//
-			// Concurrency: if two callers race here, whichever reaches
-			// ReleaseFinalizeLock first wins the "release" (the second caller's
-			// ReleaseFinalizeLock is a no-op because the WHERE released_at IS NULL
-			// guard fires). Then whichever reaches InsertFinalizeLock first wins
-			// the INSERT (the second caller hits the unique-index violation and
-			// returns ErrOverrideRaceLost below).
-			if err := h.store.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
-				ID:         existing.ID,
-				ReleasedAt: now,
-			}); err != nil {
-				return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: release existing lock for override: %w", err))
-			}
+			// Branch 5: fresh override — release inside tx, set supersede marker after insert.
 			supersedeOldID = existing.ID
 		}
 	}
@@ -184,63 +158,87 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 	newLockAcquiredAt = now
 	newLockLastActivity = now
 
-	if err := h.store.InsertFinalizeLock(ctx, store.InsertFinalizeLockParams{
-		ID:                  newLockID,
-		OrgID:               orgID,
-		SessionID:           sessionID,
-		AcquiredByAccountID: acc.ID,
-		AcquiredAt:          newLockAcquiredAt,
-		LastActivityAt:      newLockLastActivity,
-		SelectedCommitSHAs:  "[]",
-		TargetBranch:        "",
-		BaseSHA:             "",
-		Mode:                "squash",
-	}); err != nil {
-		if errors.Is(err, store.ErrUniqueViolation) && supersedeOldID != "" {
-			// The unique partial index on (session_id) WHERE
-			// superseded_by_lock_id IS NULL AND released_at IS NULL rejected
-			// this INSERT because a concurrent override caller already inserted
-			// their row. The winner is now the active lock; the loser (this
-			// caller) did not insert a row. Surface a 409 so the caller can
-			// re-query and discover the winner. This is not a transient dep
-			// failure — return nil Go error; the 409 body carries the signal.
-			return openapi.AcquireFinalizeLock409JSONResponse(openapi.ErrorEnvelope{
-				Error:   "finalize.override_race_lost",
-				Message: "another caller acquired the finalize lock simultaneously; re-query to see the current lock holder",
-			}), nil
-		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: insert lock: %w", err))
+	// Wrap the entire mutation sequence in a single transaction so a failure at
+	// any step rolls back all prior mutations in this sequence. This prevents
+	// partial state (e.g. ReleaseFinalizeLock succeeded but InsertFinalizeLock
+	// failed) that would leave the session in an inconsistent state.
+	// Pre-flight READS (existing-lock lookup, session load) are kept OUTSIDE the
+	// tx above; only mutations belong in the closure.
+	existingID := "" // captured for use inside tx closure
+	if hadExisting {
+		existingID = existing.ID
 	}
+	err = h.store.WithTx(ctx, func(tx store.TxStore) error {
+		// Branch 3 or 5: release the current lock (stale or override) first so
+		// InsertFinalizeLock can satisfy the unique partial index.
+		if hadExisting {
+			if err := tx.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
+				ID:         existingID,
+				ReleasedAt: now,
+			}); err != nil {
+				return fmt.Errorf("release lock: %w", err)
+			}
+		}
 
-	if supersedeOldID != "" {
-		if err := h.store.SupersedeFinalizeLock(ctx, store.SupersedeFinalizeLockParams{
-			ID:                 supersedeOldID,
-			SupersededByLockID: newLockID,
+		if err := tx.InsertFinalizeLock(ctx, store.InsertFinalizeLockParams{
+			ID:                  newLockID,
+			OrgID:               orgID,
+			SessionID:           sessionID,
+			AcquiredByAccountID: acc.ID,
+			AcquiredAt:          newLockAcquiredAt,
+			LastActivityAt:      newLockLastActivity,
+			SelectedCommitSHAs:  "[]",
+			TargetBranch:        "",
+			BaseSHA:             "",
+			Mode:                "squash",
 		}); err != nil {
-			return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: supersede lock: %w", err))
+			return fmt.Errorf("insert lock: %w", err)
 		}
-	}
 
-	accID := acc.ID
-	if err := h.store.SetFinalizeLock(ctx, store.SetFinalizeLockParams{
-		OrgID:     orgID,
-		ID:        sessionID,
-		AccountID: &accID,
-	}); err != nil {
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: set sessions pointer: %w", err))
-	}
+		if supersedeOldID != "" {
+			if err := tx.SupersedeFinalizeLock(ctx, store.SupersedeFinalizeLockParams{
+				ID:                 supersedeOldID,
+				SupersededByLockID: newLockID,
+			}); err != nil {
+				return fmt.Errorf("supersede lock: %w", err)
+			}
+		}
 
-	if sess.Status == "active" {
-		if err := h.store.UpdateSessionStatus(ctx, store.UpdateSessionStatusParams{
-			OrgID:  orgID,
-			ID:     sessionID,
-			Status: "finalizing",
+		accIDPtr := acc.ID
+		if err := tx.SetFinalizeLock(ctx, store.SetFinalizeLockParams{
+			OrgID:     orgID,
+			ID:        sessionID,
+			AccountID: &accIDPtr,
 		}); err != nil {
-			return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: update session status: %w", err))
+			return fmt.Errorf("set sessions pointer: %w", err)
 		}
-		emitFinalizing = true
+
+		if sess.Status == "active" {
+			if err := tx.UpdateSessionStatus(ctx, store.UpdateSessionStatusParams{
+				OrgID:  orgID,
+				ID:     sessionID,
+				Status: "finalizing",
+			}); err != nil {
+				return fmt.Errorf("update session status: %w", err)
+			}
+			emitFinalizing = true
+		}
+
+		return nil
+	})
+	// Return 409 on unique-violation regardless of supersedeOldID — a fresh-insert
+	// race (no prior override release) also hits the unique partial index.
+	if errors.Is(err, store.ErrUniqueViolation) {
+		return openapi.AcquireFinalizeLock409JSONResponse(openapi.ErrorEnvelope{
+			Error:   "finalize.override_race_lost",
+			Message: "another caller acquired the finalize lock simultaneously; re-query to see the current lock holder",
+		}), nil
+	}
+	if err != nil {
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("finalize: acquire lock tx: %w", err))
 	}
 
+	// Emit session.finalizing AFTER the transaction commits (tx-emit-then-fanout).
 	if emitFinalizing {
 		type sessionFinalizingPayload struct {
 			SessionID string `json:"session_id"`
