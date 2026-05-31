@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-cli-handoff
 kind: feature
-stage: drafting
+stage: implementing
 tags: [plugin]
 parent: epic-cli-browser-session-resume
 depends_on: [epic-cli-browser-session-resume-portal-contract]
@@ -110,3 +110,133 @@ solve reopen-the-right-one-later"). Footguns above are its accepted findings.
 
 `docs/UX.md` (the resume step in the create/join CLI flows); the `/jamsesh:jam`
 skill if a new flag/command surfaces.
+
+## Other agent review (Codex xhigh advisory, 2026-05-30)
+
+Accepted points folded into the design below:
+- **Token safety is the highest risk.** Do NOT reuse the existing
+  `openInBrowser`/`osopen.Open` seam for the resume URL — `osopen.Open` PRINTS
+  the raw URL on launch failure (and on unsupported OS), leaking the `#rt=`
+  fragment token. A token-safe opener that never prints the secret URL is
+  required (Unit 1).
+- **Client credential class.** `portalclient.Client` only reads the per-session
+  bearer when `Client.SessionID` is set; otherwise it uses the legacy
+  account-token path. The mint client MUST set `SessionID` so the per-session
+  bearer is used — this is how playground (anon bearer) AND durable both
+  authenticate correctly. Do NOT use `buildPortalClient()` for the playground
+  mint.
+- **Failure semantics differ**: `--open` mint failure → warn + fall back to the
+  old token-free open (create/join already succeeded). Standalone `jamsesh
+  resume` mint failure → ERROR, open nothing (identity adoption is its whole
+  purpose).
+- **Bare `resume` resolution**: pre-existing `ResolveSession` env mismatch
+  (backlog `cli-resolvesession-env-var-mismatch`) — use the write-consistent
+  resolver `state.CurrentSessionID` (`CLAUDE_SESSION_ID`) for bare resume; if a
+  CC instance env is present but unmapped, require an explicit id even with one
+  session; outside CC context with exactly one session, resume it.
+- **Footguns**: generated fields are `OrgId`/`SessionId`/`ResumeUrl`; no `--json`
+  for resume in v1 (token-exposure risk); no portal preflight (special-case
+  404/405 → "portal doesn't support resume handoff"); expiry message "expires in
+  60s" but NEVER print the link; browser-argv fragment exposure is an inherent
+  local risk mitigated by the 60s single-use TTL.
+
+## Architectural choice
+
+A **token-safe opener** + a shared **mint-and-open** helper, consumed by both
+the `--open` adoption path (new/join) and the new `resume` subcommand. The mint
+client is constructed with `SessionID` set so the per-session bearer
+authenticates the mint for both credential classes. Three stories split by
+failure-semantics/risk (Codex's cut), not just by shared code.
+
+## Implementation Units
+
+### Unit 1: token-safe opener + mint helper + `--open` adoption
+**Story**: `epic-cli-browser-session-resume-cli-handoff-mint-open-adopt`
+**Files**: `cmd/jamsesh/internal/osopen/osopen.go` (+ test),
+`cmd/jamsesh/sessioncmd/resume.go` (new: shared helper), `new.go`, `join.go` (+ tests)
+
+```go
+// osopen: a token-safe variant that NEVER writes the URL anywhere (no
+// print-on-failure), for URLs carrying secrets in the fragment.
+func OpenSilent(rawURL string) error   // launches; returns err on failure; prints NOTHING
+
+// sessioncmd: shared mint+open helper. pc MUST be built with SessionID set so
+// the per-session bearer (anon or durable) authenticates the mint.
+func mintAndOpenResume(ctx context.Context, pc *portalclient.Client, orgID, sessionID string) error
+//  1. resp := PostJSON[openapi.SessionResumeResponse](ctx, pc, "/api/session-resumes",
+//        openapi.SessionResumeRequest{OrgId: orgID, SessionId: sessionID})
+//  2. validate resp.SessionId == sessionID AND resp.ResumeUrl != "" BEFORE opening (else error, open nothing)
+//  3. fmt.Println("Opening your session in the browser (resume link expires in 60s)…")  // token-free
+//  4. return osopen.OpenSilent(resp.ResumeUrl)  // never prints the URL
+```
+
+`--open` adoption (replaces the token-free open at the existing `cmd.Bool("open")`
+sites): `newAction` (durable), `newPlaygroundAction` (playground), `joinAction`
+each build a `pc` with `SessionID` set and call `mintAndOpenResume`; on error,
+print a one-line WARNING and fall back to the previous token-free
+`openInBrowser(sessionViewURL/playgroundJoinURL)` behavior.
+
+**Acceptance**:
+- [ ] `--open` (durable, playground, join) mints then opens the exact
+      `resp.ResumeUrl`; uses the per-session bearer (playground → anon, not OAuth).
+- [ ] `OpenSilent` and the mint/open path NEVER write `#rt=` (or the resume_url)
+      to stdout/stderr — on success, on mint failure, AND on browser-open failure.
+- [ ] Empty `ResumeUrl` or `SessionId` mismatch → error before opening.
+- [ ] `--open` mint failure → warning + token-free fallback open (old behavior).
+- [ ] Tests override the open seam + use an httptest portal for mint.
+
+### Unit 2: `jamsesh resume [session-id]` subcommand
+**Story**: `epic-cli-browser-session-resume-cli-handoff-resume-command`
+**Files**: `cmd/jamsesh/sessioncmd/resume.go`, `cmd/jamsesh/main.go` (register)
+
+`ResumeCommand()` — arg `[session-id]` optional. Resolve: explicit id → that
+session; bare → `state.CurrentSessionID()` (write-consistent / `CLAUDE_SESSION_ID`,
+NOT `ResolveSession` — see backlog `cli-resolvesession-env-var-mismatch`); if a
+CC-instance env is present but unmapped → error with a `jamsesh status` hint;
+outside CC context with exactly one session → resume it; multiple sessions +
+unmapped → error + `jamsesh status` hint. Read `org_id` from session state, build
+`pc` with `SessionID` set, call `mintAndOpenResume`. Mint failure → ERROR
+(nonzero exit), open nothing.
+
+**Acceptance**:
+- [ ] `jamsesh resume <id>` mints+opens for that session; `jamsesh resume`
+      (bare) resolves the current-instance session.
+- [ ] Multiple sessions + unmapped instance → error citing `jamsesh status`,
+      opens nothing.
+- [ ] Mint failure → nonzero exit, nothing opened, no token printed.
+- [ ] Registered as a top-level command in `main.go`.
+
+### Unit 3: skill + docs roll-forward
+**Story**: `epic-cli-browser-session-resume-cli-handoff-skill-docs`
+**Files**: `plugins/jamsesh/skills/jam/SKILL.md`, `docs/UX.md`
+
+Document `--open` now adopts identity + the `jamsesh resume [session-id]`
+command; UX.md resume step in create/join flows. Present-tense; describes
+shipped behavior.
+
+## Implementation Order
+
+1. Unit 1 (`…-mint-open-adopt`) — depends on: `[]` (portal contract is done)
+2. Unit 2 (`…-resume-command`) — depends on: `[…-mint-open-adopt]` (uses the helper + opener)
+3. Unit 3 (`…-skill-docs`) — depends on: `[…-resume-command]` (docs the shipped surface)
+
+## Testing
+
+- Unit 1: override the `openURL`/`OpenSilent` seam to capture the opened URL +
+  assert NO `#rt=` ever reaches stdout/stderr (the security AC); httptest portal
+  serving `POST /api/session-resumes`; assert playground path uses the anon
+  per-session bearer (not OAuth); `--open` mint-failure → warn + token-free open.
+- Unit 2: resolver matrix (explicit id, bare-current, multi-session-unmapped →
+  error+hint); mint-failure → nonzero + nothing opened.
+- Unit 3: reviewer confirms copy.
+
+## Risks
+
+- **Token leakage via the opener** (Unit 1) is the headline risk — the
+  `OpenSilent` path and every failure branch must be silent about the URL. The
+  test asserting "no `#rt=` in any output" is the guard.
+- **Wrong credential class**: if the mint client doesn't set `SessionID`, the
+  legacy account-token path breaks playground mint. The design pins
+  `SessionID`-set client construction.
+- Bare-resume resolution rides on the parked `ResolveSession` env mismatch —
+  mitigated by using `state.CurrentSessionID`; the parked item fixes the root.
