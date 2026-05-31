@@ -28,24 +28,14 @@
 // no replay frame is sent — the portal's 2-second timer falls through
 // and the stream goes straight to live.
 //
-// EventEnvelope note:
-// `EventEnvelope` is not yet in docs/openapi.yaml — no WS event
-// schemas have landed. Until the discriminated union is generated,
-// this module types the envelope as an open-ended object. When a
-// future feature adds EventEnvelope to the spec and regenerates
-// types.gen.ts, swap the local alias below for the import:
-//
-//   import type { components } from './api/types.gen';
-//   type EventEnvelope = components['schemas']['EventEnvelope'];
-//
-// The `subscribe` signature uses a string `type` param directly so
-// the API surface stays stable across that transition.
+// The `subscribe` signature uses a string `type` param directly so the public
+// API stays tolerant of event types before callers regenerate local clients.
 
 import { auth } from '$lib/auth.svelte';
 import { client } from '$lib/api/client';
+import type { components } from '$lib/api/types.gen';
 
-// Open-ended until EventEnvelope lands in the spec.
-type EventEnvelope = { type: string; [key: string]: unknown };
+type EventEnvelope = components['schemas']['EventEnvelope'];
 type Handler = (e: EventEnvelope) => void;
 
 export type WsStatus = 'connecting' | 'open' | 'reconnecting';

@@ -23,9 +23,9 @@ type stubStorage struct{}
 func (s *stubStorage) RepoPath(orgID, sessionID string) string {
 	return "/tmp/" + orgID + "/" + sessionID
 }
-func (s *stubStorage) CreateRepo(_ context.Context, _, _ string) error  { return nil }
-func (s *stubStorage) RemoveRepo(_ context.Context, _, _ string) error  { return nil }
-func (s *stubStorage) RepoExists(_, _ string) (bool, error)             { return false, nil }
+func (s *stubStorage) CreateRepo(_ context.Context, _, _ string) error { return nil }
+func (s *stubStorage) RemoveRepo(_ context.Context, _, _ string) error { return nil }
+func (s *stubStorage) RepoExists(_, _ string) (bool, error)            { return false, nil }
 func (s *stubStorage) ArchiveSession(_ context.Context, _, _ string, _ storage.ArchiveInfo) error {
 	return nil
 }
@@ -146,11 +146,6 @@ func newFinalizeEnvPool(t *testing.T, pc db.PoolConfig) *finalizeEnv {
 func contextWithAccount(ctx context.Context, acct *store.Account) context.Context {
 	return tokens.ContextWithAccount(ctx, acct)
 }
-
-// ensure the finalize package import is materially used so go test doesn't
-// complain about unused imports when only behaviour through env.handler is
-// exercised.
-var _ = finalize.FinalizeLockTTL
 
 // testFinalizeStore mirrors the unexported finalizeStore interface so
 // newFinalizeHandlerWith can accept narrow mock types without requiring them

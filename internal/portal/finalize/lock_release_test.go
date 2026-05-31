@@ -111,9 +111,6 @@ func TestReleaseFinalizeLock_NonCaller_403(t *testing.T) {
 	}
 }
 
-// Build-time check that storage stub satisfies storage.Service.
-var _ store.FinalizeLock // keeps store import live in this file
-
 // ---------------------------------------------------------------------------
 // Dep-failure test
 // ---------------------------------------------------------------------------

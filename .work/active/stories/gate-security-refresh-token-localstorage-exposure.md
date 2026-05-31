@@ -90,3 +90,7 @@ Implemented in the consolidated v0.5.0 gate-drain pass. The pass addressed this 
 **Nits**: none
 
 **Notes**: Story fast-lane review. Verification evidence is present in the implementation record and reports green targeted Go tests, frontend tests, Svelte check, frontend build, and stale-string scans. Release-bound item remains active for `v0.5.0` deploy packaging.
+
+## Completion correction (2026-05-31)
+
+Final Opus review called out an undocumented remediation tradeoff. The v0.5.0 implementation intentionally chose a bounded mitigation, not the full architectural cookie/BFF remediation: `auth.svelte.ts` now clears any persisted `jamsesh.refresh` value at module load and keeps refresh tokens memory-only, while the access token remains in `localStorage`. This removes refresh-token-at-rest exposure to later scripts but still leaves the in-session refresh token JS-readable, and it means a page reload loses refresh capability and can force re-login once the access token expires. The stronger HttpOnly-cookie or BFF design remains future feature-scope work.

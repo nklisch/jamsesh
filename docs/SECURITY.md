@@ -270,7 +270,7 @@ The default unauthenticated portal surface is intentionally narrow:
 - `POST /api/session-resumes/exchange` — public, rate-limited resume-token
   exchange; the resume token is the sole credential and ambient
   `Authorization` is ignored.
-- `/api/csp-report` — public CSP violation report sink.
+- `/_csp-report` — public CSP violation report sink.
 
 All other `/api/*`, `/git/*`, and MCP routes require a valid bearer/basic auth
 credential and server-side membership checks where session data is involved.
@@ -278,8 +278,8 @@ credential and server-side membership checks where session data is involved.
 **CSP regression detection:** A `Content-Security-Policy-Report-Only` header
 with `report-uri /_csp-report` is emitted alongside the enforced CSP so
 inline-script policy violations surface in server logs. The `/_csp-report`
-route is a placeholder; see backlog item
-`bug-csp-report-endpoint-not-wired` for wiring an actual report receiver.
+route accepts browser CSP reports without authentication and records valid
+reports through structured server logging.
 
 ## Supply chain and integrity
 

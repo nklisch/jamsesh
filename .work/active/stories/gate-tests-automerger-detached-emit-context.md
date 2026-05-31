@@ -54,3 +54,7 @@ Implemented in the consolidated v0.5.0 gate-drain pass. The pass addressed this 
 **Nits**: none
 
 **Notes**: Story fast-lane review. Verification evidence is present in the implementation record and reports green targeted Go tests, frontend tests, Svelte check, frontend build, and stale-string scans. Release-bound item remains active for `v0.5.0` deploy packaging.
+
+## Completion correction (2026-05-31)
+
+Final Opus review found the missing test had not been added. Corrected in the follow-up pass with `TestApply_EmitRetry_DetachedContextEmitsAfterWorkerCancel` in `internal/portal/automerger/emit_retry_test.go`, which cancels the worker context before `Apply` and asserts the detached emit path still records `merge.succeeded`.

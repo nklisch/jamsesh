@@ -76,3 +76,7 @@ Implemented in the consolidated v0.5.0 gate-drain pass. The pass addressed this 
 **Nits**: none
 
 **Notes**: Story fast-lane review. Verification evidence is present in the implementation record and reports green targeted Go tests, frontend tests, Svelte check, frontend build, and stale-string scans. Release-bound item remains active for `v0.5.0` deploy packaging.
+
+## Completion correction (2026-05-31)
+
+Final Opus review found this security item had been closed without a handler change. Corrected in the follow-up pass by moving the anonymous-session-member check before the session lookup in `internal/portal/playground/handler.go`, so a bearer for another playground session gets the same 401 shape for both nonexistent and existing-but-not-member session IDs. The handler test now asserts the nonexistent target with another session's bearer returns 401.

@@ -103,7 +103,8 @@ describe('portalInfo store', () => {
     const { portalInfo } = await import('$lib/portalInfo.svelte');
 
     await portalInfo.init();
-    await portalInfo.init(); // second call
+    const p2 = portalInfo.init(); // second call
+    await expect(p2).resolves.toBeUndefined();
 
     expect(mockGET).toHaveBeenCalledTimes(1);
     expect(portalInfo.loaded).toBe(true);

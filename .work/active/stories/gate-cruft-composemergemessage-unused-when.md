@@ -58,3 +58,7 @@ Implemented in the consolidated v0.5.0 gate-drain pass. The pass addressed this 
 **Nits**: none
 
 **Notes**: Story fast-lane review. Verification evidence is present in the implementation record and reports green targeted Go tests, frontend tests, Svelte check, frontend build, and stale-string scans. Release-bound item remains active for `v0.5.0` deploy packaging.
+
+## Completion correction (2026-05-31)
+
+Final Opus review found the earlier consolidated implementation note was too broad. Corrected in the follow-up pass by removing the unused `when time.Time` parameter and `_ = when` keeper from `composeMergeMessage`, and by updating the single call site in `internal/portal/automerger/outcomes.go`.

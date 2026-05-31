@@ -1151,7 +1151,7 @@ describe('ws — async cancellation guards', () => {
       return { data: { ticket, expires_in_seconds: 60 }, error: undefined, response: new Response() } as any;
     });
 
-    const { subscribe, close } = await import('$lib/ws.svelte');
+    const { subscribe } = await import('$lib/ws.svelte');
 
     // Open the initial connection.
     const unsub = subscribe('sess-ac2', 'ev', vi.fn());

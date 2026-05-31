@@ -21,9 +21,7 @@ import (
 	"testing"
 	"time"
 
-	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/automerger"
@@ -226,7 +224,7 @@ type singleRepoStorage struct {
 	repoDir string
 }
 
-func (s *singleRepoStorage) RepoPath(_, _ string) string { return s.repoDir }
+func (s *singleRepoStorage) RepoPath(_, _ string) string                     { return s.repoDir }
 func (s *singleRepoStorage) CreateRepo(_ context.Context, _, _ string) error { return nil }
 func (s *singleRepoStorage) RemoveRepo(_ context.Context, _, _ string) error { return nil }
 func (s *singleRepoStorage) RepoExists(_, _ string) (bool, error)            { return true, nil }
@@ -241,8 +239,3 @@ func (s *singleRepoStorage) StubResponse(_ *storage.ArchivedRecord) storage.Arch
 }
 
 var _ storage.Service = (*singleRepoStorage)(nil)
-
-// Suppress unused imports.
-var _ *gogit.Repository
-var _ *object.Commit
-var _ plumbing.Hash

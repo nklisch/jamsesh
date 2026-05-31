@@ -1,10 +1,12 @@
 package sessionresume_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -458,6 +460,45 @@ func TestCreateSessionResume_Success_DurableOrg(t *testing.T) {
 	// used_at must be nil (not yet consumed).
 	if storedToken.UsedAt != nil {
 		t.Errorf("token used_at = %v, want nil (token was minted not consumed)", storedToken.UsedAt)
+	}
+}
+
+func TestCreateSessionResume_DoesNotLogRawResumeToken(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	env := newTestEnv(t, "https://portal.example.com")
+
+	resp, err := env.handler.CreateSessionResume(env.callerCtx, openapi.CreateSessionResumeRequestObject{
+		Body: &openapi.CreateSessionResumeJSONRequestBody{
+			OrgId:     env.orgID,
+			SessionId: env.sessID,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	r, ok := resp.(openapi.CreateSessionResume200JSONResponse)
+	if !ok {
+		t.Fatalf("expected 200, got %T", resp)
+	}
+	fragIdx := strings.Index(r.ResumeUrl, "#rt=")
+	if fragIdx < 0 {
+		t.Fatalf("resume_url %q does not contain '#rt='", r.ResumeUrl)
+	}
+	rawToken := r.ResumeUrl[fragIdx+4:]
+	if rawToken == "" {
+		t.Fatal("raw token in resume_url fragment is empty")
+	}
+
+	logs := buf.String()
+	if strings.Contains(logs, rawToken) {
+		t.Fatalf("SECURITY: logs contain raw resume token: %q", logs)
+	}
+	if strings.Contains(logs, "#rt=") {
+		t.Fatalf("SECURITY: logs contain resume-token fragment marker: %q", logs)
 	}
 }
 

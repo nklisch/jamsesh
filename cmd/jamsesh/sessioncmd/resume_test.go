@@ -59,8 +59,8 @@ func setupResumeInstanceBinding(t *testing.T, dir, sessionID, ccInstanceID strin
 // buildResumeApp returns a minimal CLI app containing ResumeCommand.
 func buildResumeApp() *cli.Command {
 	return &cli.Command{
-		Name:     "jamsesh",
-		Commands: []*cli.Command{ResumeCommand()},
+		Name:           "jamsesh",
+		Commands:       []*cli.Command{ResumeCommand()},
 		ExitErrHandler: func(_ context.Context, _ *cli.Command, _ error) {},
 	}
 }
@@ -360,6 +360,64 @@ func TestResumeAction_mintFailureNoFallback(t *testing.T) {
 	}
 }
 
+func TestResumeAction_invalidMintResponseDoesNotOpenOrLeak(t *testing.T) {
+	const (
+		sessionID = "sess-resume-invalid-mint-001"
+		orgID     = "org-resume-invalid-mint-001"
+		tokenURL  = "https://portal.example.com/resume#rt=invalid-mint-secret"
+	)
+
+	cases := []struct {
+		name       string
+		respSessID string
+		resumeURL  string
+	}{
+		{
+			name:       "empty resume_url",
+			respSessID: sessionID,
+			resumeURL:  "",
+		},
+		{
+			name:       "session mismatch",
+			respSessID: "sess-resume-invalid-mint-other",
+			resumeURL:  tokenURL,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			serveMintOK(mux, tc.respSessID, tc.resumeURL, nil)
+			srv := httptest.NewServer(mux)
+			defer srv.Close()
+
+			setupResumeEnv(t, srv.URL, sessionID, orgID)
+			capturedOpen := stubOpenSilent(t)
+
+			var stdout, stderr string
+			var gotErr error
+			app := buildResumeApp()
+			stdout, stderr = captureStdoutAndStderr(t, func() {
+				gotErr = app.Run(context.Background(), []string{
+					"jamsesh", "resume", sessionID,
+				})
+			})
+
+			if gotErr == nil {
+				t.Fatal("expected error for invalid mint response, got nil")
+			}
+			if len(*capturedOpen) != 0 {
+				t.Errorf("openSilent must NOT be called for invalid mint response, got: %v", *capturedOpen)
+			}
+			assertNoTokenLeak(t, "stdout", stdout, tokenURL)
+			assertNoTokenLeak(t, "stderr", stderr, tokenURL)
+			assertNoHashRT(t, "stdout", stdout)
+			assertNoHashRT(t, "stderr", stderr)
+		})
+	}
+}
+
 // TestResumeAction_playgroundMissingBearer verifies that when a playground
 // session (org_id == "org_playground") has no per-session bearer stored, the
 // command fails locally with a clear error and does NOT attempt a mint at all —
@@ -436,9 +494,9 @@ func TestResumeAction_playgroundMissingBearer(t *testing.T) {
 // and opens the exact resume_url.
 func TestResumeAction_playgroundHappyPath(t *testing.T) {
 	const (
-		sessionID     = "sess-resume-pg-happy-001"
-		anonBearer    = "anon-bearer-playground-resume-secret"
-		resumeURL     = "https://portal.example.com/resume#rt=pgresumesecrettoken"
+		sessionID  = "sess-resume-pg-happy-001"
+		anonBearer = "anon-bearer-playground-resume-secret"
+		resumeURL  = "https://portal.example.com/resume#rt=pgresumesecrettoken"
 	)
 
 	var capturedAuthHdr string
@@ -490,10 +548,10 @@ func TestResumeAction_playgroundHappyPath(t *testing.T) {
 // uses the per-session bearer token (not any account-wide token).
 func TestResumeAction_successUsesPerSessionBearer(t *testing.T) {
 	const (
-		sessionID    = "sess-resume-bearer-001"
-		orgID        = "org-resume-bearer-001"
+		sessionID     = "sess-resume-bearer-001"
+		orgID         = "org-resume-bearer-001"
 		sessionBearer = "bearer-per-session-secret"
-		resumeURL    = "https://portal.example.com/resume#rt=tok-bearer"
+		resumeURL     = "https://portal.example.com/resume#rt=tok-bearer"
 	)
 
 	var capturedAuthHdr string

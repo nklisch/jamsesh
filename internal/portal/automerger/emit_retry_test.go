@@ -82,8 +82,8 @@ func TestApply_EmitRetry_TransientSucceedsOnRetry(t *testing.T) {
 
 	// Wrap the store so that the first 2 WithTx calls (= Emit attempts) fail.
 	wrappedStore := &failNStore{
-		Store:     s,
-		errMsg:    "transient: connection reset",
+		Store:  s,
+		errMsg: "transient: connection reset",
 	}
 	wrappedStore.failCount.Store(2)
 
@@ -141,6 +141,58 @@ func TestApply_EmitRetry_TransientSucceedsOnRetry(t *testing.T) {
 	if !found {
 		t.Error("merge.succeeded event not found after retry")
 	}
+}
+
+// TestApply_EmitRetry_DetachedContextEmitsAfterWorkerCancel verifies that a
+// worker context canceled after the durable merge side effect does not prevent
+// the post-side-effect emit path from recording merge.succeeded.
+func TestApply_EmitRetry_DetachedContextEmitsAfterWorkerCancel(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t)
+	sess := seedSession(t, s)
+
+	if err := s.EnsureEventSeqRow(ctx, sess.ID); err != nil {
+		t.Fatalf("ensure event_seq row: %v", err)
+	}
+
+	log := events.New(s)
+	repo, sourceH, draftH, ancestorH := buildApplyRepo(t)
+	result := runMerge(t, repo, sourceH, draftH, ancestorH)
+	if result.Kind != automerger.CleanMerge {
+		t.Fatalf("expected CleanMerge, got %s", result.Kind)
+	}
+
+	workerCtx, cancelWorker := context.WithCancel(ctx)
+	cancelWorker()
+
+	applier := automerger.NewApplier(s, log)
+	if _, err := applier.Apply(workerCtx, automerger.ApplyInput{
+		Repo:         repo,
+		Session:      sess,
+		SourceRef:    "refs/heads/jam/sess-1/alice/feat",
+		SourceCommit: sourceH,
+		DraftTip:     draftH,
+		Ancestor:     ancestorH,
+		Result:       result,
+		PortalHost:   "jamsesh.test",
+	}); err != nil {
+		t.Fatalf("Apply returned error despite detached emit context: %v", err)
+	}
+
+	evts, err := s.ListEventsSince(ctx, store.ListEventsSinceParams{
+		SessionID: sess.ID,
+		SinceSeq:  0,
+		Limit:     100,
+	})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	for _, ev := range evts {
+		if ev.Type == "merge.succeeded" {
+			return
+		}
+	}
+	t.Fatal("merge.succeeded event not found after Apply with canceled worker context")
 }
 
 // ---------------------------------------------------------------------------
@@ -551,6 +603,3 @@ func initRepoExt(t *testing.T) (*gogit.Repository, string) {
 	t.Helper()
 	return initRepo(t)
 }
-
-// Suppress plumbing import — used via buildConflictRepo / buildApplyRepo.
-var _ plumbing.Hash

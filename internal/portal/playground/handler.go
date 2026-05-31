@@ -369,25 +369,11 @@ func (h *Handler) JoinPlaygroundSession(ctx context.Context, req openapi.JoinPla
 func (h *Handler) GetPlaygroundSession(ctx context.Context, req openapi.GetPlaygroundSessionRequestObject) (openapi.GetPlaygroundSessionResponseObject, error) {
 	sessionID := req.Id
 
-	// Look up the session row first so a 404 on a missing session takes
-	// priority over a 401 on an unauthenticated request — matches the
-	// existing behaviour and the implicit contract documented in handler tests.
-	sess, err := h.Store.GetSession(ctx, ReservedOrgID, sessionID)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.GetPlaygroundSession404JSONResponse{
-				NotFoundJSONResponse: openapi.NotFoundJSONResponse{
-					Error:   "session.not_found",
-					Message: "session not found",
-				},
-			}, nil
-		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("playground: get session: %w", err))
-	}
-
 	// Combined RequireAccount + GetSessionMember in one helper. The bearer
 	// must have been issued for this exact session_id (per-session anonymous
-	// bearer contract — cross-session bearer reuse is rejected here).
+	// bearer contract — cross-session bearer reuse is rejected here). Run this
+	// before the session lookup so a valid playground bearer cannot distinguish
+	// "session exists but I am not a member" from "session does not exist".
 	_, _, fail, ok := handlerauth.RequireAnonymousSessionMember(ctx, h.Store, ReservedOrgID, sessionID)
 	if !ok {
 		if fail.Status == 500 {
@@ -411,6 +397,19 @@ func (h *Handler) GetPlaygroundSession(ctx context.Context, req openapi.GetPlayg
 				Message: "your bearer token is not associated with this session",
 			},
 		}, nil
+	}
+
+	sess, err := h.Store.GetSession(ctx, ReservedOrgID, sessionID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return openapi.GetPlaygroundSession404JSONResponse{
+				NotFoundJSONResponse: openapi.NotFoundJSONResponse{
+					Error:   "session.not_found",
+					Message: "session not found",
+				},
+			}, nil
+		}
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("playground: get session: %w", err))
 	}
 
 	count, err := h.Store.CountSessionMembers(ctx, store.CountSessionMembersParams{

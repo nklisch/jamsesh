@@ -740,7 +740,7 @@ func TestGetPlaygroundSession_ValidBearer_ReturnsSummary(t *testing.T) {
 	}
 }
 
-func TestGetPlaygroundSession_NotFound_Returns404(t *testing.T) {
+func TestGetPlaygroundSession_NotFoundWithOtherSessionBearer_Returns401(t *testing.T) {
 	for _, h := range stores(t) {
 		h := h
 		t.Run(h.Name, func(t *testing.T) {
@@ -755,8 +755,8 @@ func TestGetPlaygroundSession_NotFound_Returns404(t *testing.T) {
 			decodeJSON(t, createResp, &created)
 
 			getResp := getRequest(t, env.srv, "/api/playground/sessions/no-such-session", created.Bearer)
-			if getResp.StatusCode != http.StatusNotFound {
-				t.Errorf("want 404, got %d", getResp.StatusCode)
+			if getResp.StatusCode != http.StatusUnauthorized {
+				t.Errorf("want 401, got %d", getResp.StatusCode)
 			}
 		})
 	}

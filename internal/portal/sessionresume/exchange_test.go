@@ -1,13 +1,16 @@
 package sessionresume_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -32,9 +35,9 @@ import (
 //   - an anonymous account (playground path)
 //   - a durable account (durable path)
 type exchangeEnv struct {
-	s     store.Store
-	rawDB *sql.DB // underlying *sql.DB for direct account-row counting
-	clock *fakeClock
+	s       store.Store
+	rawDB   *sql.DB // underlying *sql.DB for direct account-row counting
+	clock   *fakeClock
 	handler *sessionresume.Handler
 	tokSvc  tokens.Service
 
@@ -290,6 +293,54 @@ func TestExchangeSessionResume_UnknownToken_GenericFailure(t *testing.T) {
 	}
 	if r.Error != "auth.invalid_token" {
 		t.Errorf("unknown token error code = %q, want auth.invalid_token", r.Error)
+	}
+}
+
+func TestExchangeSessionResume_DoesNotLogRawTokenOnFailure(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	env := newExchangeEnv(t)
+	ctx := context.Background()
+
+	rawUsed := env.mintResumeToken(t, env.pgOrgID, env.pgSessID, env.anonAcct.ID)
+	unknownRaw := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	if _, err := env.handler.ExchangeSessionResume(ctx, openapi.ExchangeSessionResumeRequestObject{
+		Body: &openapi.ExchangeSessionResumeJSONRequestBody{ResumeToken: rawUsed},
+	}); err != nil {
+		t.Fatalf("first exchange error: %v", err)
+	}
+	resp, err := env.handler.ExchangeSessionResume(ctx, openapi.ExchangeSessionResumeRequestObject{
+		Body: &openapi.ExchangeSessionResumeJSONRequestBody{ResumeToken: rawUsed},
+	})
+	if err != nil {
+		t.Fatalf("already-used exchange error: %v", err)
+	}
+	if _, ok := resp.(openapi.ExchangeSessionResume401JSONResponse); !ok {
+		t.Fatalf("already-used exchange: expected 401, got %T", resp)
+	}
+
+	resp, err = env.handler.ExchangeSessionResume(ctx, openapi.ExchangeSessionResumeRequestObject{
+		Body: &openapi.ExchangeSessionResumeJSONRequestBody{ResumeToken: unknownRaw},
+	})
+	if err != nil {
+		t.Fatalf("unknown exchange error: %v", err)
+	}
+	if _, ok := resp.(openapi.ExchangeSessionResume401JSONResponse); !ok {
+		t.Fatalf("unknown exchange: expected 401, got %T", resp)
+	}
+
+	logs := buf.String()
+	for _, raw := range []string{rawUsed, unknownRaw} {
+		if strings.Contains(logs, raw) {
+			t.Fatalf("SECURITY: logs contain raw resume token %q: %q", raw, logs)
+		}
+	}
+	if strings.Contains(logs, "#rt=") {
+		t.Fatalf("SECURITY: logs contain resume-token fragment marker: %q", logs)
 	}
 }
 

@@ -189,7 +189,7 @@ func (a *Applier) applySuccess(ctx context.Context, in ApplyInput) (ApplyOutput,
 		When:  a.now(),
 	}
 
-	msg := composeMergeMessage(sourceCommit, in, mergerSig.When)
+	msg := composeMergeMessage(sourceCommit, in)
 
 	mergeCommit := &object.Commit{
 		Author:       sourceCommit.Author,
@@ -264,9 +264,7 @@ func (a *Applier) applySuccess(ctx context.Context, in ApplyInput) (ApplyOutput,
 }
 
 // composeMergeMessage builds the merge commit message with trailers.
-func composeMergeMessage(sourceCommit *object.Commit, in ApplyInput, when time.Time) string {
-	_ = when // for future use
-
+func composeMergeMessage(sourceCommit *object.Commit, in ApplyInput) string {
 	summary := commitSummary(sourceCommit.Message)
 
 	trailers := []string{

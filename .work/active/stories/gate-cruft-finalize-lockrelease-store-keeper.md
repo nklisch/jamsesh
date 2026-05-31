@@ -59,3 +59,7 @@ Implemented in the consolidated v0.5.0 gate-drain pass. The pass addressed this 
 **Nits**: none
 
 **Notes**: Story fast-lane review. Verification evidence is present in the implementation record and reports green targeted Go tests, frontend tests, Svelte check, frontend build, and stale-string scans. Release-bound item remains active for `v0.5.0` deploy packaging.
+
+## Completion correction (2026-05-31)
+
+Final Opus review found the earlier consolidated implementation note was too broad. Corrected in the follow-up pass by deleting the misleading `var _ store.FinalizeLock` keeper from `internal/portal/finalize/lock_release_test.go`; the remaining store references keep the import live.

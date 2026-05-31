@@ -56,3 +56,7 @@ Implemented in the consolidated v0.5.0 gate-drain pass. The pass addressed this 
 **Nits**: none
 
 **Notes**: Story fast-lane review. Verification evidence is present in the implementation record and reports green targeted Go tests, frontend tests, Svelte check, frontend build, and stale-string scans. Release-bound item remains active for `v0.5.0` deploy packaging.
+
+## Completion correction (2026-05-31)
+
+The follow-up docs correction also fixed the CSP path listed under public HTTP surfaces: `docs/SECURITY.md` now names `/_csp-report` instead of `/api/csp-report` and keeps the public-surface section present-tense.

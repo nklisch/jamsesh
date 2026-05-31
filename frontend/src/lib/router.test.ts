@@ -118,6 +118,26 @@ describe('router — requiresAuth flag', () => {
 
     navigate('/auth/oauth/callback');
     expect(current.requiresAuth).toBe(false);
+
+    navigate('/playground/s/sess-pg-1/resume');
+    expect(current.requiresAuth).toBe(false);
+
+    navigate('/orgs/acme/sessions/sess-1/resume');
+    expect(current.requiresAuth).toBe(false);
+  });
+
+  test('resume routes are public and win over broader session routes', async () => {
+    const { navigate, current } = await import('./router.svelte');
+
+    navigate('/playground/s/sess-pg-1/resume');
+    expect(current.name).toBe('playground-resume');
+    expect(current.params).toEqual({ sessionId: 'sess-pg-1' });
+    expect(current.requiresAuth).toBe(false);
+
+    navigate('/orgs/acme/sessions/sess-1/resume');
+    expect(current.name).toBe('session-resume');
+    expect(current.params).toEqual({ orgId: 'acme', sessionId: 'sess-1' });
+    expect(current.requiresAuth).toBe(false);
   });
 
   test('protected routes expose requiresAuth: true', async () => {

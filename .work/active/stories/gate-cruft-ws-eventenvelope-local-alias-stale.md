@@ -64,3 +64,7 @@ Implemented in the consolidated v0.5.0 gate-drain pass. The pass addressed this 
 **Nits**: none
 
 **Notes**: Story fast-lane review. Verification evidence is present in the implementation record and reports green targeted Go tests, frontend tests, Svelte check, frontend build, and stale-string scans. Release-bound item remains active for `v0.5.0` deploy packaging.
+
+## Completion correction (2026-05-31)
+
+Final Opus review found the stale local alias still present. Corrected in the follow-up pass by importing generated `components` from `frontend/src/lib/api/types.gen.ts`, defining `EventEnvelope` from `components['schemas']['EventEnvelope']`, and removing the stale compatibility comment from `frontend/src/lib/ws.svelte.ts`.

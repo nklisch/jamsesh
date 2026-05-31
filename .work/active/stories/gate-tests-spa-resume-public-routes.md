@@ -54,3 +54,7 @@ Implemented in the consolidated v0.5.0 gate-drain pass. The pass addressed this 
 **Nits**: none
 
 **Notes**: Story fast-lane review. Verification evidence is present in the implementation record and reports green targeted Go tests, frontend tests, Svelte check, frontend build, and stale-string scans. Release-bound item remains active for `v0.5.0` deploy packaging.
+
+## Completion correction (2026-05-31)
+
+Final Opus review found the SPA route assertions were not present. Corrected in the follow-up pass by extending `frontend/src/lib/router.test.ts` to assert both resume routes are public and that the specific resume patterns win over the broader session-view route.

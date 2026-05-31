@@ -180,7 +180,7 @@ func (h *OAuthHandler) OauthCallback(
 	}
 
 	// Map the provider Identity to the shared auth.Identity type used by
-	// FindOrProvision.
+	// FindOrProvisionAt.
 	id := Identity{
 		Provider:    ghIdentity.Provider,
 		ProviderID:  ghIdentity.ProviderID,
