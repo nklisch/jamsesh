@@ -112,14 +112,21 @@
     errorMsg = null;
     // Raw fetch — not yet in openapi.yaml. Replace with typed client.POST once
     // epic-portal-foundation-auth-flows adds POST /api/auth/magic-link/request.
-    const res = await fetch('/api/auth/magic-link/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-    if (res.ok) {
-      mode = 'magic-link-sent';
-    } else {
+    try {
+      const res = await fetch('/api/auth/magic-link/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (res.ok) {
+        mode = 'magic-link-sent';
+      } else {
+        mode = 'magic-link-error';
+        errorMsg = 'Could not send magic link. Please try again.';
+      }
+    } catch {
+      // Transport failure (offline, DNS, CORS, aborted connection) — surface an
+      // error instead of letting an unhandled rejection hang the form.
       mode = 'magic-link-error';
       errorMsg = 'Could not send magic link. Please try again.';
     }

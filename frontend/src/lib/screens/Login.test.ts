@@ -355,6 +355,21 @@ describe('Login', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'));
   });
 
+  // ── Regression: magic-link fetch network failure (Unit 3) ────────────────────
+
+  it('network failure on magic-link fetch → transitions to magic-link-error (no unhandled rejection)', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+
+    render(Login);
+    const form = screen.getByPlaceholderText('you@example.com').closest('form')!;
+    await fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Could not send magic link/)).toBeInTheDocument();
+  });
+
   it('navigates to returnTo when auth.isAuthenticated is true and returnTo is set', async () => {
     Object.defineProperty(window, 'location', {
       value: { ...window.location, search: '?return_to=%2Forgs%2Ffoo%2Fsessions' },

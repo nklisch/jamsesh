@@ -1,7 +1,7 @@
 ---
 id: bug-squash-magic-link-fetch-no-trycatch
 kind: story
-stage: implementing
+stage: review
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-async-races
 depends_on: []
@@ -26,3 +26,13 @@ const res = await fetch('/api/auth/magic-link/request', { method: 'POST', ... })
 if (res.ok) { mode = 'magic-link-sent'; } else { mode = 'magic-link-error'; ... }
 // no catch: transport failure -> unhandled rejection, UI stuck
 ```
+
+## Implementation notes
+
+Wrapped the `requestMagicLink` fetch in a try/catch block, matching the
+`signInWithGitHub` sibling. A transport failure (network error, DNS, offline,
+aborted connection) now sets `mode = 'magic-link-error'` and `errorMsg` instead
+of leaving an unhandled rejection and hanging the form in the `choose` state.
+
+A regression test was added: mock `fetch` to reject with `TypeError('Failed to fetch')`,
+submit the form, and assert the UI shows the error mode with the error message.
