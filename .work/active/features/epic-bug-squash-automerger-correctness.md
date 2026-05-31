@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-automerger-correctness
 kind: feature
-stage: implementing
+stage: review
 tags: [bug, portal]
 parent: epic-bug-squash
 depends_on: []
@@ -329,3 +329,7 @@ before implementation.
 the push-after-delete stranding window; spawning the worker under `mu` is
 deadlock-free; no idle re-check missed-wakeup; fanout is not an `Emit` error
 source.
+
+## Implementation summary
+
+All 4 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
