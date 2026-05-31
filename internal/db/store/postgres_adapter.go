@@ -540,10 +540,10 @@ func pgTombstone(row pgstore.Tombstone) Tombstone {
 	return Tombstone{
 		SessionID:       row.SessionID,
 		OrgID:           row.OrgID,
-		MembersCount:    int64(row.MembersCount),
-		CommitsCount:    int64(row.CommitsCount),
-		AutoMergesCount: int64(row.AutoMergesCount),
-		DurationSeconds: int64(row.DurationSeconds),
+		MembersCount:    row.MembersCount,
+		CommitsCount:    row.CommitsCount,
+		AutoMergesCount: row.AutoMergesCount,
+		DurationSeconds: row.DurationSeconds,
 		EndReason:       row.EndReason,
 		EndedAt:         endedAt,
 		ExpiresAt:       row.ExpiresAt,
@@ -559,10 +559,10 @@ func (a *postgresAdapter) RecordTombstone(ctx context.Context, p RecordTombstone
 	return mapPostgresErr(a.q.RecordTombstone(ctx, pgstore.RecordTombstoneParams{
 		SessionID:       p.SessionID,
 		OrgID:           p.OrgID,
-		MembersCount:    int32(p.MembersCount),
-		CommitsCount:    int32(p.CommitsCount),
-		AutoMergesCount: int32(p.AutoMergesCount),
-		DurationSeconds: int32(p.DurationSeconds),
+		MembersCount:    p.MembersCount,
+		CommitsCount:    p.CommitsCount,
+		AutoMergesCount: p.AutoMergesCount,
+		DurationSeconds: p.DurationSeconds,
 		EndReason:       p.EndReason,
 		EndedAt:         &p.EndedAt,
 		ExpiresAt:       p.ExpiresAt,
@@ -1272,9 +1272,9 @@ func (s *postgresTxStore) GetTombstone(ctx context.Context, sessionID string) (T
 
 func (s *postgresTxStore) RecordTombstone(ctx context.Context, p RecordTombstoneParams) error {
 	return mapPostgresErr(s.q.RecordTombstone(ctx, pgstore.RecordTombstoneParams{
-		SessionID: p.SessionID, OrgID: p.OrgID, MembersCount: int32(p.MembersCount),
-		CommitsCount: int32(p.CommitsCount), AutoMergesCount: int32(p.AutoMergesCount),
-		DurationSeconds: int32(p.DurationSeconds), EndReason: p.EndReason,
+		SessionID: p.SessionID, OrgID: p.OrgID, MembersCount: p.MembersCount,
+		CommitsCount: p.CommitsCount, AutoMergesCount: p.AutoMergesCount,
+		DurationSeconds: p.DurationSeconds, EndReason: p.EndReason,
 		EndedAt:   &p.EndedAt,
 		ExpiresAt: p.ExpiresAt,
 	}))

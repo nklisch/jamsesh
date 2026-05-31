@@ -292,10 +292,10 @@ CREATE INDEX leases_released_at_idx ON leases(released_at) WHERE released_at IS 
 CREATE TABLE tombstones (
     session_id         TEXT PRIMARY KEY,
     org_id             TEXT NOT NULL,
-    members_count      INTEGER NOT NULL,
-    commits_count      INTEGER NOT NULL,
-    auto_merges_count  INTEGER NOT NULL,
-    duration_seconds   INTEGER NOT NULL,
+    members_count      BIGINT NOT NULL,
+    commits_count      BIGINT NOT NULL,
+    auto_merges_count  BIGINT NOT NULL,
+    duration_seconds   BIGINT NOT NULL,
     end_reason         TEXT NOT NULL,
     ended_at           TIMESTAMPTZ NOT NULL,
     expires_at         TIMESTAMPTZ NOT NULL

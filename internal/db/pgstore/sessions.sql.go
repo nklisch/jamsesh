@@ -377,10 +377,10 @@ ON CONFLICT (session_id) DO NOTHING
 type RecordTombstoneParams struct {
 	SessionID       string     `json:"session_id"`
 	OrgID           string     `json:"org_id"`
-	MembersCount    int32      `json:"members_count"`
-	CommitsCount    int32      `json:"commits_count"`
-	AutoMergesCount int32      `json:"auto_merges_count"`
-	DurationSeconds int32      `json:"duration_seconds"`
+	MembersCount    int64      `json:"members_count"`
+	CommitsCount    int64      `json:"commits_count"`
+	AutoMergesCount int64      `json:"auto_merges_count"`
+	DurationSeconds int64      `json:"duration_seconds"`
 	EndReason       string     `json:"end_reason"`
 	EndedAt         *time.Time `json:"ended_at"`
 	ExpiresAt       time.Time  `json:"expires_at"`
