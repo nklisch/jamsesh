@@ -687,11 +687,12 @@ func (a *sqliteAdapter) GetMagicLinkTokenByHash(ctx context.Context, tokenHash s
 	return wrap1(row, err, mapSQLiteErr, sqliteMagicLinkToken)
 }
 
-func (a *sqliteAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) error {
-	return mapSQLiteErr(a.q.ConsumeMagicLinkToken(ctx, sqlitestore.ConsumeMagicLinkTokenParams{
+func (a *sqliteAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) (int64, error) {
+	n, err := a.q.ConsumeMagicLinkToken(ctx, sqlitestore.ConsumeMagicLinkTokenParams{
 		ID:     p.ID,
 		UsedAt: p.UsedAt,
-	}))
+	})
+	return n, mapSQLiteErr(err)
 }
 
 // ---------------------------------------------------------------------------
@@ -1326,8 +1327,9 @@ func (s *sqliteTxStore) GetMagicLinkTokenByHash(ctx context.Context, tokenHash s
 	row, err := s.q.GetMagicLinkTokenByHash(ctx, tokenHash)
 	return wrap1(row, err, mapSQLiteErr, sqliteMagicLinkToken)
 }
-func (s *sqliteTxStore) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) error {
-	return mapSQLiteErr(s.q.ConsumeMagicLinkToken(ctx, sqlitestore.ConsumeMagicLinkTokenParams{ID: p.ID, UsedAt: p.UsedAt}))
+func (s *sqliteTxStore) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) (int64, error) {
+	n, err := s.q.ConsumeMagicLinkToken(ctx, sqlitestore.ConsumeMagicLinkTokenParams{ID: p.ID, UsedAt: p.UsedAt})
+	return n, mapSQLiteErr(err)
 }
 
 // ArchivedSessionStore

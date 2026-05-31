@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const consumeMagicLinkToken = `-- name: ConsumeMagicLinkToken :exec
+const consumeMagicLinkToken = `-- name: ConsumeMagicLinkToken :execrows
 UPDATE magic_link_tokens
 SET used_at = ?
 WHERE id = ? AND used_at IS NULL
@@ -21,9 +21,12 @@ type ConsumeMagicLinkTokenParams struct {
 	ID     string     `json:"id"`
 }
 
-func (q *Queries) ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error {
-	_, err := q.db.ExecContext(ctx, consumeMagicLinkToken, arg.UsedAt, arg.ID)
-	return err
+func (q *Queries) ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, consumeMagicLinkToken, arg.UsedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const createMagicLinkToken = `-- name: CreateMagicLinkToken :one

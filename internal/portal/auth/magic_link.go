@@ -171,11 +171,17 @@ func (h *MagicLinkHandler) ExchangeMagicLink(
 	}
 
 	// Consume the token (SQL-level UPDATE WHERE used_at IS NULL — race-safe).
-	if err := h.store.ConsumeMagicLinkToken(ctx, store.ConsumeMagicLinkTokenParams{
+	// affected == 1: this caller won the race; proceed to provision + issue.
+	// affected == 0: another exchange already consumed this token (race lost) → 401.
+	// err != nil:    a real driver/transient failure → surface as 5xx.
+	affected, err := h.store.ConsumeMagicLinkToken(ctx, store.ConsumeMagicLinkTokenParams{
 		ID:     row.ID,
 		UsedAt: &now,
-	}); err != nil {
-		// If the consume fails it may be a concurrent exchange that won the race.
+	})
+	if err != nil {
+		return nil, deperr.WrapDBIfTransient(fmt.Errorf("magic-link: consume token: %w", err))
+	}
+	if affected == 0 {
 		return magicLinkUnauthorized("auth.invalid_token", "magic link already used"), nil
 	}
 

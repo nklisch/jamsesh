@@ -17,7 +17,7 @@ type Querier interface {
 	AllocateNextSeqN(ctx context.Context, arg AllocateNextSeqNParams) (int64, error)
 	CleanupExpiredOAuthState(ctx context.Context, expiresAt time.Time) error
 	ClearFinalizeLock(ctx context.Context, arg ClearFinalizeLockParams) error
-	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error
+	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) (int64, error)
 	ConsumeOAuthState(ctx context.Context, nonce string) (OauthState, error)
 	CountSessionMembers(ctx context.Context, arg CountSessionMembersParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)

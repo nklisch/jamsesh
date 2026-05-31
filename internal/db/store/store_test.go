@@ -272,15 +272,15 @@ func TestMagicLinkSingleUse(t *testing.T) {
 	}
 
 	usedAt := now.Add(time.Minute)
-	if err := s.ConsumeMagicLinkToken(ctx, store.ConsumeMagicLinkTokenParams{
+	if _, err := s.ConsumeMagicLinkToken(ctx, store.ConsumeMagicLinkTokenParams{
 		ID:     token.ID,
 		UsedAt: &usedAt,
 	}); err != nil {
 		t.Fatalf("first ConsumeMagicLinkToken: %v", err)
 	}
 
-	// Second consume must not error (WHERE used_at IS NULL matches 0 rows).
-	if err := s.ConsumeMagicLinkToken(ctx, store.ConsumeMagicLinkTokenParams{
+	// Second consume must not error (WHERE used_at IS NULL matches 0 rows → 0 affected).
+	if _, err := s.ConsumeMagicLinkToken(ctx, store.ConsumeMagicLinkTokenParams{
 		ID:     token.ID,
 		UsedAt: &usedAt,
 	}); err != nil {

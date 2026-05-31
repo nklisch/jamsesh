@@ -684,11 +684,12 @@ func (a *postgresAdapter) GetMagicLinkTokenByHash(ctx context.Context, tokenHash
 	return wrap1(row, err, mapPostgresErr, pgMagicLinkToken)
 }
 
-func (a *postgresAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) error {
-	return mapPostgresErr(a.q.ConsumeMagicLinkToken(ctx, pgstore.ConsumeMagicLinkTokenParams{
+func (a *postgresAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) (int64, error) {
+	n, err := a.q.ConsumeMagicLinkToken(ctx, pgstore.ConsumeMagicLinkTokenParams{
 		ID:     p.ID,
 		UsedAt: p.UsedAt,
-	}))
+	})
+	return n, mapPostgresErr(err)
 }
 
 // ---------------------------------------------------------------------------
@@ -1318,8 +1319,9 @@ func (s *postgresTxStore) GetMagicLinkTokenByHash(ctx context.Context, tokenHash
 	row, err := s.q.GetMagicLinkTokenByHash(ctx, tokenHash)
 	return wrap1(row, err, mapPostgresErr, pgMagicLinkToken)
 }
-func (s *postgresTxStore) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) error {
-	return mapPostgresErr(s.q.ConsumeMagicLinkToken(ctx, pgstore.ConsumeMagicLinkTokenParams{ID: p.ID, UsedAt: p.UsedAt}))
+func (s *postgresTxStore) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) (int64, error) {
+	n, err := s.q.ConsumeMagicLinkToken(ctx, pgstore.ConsumeMagicLinkTokenParams{ID: p.ID, UsedAt: p.UsedAt})
+	return n, mapPostgresErr(err)
 }
 
 // ArchivedSessionStore

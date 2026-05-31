@@ -390,7 +390,7 @@ func TestMagicLinkTokenCRUD(t *testing.T) {
 
 			// Consume
 			usedAt := now.Add(time.Minute)
-			err = s.ConsumeMagicLinkToken(ctx, store.ConsumeMagicLinkTokenParams{
+			_, err = s.ConsumeMagicLinkToken(ctx, store.ConsumeMagicLinkTokenParams{
 				ID:     tok.ID,
 				UsedAt: &usedAt,
 			})

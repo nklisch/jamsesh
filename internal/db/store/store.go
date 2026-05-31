@@ -656,8 +656,11 @@ type MagicLinkTokenStore interface {
 	CreateMagicLinkToken(ctx context.Context, arg CreateMagicLinkTokenParams) (MagicLinkToken, error)
 	GetMagicLinkTokenByHash(ctx context.Context, tokenHash string) (MagicLinkToken, error)
 	// ConsumeMagicLinkToken marks the token used (single-use enforcement at
-	// the SQL level: UPDATE WHERE used_at IS NULL).
-	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) error
+	// the SQL level: UPDATE WHERE used_at IS NULL). Returns the number of rows
+	// affected: 1 when the caller won the race (token consumed), 0 when another
+	// concurrent exchange already consumed it (race lost). A non-nil error
+	// indicates a transient driver failure, not a business-logic condition.
+	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) (int64, error)
 }
 
 // Event is a persisted event-log row.
