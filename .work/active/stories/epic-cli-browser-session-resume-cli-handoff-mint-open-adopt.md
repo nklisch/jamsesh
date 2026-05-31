@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-cli-handoff-mint-open-adopt
 kind: story
-stage: review
+stage: done
 tags: [plugin]
 parent: epic-cli-browser-session-resume-cli-handoff
 depends_on: []

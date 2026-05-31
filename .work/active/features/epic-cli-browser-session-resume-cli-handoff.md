@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-cli-handoff
 kind: feature
-stage: review
+stage: done
 tags: [plugin]
 parent: epic-cli-browser-session-resume
 depends_on: [epic-cli-browser-session-resume-portal-contract]

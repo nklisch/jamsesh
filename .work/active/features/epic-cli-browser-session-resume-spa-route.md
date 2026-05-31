@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-spa-route
 kind: feature
-stage: review
+stage: done
 tags: [ui]
 parent: epic-cli-browser-session-resume
 depends_on: [epic-cli-browser-session-resume-portal-contract]

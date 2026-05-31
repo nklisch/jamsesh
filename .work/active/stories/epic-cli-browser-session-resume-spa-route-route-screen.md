@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-spa-route-route-screen
 kind: story
-stage: review
+stage: done
 tags: [ui]
 parent: epic-cli-browser-session-resume-spa-route
 depends_on: [epic-cli-browser-session-resume-spa-route-auth-access-only]

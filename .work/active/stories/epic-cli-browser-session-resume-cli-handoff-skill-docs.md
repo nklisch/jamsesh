@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-cli-handoff-skill-docs
 kind: story
-stage: review
+stage: done
 tags: [plugin, documentation]
 parent: epic-cli-browser-session-resume-cli-handoff
 depends_on: [epic-cli-browser-session-resume-cli-handoff-resume-command]
