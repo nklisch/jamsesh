@@ -334,3 +334,24 @@ fanout→unregister is lock-safe; Unit 3 `sync.Once`; Unit 2 `nowFn`.
 ## Implementation summary
 
 All 6 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
+
+## Final-gate fix
+
+**Finding 5 (BLOCKING): LRU hot-skip drops resident bytes from cap accounting.**
+`lifecycle.go ~:476`: when the double-checked claim skips a hot victim (re-validation
+shows lastActiveAt advanced since snapshot), it removed the candidate from `active`,
+reducing `totalBytes` on the next iteration. Since the hot session's bytes are still
+on disk, the loop falsely concluded the cache was under cap and stopped evicting other
+cold sessions.
+
+Fix: introduced `residentSkippedBytes int64` accumulator. Hot-skips (step 3
+re-validate fails) and already-releasing sessions (step 2 CAS fails) are moved to
+`residentSkippedBytes` instead of simply removed from `active`. The totalBytes
+calculation adds `residentSkippedBytes` so skipped-but-resident data counts toward the
+cap. When `active` is empty but `residentSkippedBytes` still pushes total over cap,
+the loop breaks (cannot evict what is actively in use — no cold candidates remain).
+
+Added `TestLifecycle_LRU_HotSkipDoesNotStopColdEviction`: seeds 3 sessions (hot A,
+cold B, cold C) each at 1 KB; cap = 1.5 KB; bumps A's `lastActiveAt` after snapshot
+to simulate a hot-skip. Asserts A is not evicted, but B AND C are both evicted (their
+combined 2 KB still exceeds the 1.5 KB cap after A is skipped).

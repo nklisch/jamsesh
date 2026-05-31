@@ -804,6 +804,94 @@ func TestLifecycle_LRU_SkipsHotSession(t *testing.T) {
 	}
 }
 
+// TestLifecycle_LRU_HotSkipDoesNotStopColdEviction is a regression test for
+// the bug where a hot-skip (double-checked claim rejects a victim that was
+// touched after the snapshot) would remove the entry from the `active` slice,
+// drop its bytes from totalBytes, and falsely stop eviction of other cold
+// sessions that should still be evicted.
+//
+// Setup:
+//   - Three sessions: hot (A), cold-1 (B), cold-2 (C).
+//   - Combined size of all three exceeds CacheMaxBytes.
+//   - Remaining size of cold-1 + cold-2 alone still exceeds the cap.
+//   - A is "hot": its lastActiveAt is bumped after the snapshot so it is
+//     skipped by the double-checked claim.
+//
+// Expected: after eviction B AND C are evicted (enough to bring total below
+// cap), even though A was skipped (its bytes count toward the cap, so the
+// loop must continue past the hot-skip).
+func TestLifecycle_LRU_HotSkipDoesNotStopColdEviction(t *testing.T) {
+	epoch := time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC)
+	clk := newFakeClock(epoch)
+
+	mgr, _, stor := newTestLifecycleManager(t)
+	mgr.clock = clk
+	ctx := context.Background()
+
+	sessA := "sess-hotskip-a" // will be made hot (skipped)
+	sessB := "sess-hotskip-b" // cold, should be evicted
+	sessC := "sess-hotskip-c" // cold, should be evicted
+
+	// Acquire A at epoch (oldest lastActive — would be LRU victim).
+	if _, err := mgr.AcquireForRequest(ctx, sessA); err != nil {
+		t.Fatalf("AcquireForRequest A: %v", err)
+	}
+	clk.Advance(time.Second)
+
+	// Acquire B and C slightly newer.
+	if _, err := mgr.AcquireForRequest(ctx, sessB); err != nil {
+		t.Fatalf("AcquireForRequest B: %v", err)
+	}
+	clk.Advance(time.Millisecond)
+	if _, err := mgr.AcquireForRequest(ctx, sessC); err != nil {
+		t.Fatalf("AcquireForRequest C: %v", err)
+	}
+
+	// Write 1 KB into all three repo dirs.
+	for _, sess := range []string{sessA, sessB, sessC} {
+		repoPath := stor.RepoPath("test-org", sess)
+		if err := os.MkdirAll(repoPath, 0o750); err != nil {
+			t.Fatalf("mkdir %s: %v", sess, err)
+		}
+		if err := os.WriteFile(filepath.Join(repoPath, "data"), make([]byte, 1024), 0o600); err != nil {
+			t.Fatalf("write data for %s: %v", sess, err)
+		}
+	}
+
+	// Cap = 1500 bytes. Combined size = 3 KB. A is hot-skipped, but B+C = 2 KB
+	// still exceeds the cap → both must be evicted.
+	mgr.CacheMaxBytes = 1500
+
+	// Advance clock and bump A's lastActiveAt to "now" (simulating a concurrent
+	// AcquireForRequest), making it hotter than B and C.
+	clk.Advance(2 * time.Second)
+	rawA, ok := mgr.sessions.Load(sessA)
+	if !ok {
+		t.Fatal("sessA not in map before eviction")
+	}
+	entryA := rawA.(*sessionEntry)
+	hotTime := clk.Now()
+	entryA.lastActiveAt.Store(&hotTime)
+
+	// Run eviction. A is the snapshot-LRU candidate but its live lastActive was
+	// bumped → hot-skip. B and C are cold and their combined bytes (2 KB) still
+	// exceed the cap, so both must be evicted despite A being skipped.
+	mgr.evictIdleAndOversize(ctx)
+
+	// A (hot-skipped) must NOT have been evicted.
+	if _, ok := mgr.sessions.Load(sessA); !ok {
+		t.Error("sessA (hot) was evicted — hot-skip did not protect it")
+	}
+
+	// B and C (cold) must both have been evicted (needed to bring total ≤ cap).
+	if _, ok := mgr.sessions.Load(sessB); ok {
+		t.Error("sessB (cold) was NOT evicted — hot-skip of A falsely stopped eviction loop")
+	}
+	if _, ok := mgr.sessions.Load(sessC); ok {
+		t.Error("sessC (cold) was NOT evicted — hot-skip of A falsely stopped eviction loop")
+	}
+}
+
 // TestLifecycle_LRU_RaceAcquireEvict is a concurrency test for the TOCTOU fix.
 // It runs AcquireForRequest and LRU eviction concurrently under -race to detect
 // any data race on the sessionEntry fields.

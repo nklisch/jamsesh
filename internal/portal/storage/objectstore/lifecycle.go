@@ -424,12 +424,28 @@ func (m *LifecycleManager) evictIdleAndOversize(ctx context.Context) {
 		return
 	}
 
+	// residentBytes tracks bytes from sessions that are still resident but
+	// skipped as eviction candidates (they are hot or already being released by
+	// another goroutine). These bytes count toward the cap — a hot-skip must
+	// not falsely drop the byte total below the cap and stop eviction of other
+	// genuinely-cold sessions.
+	var residentSkippedBytes int64
+
 	for {
+		// Total resident bytes = evictable candidates + skipped-but-still-resident.
 		var totalBytes int64
 		for _, c := range active {
 			totalBytes += c.repoSizeBytes
 		}
+		totalBytes += residentSkippedBytes
 		if totalBytes <= m.CacheMaxBytes {
+			break
+		}
+
+		// No evictable candidates remain but cache is still over cap (all
+		// remaining bytes are from hot/in-progress sessions). Stop — we cannot
+		// evict what is being used.
+		if len(active) == 0 {
 			break
 		}
 
@@ -452,33 +468,29 @@ func (m *LifecycleManager) evictIdleAndOversize(ctx context.Context) {
 		raw, entryOK := m.sessions.Load(victim.sessionID)
 		if !entryOK {
 			// Already gone (idle eviction or concurrent release won the race).
+			// The bytes are no longer resident — simply remove from candidates.
 			active = append(active[:lruIdx], active[lruIdx+1:]...)
-			if len(active) == 0 {
-				break
-			}
 			continue
 		}
 		liveEntry := raw.(*sessionEntry)
 
 		// Step 2: CAS claim the releasing flag. If it's already set, another
-		// goroutine is releasing this session; drop it from our list.
+		// goroutine is releasing this session; move it to the resident-skipped
+		// pool so its bytes still count but we don't retry it as a victim.
 		if !liveEntry.releasing.CompareAndSwap(false, true) {
+			residentSkippedBytes += victim.repoSizeBytes
 			active = append(active[:lruIdx], active[lruIdx+1:]...)
-			if len(active) == 0 {
-				break
-			}
 			continue
 		}
 
 		// Step 3: Re-validate. If lastActive advanced since the snapshot, this
 		// session was touched after we took the snapshot — it is no longer the
-		// coldest candidate. Unclaim and skip it.
+		// coldest candidate. Unclaim and move to resident-skipped pool so its
+		// bytes still count toward the cap (the data is still on disk).
 		if liveEntry.lastActive().After(victim.lastActive) {
 			liveEntry.releasing.Store(false) // return the claim
+			residentSkippedBytes += victim.repoSizeBytes
 			active = append(active[:lruIdx], active[lruIdx+1:]...)
-			if len(active) == 0 {
-				break
-			}
 			continue
 		}
 
@@ -490,11 +502,8 @@ func (m *LifecycleManager) evictIdleAndOversize(ctx context.Context) {
 		)
 		_ = m.releaseClaimed(ctx, victim.sessionID, liveEntry, "lru")
 
-		// Remove from active slice and continue.
+		// Remove from active slice (bytes no longer resident after eviction).
 		active = append(active[:lruIdx], active[lruIdx+1:]...)
-		if len(active) == 0 {
-			break
-		}
 	}
 }
 
