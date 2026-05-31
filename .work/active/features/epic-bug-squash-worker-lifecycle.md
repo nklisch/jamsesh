@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-worker-lifecycle
 kind: feature
-stage: implementing
+stage: review
 tags: [bug, portal]
 parent: epic-bug-squash
 depends_on: []
@@ -330,3 +330,7 @@ double-close).
 
 **Confirmed sound (no change):** Unit 1 wait is bounded + deadlock-free; Unit 4
 fanout→unregister is lock-safe; Unit 3 `sync.Once`; Unit 2 `nowFn`.
+
+## Implementation summary
+
+All 6 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
