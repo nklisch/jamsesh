@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-finalize-lockrelease-store-keeper
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -33,3 +33,7 @@ The file uses `store` throughout the failing-store wrapper below this point.
 ## Removal
 Delete the misleading comment and dummy `var _ store.FinalizeLock` line.
 
+
+## Autopilot scope/design (2026-05-31)
+
+Promoted by the gate-drain autopilot run. Implement the remediation direction above as a focused single-stride story, keep edits limited to the named surface, and verify with the targeted test or check that covers the changed file. For older backlog gate items, this run binds the work to `v0.5.0` because the user explicitly requested all gate-related work be scoped, designed, and implemented before release.

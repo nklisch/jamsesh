@@ -1,14 +1,14 @@
 ---
 id: gate-cruft-per-package-stores-wrapper-helpers
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: cruft
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-31
 ---
 
 # Per-package one-line wrapper `stores()` duplicated across test packages
@@ -43,3 +43,7 @@ such shortcuts. Low confidence; treat as judgment." Autopilot
 declines to autonomously make this style call; awaiting human
 decision on whether to inline `storetest.Stores(t)` at call sites or
 keep the per-package shortcuts.
+
+## Autopilot scope/design (2026-05-31)
+
+Promoted by the gate-drain autopilot run. Implement the remediation direction above as a focused single-stride story, keep edits limited to the named surface, and verify with the targeted test or check that covers the changed file. For older backlog gate items, this run binds the work to `v0.5.0` because the user explicitly requested all gate-related work be scoped, designed, and implemented before release.

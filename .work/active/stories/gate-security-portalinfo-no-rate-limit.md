@@ -1,14 +1,14 @@
 ---
 id: gate-security-portalinfo-no-rate-limit
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, ratelimit]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: security
 created: 2026-05-25
-updated: 2026-05-25
+updated: 2026-05-31
 ---
 
 # Public /api/portal/info has no rate-limit
@@ -38,3 +38,7 @@ limits. Add a generous limiter (e.g. 60/min/IP) to close a small
 amplification/DoS surface without affecting legitimate SPA bootstrap (one
 request per page load). Acceptable to defer permanently if deployed behind
 a CDN that caches public GETs.
+
+## Autopilot scope/design (2026-05-31)
+
+Promoted by the gate-drain autopilot run. Implement the remediation direction above as a focused single-stride story, keep edits limited to the named surface, and verify with the targeted test or check that covers the changed file. For older backlog gate items, this run binds the work to `v0.5.0` because the user explicitly requested all gate-related work be scoped, designed, and implemented before release.

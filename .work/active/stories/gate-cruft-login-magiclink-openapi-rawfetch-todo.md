@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-login-magiclink-openapi-rawfetch-todo
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -38,3 +38,7 @@ note appears at `Login.svelte:10`.
 Remove both stale comments and replace the raw `fetch` with the existing typed
 `client.POST('/api/auth/magic-link/request', { body: { email } })` call shape.
 
+
+## Autopilot scope/design (2026-05-31)
+
+Promoted by the gate-drain autopilot run. Implement the remediation direction above as a focused single-stride story, keep edits limited to the named surface, and verify with the targeted test or check that covers the changed file. For older backlog gate items, this run binds the work to `v0.5.0` because the user explicitly requested all gate-related work be scoped, designed, and implemented before release.

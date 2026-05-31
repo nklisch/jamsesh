@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-errnotfound-unused-import-suppressions
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup]
 parent: null
 depends_on: []
@@ -34,3 +34,7 @@ var _ plumbing.Hash
 Remove the suppression block; remove the unused `gogit` and `object` imports.
 Keep `plumbing`, which is used earlier in the file.
 
+
+## Autopilot scope/design (2026-05-31)
+
+Promoted by the gate-drain autopilot run. Implement the remediation direction above as a focused single-stride story, keep edits limited to the named surface, and verify with the targeted test or check that covers the changed file. For older backlog gate items, this run binds the work to `v0.5.0` because the user explicitly requested all gate-related work be scoped, designed, and implemented before release.

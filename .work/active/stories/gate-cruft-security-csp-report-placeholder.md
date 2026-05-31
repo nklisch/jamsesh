@@ -1,7 +1,7 @@
 ---
 id: gate-cruft-security-csp-report-placeholder
 kind: story
-stage: drafting
+stage: implementing
 tags: [cleanup, documentation]
 parent: null
 depends_on: []
@@ -37,3 +37,7 @@ route is a placeholder; see backlog item
 Update the paragraph to describe the current unauthenticated report sink and
 remove the obsolete backlog pointer.
 
+
+## Autopilot scope/design (2026-05-31)
+
+Promoted by the gate-drain autopilot run. Implement the remediation direction above as a focused single-stride story, keep edits limited to the named surface, and verify with the targeted test or check that covers the changed file. For older backlog gate items, this run binds the work to `v0.5.0` because the user explicitly requested all gate-related work be scoped, designed, and implemented before release.

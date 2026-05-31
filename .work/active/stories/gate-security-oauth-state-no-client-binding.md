@@ -1,14 +1,14 @@
 ---
 id: gate-security-oauth-state-no-client-binding
 kind: story
-stage: drafting
+stage: implementing
 tags: [security]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: security
 created: 2026-05-20
-updated: 2026-05-24
+updated: 2026-05-31
 ---
 
 # OAuth state nonce held only by backend; client has no tab-binding
@@ -65,3 +65,7 @@ note" from 2026-05-20 explaining this is cross-stack
 feature-scope design before implementation. Respecting that prior
 triage; this item is awaiting human `/agile-workflow:scope` to
 promote into a properly-designed feature.
+
+## Autopilot scope/design (2026-05-31)
+
+Promoted by the gate-drain autopilot run. Implement the remediation direction above as a focused single-stride story, keep edits limited to the named surface, and verify with the targeted test or check that covers the changed file. For older backlog gate items, this run binds the work to `v0.5.0` because the user explicitly requested all gate-related work be scoped, designed, and implemented before release.

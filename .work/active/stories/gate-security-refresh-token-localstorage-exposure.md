@@ -1,14 +1,14 @@
 ---
 id: gate-security-refresh-token-localstorage-exposure
 kind: story
-stage: drafting
+stage: implementing
 tags: [security]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: security
 created: 2026-05-20
-updated: 2026-05-24
+updated: 2026-05-31
 ---
 
 # Refresh token persisted in localStorage, exposed to any XSS
@@ -64,3 +64,7 @@ changes, or a Backend-for-Frontend pattern. Either path is
 feature-scope (probably epic-scope) work. Awaiting human
 `/agile-workflow:scope` for proper design and cross-stack
 implementation.
+
+## Autopilot scope/design (2026-05-31)
+
+Promoted by the gate-drain autopilot run. Implement the remediation direction above as a focused single-stride story, keep edits limited to the named surface, and verify with the targeted test or check that covers the changed file. For older backlog gate items, this run binds the work to `v0.5.0` because the user explicitly requested all gate-related work be scoped, designed, and implemented before release.

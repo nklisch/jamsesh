@@ -1,14 +1,14 @@
 ---
 id: gate-security-getplaygroundsession-404-vs-401-asymmetry
 kind: story
-stage: drafting
+stage: implementing
 tags: [security, portal, playground, api]
 parent: null
 depends_on: []
-release_binding: null
+release_binding: v0.5.0
 gate_origin: security
 created: 2026-05-24
-updated: 2026-05-24
+updated: 2026-05-31
 ---
 
 # `GetPlaygroundSession` returns 404 vs 401 in different branches, allowing a holder of a valid anon bearer to probe session existence across the playground org
@@ -50,3 +50,7 @@ stance.
 Reorder the handler to check session-membership first (or fold the 404 into
 the 401 branch by always returning `auth.invalid_or_not_a_member`), matching
 the git-handler's stance.
+
+## Autopilot scope/design (2026-05-31)
+
+Promoted by the gate-drain autopilot run. Implement the remediation direction above as a focused single-stride story, keep edits limited to the named surface, and verify with the targeted test or check that covers the changed file. For older backlog gate items, this run binds the work to `v0.5.0` because the user explicitly requested all gate-related work be scoped, designed, and implemented before release.
