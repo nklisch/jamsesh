@@ -27,8 +27,12 @@
 package proxy
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -97,19 +101,50 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.incDecision("hit_ring")
 	}
 
-	// First attempt.
-	rw := &statusCapture{ResponseWriter: w}
-	h.proxyTo(pod, rw, r)
+	// Prepare the request body for a possible re-dispatch. The first upstream
+	// attempt consumes r.Body, so retrying a body-bearing request (POST/PUT/PATCH
+	// session creation routes through here) would resend an empty body. rewind
+	// buffers the body up to maxRetryBodyBytes so each attempt gets a fresh
+	// reader; retrySafe reports whether a retry can faithfully replay the body.
+	// A body larger than the cap is left streamed (not buffered) and retrySafe is
+	// false — we don't redispatch oversized uploads, we surface the 503 instead.
+	rewind, retrySafe := prepareRetryBody(r)
 
-	if rw.status != http.StatusServiceUnavailable {
-		// Success path: update hint cache.
-		if rw.status == 0 || (rw.status >= 200 && rw.status < 300) {
+	// First attempt.
+	//
+	// The first attempt is buffered rather than streamed straight to the
+	// client: if the chosen pod returns 503 (lease held elsewhere) we must be
+	// able to discard that response and transparently re-dispatch to another
+	// pod, presenting only the successful response to the client. Streaming the
+	// first attempt directly to w (the old behaviour) flushed the 503 status
+	// line before we knew a retry was warranted, so the retry's response could
+	// never reach the client — the client always saw the leaked 503.
+	//
+	// A bufferedResponse delegates Hijack/Flush to w so WebSocket upgrades and
+	// streaming still work: once the connection is hijacked or the upstream
+	// flushes (streaming download), the response is "committed" and we never
+	// retry or replay it — only fully-buffered, non-streamed responses are held
+	// in memory.
+	first := newBufferedResponse(w)
+	h.proxyTo(pod, first, r)
+
+	if first.committed {
+		// The connection was hijacked (WebSocket upgrade) or the response was
+		// streamed (flushed) directly to w. Nothing left to flush or retry.
+		return
+	}
+
+	if first.status != http.StatusServiceUnavailable {
+		// Not a 503: commit this response to the client.
+		first.flush(w)
+		// Success path: update hint cache on 2xx (or an implicit 200).
+		if first.status == 0 || (first.status >= 200 && first.status < 300) {
 			h.Hint.Set(sessionID, pod.ID)
 		}
 		return
 	}
 
-	// 503 from first pod: invalidate hint and retry once.
+	// 503 from first pod: invalidate hint and retry once on a distinct pod.
 	slog.WarnContext(r.Context(), "router: pod returned 503, retrying",
 		"session_id", sessionID,
 		"failed_pod", pod.ID,
@@ -117,11 +152,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Hint.Invalidate(sessionID)
 
 	retryPod := h.Ring.GetNext(sessionID, pod.ID)
-	if retryPod.Address == "" || retryPod.ID == pod.ID {
-		// No distinct retry target; propagate the 503 that already got written.
-		slog.WarnContext(r.Context(), "router: no retry target, propagating 503",
-			"session_id", sessionID)
+	// Surface the 503 without retrying when there is no distinct retry target,
+	// or when the request body is too large to replay faithfully.
+	if retryPod.Address == "" || retryPod.ID == pod.ID || !retrySafe {
+		reason := "no retry target"
+		if !retrySafe && retryPod.Address != "" && retryPod.ID != pod.ID {
+			reason = "request body not replayable"
+		}
+		slog.WarnContext(r.Context(), "router: propagating 503 without retry",
+			"session_id", sessionID, "reason", reason)
 		h.incDecision("error_503")
+		first.flush(w)
 		return
 	}
 
@@ -131,21 +172,93 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 	h.incDecision("retry")
 
-	// We've already written headers from the first attempt; we cannot send
-	// a fresh response. Use a fresh recorder to capture the retry result.
-	// If the retry succeeds (non-503), flush it; otherwise the 503 already
-	// sent stands.
-	//
-	// Note: because statusCapture delegates all writes to the underlying
-	// ResponseWriter, the 503 status line from the first attempt may already
-	// be flushed to the client. The retry result is therefore best-effort in
-	// cases where the connection is being hijacked (WS) or the body was
-	// already written. For plain HTTP responses this is a clean retry because
-	// the status-capture wrapper calls WriteHeader lazily.
-	retryRW := &statusCapture{ResponseWriter: w}
-	h.proxyTo(retryPod, retryRW, r)
-	// Don't update hint on retry; let next request re-establish via ring.
+	// Rewind the request body so the retry pod receives the full payload.
+	rewind()
+
+	// Retry against the distinct pod, buffered as well so a successful retry
+	// fully replaces the discarded 503. This is the bounded retry: exactly one
+	// additional pod attempt. Whatever the retry produces (2xx on success, or
+	// another 503 when the second pod is also unavailable) is what the client
+	// sees — we never fall back to the discarded first-attempt 503.
+	retry := newBufferedResponse(w)
+	h.proxyTo(retryPod, retry, r)
+	if retry.committed {
+		return
+	}
+	retry.flush(w)
+	// Don't update hint on retry; let the next request re-establish via ring.
 }
+
+// maxRetryBodyBytes caps how much request body the router buffers to enable a
+// re-dispatch retry. Session API requests (JSON) are tiny; large uploads (git
+// packfiles) exceed this and are streamed without retry — on a 503 the original
+// 503 is surfaced rather than buffering an unbounded payload in memory.
+const maxRetryBodyBytes = 1 << 20 // 1 MiB
+
+// prepareRetryBody makes r.Body replayable for a single re-dispatch attempt.
+//
+// It returns rewind, which resets r.Body to a fresh reader over the buffered
+// bytes, and retrySafe, which reports whether a faithful replay is possible:
+//   - No body (nil or http.NoBody): retrySafe = true, rewind is a no-op.
+//   - Body ≤ maxRetryBodyBytes: fully buffered; retrySafe = true.
+//   - Body > maxRetryBodyBytes: left as a combined reader over the bytes read so
+//     far plus the rest of the stream (so the FIRST attempt still sees the whole
+//     body); retrySafe = false (we will not retry an oversized body).
+func prepareRetryBody(r *http.Request) (rewind func(), retrySafe bool) {
+	if r.Body == nil || r.Body == http.NoBody {
+		return func() {}, true
+	}
+
+	limited := io.LimitReader(r.Body, maxRetryBodyBytes+1)
+	buf, err := io.ReadAll(limited)
+	if err != nil {
+		// Could not read the body for buffering; leave whatever remains and do
+		// not retry. The first attempt will surface the read error itself.
+		// Preserve the original body's Close so the connection is not leaked.
+		r.Body = &multiReadCloser{
+			r: io.MultiReader(bytes.NewReader(buf), r.Body),
+			c: r.Body,
+		}
+		return func() {}, false
+	}
+
+	if len(buf) > maxRetryBodyBytes {
+		// Oversized: don't buffer the rest. Reconstruct a single stream of the
+		// already-read prefix followed by the unread remainder for the first
+		// attempt, and disable retry. The original body's Close is preserved so
+		// the upstream request body is drained/closed correctly.
+		orig := r.Body
+		r.Body = &multiReadCloser{
+			r: io.MultiReader(bytes.NewReader(buf), orig),
+			c: orig,
+		}
+		return func() {}, false
+	}
+
+	// Fully buffered. Close the original body and hand out fresh readers.
+	_ = r.Body.Close()
+	r.ContentLength = int64(len(buf))
+	reset := func() {
+		r.Body = io.NopCloser(bytes.NewReader(buf))
+		r.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(buf)), nil
+		}
+	}
+	reset()
+	return reset, true
+}
+
+// multiReadCloser adapts an io.Reader (typically an io.MultiReader over a
+// buffered prefix plus the unread remainder of a request body) into an
+// io.ReadCloser that closes the underlying body, so reconstructing a request
+// body for the first attempt does not leak the original body's Close.
+type multiReadCloser struct {
+	r io.Reader
+	c io.Closer
+}
+
+func (m *multiReadCloser) Read(p []byte) (int, error) { return m.r.Read(p) }
+func (m *multiReadCloser) Close() error               { return m.c.Close() }
 
 // incDecision increments RouterDecisionsTotal for the given result label. It
 // is a no-op when Metrics is nil or RouterDecisionsTotal is nil.
@@ -211,27 +324,125 @@ func (h *Handler) writeNoBackend(w http.ResponseWriter) {
 	_, _ = fmt.Fprintln(w, "no backends available")
 }
 
-// ── statusCapture ─────────────────────────────────────────────────────────────
+// ── bufferedResponse ──────────────────────────────────────────────────────────
 
-// statusCapture wraps an [http.ResponseWriter] and captures the first status
-// code written via WriteHeader. The zero value means WriteHeader has not been
-// called; in that case the upstream proxy wrote 200 implicitly.
-type statusCapture struct {
-	http.ResponseWriter
-	status int
+// bufferedResponse is an [http.ResponseWriter] that buffers the upstream
+// response (status code, headers, body) instead of streaming it to the client.
+// This lets the router inspect the status code and decide whether to commit the
+// response or discard it and re-dispatch to another pod.
+//
+// Hijack and Flush delegate to the real underlying writer so WebSocket upgrades
+// and streaming responses still work. The first time the underlying connection
+// is taken over directly (a successful Hijack, or a Flush after headers are
+// sent), committed is set: from that point the response has reached the client
+// directly and must not be retried or replayed.
+type bufferedResponse struct {
+	real      http.ResponseWriter // underlying writer (for Hijack/Flush delegation)
+	header    http.Header         // buffered response headers
+	body      bytes.Buffer        // buffered response body
+	status    int                 // captured status code (0 = WriteHeader not yet called)
+	wrote     bool                // WriteHeader has been called
+	committed bool                // response went directly to real (hijack/flush) — do not retry/replay
+	hijacked  bool                // connection was hijacked — caller owns the raw conn
 }
 
-func (sc *statusCapture) WriteHeader(code int) {
-	if sc.status == 0 {
-		sc.status = code
+// newBufferedResponse returns a bufferedResponse wrapping real. Its header map
+// is independent of real.Header() until flush copies the buffered headers over.
+func newBufferedResponse(real http.ResponseWriter) *bufferedResponse {
+	return &bufferedResponse{
+		real:   real,
+		header: make(http.Header),
 	}
-	sc.ResponseWriter.WriteHeader(code)
 }
 
-// Unwrap lets http.ResponseController and hijack detection see through the
-// wrapper.
-func (sc *statusCapture) Unwrap() http.ResponseWriter {
-	return sc.ResponseWriter
+// Header returns the response header map. Before the response is committed this
+// is the buffered map (copied to the real writer by flush). After a Flush
+// switched to direct streaming it returns the real writer's header so later
+// mutations (e.g. trailer values the upstream proxy writes after the first
+// flush) land on the actual response. After a Hijack the caller owns the raw
+// connection; per the net/http hijack contract Header() must not touch the real
+// writer, so the detached buffered map is returned (writes to it are inert).
+func (b *bufferedResponse) Header() http.Header {
+	if b.committed && !b.hijacked {
+		return b.real.Header()
+	}
+	return b.header
+}
+
+// WriteHeader records the upstream status code without touching the client.
+func (b *bufferedResponse) WriteHeader(code int) {
+	if b.wrote {
+		return
+	}
+	b.wrote = true
+	b.status = code
+}
+
+// Write buffers the response body. An implicit 200 is recorded if WriteHeader
+// was not called first, mirroring http.ResponseWriter semantics. After the
+// response has been committed (the first Flush switched to direct streaming),
+// writes go straight to the real writer.
+func (b *bufferedResponse) Write(p []byte) (int, error) {
+	if !b.wrote {
+		b.WriteHeader(http.StatusOK)
+	}
+	if b.committed {
+		return b.real.Write(p)
+	}
+	return b.body.Write(p)
+}
+
+// Flush delegates to the real writer. Buffering and flushing are mutually
+// exclusive: a streamed (flushed) response is committed directly to the client
+// and is never retried. Any data buffered before the first Flush is replayed to
+// the real writer first so the client receives a coherent stream.
+//
+// It uses http.ResponseController so a real writer wrapped by other middleware
+// (exposing Flush via the Unwrap chain rather than implementing http.Flusher
+// directly) is still flushed.
+func (b *bufferedResponse) Flush() {
+	if !b.committed {
+		// Replay anything buffered so far, then switch to direct streaming.
+		b.flush(b.real)
+		b.committed = true
+	}
+	_ = http.NewResponseController(b.real).Flush()
+}
+
+// Hijack delegates to the real writer (WebSocket upgrades). Once hijacked the
+// response is committed: the caller owns the raw connection and the router must
+// not retry or replay.
+//
+// It uses http.ResponseController so a real writer wrapped by other middleware
+// (exposing Hijack via the Unwrap chain rather than implementing http.Hijacker
+// directly) can still be hijacked.
+func (b *bufferedResponse) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, rw, err := http.NewResponseController(b.real).Hijack()
+	if err == nil {
+		b.committed = true
+		b.hijacked = true
+	}
+	return conn, rw, err
+}
+
+// flush copies the buffered status, headers, and body to dst. It is a no-op
+// once the response has been committed directly (hijacked or already streamed),
+// to avoid double-writing. flush must be called at most once per buffered
+// response for a non-committed response.
+func (b *bufferedResponse) flush(dst http.ResponseWriter) {
+	if b.committed {
+		return
+	}
+	dstHeader := dst.Header()
+	for k, vs := range b.header {
+		dstHeader[k] = vs
+	}
+	status := b.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	dst.WriteHeader(status)
+	_, _ = dst.Write(b.body.Bytes())
 }
 
 // ── RoundRobinFallback ────────────────────────────────────────────────────────

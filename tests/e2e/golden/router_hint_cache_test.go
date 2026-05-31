@@ -64,6 +64,25 @@ func TestRouterHintCache(t *testing.T) {
 	// lock, the next clean request re-populates the hint; the request after
 	// that is served via the hint (hit_cache counter increments).
 	t.Run("hint_cache_overrides_ring_after_503", func(t *testing.T) {
+		// SKIP: idea-router-e2e-lease-premise. This subtest forces a 503 by
+		// holding the per-session advisory lock from the test process, then
+		// asserts the hit_cache decisions counter increments. But the portal's
+		// REST GET path never acquires (or contends on) that advisory lock —
+		// only the git/objectstore LifecycleManager does — so a held lock cannot
+		// induce the 503 this test needs, and the hint-invalidation/repopulation
+		// cycle it drives never happens. A separate, smaller bug also lives here:
+		// the requireRouterDecisionsCounter pre-flight scrapes the CounterVec
+		// before any proxy traffic, and a zero-cardinality Prometheus CounterVec
+		// exports no series until its first increment, so the metric reads as
+		// "absent" and the test skips even when the router is healthy. The router
+		// metric + hint product code is correct (verified by a post-traffic
+		// scrape and internal/router/proxy unit tests). Re-anchoring is tracked
+		// in the backlog item.
+		t.Skip("router hint-cache 503 golden subtest is blocked on idea-router-e2e-lease-premise: " +
+			"a held advisory lock cannot force a 503 on the REST GET path (the lease is git-only), " +
+			"and the metric pre-flight scrapes the decisions CounterVec before any traffic creates a " +
+			"series (see .work/backlog/idea-router-e2e-lease-premise.md)")
+
 		cluster2 := portalcluster.Start(ctx, t, portalcluster.Options{
 			Pods:        2,
 			Postgres:    pg,
@@ -100,6 +119,20 @@ func TestRouterHintCache(t *testing.T) {
 	// b) The hint for session A does not interfere with routing for session B
 	//    (a blanket-cache bug would route all sessions to the same pod).
 	t.Run("hint_cache_is_per_session", func(t *testing.T) {
+		// SKIP: idea-router-e2e-lease-premise. This subtest asserts per-session
+		// routing stability via cluster.RequireLeaseHolder, which queries pg_locks
+		// for the per-session advisory lock. The REST GET path the test drives
+		// never acquires that lock (it is held only by the git/objectstore
+		// LifecycleManager), so RequireLeaseHolder times out / returns -1
+		// regardless of hint-cache correctness. The hint cache's per-session
+		// isolation is correct and unit-tested (internal/router/cache,
+		// internal/router/proxy). Re-anchoring to a lease-bearing signal is
+		// tracked in the backlog item.
+		t.Skip("router hint-cache per-session golden subtest is blocked on " +
+			"idea-router-e2e-lease-premise: REST GETs do not acquire the per-session advisory " +
+			"lease, so cluster.RequireLeaseHolder cannot observe routing identity " +
+			"(see .work/backlog/idea-router-e2e-lease-premise.md)")
+
 		cluster3 := portalcluster.Start(ctx, t, portalcluster.Options{
 			Pods:        3,
 			Postgres:    pg,
@@ -174,7 +207,7 @@ func testHintCacheAfter503(
 
 	// Acquire the advisory lock (blocking — will succeed immediately since only
 	// the test process holds it right now).
-	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_lock(hashtext($1)::oid)", sessionID)
+	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_lock(hashtext($1))", sessionID)
 	require.NoError(t, err, "hint_cache_after_503: acquire advisory lock")
 	t.Logf("hint_cache_after_503: advisory lock held for session %s", sessionID)
 
@@ -196,7 +229,7 @@ func testHintCacheAfter503(
 	// valid: the hint invalidation is the critical side-effect we test below.
 
 	// Step 4: Release the advisory lock.
-	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1)::oid)", sessionID)
+	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
 	require.NoError(t, err, "hint_cache_after_503: release advisory lock")
 	lockDB.Close()
 	t.Logf("hint_cache_after_503: advisory lock released")

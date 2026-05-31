@@ -14,8 +14,11 @@
 //     pods; verify the router gives up after a bounded number of attempts
 //     and returns 503 within a tight wall-clock window (≤5s).
 //
-// Advisory lock strategy: the portal acquires pg_try_advisory_lock(hashtext(sessionID)::oid).
-// Holding that same lock from the test connection makes the portal's
+// Advisory lock strategy: the portal acquires pg_try_advisory_lock(hashtext(sessionID)).
+// hashtext() returns int4, passed directly as the 64-bit bigint key of the
+// single-argument advisory-lock form — there is NO pg_advisory_lock(oid)
+// overload, so the test must use the same bare hashtext($1) key, not a ::oid
+// cast. Holding that same lock from the test connection makes the portal's
 // non-blocking try-lock fail, triggering its 503 path. See
 // internal/portal/lease/postgres.go and lifecycle.go in the portalcluster fixture.
 package failure_test
@@ -48,6 +51,28 @@ import (
 func TestRouterLeaseUnavailable(t *testing.T) {
 	requireDockerLocal(t)
 	requirePortalImageLocal(t)
+
+	// SKIP: idea-router-e2e-lease-premise. Both subtests try to induce a 503
+	// from a portal pod by holding the per-session advisory lock from the test
+	// process, then drive a session-scoped REST GET through the router. But the
+	// REST GET path (GetSession) reads Postgres directly and never acquires or
+	// contends on that advisory lock — only the git/objectstore LifecycleManager
+	// does — so a held lock can never make a read GET return 503. As a result
+	// `transparent_redispatch_on_503` passes tautologically (the read is always
+	// 200, so no re-dispatch is ever exercised) and `bounded_retry` can never
+	// observe the all-pods-503 condition it asserts. The router's re-dispatch
+	// product code IS correct and is exercised deterministically by the unit test
+	// Test503RetrySucceeds in internal/router/proxy (buffered first attempt,
+	// retry replaces a leaked 503, bounded to one retry). To make these e2e tests
+	// valid they must be re-anchored to a path that genuinely 503s under lock
+	// contention (git push/clone through the router), tracked in the backlog item.
+	// Do NOT relax the 2xx/503 assertions to force a green — that would lie about
+	// the re-dispatch invariant.
+	t.Skip("router 503 re-dispatch failure tests are blocked on idea-router-e2e-lease-premise: " +
+		"a held advisory lock cannot force a 503 on the REST GET path (the lease is git-only), so " +
+		"transparent_redispatch is tautological and bounded_retry cannot reach all-pods-503; the " +
+		"re-dispatch product fix is covered by the proxy unit test Test503RetrySucceeds " +
+		"(see .work/backlog/idea-router-e2e-lease-premise.md)")
 
 	t.Run("transparent_redispatch_on_503", testTransparentRedispatchOn503)
 	t.Run("bounded_retry_pathology_surfaces_503", testBoundedRetryPathologySurfaces503)
@@ -118,7 +143,7 @@ func testTransparentRedispatchOn503(t *testing.T) {
 	// Acquire the advisory lock for this session from the test side.
 	// pg_advisory_lock blocks until acquired; since no pod currently holds it
 	// (session was just created and request completed), we should get it immediately.
-	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_lock(hashtext($1)::oid)", sessionID)
+	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_lock(hashtext($1))", sessionID)
 	require.NoError(t, err, "transparent_redispatch: acquire advisory lock from test side")
 
 	t.Logf("transparent_redispatch: advisory lock held by test process; sending session-scoped request via router")
@@ -155,7 +180,7 @@ func testTransparentRedispatchOn503(t *testing.T) {
 	t.Logf("transparent_redispatch: got %d in %v (re-dispatch succeeded)", resp.StatusCode, elapsed)
 
 	// ── Release the advisory lock ─────────────────────────────────────────────
-	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1)::oid)", sessionID)
+	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
 	require.NoError(t, err, "transparent_redispatch: release advisory lock")
 	t.Logf("transparent_redispatch: advisory lock released")
 
@@ -231,7 +256,7 @@ func testBoundedRetryPathologySurfaces503(t *testing.T) {
 	require.NoError(t, err, "bounded_retry: open lock DB")
 	defer lockDB.Close()
 
-	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_lock(hashtext($1)::oid)", sessionID)
+	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_lock(hashtext($1))", sessionID)
 	require.NoError(t, err, "bounded_retry: acquire advisory lock to block all pods")
 	t.Logf("bounded_retry: advisory lock held; both pods will return 503")
 
@@ -268,7 +293,7 @@ func testBoundedRetryPathologySurfaces503(t *testing.T) {
 	t.Logf("bounded_retry: got 503 in %v (bounded-retry invariant satisfied)", elapsed)
 
 	// ── Release both locks ───────────────────────────────────────────────────
-	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1)::oid)", sessionID)
+	_, err = lockDB.ExecContext(ctx, "SELECT pg_advisory_unlock(hashtext($1))", sessionID)
 	require.NoError(t, err, "bounded_retry: release advisory lock")
 	t.Logf("bounded_retry: advisory lock released")
 }

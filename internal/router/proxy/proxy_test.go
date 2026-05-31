@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -186,12 +187,24 @@ func TestEmptyRingFallback503(t *testing.T) {
 }
 
 // Test503RetrySucceeds verifies that when the primary pod returns 503 the
-// router invalidates the hint cache and retries on the next pod, which
-// returns 200.
+// router invalidates the hint cache and re-dispatches to the next pod, and the
+// client sees the retry pod's 2xx — the leaked 503 must NEVER reach the client.
+//
+// The first attempt is pinned to the 503 pod via the hint cache so the retry
+// path is exercised deterministically. (Routing the session by ring alone is
+// not deterministic enough: it can land on pod-b first and skip the retry,
+// which is how the original buffer-leak bug hid from this test.) The 503 pod
+// returns a distinctive body so we can confirm the client did NOT receive it.
 func Test503RetrySucceeds(t *testing.T) {
-	// Server A always returns 503.
+	const leak503Body = "LEAKED-503-FROM-POD-A"
+	const okBody = "OK-FROM-POD-B"
+
+	// Server A always returns 503 with a distinctive body.
+	var aHits int
 	tsA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		aHits++
 		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, leak503Body)
 	}))
 	t.Cleanup(tsA.Close)
 
@@ -200,22 +213,22 @@ func Test503RetrySucceeds(t *testing.T) {
 	tsB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bHits++
 		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, okBody)
 	}))
 	t.Cleanup(tsB.Close)
 
-	// Build a ring that deterministically routes "retry-session" to pod-a first.
-	// We may not control which pod the ring picks, so we check the behavior:
-	// at most 2 backend hits total (1 primary + 1 retry) and the final HTTP
-	// response should NOT be an application-level error that we caused.
 	r := ring.New(50)
 	r.SetPods([]ring.Pod{
 		{ID: "pod-a", Address: strings.TrimPrefix(tsA.URL, "http://")},
 		{ID: "pod-b", Address: strings.TrimPrefix(tsB.URL, "http://")},
 	})
+	hint := cache.New(100, 60*time.Second)
+	// Pin the first attempt to the 503 pod so the re-dispatch path always runs.
+	hint.Set("retry-session", "pod-a")
 	h := &proxy.Handler{
 		Extract:  staticExtract,
 		Ring:     r,
-		Hint:     cache.New(100, 60*time.Second),
+		Hint:     hint,
 		Fallback: proxy.NewRoundRobinFallback(r),
 	}
 
@@ -224,27 +237,42 @@ func Test503RetrySucceeds(t *testing.T) {
 	req.Header.Set("X-Test-Session", "retry-session")
 	h.ServeHTTP(rr, req)
 
-	// The ring sends the session to either pod-a or pod-b.
-	// If pod-a: primary gets 503, retry hits pod-b which is 200 → client sees 200.
-	// If pod-b: primary gets 200 → client sees 200, no retry.
-	// Either way the final response must not be our own 503 (no-backends error).
-	if rr.Code == http.StatusServiceUnavailable {
-		body, _ := io.ReadAll(rr.Body)
-		t.Errorf("got 503 with body %q; expected 200 (successful retry) or no backends", body)
+	body, _ := io.ReadAll(rr.Body)
+
+	// Invariant: the client sees the retry pod's 200, never the first pod's 503.
+	if rr.Code != http.StatusOK {
+		t.Errorf("re-dispatch: got status %d (body %q); want 200 from retry pod — "+
+			"the first pod's 503 must not leak to the client", rr.Code, body)
+	}
+	if string(body) == leak503Body {
+		t.Errorf("re-dispatch: client received the discarded 503 body %q — "+
+			"the buffered first attempt leaked to the client", leak503Body)
+	}
+	// Both pods must have been hit exactly once: pod-a (503) then pod-b (retry).
+	if aHits != 1 {
+		t.Errorf("re-dispatch: pod-a (503) hit %d times; want exactly 1", aHits)
+	}
+	if bHits != 1 {
+		t.Errorf("re-dispatch: pod-b (retry) hit %d times; want exactly 1 "+
+			"(the retry must reach a distinct pod)", bHits)
 	}
 }
 
-// Test503BothPodsPropagate verifies that when both primary and retry pods
-// return 503 the client receives 503.
+// Test503BothPodsPropagate verifies the bounded-retry exhaustion path: when
+// both the primary and retry pods return 503, the client receives 503 after
+// exactly two pod attempts (initial + one retry) — never more.
 func Test503BothPodsPropagate(t *testing.T) {
-	tsA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	t.Cleanup(tsA.Close)
-	tsB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	t.Cleanup(tsB.Close)
+	var hits int32
+	mk503 := func() *httptest.Server {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt32(&hits, 1)
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		t.Cleanup(ts.Close)
+		return ts
+	}
+	tsA := mk503()
+	tsB := mk503()
 
 	r := ring.New(50)
 	r.SetPods([]ring.Pod{
@@ -266,6 +294,10 @@ func Test503BothPodsPropagate(t *testing.T) {
 	// Both pods return 503, so the client must see a 503.
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Errorf("both pods 503: got %d, want 503", rr.Code)
+	}
+	// Bounded retry: exactly two pod attempts total (initial + one retry).
+	if got := atomic.LoadInt32(&hits); got != 2 {
+		t.Errorf("bounded retry: got %d pod attempts; want exactly 2 (initial + one retry)", got)
 	}
 }
 
@@ -355,6 +387,104 @@ func TestHintInvalidatedOn503(t *testing.T) {
 	_, ok := hint.Get("inv-session")
 	if ok {
 		t.Error("hint cache entry was not invalidated after 503")
+	}
+}
+
+// Test503RetryReplaysRequestBody verifies that when the first pod returns 503,
+// the re-dispatch to the retry pod resends the FULL request body — the first
+// attempt consuming r.Body must not leave the retry pod with an empty body.
+func Test503RetryReplaysRequestBody(t *testing.T) {
+	const body = "the-full-request-body-payload"
+
+	// Pod A (pinned first) returns 503 after draining the body.
+	tsA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(tsA.Close)
+
+	// Pod B (retry) echoes the body it received so we can assert it is intact.
+	var gotBody string
+	tsB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(tsB.Close)
+
+	r := ring.New(50)
+	r.SetPods([]ring.Pod{
+		{ID: "pod-a", Address: strings.TrimPrefix(tsA.URL, "http://")},
+		{ID: "pod-b", Address: strings.TrimPrefix(tsB.URL, "http://")},
+	})
+	hint := cache.New(100, 60*time.Second)
+	hint.Set("body-session", "pod-a") // pin first attempt to the 503 pod
+	h := &proxy.Handler{
+		Extract:  staticExtract,
+		Ring:     r,
+		Hint:     hint,
+		Fallback: proxy.NewRoundRobinFallback(r),
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/o/sessions/body-session/x",
+		strings.NewReader(body))
+	req.Header.Set("X-Test-Session", "body-session")
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("re-dispatch with body: got status %d; want 200 from retry pod", rr.Code)
+	}
+	if gotBody != body {
+		t.Errorf("retry pod received body %q; want %q — the request body was not replayed on re-dispatch", gotBody, body)
+	}
+}
+
+// Test503OversizedBodyNotRetried verifies that a request whose body exceeds the
+// retry-buffer cap is NOT re-dispatched: the first pod's 503 is surfaced rather
+// than replaying a truncated body to another pod.
+func Test503OversizedBodyNotRetried(t *testing.T) {
+	// Pod A (pinned) returns 503; pod B must NOT be hit for an oversized body.
+	tsA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(tsA.Close)
+
+	var bHit int32
+	tsB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&bHit, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(tsB.Close)
+
+	r := ring.New(50)
+	r.SetPods([]ring.Pod{
+		{ID: "pod-a", Address: strings.TrimPrefix(tsA.URL, "http://")},
+		{ID: "pod-b", Address: strings.TrimPrefix(tsB.URL, "http://")},
+	})
+	hint := cache.New(100, 60*time.Second)
+	hint.Set("big-session", "pod-a")
+	h := &proxy.Handler{
+		Extract:  staticExtract,
+		Ring:     r,
+		Hint:     hint,
+		Fallback: proxy.NewRoundRobinFallback(r),
+	}
+
+	// 2 MiB body — exceeds the 1 MiB retry cap.
+	big := strings.Repeat("x", 2<<20)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/o/sessions/big-session/x",
+		strings.NewReader(big))
+	req.Header.Set("X-Test-Session", "big-session")
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("oversized-body 503: got %d; want 503 surfaced without retry", rr.Code)
+	}
+	if got := atomic.LoadInt32(&bHit); got != 0 {
+		t.Errorf("oversized-body 503: retry pod was hit %d times; want 0 (no replay of an oversized body)", got)
 	}
 }
 
