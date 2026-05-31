@@ -1,7 +1,7 @@
 ---
 id: e2e-cloud-native-multipod-suite-red-fuzz
 kind: feature
-stage: review
+stage: done
 tags: [portal, testing, bug]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: []

@@ -1,7 +1,7 @@
 ---
 id: e2e-router-mcp-leasepremise-and-fuzz-coldstart
 kind: story
-stage: review
+stage: done
 parent: e2e-cloud-native-multipod-suite-red
 tags: [portal, infra, testing, bug]
 depends_on: []

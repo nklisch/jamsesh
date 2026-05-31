@@ -1,7 +1,7 @@
 ---
 id: golden-other-epic-reds-drain
 kind: story
-stage: review
+stage: done
 tags: [testing, bug]
 parent: null
 depends_on: []

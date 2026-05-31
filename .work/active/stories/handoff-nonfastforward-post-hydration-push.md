@@ -1,7 +1,7 @@
 ---
 id: handoff-nonfastforward-post-hydration-push
 kind: story
-stage: review
+stage: done
 tags: [portal, infra, testing, bug]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: [e2e-cloud-native-multipod-suite-red-lease-migration]

@@ -1,7 +1,7 @@
 ---
 id: e2e-handoff-githttp-push-disconnect-to-hydrated-survivor
 kind: story
-stage: review
+stage: done
 tags: [portal, infra, testing, bug]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: []

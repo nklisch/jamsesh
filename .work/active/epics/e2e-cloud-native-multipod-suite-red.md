@@ -1,7 +1,7 @@
 ---
 id: e2e-cloud-native-multipod-suite-red
 kind: epic
-stage: implementing
+stage: done
 tags: [portal, infra, testing, bug]
 parent: null
 depends_on: []
@@ -263,3 +263,18 @@ router-mcp+fuzz reliability, golden ref-name/rpo0, handoff non-fast-forward,
 lease-holder-killed request-driven) + 1 cross-epic story (golden other-epic
 reds). Backlog filed for genuinely out-of-scope items: REST `/refs` cross-pod
 hydration, migration advisory-lock startup wedge, router-e2e lease-premise rewrite.
+
+### Final review (Codex xhigh, cross-model)
+A consolidated review of the six product changes found ONE blocking bug the green
+suite missed: `router/proxy/proxy.go` recorded a forwarded informational 1xx
+(`100 Continue`) as the final proxied status, so the real 200/503 was dropped —
+and git push uses `Expect: 100-continue`, so pushes through the router were at
+risk (the e2e pushes didn't happen to trigger the capture). Fixed: `WriteHeader`
+ignores 1xx, with a regression test confirmed to fail without the fix (`328d5a0d`).
+Also took the nice-to-have: the hook token-refresh write-back is now scoped to the
+client's explicit `SessionID` (`d1be19cb`), closing the same per-session-token
+gap as fix #6. No blocking findings in manifest/lease/githttp/hooks. The other
+four product areas were cleared. After the fixes, the full suite remains green.
+
+Epic complete: all children done; ready for `/agile-workflow:release-deploy` to
+bind + archive.

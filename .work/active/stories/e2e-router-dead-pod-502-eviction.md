@@ -1,7 +1,7 @@
 ---
 id: e2e-router-dead-pod-502-eviction
 kind: story
-stage: review
+stage: done
 tags: [portal, infra, testing, bug]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: []

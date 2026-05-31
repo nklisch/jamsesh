@@ -1,7 +1,7 @@
 ---
 id: e2e-cloud-native-multipod-suite-red-cluster-smoke
 kind: feature
-stage: review
+stage: done
 tags: [portal, infra, testing, bug]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: [e2e-cloud-native-multipod-suite-red-objectstore-sync, e2e-cloud-native-multipod-suite-red-lease-migration, e2e-cloud-native-multipod-suite-red-router-redispatch]

@@ -1,7 +1,7 @@
 ---
 id: lease-holder-killed-eager-vs-request-driven-slo
 kind: story
-stage: review
+stage: done
 tags: [portal, infra, testing]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: [e2e-cloud-native-multipod-suite-red-lease-migration]
