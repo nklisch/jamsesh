@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { auth } from '$lib/auth.svelte';
+  import { client } from '$lib/api/client';
   import Button from './Button.svelte';
   import Modal from './Modal.svelte';
 
   let {
+    orgId,
     sessionId,
     sourceRef,
     onclose,
     onsuccess,
   }: {
+    orgId: string;
     sessionId: string;
     sourceRef: string;
     onclose?: () => void;
@@ -43,20 +45,28 @@
     submitting = true;
     submitError = null;
 
-    // Resolve tip SHA of the source ref: fetch refs and find it.
-    let commitSha: string | null = null;
-    try {
-      const refsRes = await fetch(`/api/orgs/${encodeURIComponent(orgIdFromRef(sourceRef))}/sessions/${encodeURIComponent(sessionId)}/refs`, {
-        headers: { Authorization: `Bearer ${auth.token ?? ''}` },
-      });
-      if (refsRes.ok) {
-        const refsData = await refsRes.json() as { refs: Array<{ ref: string; sha: string }> };
-        const found = refsData.refs.find((r) => r.ref === sourceRef);
-        if (found) commitSha = found.sha;
-      }
-    } catch {
-      // non-fatal; fork may still work with null sha
+    // Resolve tip SHA of the source ref using the typed client.
+    // An unresolved ref is treated the same as a refs-fetch failure: surface
+    // an error and do NOT issue the fork (no target_commit_sha with wrong tip).
+    const { data: refsData, error: refsError } = await client.GET(
+      '/api/orgs/{orgID}/sessions/{sessionID}/refs',
+      { params: { path: { orgID: orgId, sessionID: sessionId } } },
+    );
+
+    if (refsError || !refsData) {
+      submitError = 'Failed to resolve source ref tip: could not fetch refs.';
+      submitting = false;
+      return;
     }
+
+    const found = refsData.refs.find((r) => r.ref === sourceRef);
+    if (!found) {
+      submitError = 'Source ref could not be resolved — it may have been deleted. Cannot fork.';
+      submitting = false;
+      return;
+    }
+
+    const commitSha = found.sha;
 
     // Call MCP fork tool via /mcp JSON-RPC endpoint.
     const body = {
@@ -69,7 +79,7 @@
           session_id: sessionId,
           target_ref: targetRef.trim(),
           mode,
-          ...(commitSha ? { target_commit_sha: commitSha } : {}),
+          target_commit_sha: commitSha,
         },
       },
     };
@@ -80,7 +90,6 @@
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json, text/event-stream',
-          Authorization: `Bearer ${auth.token ?? ''}`,
         },
         body: JSON.stringify(body),
       });
@@ -116,15 +125,6 @@
       submitError = e instanceof Error ? e.message : 'Fork failed.';
       submitting = false;
     }
-  }
-
-  // Derive org ID from the session context (refs follow jam/<session>/<user>/<branch>).
-  // In practice the orgId must come from the parent; we accept it as a prop here.
-  function orgIdFromRef(_ref: string): string {
-    // This is intentionally left as a best-effort; the orgId should be passed
-    // from the parent but is not needed here since the /mcp endpoint doesn't
-    // require it in the URL.
-    return '';
   }
 </script>
 

@@ -1,7 +1,7 @@
 ---
 id: bug-squash-forkdialog-empty-org-refs-fetch
 kind: story
-stage: implementing
+stage: review
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-async-races
 depends_on: []
@@ -26,3 +26,20 @@ const refsRes = await fetch(`/api/orgs/${encodeURIComponent(orgIdFromRef(sourceR
 if (refsRes.ok) { ... } // orgIdFromRef always "" -> request 404s -> silently skipped
 function orgIdFromRef(_ref: string): string { return ''; }
 ```
+
+## Implementation notes
+
+Added an `orgId` prop to `ForkDialog` and threaded it from `SessionViewShell`
+(which already has `orgId` in scope). Replaced the raw `fetch` with the typed
+`client.GET('/api/orgs/{orgID}/sessions/{sessionID}/refs')`, using the real
+`orgId` in the path params.
+
+Deleted the dead `orgIdFromRef` helper.
+
+Per the codex must-fix: a refs-fetch failure OR an unresolved source ref now
+surfaces an error and stops before issuing the fork MCP call (no more silent
+`null`-sha fork). The fork only proceeds when the source ref is found in the
+refs response, and `target_commit_sha` is always provided.
+
+Four tests added: refs URL uses real org id; fetch failure → error + no fork;
+unresolved ref → error + no fork; resolved ref → fork issued with `target_commit_sha`.

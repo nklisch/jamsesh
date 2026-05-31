@@ -353,6 +353,7 @@
     <!-- Fork dialog -->
     {#if refActions.activeDialog === 'fork'}
       <ForkDialog
+        {orgId}
         {sessionId}
         sourceRef={refActions.activeDialogRef}
         onclose={refActions.closeDialog}
