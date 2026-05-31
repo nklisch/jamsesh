@@ -1,7 +1,7 @@
 ---
 id: bug-squash-subscribe-floats-open-rejection
 kind: story
-stage: implementing
+stage: review
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-ws-lifecycle
 depends_on: []
@@ -27,3 +27,28 @@ export function subscribe(sessionId, type, handler) {
   ...register handler...
 }
 ```
+
+## Implementation notes
+
+Implemented as Unit 3 of the coordinated `ws.svelte.ts` lifecycle rework.
+
+**Changes in `frontend/src/lib/ws.svelte.ts`:**
+- Replaced `throw new Error('ws: cannot open socket — no auth token')` with
+  `setStatus(sessionId, null); return null;` in `open()`. This is consistent
+  with the existing ticket-failure path (also returns null). `void open()` in
+  `subscribe()` is now safe — no rejection can escape.
+- `WsStatus` union intentionally NOT widened (no 'failed' member) — null
+  (disconnected) is the honest state for no-token. The Low severity doesn't
+  justify touching all consumers.
+- Documented limitation: a handler registered before a token exists stays in
+  the map but does NOT auto-open when a token later appears; a new `subscribe()`
+  or `open()` call is required.
+
+**Regression tests in `frontend/src/lib/ws.test.ts`** (describe block
+`ws — Unit 3: open() null on no-token`):
+- `open()` with falsy `auth.token` → 0 `WebSocket` instances, `wsStatus`
+  returns null; no unhandled rejection surfaces.
+- Documented limitation test: token set after a no-token subscribe → still 0
+  sockets (no auto-open).
+
+All 747 tests pass; `svelte-check` clean.
