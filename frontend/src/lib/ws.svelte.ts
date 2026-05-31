@@ -69,6 +69,10 @@ interface ConnectionRecord {
   // Plain field, not a rune — nothing reactive consumes it (see D2 in
   // the feature design).
   lastSeenSeq: number;
+  // Pending macrotask teardown timer (Unit 1 ref-counted teardown).
+  // Set by scheduleTeardown(); cancelled on entry to subscribe() or
+  // explicit close(). Fires teardown() if handlerCount is still 0.
+  teardownTimer: ReturnType<typeof setTimeout> | null;
 }
 
 // Module-level maps; one record and one handler registry per sessionId.
@@ -152,6 +156,72 @@ async function fetchTicket(): Promise<string | null> {
   }
 }
 
+/**
+ * Count all handlers currently registered for a session across all types.
+ * Used to determine whether a teardown should proceed.
+ */
+function handlerCount(sessionId: string): number {
+  const byType = handlers.get(sessionId);
+  if (!byType) return 0;
+  let n = 0;
+  for (const set of byType.values()) n += set.size;
+  return n;
+}
+
+/**
+ * Tear down the connection for a session: close the socket, cancel the
+ * reconnect timer, remove the record and handler registry, and clear the
+ * status. This is the body that was formerly inline in close().
+ *
+ * Tearing down intentionally drops lastSeenSeq (cursor invalidation —
+ * "I left the view and came back", distinct from the reconnect loop's
+ * "I never left").
+ */
+function teardown(sessionId: string): void {
+  const rec = records.get(sessionId);
+  if (rec) {
+    rec.closedByUs = true;
+    if (rec.teardownTimer !== null) {
+      clearTimeout(rec.teardownTimer);
+      rec.teardownTimer = null;
+    }
+    if (rec.reconnectTimer !== null) {
+      clearTimeout(rec.reconnectTimer);
+      rec.reconnectTimer = null;
+    }
+    rec.ws?.close();
+    records.delete(sessionId);
+  }
+  handlers.delete(sessionId);
+  setStatus(sessionId, null);
+}
+
+/**
+ * Schedule a deferred (macrotask) teardown for a session.
+ *
+ * The macrotask linger absorbs the synchronous Svelte 5 effect
+ * cleanup→re-subscribe window: $effect teardown runs immediately before
+ * the synchronous rerun, so a macrotask timer cannot fire between cleanup
+ * and the synchronous rerun body. If a new subscribe() arrives before the
+ * timer fires, it cancels the teardown.
+ *
+ * If no record exists (already torn down), cleans up the handler map and
+ * status immediately.
+ */
+function scheduleTeardown(sessionId: string): void {
+  const rec = records.get(sessionId);
+  if (!rec) {
+    handlers.delete(sessionId);
+    setStatus(sessionId, null);
+    return;
+  }
+  // Use ??= so only one timer is ever pending per record.
+  rec.teardownTimer ??= setTimeout(() => {
+    rec.teardownTimer = null;
+    if (handlerCount(sessionId) === 0) teardown(sessionId);
+  }, 0);
+}
+
 function attachListeners(sessionId: string, ws: WebSocket): void {
   ws.addEventListener('message', (ev: MessageEvent) => {
     let env: EventEnvelope;
@@ -217,6 +287,11 @@ function attachListeners(sessionId: string, ws: WebSocket): void {
 }
 
 async function reopen(sessionId: string): Promise<void> {
+  // Capture the record identity BEFORE the async gap. After fetchTicket()
+  // resolves, we require the SAME record object still to be present AND
+  // live handlers to exist — a teardown + fresh resubscribe may have
+  // replaced the record during the await, and an old reopen must not attach
+  // an orphan socket to the new record.
   const rec = records.get(sessionId);
   if (!rec) return;
 
@@ -235,9 +310,11 @@ async function reopen(sessionId: string): Promise<void> {
     return;
   }
 
-  // Check the record is still valid after the async ticket fetch — the user
-  // may have called close() while we were awaiting the ticket.
-  if (!records.has(sessionId)) return;
+  // Post-ticket identity guard (codex must-fix): require the SAME record
+  // object (identity, not just existence) AND live handlers. A teardown +
+  // fresh resubscribe may have swapped the record during the await; an
+  // in-flight reopen must not attach an orphan socket.
+  if (records.get(sessionId) !== rec || handlerCount(sessionId) === 0) return;
 
   const proto = `jamsesh-ticket.${ticket}`;
   const ws = new WebSocket(`/ws/sessions/${sessionId}`, proto);
@@ -246,10 +323,19 @@ async function reopen(sessionId: string): Promise<void> {
 }
 
 async function open(sessionId: string): Promise<WebSocket | null> {
+  // Unit 2: reuse any existing record — whether ws is open or null
+  // (mid-reconnect). A lingering record always means "open or reconnecting";
+  // the reconnect loop owns it. Do NOT overwrite/reset lastSeenSeq or orphan
+  // the in-flight reconnectTimer.
   const existing = records.get(sessionId);
-  if (existing && existing.ws) return existing.ws;
+  if (existing) return existing.ws;
 
-  if (!auth.token) throw new Error('ws: cannot open socket — no auth token');
+  // Unit 3: resolve null instead of throwing — void open() in subscribe() is
+  // then safe (no floated rejection). Surface disconnected status.
+  if (!auth.token) {
+    setStatus(sessionId, null);
+    return null;
+  }
 
   const ticket = await fetchTicket();
   if (!ticket) {
@@ -257,9 +343,11 @@ async function open(sessionId: string): Promise<WebSocket | null> {
     return null;
   }
 
-  // Re-check after async gap: a concurrent subscribe() may have opened already.
-  const maybeExisting = records.get(sessionId);
-  if (maybeExisting && maybeExisting.ws) return maybeExisting.ws;
+  // Post-ticket guard (codex must-fix): an unsubscribe/close/teardown may
+  // have landed during the await. Re-check BEFORE constructing the socket.
+  const now = records.get(sessionId);
+  if (now) return now.ws; // someone created/owns a record meanwhile — reuse it
+  if (handlerCount(sessionId) === 0) return null; // last handler left during the await — don't orphan a socket
 
   const proto = `jamsesh-ticket.${ticket}`;
   const ws = new WebSocket(`/ws/sessions/${sessionId}`, proto);
@@ -271,6 +359,7 @@ async function open(sessionId: string): Promise<WebSocket | null> {
     closedByUs: false,
     reconnectTimer: null,
     lastSeenSeq: 0,
+    teardownTimer: null,
   };
   records.set(sessionId, rec);
   setStatus(sessionId, 'connecting');
@@ -288,12 +377,23 @@ async function open(sessionId: string): Promise<WebSocket | null> {
  * bearer token is never placed in Sec-WebSocket-Protocol.
  *
  * Returns an unsubscribe closure that removes only this handler.
+ * When the last handler for a session is removed, a brief macrotask
+ * linger is scheduled before tearing down the connection — this absorbs
+ * the synchronous Svelte 5 effect cleanup→re-subscribe window so that
+ * an effect re-run does not thrash the socket.
  */
 export function subscribe(
   sessionId: string,
   type: string,
   handler: Handler,
 ): () => void {
+  // Cancel any pending teardown — a new subscriber has arrived.
+  const pendingRec = records.get(sessionId);
+  if (pendingRec?.teardownTimer !== null && pendingRec?.teardownTimer !== undefined) {
+    clearTimeout(pendingRec.teardownTimer);
+    pendingRec.teardownTimer = null;
+  }
+
   void open(sessionId);
 
   if (!handlers.has(sessionId)) handlers.set(sessionId, new Map());
@@ -302,7 +402,17 @@ export function subscribe(
   byType.get(type)!.add(handler);
 
   return () => {
-    byType.get(type)?.delete(handler);
+    const set = byType.get(type);
+    if (set) {
+      set.delete(handler);
+      // Prune empty per-type Sets to avoid accumulating empty sets over
+      // long-lived churn across event types.
+      if (set.size === 0) byType.delete(type);
+    }
+    // If this was the last handler for the session, schedule a deferred
+    // teardown. The macrotask linger absorbs the synchronous Svelte 5
+    // effect cleanup→re-subscribe window.
+    if (handlerCount(sessionId) === 0) scheduleTeardown(sessionId);
   };
 }
 
@@ -315,16 +425,11 @@ export function subscribe(
  * which is distinct from the reconnect loop's "I never left").
  */
 export function close(sessionId: string): void {
+  // Cancel any pending linger teardown, then execute teardown immediately.
   const rec = records.get(sessionId);
-  if (rec) {
-    rec.closedByUs = true;
-    if (rec.reconnectTimer !== null) {
-      clearTimeout(rec.reconnectTimer);
-      rec.reconnectTimer = null;
-    }
-    rec.ws?.close();
-    records.delete(sessionId);
+  if (rec?.teardownTimer !== null && rec?.teardownTimer !== undefined) {
+    clearTimeout(rec.teardownTimer);
+    rec.teardownTimer = null;
   }
-  handlers.delete(sessionId);
-  setStatus(sessionId, null);
+  teardown(sessionId);
 }

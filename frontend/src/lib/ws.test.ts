@@ -31,7 +31,7 @@ class MockWebSocket {
 
   readonly url: string;
   readonly protocol: string;
-  readyState: number = WebSocket.CONNECTING;
+  readyState: number = 0; // WebSocket.CONNECTING
 
   /** Every frame written via send() — order-preserving. */
   readonly sent: string[] = [];
@@ -83,7 +83,7 @@ class MockWebSocket {
   }
 
   close(code: number = 1000): void {
-    this.readyState = WebSocket.CLOSED;
+    this.readyState = 3; // WebSocket.CLOSED
     this.emit('close', code);
   }
 
@@ -852,5 +852,333 @@ describe('ws — lastSeenSeq cursor + replay_from', () => {
     const c = MockWebSocket.instances[2];
     c.emit('open');
     expect(c.sent).toEqual([JSON.stringify({ replay_from: 5 })]);
+  });
+});
+
+// ------------------------------------------------------------------
+// Unit 1: Reference-counted teardown + linger
+// ------------------------------------------------------------------
+
+describe('ws — Unit 1: ref-counted teardown', () => {
+  beforeEach(async () => {
+    installMockWebSocket();
+    localStorage.clear();
+    vi.resetModules();
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-token', 'test-refresh');
+    await installTicketMock('test-ticket');
+  });
+
+  afterEach(() => {
+    uninstallMockWebSocket();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test('unsubscribing the LAST handler closes the socket and removes the record', async () => {
+    const { subscribe, wsStatus } = await import('$lib/ws.svelte');
+
+    const unsub1 = subscribe('sess-t1', 'ev.a', vi.fn());
+    const unsub2 = subscribe('sess-t1', 'ev.b', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(MockWebSocket.instances).toHaveLength(1);
+    const ws = MockWebSocket.instances[0];
+    expect(wsStatus.for('sess-t1')).toBe('connecting');
+
+    // Remove first handler — socket should still be alive (one handler remains).
+    unsub1();
+    vi.advanceTimersByTime(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(ws.readyState).not.toBe(3 /* CLOSED */);
+
+    // Remove last handler — teardown should be scheduled.
+    unsub2();
+    // Linger timer is a macrotask; tick it.
+    vi.advanceTimersByTime(0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // ws.close() should have been called (MockWebSocket.close sets readyState=CLOSED).
+    expect(ws.readyState).toBe(3 /* CLOSED */);
+    // Status must be null (record deleted).
+    expect(wsStatus.for('sess-t1')).toBe(null);
+  });
+
+  test('unsubscribing ONE of several handlers does NOT close the socket', async () => {
+    const { subscribe } = await import('$lib/ws.svelte');
+
+    const unsub1 = subscribe('sess-t2', 'ev', vi.fn());
+    const unsub2 = subscribe('sess-t2', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+
+    const ws = MockWebSocket.instances[0];
+    unsub1();
+    vi.advanceTimersByTime(100);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Still open.
+    expect(ws.readyState).not.toBe(3 /* CLOSED */);
+
+    unsub2();
+    vi.advanceTimersByTime(0);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  test('synchronous unsubscribe-all → resubscribe does NOT close the socket (linger cancels)', async () => {
+    const { subscribe } = await import('$lib/ws.svelte');
+
+    const unsub1 = subscribe('sess-t3', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+
+    const ws = MockWebSocket.instances[0];
+
+    // Simulate a synchronous Svelte effect re-run: unsubscribe then immediately
+    // resubscribe — all within the same synchronous turn before any macrotask fires.
+    unsub1();
+    const unsub2 = subscribe('sess-t3', 'ev', vi.fn()); // cancels the teardown timer
+
+    // Advance macrotask — linger timer would have fired here, but it was cancelled.
+    vi.advanceTimersByTime(0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Socket must still be open.
+    expect(ws.readyState).not.toBe(3 /* CLOSED */);
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    unsub2();
+    vi.advanceTimersByTime(0);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+});
+
+// ------------------------------------------------------------------
+// Unit 2: Reconnect-aware open() — cursor preserved, no orphan timer
+// ------------------------------------------------------------------
+
+describe('ws — Unit 2: reconnect-aware open()', () => {
+  beforeEach(async () => {
+    installMockWebSocket();
+    localStorage.clear();
+    vi.resetModules();
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-token', 'test-refresh');
+    await installTicketMock('test-ticket');
+  });
+
+  afterEach(() => {
+    uninstallMockWebSocket();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test('subscribe() during mid-reconnect does NOT reset lastSeenSeq and does NOT spawn a second timer', async () => {
+    const { subscribe } = await import('$lib/ws.svelte');
+
+    // Subscribe and open.
+    const unsub1 = subscribe('sess-u1', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+
+    const first = MockWebSocket.instances[0];
+    first.emit('open');
+    // Advance the replay cursor.
+    first.emit('message', { type: 'ev', seq: 10 });
+
+    // Drop with reconnectable code → mid-reconnect (ws=null, timer pending).
+    first.emit('close', 1006);
+    // reconnectTimer is now pending (~1000ms); do NOT advance it.
+
+    // Subscribe again while mid-reconnect. open() should reuse the existing record.
+    const unsub2 = subscribe('sess-u1', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Still only one socket — open() returned the existing record's ws (null).
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    // Let the reconnect timer fire and the new socket open.
+    vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(MockWebSocket.instances).toHaveLength(2);
+    const second = MockWebSocket.instances[1];
+    second.emit('open');
+
+    // lastSeenSeq=10 was preserved → replay_from frame sent.
+    expect(second.sent).toEqual([JSON.stringify({ replay_from: 10 })]);
+
+    unsub1();
+    unsub2();
+    vi.advanceTimersByTime(0);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+});
+
+// ------------------------------------------------------------------
+// Unit 3: open() resolves null instead of throwing (no floated rejection)
+// ------------------------------------------------------------------
+
+describe('ws — Unit 3: open() null on no-token', () => {
+  beforeEach(async () => {
+    installMockWebSocket();
+    localStorage.clear();
+    vi.resetModules();
+    // Do NOT set a token — auth.token stays null.
+  });
+
+  afterEach(() => {
+    uninstallMockWebSocket();
+    vi.restoreAllMocks();
+  });
+
+  test('open() with falsy auth.token resolves null — no throw, no unhandled rejection, no socket', async () => {
+    // Ensure no token is set.
+    const { auth } = await import('$lib/auth.svelte');
+    expect(auth.token).toBe(null);
+
+    const { subscribe, wsStatus } = await import('$lib/ws.svelte');
+
+    // subscribe() calls void open(); if open() threw, we'd get an unhandled
+    // rejection here. The test itself failing would surface that.
+    const unsub = subscribe('sess-n1', 'ev', vi.fn());
+    await flushMicrotasks();
+
+    // No socket should have been opened.
+    expect(MockWebSocket.instances).toHaveLength(0);
+
+    // Status must be null (not 'connecting' or anything else).
+    expect(wsStatus.for('sess-n1')).toBe(null);
+
+    unsub();
+  });
+
+  test('documented limitation: pre-token handler does NOT auto-open when token is set later', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    await installTicketMock('late-ticket');
+
+    const { subscribe } = await import('$lib/ws.svelte');
+
+    // Subscribe without a token — open() returns null, no socket.
+    const unsub = subscribe('sess-n2', 'ev', vi.fn());
+    await flushMicrotasks();
+    expect(MockWebSocket.instances).toHaveLength(0);
+
+    // Now a token arrives (login completed).
+    auth.setTokens('new-token', 'new-refresh');
+    await flushMicrotasks();
+
+    // The pre-registered handler does NOT trigger an auto-open.
+    // A new subscribe() is required to open the connection.
+    expect(MockWebSocket.instances).toHaveLength(0);
+
+    unsub();
+  });
+});
+
+// ------------------------------------------------------------------
+// Async cancellation (codex must-fix guards)
+// ------------------------------------------------------------------
+
+describe('ws — async cancellation guards', () => {
+  beforeEach(async () => {
+    installMockWebSocket();
+    localStorage.clear();
+    vi.resetModules();
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('test-token', 'test-refresh');
+  });
+
+  afterEach(() => {
+    uninstallMockWebSocket();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test('unsubscribe while fetchTicket is in flight → no WebSocket constructed', async () => {
+    // Install a deferred ticket: the promise will not resolve until we let it.
+    let resolveTicket!: (ticket: string) => void;
+    const deferredTicket = new Promise<string>((res) => {
+      resolveTicket = res;
+    });
+
+    const { client } = await import('$lib/api/client');
+    vi.spyOn(client, 'POST').mockImplementation(async () => {
+      const ticket = await deferredTicket;
+      return { data: { ticket, expires_in_seconds: 60 }, error: undefined, response: new Response() } as any;
+    });
+
+    const { subscribe } = await import('$lib/ws.svelte');
+
+    // Subscribe → open() is now awaiting fetchTicket().
+    const unsub = subscribe('sess-ac1', 'ev', vi.fn());
+
+    // Unsubscribe before the ticket resolves — handlerCount drops to 0.
+    unsub();
+    // Let the linger timer fire (teardown now scheduled).
+    vi.advanceTimersByTime(0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Now resolve the ticket — open() resumes from the await.
+    resolveTicket('late-ticket');
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The post-ticket guard sees handlerCount===0 and must NOT construct a socket.
+    expect(MockWebSocket.instances).toHaveLength(0);
+  });
+
+  test('close() while reopen fetchTicket is in flight → no orphan socket attached', async () => {
+    // Set up a deferred ticket for the reopen path.
+    let resolveReopenTicket!: (ticket: string) => void;
+    let callCount = 0;
+    const deferredReopenTicket = new Promise<string>((res) => {
+      resolveReopenTicket = res;
+    });
+
+    const { client } = await import('$lib/api/client');
+    vi.spyOn(client, 'POST').mockImplementation(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        // First call: initial open — resolves immediately.
+        return { data: { ticket: 'first-ticket', expires_in_seconds: 60 }, error: undefined, response: new Response() } as any;
+      }
+      // Second call (reopen): deferred until we resolve it.
+      const ticket = await deferredReopenTicket;
+      return { data: { ticket, expires_in_seconds: 60 }, error: undefined, response: new Response() } as any;
+    });
+
+    const { subscribe, close } = await import('$lib/ws.svelte');
+
+    // Open the initial connection.
+    const unsub = subscribe('sess-ac2', 'ev', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    // Drop with reconnectable code → reconnect timer pending.
+    MockWebSocket.instances[0].emit('close', 1006);
+
+    // Advance past the backoff — reopen() fires and calls fetchTicket()
+    // (the deferred one).
+    vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTimeAsync(0);
+    // reopen() is now suspended at await fetchTicket().
+
+    // Tear down while reopen is in flight.
+    unsub();
+    vi.advanceTimersByTime(0);
+    await vi.advanceTimersByTimeAsync(0);
+    // The teardown has deleted the record.
+
+    // Now resolve the deferred ticket — reopen() resumes.
+    resolveReopenTicket('orphan-ticket');
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The identity guard in reopen() sees records.get(id) !== rec (record was
+    // deleted), so it must NOT attach a new socket.
+    expect(MockWebSocket.instances).toHaveLength(1); // only the original socket
   });
 });
