@@ -295,7 +295,7 @@ async function reopen(sessionId: string): Promise<void> {
   const rec = records.get(sessionId);
   if (!rec) return;
 
-  if (!auth.token && !auth.playgroundContext?.bearer) {
+  if (!auth.token) {
     // No bearer token — can't obtain a ticket. Give up and drop the record.
     records.delete(sessionId);
     setStatus(sessionId, null);
@@ -332,7 +332,7 @@ async function open(sessionId: string): Promise<WebSocket | null> {
 
   // Unit 3: resolve null instead of throwing — void open() in subscribe() is
   // then safe (no floated rejection). Surface disconnected status.
-  if (!auth.token && !auth.playgroundContext?.bearer) {
+  if (!auth.token) {
     setStatus(sessionId, null);
     return null;
   }

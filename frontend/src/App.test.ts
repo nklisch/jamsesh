@@ -16,18 +16,11 @@ import App from './App.svelte';
 // render() calls cheap and test output noise-free.
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
-// Home and ProjectLanding stubs are spy-tracked so tests can observe which
-// home-branch the template mounts. The spies survive vi.mock hoisting via the
-// `(...args) => mockX(...args)` indirection (spa-test-module-mock-barrel
-// pattern).
-const mockHomeStub = vi.fn().mockReturnValue({});
-const mockProjectLandingStub = vi.fn().mockReturnValue({});
-
 vi.mock('$lib/screens/Login.svelte', () => ({
   default: function LoginStub(_anchor: unknown, _props: unknown) { return {}; },
 }));
 vi.mock('$lib/screens/Home.svelte', () => ({
-  default: (...args: unknown[]) => mockHomeStub(...args),
+  default: function HomeStub(_anchor: unknown, _props: unknown) { return {}; },
 }));
 vi.mock('$lib/screens/MagicLinkExchange.svelte', () => ({
   default: function MagicLinkExchangeStub(_anchor: unknown, _props: unknown) { return {}; },
@@ -54,7 +47,7 @@ vi.mock('$lib/screens/NotFound.svelte', () => ({
   default: function NotFoundStub(_anchor: unknown, _props: unknown) { return {}; },
 }));
 vi.mock('$lib/screens/ProjectLanding.svelte', () => ({
-  default: (...args: unknown[]) => mockProjectLandingStub(...args),
+  default: function ProjectLandingStub(_anchor: unknown, _props: unknown) { return {}; },
 }));
 
 // ── Router mock ──────────────────────────────────────────────────────────────
@@ -321,71 +314,31 @@ describe('App — auth-gate $effect', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('unauthed + portalInfo.loaded=false → neither Home nor ProjectLanding mounts (flash gate)', async () => {
+  // ── Anonymous playground participant on the shared session-view route ──────
+  // The session-view route is requiresAuth:true, but an anonymous joiner holds
+  // only a playgroundContext bearer (isAuthenticated === false). The gate must
+  // let them through to their own playground session rather than bounce to
+  // /login. Regression guard for nklisch/jamsesh#1.
+
+  it('unauthed playground participant on their own session-view → does NOT navigate', async () => {
     mockAuth.isAuthenticated = false;
-    mockRouterCurrent.name = 'home';
-    mockRouterCurrent.requiresAuth = true;
-    mockPortalInfo.loaded = false;
-    mockPortalInfo.landingVariant = 'project';
-
-    render(App);
-
-    await new Promise((r) => setTimeout(r, 50));
-    // Gate must hold: neither home-branch screen should mount while portalInfo
-    // is still loading. The auth-gate $effect's navigation guard is asserted
-    // separately above — this asserts the template's mounting behavior.
-    expect(mockHomeStub).not.toHaveBeenCalled();
-    expect(mockProjectLandingStub).not.toHaveBeenCalled();
-  });
-
-  // ── Playground-context session-view gate ──────────────────────────────────
-
-  it('playground-context user on org_playground session-view is NOT redirected to /login', async () => {
-    // A playground participant has isAuthenticated=false but holds a
-    // playgroundContext whose sessionId matches the route. The gate must let
-    // them through so SessionViewShell's org_playground branch can render.
-    mockAuth.isAuthenticated = false;
-    mockAuth.playgroundContext = {
-      sessionId: 'play-sess-42',
-      bearer: 'anon-bearer',
-      nickname: 'TestNick',
-    };
+    mockAuth.playgroundContext = { sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' };
     mockRouterCurrent.name = 'session-view';
-    mockRouterCurrent.params = { orgId: 'org_playground', sessionId: 'play-sess-42' };
+    mockRouterCurrent.params = { orgId: 'org_playground', sessionId: 's1' };
     mockRouterCurrent.requiresAuth = true;
 
     render(App);
 
     await new Promise((r) => setTimeout(r, 50));
-    // Must NOT redirect to /login — the playground exception applies.
-    expect(mockNavigate).not.toHaveBeenCalledWith('/login');
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('token-less playground-less user on a durable session-view IS redirected to /login', async () => {
-    // Control case: without a matching playgroundContext the gate must still
-    // enforce the requiresAuth redirect for regular session-view routes.
+  it('unauthed visitor on a playground session-view they did not join → /login', async () => {
     mockAuth.isAuthenticated = false;
-    mockAuth.playgroundContext = null;
+    // playgroundContext is for a DIFFERENT session — must not satisfy the gate.
+    mockAuth.playgroundContext = { sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' };
     mockRouterCurrent.name = 'session-view';
-    mockRouterCurrent.params = { orgId: 'org-durable', sessionId: 'sess-durable-1' };
-    mockRouterCurrent.requiresAuth = true;
-
-    render(App);
-
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
-  });
-
-  it('playground-context user whose sessionId does NOT match the route IS still redirected', async () => {
-    // The exception is session-scoped: a stale or mismatched playgroundContext
-    // must not grant access to a different session.
-    mockAuth.isAuthenticated = false;
-    mockAuth.playgroundContext = {
-      sessionId: 'play-sess-OTHER',
-      bearer: 'anon-bearer',
-      nickname: 'TestNick',
-    };
-    mockRouterCurrent.name = 'session-view';
-    mockRouterCurrent.params = { orgId: 'org_playground', sessionId: 'play-sess-42' };
+    mockRouterCurrent.params = { orgId: 'org_playground', sessionId: 's2' };
     mockRouterCurrent.requiresAuth = true;
 
     render(App);

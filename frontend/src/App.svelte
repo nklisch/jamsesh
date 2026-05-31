@@ -23,6 +23,10 @@
   // decisions at `/` for anonymous visitors.
   void portalInfo.init();
 
+  // Reserved org id for anonymous playground sessions. Mirrors
+  // playground.ReservedOrgID on the server.
+  const PLAYGROUND_ORG_ID = 'org_playground';
+
   // Auth gate: routes that declare `requiresAuth: true` (the default) require
   // an authenticated session. Routes that declare `requiresAuth: false` are
   // public and the gate leaves them alone.
@@ -43,21 +47,23 @@
       return;
     }
 
+    // Anonymous playground participants hold a session-scoped bearer in
+    // auth.playgroundContext instead of an account token, so isAuthenticated is
+    // false — yet they ARE authorized for their own playground session view.
+    // The session-view route is shared with durable sessions (requiresAuth:
+    // true), so without this exception the gate would bounce a joiner to /login
+    // immediately after a successful join. This check is optimistic: the
+    // server's session-membership check is the real authority — a stale context
+    // just yields a transient view, then a 401-driven signOut.
+    const inOwnPlaygroundSession =
+      current.name === 'session-view' &&
+      current.params.orgId === PLAYGROUND_ORG_ID &&
+      auth.playgroundContext?.sessionId === current.params.sessionId;
+
     // Unauthed user on a protected route → /login, with landing-variant
     // branching for the home route. Gate on portalInfo.loaded so the variant
     // decision isn't made before the bootstrap fetch resolves.
-    //
-    // Playground-resume exception: a playground participant has no durable
-    // auth token (isAuthenticated === false) but does have a playgroundContext.
-    // Allow them into the org_playground session-view when the context's
-    // sessionId matches the route — SessionViewShell already handles the
-    // org_playground branch. This is additive and does not widen durable
-    // session access in any way.
-    const playgroundView =
-      current.name === 'session-view' &&
-      current.params.orgId === 'org_playground' &&
-      auth.playgroundContext?.sessionId === current.params.sessionId;
-    if (current.requiresAuth && !auth.isAuthenticated && !playgroundView) {
+    if (current.requiresAuth && !auth.isAuthenticated && !inOwnPlaygroundSession) {
       if (current.name === 'home') {
         // Wait until portalInfo has resolved its bootstrap fetch.
         if (!portalInfo.loaded) return;
