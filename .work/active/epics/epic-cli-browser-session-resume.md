@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume
 kind: epic
-stage: review
+stage: done
 tags: [plugin, portal, ui, security]
 parent: null
 depends_on: [feature-cli-jam-open-in-browser]
