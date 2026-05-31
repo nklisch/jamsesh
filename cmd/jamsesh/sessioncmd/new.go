@@ -154,9 +154,22 @@ func newAction(ctx context.Context, cmd *cli.Command) error {
 	// 7. Print success summary
 	printSuccessSummary(session, params, pc.BaseURL)
 
-	// 8. If --open flag set, launch the session in the browser (best-effort; never fails the command).
+	// 8. If --open flag set, mint a resume token and open the session as the
+	//    authenticated CLI identity. On mint failure, warn and fall back to the
+	//    prior token-free open so the command never fails due to --open.
 	if cmd.Bool("open") {
-		openInBrowser(sessionViewURL(pc.BaseURL, session.OrgId, session.Id))
+		// Build a per-session-scoped client so the per-session bearer (OAuth for
+		// durable sessions) is used to authenticate the mint request.
+		mintPC := &portalclient.Client{
+			BaseURL:   pc.BaseURL,
+			SessionID: session.Id,
+			HTTP:      pc.HTTP,
+			Refresh:   pc.Refresh,
+		}
+		if err := mintAndOpenResume(ctx, mintPC, session.OrgId, session.Id); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: couldn't mint a resume link (%v); opening without identity\n", err)
+			openInBrowser(sessionViewURL(pc.BaseURL, session.OrgId, session.Id))
+		}
 	}
 
 	// 9. Update most-recently-used org for next time's prompt pre-selection (best-effort)
@@ -457,9 +470,22 @@ func newPlaygroundAction(ctx context.Context, cmd *cli.Command) error {
 
 	printPlaygroundSummary(resp, baseURL)
 
-	// If --open flag set, launch the playground session in the browser (best-effort; never fails the command).
+	// If --open flag set, mint a resume token using the per-session anon bearer
+	// (NOT OAuth — do NOT use buildPortalClient() here). On failure, warn and
+	// fall back to the token-free playground join URL.
 	if cmd.Bool("open") {
-		openInBrowser(playgroundJoinURL(baseURL, resp.Session.Id))
+		// Build a per-session client with the playground anon bearer. Do NOT use
+		// buildPortalClient() — playground sessions have no OAuth token; the
+		// anonymous bearer stored via WriteSessionToken is the only credential.
+		mintPC := &portalclient.Client{
+			BaseURL:   baseURL,
+			SessionID: resp.Session.Id,
+		}
+		// No refresh wiring for playground — anon bearers are non-refreshable.
+		if err := mintAndOpenResume(ctx, mintPC, resp.Session.OrgId, resp.Session.Id); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: couldn't mint a resume link (%v); opening without identity\n", err)
+			openInBrowser(playgroundJoinURL(baseURL, resp.Session.Id))
+		}
 	}
 
 	return nil

@@ -459,3 +459,136 @@ func TestJoinAction_noOpenFlag(t *testing.T) {
 		t.Errorf("openURL should not be called without --open, got: %v", *captured)
 	}
 }
+
+// ---- Resume mint + open tests (join) ----
+
+// buildJoinMuxWithResume extends buildJoinMux with a POST /api/session-resumes
+// endpoint that returns the given resume URL.
+func buildJoinMuxWithResume(accountID, orgID, sessionID, resumeURL string) (*http.ServeMux, *string) {
+	mux := buildJoinMux(accountID, orgID, sessionID)
+	var capturedAuth string
+	mux.HandleFunc("/api/session-resumes", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "want POST", http.StatusMethodNotAllowed)
+			return
+		}
+		capturedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(openapi.SessionResumeResponse{
+			SessionId: sessionID,
+			ResumeUrl: resumeURL,
+			ExpiresIn: 60,
+		})
+	})
+	return mux, &capturedAuth
+}
+
+// TestJoinAction_openFlagMintAndOpen verifies that --open on join mints a
+// resume token and opens the exact resume_url via openSilent.
+func TestJoinAction_openFlagMintAndOpen(t *testing.T) {
+	const (
+		orgID     = "org-jmint-001"
+		sessionID = "sess-jmint-001"
+		accountID = "acct-jmint-001"
+		resumeURL = "https://portal.example.com/resume#rt=jointokensecret"
+	)
+
+	mux, capturedAuthPtr := buildJoinMuxWithResume(accountID, orgID, sessionID, resumeURL)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dir := setupJoinEnv(t, srv.URL)
+	stubJoinGit(t)
+	capturedOpen := stubOpenSilent(t)
+	capturedFallback := stubOpenURL(t)
+
+	// Write a per-session token so ReadCurrentBearer finds the per-session bearer.
+	if err := os.MkdirAll(filepath.Join(dir, "sessions", sessionID), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sessions", sessionID, "token"), []byte("sess-bearer-join"), 0o600); err != nil {
+		t.Fatalf("write session token: %v", err)
+	}
+
+	var stdout, stderr string
+	app := buildCLIApp()
+	stdout, stderr = captureStdoutAndStderr(t, func() {
+		if err := app.Run(context.Background(), []string{
+			"jamsesh", "join", orgID + "/" + sessionID, "--open",
+		}); err != nil {
+			t.Fatalf("join returned error: %v", err)
+		}
+	})
+
+	// The exact resume_url must have been opened via openSilent.
+	if len(*capturedOpen) != 1 || (*capturedOpen)[0] != resumeURL {
+		t.Errorf("openSilent captured = %v, want [%q]", *capturedOpen, resumeURL)
+	}
+
+	// Fallback must NOT have been called.
+	if len(*capturedFallback) != 0 {
+		t.Errorf("openURL (fallback) should not be called on mint success, got: %v", *capturedFallback)
+	}
+
+	// Mint must have used a Bearer token.
+	if !strings.HasPrefix(*capturedAuthPtr, "Bearer ") {
+		t.Errorf("mint request missing Bearer auth header, got: %q", *capturedAuthPtr)
+	}
+
+	// SECURITY: neither stdout nor stderr may contain the resume_url or #rt= fragment.
+	assertNoTokenLeak(t, "stdout", stdout, resumeURL)
+	assertNoTokenLeak(t, "stderr", stderr, resumeURL)
+}
+
+// TestJoinAction_openFlagMintFailure verifies that when mint fails, a warning
+// is emitted and the fallback token-free URL is opened.
+func TestJoinAction_openFlagMintFailure(t *testing.T) {
+	const (
+		orgID     = "org-jmintfail-001"
+		sessionID = "sess-jmintfail-001"
+		accountID = "acct-jmintfail-001"
+	)
+
+	mux := buildJoinMux(accountID, orgID, sessionID)
+	mux.HandleFunc("/api/session-resumes", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupJoinEnv(t, srv.URL)
+	stubJoinGit(t)
+	capturedOpen := stubOpenSilent(t)
+	capturedFallback := stubOpenURL(t)
+
+	var stdout, stderr string
+	app := buildCLIApp()
+	stdout, stderr = captureStdoutAndStderr(t, func() {
+		if err := app.Run(context.Background(), []string{
+			"jamsesh", "join", orgID + "/" + sessionID, "--open",
+		}); err != nil {
+			t.Fatalf("join returned error: %v", err)
+		}
+	})
+
+	// openSilent must NOT have been called.
+	if len(*capturedOpen) != 0 {
+		t.Errorf("openSilent should not be called on mint failure, got: %v", *capturedOpen)
+	}
+
+	// Fallback token-free URL must have been opened.
+	expectedFallback := srv.URL + "/orgs/" + orgID + "/sessions/" + sessionID
+	if len(*capturedFallback) != 1 || (*capturedFallback)[0] != expectedFallback {
+		t.Errorf("fallback openURL captured = %v, want [%q]", *capturedFallback, expectedFallback)
+	}
+
+	// Stderr warning must be present.
+	if !strings.Contains(stderr, "warning:") {
+		t.Errorf("stderr should contain warning on mint failure; got: %q", stderr)
+	}
+
+	// SECURITY: no #rt= in any output.
+	assertNoHashRT(t, "stdout", stdout)
+	assertNoHashRT(t, "stderr", stderr)
+}

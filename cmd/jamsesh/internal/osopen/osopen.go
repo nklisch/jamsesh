@@ -33,6 +33,25 @@ func Open(rawURL string, errOut io.Writer) error {
 	return nil
 }
 
+// OpenSilent launches rawURL in the user's default browser but NEVER writes
+// the URL (or any derivative of it) to any output. Any failure — unsupported
+// platform, missing launcher, exec error — is returned as an error so the
+// caller can decide how to report it without echoing a secret URL.
+// The launched process is detached, matching the behaviour of Open.
+func OpenSilent(rawURL string) error {
+	argv := platformArgv(rawURL)
+	if argv == nil {
+		return fmt.Errorf("cannot open browser automatically on %s", runtime.GOOS)
+	}
+	cmd := execCommand(argv[0], argv[1:]...)
+	cmd.Stdout, cmd.Stderr = nil, nil
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("could not launch browser: %w", err)
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
 // platformArgv returns the launcher argv for the current OS, or nil if
 // unsupported.
 func platformArgv(rawURL string) []string {

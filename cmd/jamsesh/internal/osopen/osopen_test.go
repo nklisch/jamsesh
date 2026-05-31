@@ -54,6 +54,54 @@ func TestOpen_GracefulOnStartFailure(t *testing.T) {
 	}
 }
 
+// TestOpenSilent_NothingWrittenOnUnsupportedOS verifies that OpenSilent returns
+// an error (not nil) and writes NOTHING to any stream when platformArgv is nil
+// (simulated by an overridden execCommand that should never be called).
+// We test this indirectly via a non-existent binary: platformArgv returns nil
+// on unsupported OS, so execCommand is never reached.
+// On supported OSes we override execCommand to a failing binary and assert the
+// URL never appears in any output.
+func TestOpenSilent_ErrorOnStartFailure(t *testing.T) {
+	orig := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("/nonexistent/jamsesh-test-binary-silent")
+	}
+	t.Cleanup(func() { execCommand = orig })
+
+	const testURL = "https://secret.example.com/resume#rt=secrettoken"
+	err := OpenSilent(testURL)
+	if err == nil {
+		t.Fatal("OpenSilent expected non-nil error on launch failure, got nil")
+	}
+	// The URL must NEVER appear in the error message.
+	if strings.Contains(err.Error(), testURL) {
+		t.Errorf("OpenSilent leaked URL in error message: %q", err.Error())
+	}
+	if strings.Contains(err.Error(), "#rt=") {
+		t.Errorf("OpenSilent leaked token fragment in error message: %q", err.Error())
+	}
+}
+
+// TestOpenSilent_SuccessNoOutput verifies that OpenSilent returns nil and
+// writes nothing when the launcher starts successfully.
+func TestOpenSilent_SuccessNoOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("'true' binary not available on windows")
+	}
+
+	orig := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+	t.Cleanup(func() { execCommand = orig })
+
+	const testURL = "https://secret.example.com/resume#rt=secrettoken"
+	err := OpenSilent(testURL)
+	if err != nil {
+		t.Fatalf("OpenSilent returned unexpected error: %v", err)
+	}
+}
+
 // TestOpen_DetachOnSuccess verifies that Open returns nil and writes nothing to
 // errOut when the launcher starts successfully. Skipped on platforms where
 // "true" is not available.

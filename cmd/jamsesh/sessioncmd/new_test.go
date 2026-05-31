@@ -1272,3 +1272,391 @@ func TestNewAction_openFlagPlayground_summaryUnchanged(t *testing.T) {
 		t.Errorf("playground join URL %q not found in output:\n%s", expectedURL, output)
 	}
 }
+
+// ---- Resume mint + open tests ----
+
+// stubOpenSilent overrides the openSilent seam for the duration of a test and
+// returns a pointer to the slice of URLs opened. Restored via t.Cleanup.
+// Do NOT use t.Parallel in tests that call this helper.
+func stubOpenSilent(t *testing.T) *[]string {
+	t.Helper()
+	var captured []string
+	orig := openSilent
+	t.Cleanup(func() { openSilent = orig })
+	openSilent = func(rawURL string) error {
+		captured = append(captured, rawURL)
+		return nil
+	}
+	return &captured
+}
+
+// writeResumeJSON writes a SessionResumeResponse JSON response at 200.
+func writeResumeJSON(w http.ResponseWriter, resp openapi.SessionResumeResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// captureStdoutAndStderr runs f while capturing both os.Stdout and os.Stderr,
+// then returns (stdout, stderr).
+func captureStdoutAndStderr(t *testing.T, f func()) (string, string) {
+	t.Helper()
+	var stdout, stderr string
+	stdout = captureStdout(t, func() {
+		stderr = captureStderr(t, f)
+	})
+	return stdout, stderr
+}
+
+// TestNewAction_openFlagDurable_mintAndOpen verifies that --open on the durable
+// path mints a resume token and opens the exact resume_url via openSilent (not
+// the token-free session-view URL).
+func TestNewAction_openFlagDurable_mintAndOpen(t *testing.T) {
+	const (
+		orgID     = "org-mint-001"
+		sessionID = "sess-mint-001"
+		accountID = "acct-mint-001"
+		resumeURL = "https://portal.example.com/resume#rt=secrettoken123"
+	)
+
+	var mintAuthHdr string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
+		writeMeJSON(w, accountID, orgID)
+	})
+	mux.HandleFunc("/api/orgs/"+orgID+"/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writeSessionJSON(w, sampleSession(orgID, sessionID))
+	})
+	mux.HandleFunc("/api/session-resumes", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "want POST", http.StatusMethodNotAllowed)
+			return
+		}
+		mintAuthHdr = r.Header.Get("Authorization")
+		writeResumeJSON(w, openapi.SessionResumeResponse{
+			SessionId: sessionID,
+			ResumeUrl: resumeURL,
+			ExpiresIn: 60,
+		})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dir := setupNewEnv(t, srv.URL)
+	// Write a per-session token so the mint client's ReadCurrentBearer finds it.
+	if err := os.MkdirAll(filepath.Join(dir, "sessions", sessionID), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sessions", sessionID, "token"), []byte("sess-bearer-durable"), 0o600); err != nil {
+		t.Fatalf("write session token: %v", err)
+	}
+
+	stubGitForNew(t, nil)
+	stubIsTTY(t, false)
+	capturedOpen := stubOpenSilent(t)
+	capturedFallback := stubOpenURL(t)
+
+	var stdout, stderr string
+	app := buildCLIApp()
+	stdout, stderr = captureStdoutAndStderr(t, func() {
+		if err := app.Run(context.Background(), []string{
+			"jamsesh", "new", "--org", orgID, "--open",
+		}); err != nil {
+			t.Fatalf("new returned error: %v", err)
+		}
+	})
+
+	// The exact resume_url must have been opened via openSilent.
+	if len(*capturedOpen) != 1 || (*capturedOpen)[0] != resumeURL {
+		t.Errorf("openSilent captured = %v, want [%q]", *capturedOpen, resumeURL)
+	}
+
+	// The fallback (openURL) must NOT have been called.
+	if len(*capturedFallback) != 0 {
+		t.Errorf("openURL (fallback) should not be called on mint success, got: %v", *capturedFallback)
+	}
+
+	// The mint endpoint must have been called with the durable OAuth bearer
+	// (Bearer tok-test — the account-level token from setupNewEnv, since the
+	// per-session token written above takes precedence via ReadCurrentBearer).
+	if !strings.HasPrefix(mintAuthHdr, "Bearer ") {
+		t.Errorf("mint request missing Bearer auth header, got: %q", mintAuthHdr)
+	}
+
+	// SECURITY: Neither stdout nor stderr may contain the resume_url or #rt= fragment.
+	assertNoTokenLeak(t, "stdout", stdout, resumeURL)
+	assertNoTokenLeak(t, "stderr", stderr, resumeURL)
+}
+
+// TestNewAction_openFlagPlayground_mintAndOpen verifies that --open on the
+// playground path mints a resume token using the per-session anon bearer (NOT
+// the OAuth token) and opens the exact resume_url.
+func TestNewAction_openFlagPlayground_mintAndOpen(t *testing.T) {
+	const (
+		sessionID  = "sess-pg-mint-001"
+		anonBearer = "anon-bearer-playground-mint"
+		resumeURL  = "https://portal.example.com/resume#rt=anonsecrettoken"
+	)
+
+	var mintAuthHdr string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		resp := samplePlaygroundResp(sessionID)
+		resp.Bearer = anonBearer
+		writePlaygroundJSON(w, resp)
+	})
+	mux.HandleFunc("/api/session-resumes", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "want POST", http.StatusMethodNotAllowed)
+			return
+		}
+		mintAuthHdr = r.Header.Get("Authorization")
+		writeResumeJSON(w, openapi.SessionResumeResponse{
+			SessionId: sessionID,
+			ResumeUrl: resumeURL,
+			ExpiresIn: 60,
+		})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupPlaygroundEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	capturedOpen := stubOpenSilent(t)
+	capturedFallback := stubOpenURL(t)
+
+	var stdout, stderr string
+	app := buildCLIApp()
+	stdout, stderr = captureStdoutAndStderr(t, func() {
+		if err := app.Run(context.Background(), []string{
+			"jamsesh", "new", "--playground", "--open",
+		}); err != nil {
+			t.Fatalf("new --playground --open returned error: %v", err)
+		}
+	})
+
+	// The exact resume_url must have been opened via openSilent.
+	if len(*capturedOpen) != 1 || (*capturedOpen)[0] != resumeURL {
+		t.Errorf("openSilent captured = %v, want [%q]", *capturedOpen, resumeURL)
+	}
+
+	// The fallback must NOT have been called.
+	if len(*capturedFallback) != 0 {
+		t.Errorf("openURL (fallback) should not be called on mint success, got: %v", *capturedFallback)
+	}
+
+	// SECURITY: playground mint must use the anon per-session bearer, NOT OAuth.
+	// The bearer from PlaygroundSessionCreated.Bearer is "anon-bearer-playground-mint"
+	// and must appear in the mint Authorization header.
+	wantAuthHdr := "Bearer " + anonBearer
+	if mintAuthHdr != wantAuthHdr {
+		t.Errorf("mint Authorization header = %q, want %q (anon per-session bearer, not OAuth)", mintAuthHdr, wantAuthHdr)
+	}
+
+	// SECURITY: Neither stdout nor stderr may contain the resume_url or #rt= fragment.
+	assertNoTokenLeak(t, "stdout", stdout, resumeURL)
+	assertNoTokenLeak(t, "stderr", stderr, resumeURL)
+}
+
+// TestNewAction_openFlagDurable_mintFailure verifies that a mint failure causes
+// a warning on stderr and falls back to the token-free session-view URL via
+// openURL — and that neither stdout nor stderr contains a secret URL.
+func TestNewAction_openFlagDurable_mintFailure(t *testing.T) {
+	const (
+		orgID     = "org-mintfail-001"
+		sessionID = "sess-mintfail-001"
+		accountID = "acct-mintfail-001"
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
+		writeMeJSON(w, accountID, orgID)
+	})
+	mux.HandleFunc("/api/orgs/"+orgID+"/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writeSessionJSON(w, sampleSession(orgID, sessionID))
+	})
+	mux.HandleFunc("/api/session-resumes", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupNewEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	stubIsTTY(t, false)
+	capturedOpen := stubOpenSilent(t)
+	capturedFallback := stubOpenURL(t)
+
+	var stdout, stderr string
+	app := buildCLIApp()
+	stdout, stderr = captureStdoutAndStderr(t, func() {
+		if err := app.Run(context.Background(), []string{
+			"jamsesh", "new", "--org", orgID, "--open",
+		}); err != nil {
+			t.Fatalf("new returned error: %v", err)
+		}
+	})
+
+	// openSilent must NOT have been called (mint failed before open).
+	if len(*capturedOpen) != 0 {
+		t.Errorf("openSilent should not be called on mint failure, got: %v", *capturedOpen)
+	}
+
+	// The token-free fallback URL must have been opened.
+	expectedFallback := srv.URL + "/orgs/" + orgID + "/sessions/" + sessionID
+	if len(*capturedFallback) != 1 || (*capturedFallback)[0] != expectedFallback {
+		t.Errorf("fallback openURL captured = %v, want [%q]", *capturedFallback, expectedFallback)
+	}
+
+	// Stderr must contain a warning.
+	if !strings.Contains(stderr, "warning:") {
+		t.Errorf("stderr should contain warning on mint failure; got: %q", stderr)
+	}
+
+	// SECURITY: stdout and stderr must not contain any #rt= fragment.
+	assertNoHashRT(t, "stdout", stdout)
+	assertNoHashRT(t, "stderr", stderr)
+}
+
+// TestNewAction_openFlagPlayground_mintFailure verifies playground fallback.
+func TestNewAction_openFlagPlayground_mintFailure(t *testing.T) {
+	const sessionID = "sess-pg-mintfail-001"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/playground/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writePlaygroundJSON(w, samplePlaygroundResp(sessionID))
+	})
+	mux.HandleFunc("/api/session-resumes", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupPlaygroundEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	capturedOpen := stubOpenSilent(t)
+	capturedFallback := stubOpenURL(t)
+
+	var stdout, stderr string
+	app := buildCLIApp()
+	stdout, stderr = captureStdoutAndStderr(t, func() {
+		if err := app.Run(context.Background(), []string{
+			"jamsesh", "new", "--playground", "--open",
+		}); err != nil {
+			t.Fatalf("new --playground --open returned error: %v", err)
+		}
+	})
+
+	// openSilent must NOT have been called.
+	if len(*capturedOpen) != 0 {
+		t.Errorf("openSilent should not be called on mint failure, got: %v", *capturedOpen)
+	}
+
+	// Fallback to playground join URL.
+	expectedFallback := srv.URL + "/playground/s/" + sessionID + "/join"
+	if len(*capturedFallback) != 1 || (*capturedFallback)[0] != expectedFallback {
+		t.Errorf("fallback openURL captured = %v, want [%q]", *capturedFallback, expectedFallback)
+	}
+
+	// Stderr warning must be present.
+	if !strings.Contains(stderr, "warning:") {
+		t.Errorf("stderr should contain warning on mint failure; got: %q", stderr)
+	}
+
+	// SECURITY: no #rt= in any output.
+	assertNoHashRT(t, "stdout", stdout)
+	assertNoHashRT(t, "stderr", stderr)
+}
+
+// TestNewAction_openFlagDurable_openSilentFailure verifies that when
+// openSilent fails (browser won't launch), OpenSilent's error is returned from
+// mintAndOpenResume, triggering the warning + fallback. The failed URL must
+// never appear in stdout or stderr.
+func TestNewAction_openFlagDurable_openSilentFailure(t *testing.T) {
+	const (
+		orgID     = "org-opensilentfail-001"
+		sessionID = "sess-opensilentfail-001"
+		accountID = "acct-opensilentfail-001"
+		resumeURL = "https://portal.example.com/resume#rt=verysecrettoken"
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
+		writeMeJSON(w, accountID, orgID)
+	})
+	mux.HandleFunc("/api/orgs/"+orgID+"/sessions", func(w http.ResponseWriter, r *http.Request) {
+		writeSessionJSON(w, sampleSession(orgID, sessionID))
+	})
+	mux.HandleFunc("/api/session-resumes", func(w http.ResponseWriter, r *http.Request) {
+		writeResumeJSON(w, openapi.SessionResumeResponse{
+			SessionId: sessionID,
+			ResumeUrl: resumeURL,
+			ExpiresIn: 60,
+		})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	setupNewEnv(t, srv.URL)
+	stubGitForNew(t, nil)
+	stubIsTTY(t, false)
+	capturedFallback := stubOpenURL(t)
+
+	// Override openSilent to simulate a browser-launch failure WITHOUT printing.
+	origOpenSilent := openSilent
+	t.Cleanup(func() { openSilent = origOpenSilent })
+	openSilent = func(rawURL string) error {
+		return fmt.Errorf("could not launch browser")
+	}
+
+	var stdout, stderr string
+	app := buildCLIApp()
+	stdout, stderr = captureStdoutAndStderr(t, func() {
+		if err := app.Run(context.Background(), []string{
+			"jamsesh", "new", "--org", orgID, "--open",
+		}); err != nil {
+			t.Fatalf("new returned error: %v", err)
+		}
+	})
+
+	// Fallback must have been called with the token-free URL.
+	expectedFallback := srv.URL + "/orgs/" + orgID + "/sessions/" + sessionID
+	if len(*capturedFallback) != 1 || (*capturedFallback)[0] != expectedFallback {
+		t.Errorf("fallback openURL captured = %v, want [%q]", *capturedFallback, expectedFallback)
+	}
+
+	// Stderr warning must be present.
+	if !strings.Contains(stderr, "warning:") {
+		t.Errorf("stderr should contain warning on openSilent failure; got: %q", stderr)
+	}
+
+	// SECURITY: the resume URL (which carries the secret token) must NEVER appear
+	// in stdout or stderr — not even in the warning message.
+	assertNoTokenLeak(t, "stdout", stdout, resumeURL)
+	assertNoTokenLeak(t, "stderr", stderr, resumeURL)
+}
+
+// assertNoTokenLeak asserts that output does not contain the given secretURL
+// or the #rt= fragment marker.
+func assertNoTokenLeak(t *testing.T, label, output, secretURL string) {
+	t.Helper()
+	if strings.Contains(output, secretURL) {
+		t.Errorf("SECURITY: %s contains secret resume URL: %q", label, output)
+	}
+	assertNoHashRT(t, label, output)
+}
+
+// assertNoHashRT asserts that output does not contain the #rt= token fragment.
+func assertNoHashRT(t *testing.T, label, output string) {
+	t.Helper()
+	if strings.Contains(output, "#rt=") {
+		t.Errorf("SECURITY: %s contains #rt= token fragment: %q", label, output)
+	}
+}

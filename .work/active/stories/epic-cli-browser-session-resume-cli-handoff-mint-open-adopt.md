@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-cli-handoff-mint-open-adopt
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: epic-cli-browser-session-resume-cli-handoff
 depends_on: []
@@ -50,3 +50,45 @@ feature body (Architectural choice, Unit 1, Risks, Other agent review).
 
 Generated field names are `OrgId`/`SessionId`/`ResumeUrl`. Build with
 `GOTMPDIR=/home/nathan/.cache/jamsesh-gotmp` if `/tmp` (tmpfs) is full.
+
+## Implementation notes
+
+### Files changed
+- `cmd/jamsesh/internal/osopen/osopen.go`: added `OpenSilent(rawURL string) error`
+  — reuses `platformArgv`/`execCommand` seam but returns errors instead of printing.
+  Unsupported OS → error; exec.Start failure → wrapped error. URL never emitted.
+- `cmd/jamsesh/internal/osopen/osopen_test.go`: added `TestOpenSilent_ErrorOnStartFailure`
+  and `TestOpenSilent_SuccessNoOutput` asserting no URL leakage even in error paths.
+- `cmd/jamsesh/sessioncmd/resume.go` (new): package-level `openSilent` seam +
+  `mintAndOpenResume(ctx, pc, orgID, sessionID)` helper. Validates
+  `resp.SessionId == sessionID` and `resp.ResumeUrl != ""` before opening anything.
+  Prints one token-free line to stdout; never prints the URL.
+- `cmd/jamsesh/sessioncmd/new.go`: wired `--open` adoption at both `newAction`
+  (durable) and `newPlaygroundAction` (playground) with mint-or-fallback pattern.
+  Playground path builds `mintPC` with `SessionID` set but without `buildPortalClient()`
+  so the anon per-session bearer (not OAuth) is used.
+- `cmd/jamsesh/sessioncmd/join.go`: wired `--open` adoption in `joinAction` with
+  mint-or-fallback; `WireRefresh` applied to the per-session mint client.
+- `cmd/jamsesh/sessioncmd/new_test.go`: added `stubOpenSilent`, `captureStdoutAndStderr`,
+  `assertNoTokenLeak`, `assertNoHashRT`, and 5 new tests covering durable/playground
+  mint-success, mint-failure fallback, and openSilent-failure — all with SECURITY ACs.
+- `cmd/jamsesh/sessioncmd/join_test.go`: added `buildJoinMuxWithResume`, and 2 new
+  tests covering join mint-success and mint-failure fallback with SECURITY ACs.
+
+### Token-leak prevention strategy
+- `OpenSilent` never prints the URL on any path (failure → returned error, not print).
+- `mintAndOpenResume` prints only a static token-free message; the `resp.ResumeUrl`
+  is passed directly to `openSilent`, never interpolated into any string that goes
+  to stdout/stderr.
+- Warning messages on fallback use `%v` on the error (which doesn't contain the URL)
+  not `%v` on the resume URL.
+- Tests capture both stdout AND stderr and assert neither contains `#rt=` or the
+  full resume URL — on success, on mint failure, and on browser-open failure.
+
+### Acceptance criteria status
+- [x] `--open` (durable / playground / join) mints then opens the exact `resp.ResumeUrl`
+- [x] playground uses the anonymous per-session bearer (NOT OAuth)
+- [x] No `#rt=` ever reaches stdout/stderr on any path
+- [x] Empty `ResumeUrl` / `SessionId` mismatch → error before opening
+- [x] `--open` mint failure → warning + token-free fallback open
+- [x] `go build ./...`, `go vet`, `go test ./cmd/jamsesh/...` pass

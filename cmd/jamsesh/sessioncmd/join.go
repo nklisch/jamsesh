@@ -163,12 +163,21 @@ func joinAction(ctx context.Context, cmd *cli.Command) error {
 	fmt.Printf("Joined session %s (%s)\nYour ref:  %s\nGoal:      %s\nMode:      %s\n",
 		session.Name, sessionID, targetRef, session.Goal, session.DefaultMode)
 
-	// 11. If --open flag set, launch the session in the browser.
-	// CLI join is durable-only, so the session-view URL is always correct;
-	// the open is post-resolution (after invite-acceptance + metadata fetch),
-	// independent of the arg form (bare id, org/session, invite URL).
+	// 11. If --open flag set, mint a resume token and open the session as the
+	//    authenticated CLI identity. On mint failure, warn and fall back to the
+	//    prior token-free open. Open is post-resolution regardless of arg form.
 	if cmd.Bool("open") {
-		openInBrowser(sessionViewURL(portalURL, orgID, sessionID))
+		// Build a per-session-scoped client so the per-session bearer (OAuth for
+		// durable join) is used to authenticate the mint request.
+		mintPC := &portalclient.Client{
+			BaseURL:   portalURL,
+			SessionID: sessionID,
+		}
+		portalclient.WireRefresh(mintPC)
+		if err := mintAndOpenResume(ctx, mintPC, orgID, sessionID); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: couldn't mint a resume link (%v); opening without identity\n", err)
+			openInBrowser(sessionViewURL(portalURL, orgID, sessionID))
+		}
 	}
 
 	return nil
