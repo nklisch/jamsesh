@@ -9,10 +9,10 @@
   import LockBanner from '$lib/components/finalize/LockBanner.svelte';
   import RefGroupList from '$lib/components/finalize/RefGroupList.svelte';
   import CommandRunner from '$lib/components/finalize/CommandRunner.svelte';
-  import { finalizeLock } from '$lib/finalize/useFinalizeLock.svelte';
-  import { finalizePlan } from '$lib/finalize/useFinalizePlan.svelte';
-  import { finalizeCuration } from '$lib/finalize/useFinalizeCuration.svelte';
-  import { finalizeExecution } from '$lib/finalize/useFinalizeExecution.svelte';
+  import { createFinalizeLock } from '$lib/finalize/useFinalizeLock.svelte';
+  import { createFinalizePlan } from '$lib/finalize/useFinalizePlan.svelte';
+  import { createFinalizeCuration } from '$lib/finalize/useFinalizeCuration.svelte';
+  import { createFinalizeExecution } from '$lib/finalize/useFinalizeExecution.svelte';
   import type { RefGroup } from '$lib/finalize/useFinalizeCuration.svelte';
   import type { components } from '$lib/api/types.gen';
 
@@ -25,6 +25,12 @@
     orgId: string;
     sessionId: string;
   } = $props();
+
+  // ── Per-mount store instances ────────────────────────────────────────────
+  const finalizeLock = createFinalizeLock();
+  const finalizePlan = createFinalizePlan();
+  const finalizeCuration = createFinalizeCuration();
+  const finalizeExecution = createFinalizeExecution();
 
   // ── Orchestration-level derived ──────────────────────────────────────────
   // interactionsDisabled crosses three modules; computed here as the orchestrator.
@@ -171,19 +177,26 @@
     unsubs.length = 0;
   }
 
+  // Alive guard: prevents a late-resolved acquireLock from starting subscriptions
+  // or leaving a dangling server lock after this instance has been destroyed.
+  let alive = true;
+
   onMount(() => {
-    // Reset all module singletons so this render starts with clean state.
-    finalizeLock.reset();
-    finalizePlan.reset();
-    finalizeCuration.reset();
-    finalizeExecution.reset();
+    // Factories start clean — no reset() needed.
     void (async () => {
       await acquireLock();
+      if (!alive) {
+        // Unmounted during the acquire await: release the late-acquired lock
+        // and skip startSubscriptions so no subscriptions run post-teardown.
+        void finalizeLock.release(orgId, sessionId);
+        return;
+      }
       startSubscriptions();
     })();
   });
 
   onDestroy(() => {
+    alive = false;
     finalizePlan.cancelPendingPatch();
     stopSubscriptions();
     if (finalizeLock.status && !finalizeExecution.sessionEnded && finalizeCuration.isCaller) {

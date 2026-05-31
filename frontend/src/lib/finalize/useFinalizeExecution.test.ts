@@ -1,6 +1,7 @@
-// Seam-contract tests for finalizeExecution (useFinalizeExecution).
+// Seam-contract tests for createFinalizeExecution (useFinalizeExecution).
 //
-// Documents the module-singleton facade's public API contract:
+// Each test calls createFinalizeExecution() to get a fresh per-instance facade,
+// asserting isolation between instances. Documents the public API contract:
 //   - starts with all boolean flags false
 //   - markCopied() / clearCopied() toggle the copy-toast flag
 //   - endSession() sets sessionEnded=true
@@ -8,6 +9,7 @@
 //   - markShipped() on error calls onError and leaves sessionEnded=false
 //   - markShipped() is idempotent while in-flight (second call is a no-op)
 //   - reset() returns all state to defaults
+//   - two instances are isolated
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -19,48 +21,53 @@ vi.mock('$lib/api/client', () => ({
   },
 }));
 
-describe('finalizeExecution', () => {
+describe('createFinalizeExecution', () => {
   beforeEach(async () => {
     vi.resetModules();
     mockPOST.mockReset();
   });
 
   it('starts with all flags false', async () => {
-    const { finalizeExecution } = await import('./useFinalizeExecution.svelte');
-    expect(finalizeExecution.copiedRunCommand).toBe(false);
-    expect(finalizeExecution.markShippedInFlight).toBe(false);
-    expect(finalizeExecution.sessionEnded).toBe(false);
+    const { createFinalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const exec = createFinalizeExecution();
+    expect(exec.copiedRunCommand).toBe(false);
+    expect(exec.markShippedInFlight).toBe(false);
+    expect(exec.sessionEnded).toBe(false);
   });
 
   it('markCopied() sets copiedRunCommand=true', async () => {
-    const { finalizeExecution } = await import('./useFinalizeExecution.svelte');
-    finalizeExecution.markCopied();
-    expect(finalizeExecution.copiedRunCommand).toBe(true);
+    const { createFinalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const exec = createFinalizeExecution();
+    exec.markCopied();
+    expect(exec.copiedRunCommand).toBe(true);
   });
 
   it('clearCopied() resets copiedRunCommand to false', async () => {
-    const { finalizeExecution } = await import('./useFinalizeExecution.svelte');
-    finalizeExecution.markCopied();
-    finalizeExecution.clearCopied();
-    expect(finalizeExecution.copiedRunCommand).toBe(false);
+    const { createFinalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const exec = createFinalizeExecution();
+    exec.markCopied();
+    exec.clearCopied();
+    expect(exec.copiedRunCommand).toBe(false);
   });
 
   it('endSession() sets sessionEnded=true', async () => {
-    const { finalizeExecution } = await import('./useFinalizeExecution.svelte');
-    finalizeExecution.endSession();
-    expect(finalizeExecution.sessionEnded).toBe(true);
+    const { createFinalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const exec = createFinalizeExecution();
+    exec.endSession();
+    expect(exec.sessionEnded).toBe(true);
   });
 
   it('markShipped() on success sets sessionEnded=true and calls onCancelPatch', async () => {
     mockPOST.mockResolvedValueOnce({ data: {}, error: null });
 
-    const { finalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const { createFinalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const exec = createFinalizeExecution();
     const onCancelPatch = vi.fn();
     const onError = vi.fn();
 
-    await finalizeExecution.markShipped('org-1', 'sess-1', 'main', onCancelPatch, onError);
+    await exec.markShipped('org-1', 'sess-1', 'main', onCancelPatch, onError);
 
-    expect(finalizeExecution.sessionEnded).toBe(true);
+    expect(exec.sessionEnded).toBe(true);
     expect(onCancelPatch).toHaveBeenCalledOnce();
     expect(onError).not.toHaveBeenCalled();
   });
@@ -71,26 +78,41 @@ describe('finalizeExecution', () => {
       error: { message: 'Server rejected the request' },
     });
 
-    const { finalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const { createFinalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const exec = createFinalizeExecution();
     const onError = vi.fn();
 
-    await finalizeExecution.markShipped('org-1', 'sess-1', 'main', vi.fn(), onError);
+    await exec.markShipped('org-1', 'sess-1', 'main', vi.fn(), onError);
 
-    expect(finalizeExecution.sessionEnded).toBe(false);
+    expect(exec.sessionEnded).toBe(false);
     expect(onError).toHaveBeenCalledWith('Server rejected the request');
   });
 
   it('reset() returns all state to defaults', async () => {
     mockPOST.mockResolvedValueOnce({ data: {}, error: null });
 
-    const { finalizeExecution } = await import('./useFinalizeExecution.svelte');
-    finalizeExecution.markCopied();
-    await finalizeExecution.markShipped('org-1', 'sess-1', 'main', vi.fn(), vi.fn());
-    expect(finalizeExecution.sessionEnded).toBe(true);
+    const { createFinalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const exec = createFinalizeExecution();
+    exec.markCopied();
+    await exec.markShipped('org-1', 'sess-1', 'main', vi.fn(), vi.fn());
+    expect(exec.sessionEnded).toBe(true);
 
-    finalizeExecution.reset();
-    expect(finalizeExecution.copiedRunCommand).toBe(false);
-    expect(finalizeExecution.markShippedInFlight).toBe(false);
-    expect(finalizeExecution.sessionEnded).toBe(false);
+    exec.reset();
+    expect(exec.copiedRunCommand).toBe(false);
+    expect(exec.markShippedInFlight).toBe(false);
+    expect(exec.sessionEnded).toBe(false);
+  });
+
+  it('two instances are isolated — sessionEnded on A does not bleed to B', async () => {
+    mockPOST.mockResolvedValueOnce({ data: {}, error: null });
+
+    const { createFinalizeExecution } = await import('./useFinalizeExecution.svelte');
+    const execA = createFinalizeExecution();
+    const execB = createFinalizeExecution();
+
+    await execA.markShipped('org-1', 'sess-A', 'main', vi.fn(), vi.fn());
+
+    expect(execA.sessionEnded).toBe(true);
+    expect(execB.sessionEnded).toBe(false);
   });
 });

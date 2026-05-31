@@ -90,6 +90,11 @@ Replicated in `createRefActions` (`session/useRefActions.svelte.ts:11`) and
 `frontend/src/lib/screens/SessionViewShell.svelte:54-57` and
 `frontend/src/lib/components/NewSessionDrawer.svelte:21`.
 
+Also used by the four finalize stores (`createFinalizeLock`,
+`createFinalizePlan`, `createFinalizeCuration`, `createFinalizeExecution`) —
+instantiated once per `FinalizeView` mount so that overlapping A→B mount/unmount
+under SPA routing never shares lock, plan, or curation state across instances.
+
 ## When to Use
 
 - State is owned by one component mount and there can be more than one mount
@@ -105,10 +110,6 @@ Replicated in `createRefActions` (`session/useRefActions.svelte.ts:11`) and
   connection). Use the existing module-level `wrapper-object-rune-store`
   instead — `auth.svelte.ts`, `router.svelte.ts`, `ws.svelte.ts` are the
   right shape there.
-- All four finalize stores (`useFinalizeCuration`, `useFinalizeExecution`,
-  `useFinalizeLock`, `useFinalizePlan`) keep the module-level form because
-  there is only ever one `FinalizeView` mounted; do not "upgrade" them to
-  factories just for consistency.
 
 ## Common Violations
 

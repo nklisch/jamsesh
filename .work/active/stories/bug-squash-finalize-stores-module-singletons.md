@@ -1,7 +1,7 @@
 ---
 id: bug-squash-finalize-stores-module-singletons
 kind: story
-stage: implementing
+stage: review
 tags: [bug, ui, async, high]
 parent: epic-bug-squash-frontend-async-races
 depends_on: []
@@ -27,3 +27,21 @@ let _lock = $state<LockStatus | null>(null);
 // onDestroy reads the singleton that B may now own:
 if (finalizeLock.status && ...) void finalizeLock.release(orgId, sessionId);
 ```
+
+## Implementation notes
+
+Converted all four finalize stores (`useFinalizeLock`, `useFinalizePlan`,
+`useFinalizeCuration`, `useFinalizeExecution`) from module-level singletons to
+per-instance factories matching the `per-instance-factory-rune-store` pattern.
+Each `createFinalize*()` closure isolates its `$state`/`$derived` runes so that
+overlapping A→B FinalizeView mounts never share lock, plan, or curation state.
+
+`FinalizeView.svelte` now calls `createFinalizeLock()` etc. at mount time; the
+old `onMount` `reset()` calls were removed (factories start clean). The `alive`
+generation guard was added to the `onMount` async IIFE: if the view unmounts
+during `acquireLock()`, the late-acquired server lock is released and
+`startSubscriptions()` is skipped.
+
+All four test files were converted to use `createFinalizeX()` and include
+cross-instance isolation assertions. The `per-instance-factory-rune-store.md`
+pattern doc was updated to mention the finalize stores as a canonical example.
