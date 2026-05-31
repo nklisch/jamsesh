@@ -132,27 +132,46 @@ func TestLeaseHolderKilled(t *testing.T) {
 	c.Kill(ctx, t, holderPod)
 	t.Logf("lease_holder_killed: killed pod %d (was lease holder)", holderPod)
 
+	// ── TRIGGER: route a real git request to the surviving pod ─────────────
+	// Lease acquisition is REQUEST-DRIVEN: a survivor acquires the lease only
+	// when a git request routed to it triggers LifecycleManager.AcquireForRequest
+	// (wired at internal/portal/githttp/handler.go and
+	// internal/portal/postreceive/emitter.go). There is NO background failover
+	// loop, by design — in production the router redispatches the next request
+	// for this session to a survivor, which then acquires.
+	//
+	// This test replays that redispatch: we push directly to the surviving
+	// pod's URL (as the router would after dropping the dead pod from its ring).
+	// That push triggers acquisition, after which we assert migration within the
+	// 30s SLO. Asserting migration *before* sending any request would test for a
+	// background failover loop that does not (and will not) exist — see story
+	// lease-holder-killed-eager-vs-request-driven-slo (user decision 2026-05-31).
+	survivorURL := c.Pods[survivorIdx].URL
+	pushLeaseKill(ctx, t, survivorURL, orgID, sessionID, userID, alice.AccessToken, "kill-chaos-re-acquire")
+	t.Logf("lease_holder_killed: replayed git push to survivor pod %d to trigger AcquireForRequest", survivorIdx)
+
 	// ── ASSERT: lease migrates to the surviving pod within 30s SLO ─────────
 	// WaitForLeaseMigration polls pg_locks until the holder is no longer
 	// holderPod (or until 30s elapse). A return of -1 means the lock was not
-	// re-acquired by any pod within the SLO.
+	// re-acquired by any pod within the SLO *after the triggering request*.
 	newHolder := c.WaitForLeaseMigration(ctx, t, sessionID, holderPod, 30*time.Second)
 	if newHolder < 0 {
-		// Lease did not migrate within 30s. This is a critical correctness
-		// failure (the session is without a holder, blocking all writes).
-		// Possible causes:
+		// Lease did not migrate within 30s of the triggering request. This is a
+		// critical correctness failure (the session is without a holder, blocking
+		// all writes). Possible causes:
 		//   1. The advisory lock was not released (connection pool survived Kill).
-		//   2. The surviving pod did not re-acquire the lease on its next request.
+		//   2. AcquireForRequest did not run / failed on the surviving pod despite
+		//      the routed request.
 		//   3. The SLO (30s) is too tight for the heartbeat (2s) + retry window.
 		// If this fails consistently, park the bug via /agile-workflow:park.
 		t.Fatalf(
-			"lease_holder_killed: lease did not migrate from pod %d to any surviving pod "+
-				"within 30s SLO after SIGKILL; "+
+			"lease_holder_killed: lease did not migrate from pod %d to surviving pod %d "+
+				"within 30s SLO after SIGKILL + a git request routed to the survivor; "+
 				"check advisory-lock auto-release on Postgres connection drop and "+
-				"re-acquisition path in PostgresManager.Acquire",
-			holderPod)
+				"the AcquireForRequest path in PostgresManager.Acquire",
+			holderPod, survivorIdx)
 	}
-	t.Logf("lease_holder_killed: lease migrated from pod %d to pod %d ✓", holderPod, newHolder)
+	t.Logf("lease_holder_killed: lease migrated from pod %d to pod %d within SLO ✓", holderPod, newHolder)
 
 	// ── ASSERT: monotonic fencing token (T2 > T1) ──────────────────────────
 	// The surviving pod must issue a new fencing token from the
@@ -163,20 +182,8 @@ func TestLeaseHolderKilled(t *testing.T) {
 	// DO NOT soften to T2 >= T1. A recycled token defeats the fencing guard.
 	// If this check fails consistently, park the bug as Critical.
 	//
-	// The surviving pod may not have re-acquired the lease yet without a push
-	// trigger. Push via the surviving pod's direct URL to force re-acquisition.
-	survivorURL := c.Pods[survivorIdx].URL
-	pushLeaseKill(ctx, t, survivorURL, orgID, sessionID, userID, alice.AccessToken, "kill-chaos-re-acquire")
-
-	// Wait for the survivor to hold the lease.
-	reHolder := c.WaitForLeaseMigration(ctx, t, sessionID, holderPod, 15*time.Second)
-	if reHolder < 0 {
-		t.Logf(
-			"lease_holder_killed: after push to survivor, lease not confirmed via WaitForLeaseMigration; "+
-				"trying RequireLeaseHolder as fallback (survivor may have already acquired)",
-		)
-	}
-
+	// The triggering push above already forced re-acquisition, so the leases
+	// table now carries the survivor's new token.
 	t2 := c.FencingTokenForSession(ctx, t, sessionID)
 	if t2 == -1 {
 		t.Fatalf(

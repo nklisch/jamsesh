@@ -483,6 +483,16 @@ func staleFencingPush(
 	runGit(repoDir, "config", "user.email", userID+"@test.example")
 	runGit(repoDir, "config", "user.name", "Test "+userID)
 
+	ref := "jam/" + sessionID + "/" + userID + "/main"
+
+	// If the user's jam ref already exists on the remote (e.g. the survivor push
+	// after a prior holder push created it), check it out so the new commit
+	// builds on top of the existing tip and the push fast-forwards. A fresh
+	// `git clone` otherwise lands on the server's unborn default branch, and a
+	// commit there is a disconnected root commit → non-fast-forward on push.
+	// Mirrors cmd/jamsesh/sessioncmd/join.go's checkout of the user ref.
+	staleFencingCheckoutIfExists(ctx, t, repoDir, ref)
+
 	absPath := filepath.Join(repoDir, filename)
 	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("staleFencingPush: write file: %v", err)
@@ -498,8 +508,29 @@ func staleFencingPush(
 	}
 	runGit(repoDir, "commit", "-F", msgFile)
 
-	ref := "jam/" + sessionID + "/" + userID + "/main"
 	runGit(repoDir, "push", "origin", "HEAD:refs/heads/"+ref)
+}
+
+// staleFencingCheckoutIfExists checks out a local branch tracking origin/<ref>
+// in repoDir if that remote-tracking ref exists in the freshly-cloned repo. If
+// the ref is absent (first push of a session), it is a no-op and the working
+// tree stays on the clone's default (possibly unborn) branch so the caller's
+// first commit creates the ref. Mirrors gitclient.Clone's auto-checkout and the
+// production CLI's `jamsesh session join` checkout of the user ref.
+func staleFencingCheckoutIfExists(ctx context.Context, t *testing.T, repoDir, ref string) {
+	t.Helper()
+	// rev-parse --verify --quiet exits 1 (no error output) when the ref is
+	// absent, so a non-nil error here means "ref does not exist" → no-op.
+	check := exec.CommandContext(ctx, "git", "rev-parse", "--verify", "--quiet", "origin/"+ref)
+	check.Dir = repoDir
+	if err := check.Run(); err != nil {
+		return
+	}
+	co := exec.CommandContext(ctx, "git", "checkout", "-B", ref, "origin/"+ref)
+	co.Dir = repoDir
+	if out, err := co.CombinedOutput(); err != nil {
+		t.Fatalf("staleFencingCheckoutIfExists: git checkout -B %s origin/%s: %v\n%s", ref, ref, err, out)
+	}
 }
 
 // staleFencingAttemptPush performs a git push that MAY fail (stale-token
@@ -533,6 +564,15 @@ func staleFencingAttemptPush(
 	runGit(true, "", "clone", repoURL, repoDir)
 	runGit(true, repoDir, "config", "user.email", userID+"@test.example")
 	runGit(true, repoDir, "config", "user.name", "Test "+userID)
+
+	// Check out the existing jam ref so this commit builds on the real tip.
+	// CRITICAL for this test's validity: the assertion is that the SERVER
+	// rejects a stale fencing token. If the commit were an orphan root (the
+	// default behavior after a fresh clone onto the unborn default branch), the
+	// push would be rejected as non-fast-forward *by git* before the server's
+	// fencing logic ran — a false positive that masks whether fencing actually
+	// works. Checking out the ref ensures any rejection comes from the server.
+	staleFencingCheckoutIfExists(ctx, t, repoDir, ref)
 
 	testFile := filepath.Join(repoDir, "stale-token-test.md")
 	if err := os.WriteFile(testFile, []byte("stale token test content — must be rejected"), 0o644); err != nil {

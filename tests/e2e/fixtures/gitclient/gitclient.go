@@ -49,6 +49,20 @@ type Repo struct {
 // push and fetch inside the repo do not need extra credential helpers.
 //
 // The caller must be a session member; otherwise the clone fails with 401.
+//
+// After cloning, if the user's default jam ref (jam/<sessionID>/<userID>/main)
+// already exists on the remote, Clone checks out a local branch tracking it so
+// that subsequent commits build on top of the existing ref tip. This mirrors
+// the production CLI's `jamsesh session join` flow, which runs
+// `git checkout -b jam/<sid>/<uid>/main <fromRef>` after the bare clone
+// (cmd/jamsesh/sessioncmd/join.go).
+//
+// Without this, a fresh `git clone` lands on the server's unborn default branch
+// (`git init --bare` leaves HEAD pointing at a refs/heads/<default> that never
+// gets a commit). A commit built on that unborn branch is a root commit
+// disconnected from the populated jam ref, so pushing it to
+// jam/<sid>/<uid>/main is rejected as non-fast-forward. Checking out the
+// existing ref restores the correct base.
 func Clone(ctx context.Context, t *testing.T, portalURL, orgID, sessionID, userID, bearer string) *Repo {
 	t.Helper()
 	dir := t.TempDir()
@@ -63,7 +77,7 @@ func Clone(ctx context.Context, t *testing.T, portalURL, orgID, sessionID, userI
 	run(ctx, t, dir, "git", "config", "user.email", userID+"@test.example")
 	run(ctx, t, dir, "git", "config", "user.name", "Test "+userID)
 
-	return &Repo{
+	r := &Repo{
 		Dir:       dir,
 		SessionID: sessionID,
 		OrgID:     orgID,
@@ -71,6 +85,35 @@ func Clone(ctx context.Context, t *testing.T, portalURL, orgID, sessionID, userI
 		bearer:    bearer,
 		portalURL: portalURL,
 	}
+
+	// If the user's default jam ref already exists on the remote, position the
+	// working tree on it so commits fast-forward on push. On the first clone of
+	// a session the ref does not exist yet, so this is a no-op and the caller's
+	// first commit creates the ref (the OldSHA="" path in pre-receive).
+	defaultRef := "jam/" + sessionID + "/" + userID + "/main"
+	r.checkoutIfRemoteRefExists(ctx, t, defaultRef)
+
+	return r
+}
+
+// checkoutIfRemoteRefExists checks out a local branch tracking origin/<ref> if
+// that remote-tracking ref exists in the freshly-cloned repo. If the remote ref
+// does not exist (first clone of a session), it is a no-op and the working tree
+// stays on the clone's default (possibly unborn) branch.
+func (r *Repo) checkoutIfRemoteRefExists(ctx context.Context, t *testing.T, ref string) {
+	t.Helper()
+	// Use rev-parse --verify --quiet to detect the remote-tracking ref without
+	// failing the test when it is absent (exit code 1 ⇒ absent, not an error).
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--verify", "--quiet", "origin/"+ref)
+	cmd.Dir = r.Dir
+	if err := cmd.Run(); err != nil {
+		// Remote ref absent: leave the working tree on the clone default.
+		return
+	}
+	// Remote ref exists: check out a local branch tracking it so HEAD (and thus
+	// the next commit's parent) is the existing ref tip. Mirrors join.go's
+	// `git checkout -b jam/<sid>/<uid>/main <fromRef>`.
+	run(ctx, t, r.Dir, "git", "checkout", "-B", ref, "origin/"+ref)
 }
 
 // Commit writes content to relPath inside the working tree, stages it, and
