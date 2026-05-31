@@ -1,7 +1,7 @@
 ---
 id: bug-squash-ws-refetch-stale-overwrite
 kind: story
-stage: implementing
+stage: review
 tags: [bug, ui, async]
 parent: epic-bug-squash-frontend-sessionlist-subscription
 depends_on: [epic-bug-squash-frontend-ws-lifecycle]
@@ -25,3 +25,25 @@ A burst of WS events (commit.arrived, merge.succeeded, ref.forked, mode.changed 
 void client.GET('/api/orgs/{orgID}/sessions/{sessionID}', {...})
   .then(({ data }) => { if (data) updateSession(data); });  // no ordering guard
 ```
+
+## Implementation notes
+
+Fixed in `frontend/src/lib/screens/SessionList.svelte` (landed in the same commit as Unit 1,
+implemented as a coherent change bundled in one worktree per design):
+
+- Added `const refetchSeq = new Map<string, number>()` — component-local, bounded by SessionList
+  lifetime; counters are monotonic and never reset on id reappearance.
+- Added `refetchSession(id)` — bumps the per-session counter before each GET, bails silently on
+  resolve if the counter has advanced (stale response); also checks `error` (failed GET leaves
+  prior state intact, no overwrite).
+- Added `bumpAndUpdate(id, patch)` — used by `session.finalizing` and `session.ended` handlers to
+  atomically invalidate any in-flight GET before applying the status patch. This prevents a
+  commit.arrived refetch that resolves AFTER session.ended from overwriting the terminal status.
+- Handlers restructured via `makeHandler(id, type)` factory (also introduced in Unit 1).
+
+Regression tests added in `frontend/src/lib/screens/SessionList.test.ts`:
+- Two overlapping refetches: reverse-order resolution → only the newer applied.
+- commit.arrived refetch in flight when session.ended fires → ended status NOT overwritten.
+- Failed GET → existing state not overwritten.
+
+All 764 vitest tests pass; svelte-check 0 errors.
