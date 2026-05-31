@@ -2,6 +2,7 @@ package sessioncmd
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -93,6 +94,7 @@ func TestJoinAction_happy(t *testing.T) {
 	// Track git calls.
 	var gitCalls [][]string
 	var gitWithEnvCalls [][]string
+	var gitWithEnvs [][]string
 	origRunGit := runGit
 	origRunGitOutput := runGitOutput
 	origRunGitWithEnv := runGitWithEnv
@@ -110,6 +112,7 @@ func TestJoinAction_happy(t *testing.T) {
 	}
 	runGitWithEnv = func(env []string, args ...string) error {
 		gitWithEnvCalls = append(gitWithEnvCalls, append([]string(nil), args...))
+		gitWithEnvs = append(gitWithEnvs, append([]string(nil), env...))
 		return nil
 	}
 
@@ -142,13 +145,15 @@ func TestJoinAction_happy(t *testing.T) {
 		t.Fatalf("join returned error: %v", err)
 	}
 
-	// Verify git clone was called via runGitWithEnv (extraHeader path).
-	// The clone command is invoked as `git -c http.extraHeader=... clone --bare <url> <dest>`.
+	// Verify git clone was called via runGitWithEnv (extraHeader env path).
+	// The clone command is invoked with credential config in GIT_CONFIG_* env.
 	var cloneCall []string
-	for _, call := range gitWithEnvCalls {
+	var cloneEnv []string
+	for idx, call := range gitWithEnvCalls {
 		for _, a := range call {
 			if a == "clone" {
 				cloneCall = call
+				cloneEnv = gitWithEnvs[idx]
 				break
 			}
 		}
@@ -163,9 +168,7 @@ func TestJoinAction_happy(t *testing.T) {
 
 	// Token must NOT appear in any positional arg (process listing safety).
 	// The clone URL must be credential-less, and the bearer must flow via the
-	// http.extraHeader -c flag, where it's still embedded in argv but at least
-	// scoped behind a header rather than a remote-URL field that ends up in
-	// `git remote -v` / reflog output.
+	// GIT_CONFIG_* environment channel as http.extraHeader.
 	// Assert the clone URL itself carries no `userinfo` segment.
 	for i, a := range cloneCall {
 		if a == "clone" {
@@ -186,15 +189,19 @@ func TestJoinAction_happy(t *testing.T) {
 			}
 		}
 	}
-	// The bearer token "tok-test" must not appear unencoded anywhere in
-	// argv outside the http.extraHeader Basic-auth blob.
+	// The bearer token "tok-test" and its Basic header must not appear
+	// anywhere in argv.
+	expectedHeader := "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:tok-test"))
 	for _, a := range cloneCall {
-		if strings.HasPrefix(a, "http.extraHeader=") {
-			continue
-		}
-		if strings.Contains(a, "tok-test") {
+		if strings.Contains(a, "tok-test") || strings.Contains(a, expectedHeader) || strings.Contains(a, "http.extraHeader") {
 			t.Errorf("bearer token leaked into argv: %q", a)
 		}
+	}
+	if got := envLookup(cloneEnv, "GIT_CONFIG_KEY_0"); got != "http.extraHeader" {
+		t.Errorf("GIT_CONFIG_KEY_0 = %q, want http.extraHeader; env=%v", got, cloneEnv)
+	}
+	if got := envLookup(cloneEnv, "GIT_CONFIG_VALUE_0"); got != expectedHeader {
+		t.Errorf("GIT_CONFIG_VALUE_0 = %q, want %q", got, expectedHeader)
 	}
 
 	// Verify per-session state was written.
@@ -290,8 +297,8 @@ func TestJoinAction_inviteURL(t *testing.T) {
 
 // TestBuildCloneURL_NoCredentialsEmbedded is the focused regression test for
 // gate-security-cli-join-clone-url-bearer-in-process-args. buildCloneURL must
-// return a credential-less URL; the bearer flows through `-c http.extraHeader`
-// at the clone call site, not via the URL's userinfo segment.
+// return a credential-less URL; the bearer flows through GIT_CONFIG_* env at
+// the clone call site, not via the URL's userinfo segment.
 func TestBuildCloneURL_NoCredentialsEmbedded(t *testing.T) {
 	cases := []struct {
 		name, portalURL string

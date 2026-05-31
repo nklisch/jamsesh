@@ -128,8 +128,8 @@ components:
     # WebSocket event envelope + per-event-type payload schemas
     #
     # Every event pushed over the portal WebSocket shares the EventEnvelope
-    # wrapper. The `type` field is the discriminator; the `payload` field is a
-    # oneOf over the 12 payload schemas below.
+    # wrapper. The `type` field is the discriminator; the `payload` field is
+    # the EventPayload oneOf list below.
     #
     # Discriminator semantics (OpenAPI 3.0.3):
     #   The discriminator lives on EventEnvelope, with propertyName: "type".
@@ -1484,15 +1484,16 @@ components:
       description: |
         Ephemeral fetch-only credential issued for the plugin's HTTPS-
         fallback path. The token is a regular access token bound to the
-        caller with a short TTL (5 min). The plugin passes the token via
-        `git -c http.extraHeader="Authorization: Bearer <token>"` so it
-        never appears in the remote URL or `.git/config`.
+        caller with a short TTL (5 min). The plugin passes the token through
+        Git's `GIT_CONFIG_*` environment channel as `http.extraHeader` so it
+        never appears in the remote URL, `.git/config`, or git argv.
       properties:
         token:
           type: string
           description: |
-            Raw access token. Pass via `Authorization: Bearer` HTTP header
-            (using `git -c http.extraHeader`). Do not splice into the URL.
+            Raw access token. Pass via an `Authorization: Bearer` HTTP header
+            using Git's `GIT_CONFIG_*` environment channel for
+            `http.extraHeader`. Do not splice into the URL.
         remote_url:
           type: string
           description: |

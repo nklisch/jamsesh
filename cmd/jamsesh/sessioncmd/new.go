@@ -51,8 +51,8 @@ func playgroundJoinURL(baseURL, sessionID string) string {
 	return strings.TrimRight(baseURL, "/") + "/playground/s/" + sessionID + "/join"
 }
 
-// runGitWithEnv runs git with additional args (including -c flags) and an optional
-// environment overlay. It inherits stdout/stderr so git's progress output is visible.
+// runGitWithEnv runs git with additional args and an optional environment
+// overlay. It inherits stdout/stderr so git's progress output is visible.
 // Override in tests.
 var runGitWithEnv = func(env []string, args ...string) error {
 	cmd := exec.Command("git", args...)
@@ -62,6 +62,14 @@ var runGitWithEnv = func(env []string, args ...string) error {
 		cmd.Env = append(os.Environ(), env...)
 	}
 	return cmd.Run()
+}
+
+func gitExtraHeaderEnv(header string) []string {
+	return []string{
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http.extraHeader",
+		"GIT_CONFIG_VALUE_0=" + header,
+	}
 }
 
 // NewCommand returns the urfave/cli command descriptor for "jamsesh new".
@@ -298,8 +306,9 @@ func createSessionAPI(ctx context.Context, pc *portalclient.Client, p CreatePara
 }
 
 // pushBaseRef pushes the local HEAD to refs/heads/jam/<sessionID>/base on the
-// portal-side bare repo. Credentials are injected via -c http.extraHeader
-// (NOT URL-embedded) to prevent token leakage into git's reflog or `git remote -v`.
+// portal-side bare repo. Credentials are injected through Git's GIT_CONFIG_*
+// environment channel as http.extraHeader to prevent token leakage into git
+// argv, reflogs, or `git remote -v`.
 // No `git remote add` is performed — the push is transient, leaving .git/config clean.
 func pushBaseRef(ctx context.Context, pc *portalclient.Client, sessionID string) error {
 	// Verify we're in a git checkout with a HEAD
@@ -310,12 +319,9 @@ func pushBaseRef(ctx context.Context, pc *portalclient.Client, sessionID string)
 		return fmt.Errorf("repo has no commits yet (nothing to push as base): %w", err)
 	}
 
-	// Read the current token for Basic auth injection.
-	// We use -c http.extraHeader rather than embedding the token in the URL because:
-	//   1. URL-embedded credentials appear in git's process listing (visible to other
-	//      users on shared systems via `ps aux`).
-	//   2. They can appear in git's reflog and `git remote -v` output.
-	//   3. Header injection is process-local and does not persist anywhere.
+	// Read the current token for Basic auth injection. We use Git's
+	// GIT_CONFIG_* environment channel rather than embedding the token in the
+	// URL or argv.
 	// sessionID is the just-created session; ReadCurrentBearer checks the per-session
 	// token store first and falls back to the legacy account-wide file if absent.
 	token, err := state.ReadCurrentBearer(sessionID)
@@ -332,8 +338,7 @@ func pushBaseRef(ctx context.Context, pc *portalclient.Client, sessionID string)
 	// The pre-receive hook on the portal validates this ref and stamps base_sha.
 	refspec := "HEAD:refs/heads/jam/" + sessionID + "/base"
 	return runGitWithEnv(
-		[]string{}, // no extra env vars beyond the system environment
-		"-c", "http.extraHeader="+basicHeader,
+		gitExtraHeaderEnv(basicHeader),
 		"push", remoteURL, refspec,
 	)
 }
@@ -495,8 +500,8 @@ func newPlaygroundAction(ctx context.Context, cmd *cli.Command) error {
 // bearer token instead of reading the account-wide OAuth token from state.
 // This is used for playground sessions where the user may not have (or need)
 // an OAuth token — the anonymous session bearer is sufficient.
-// Credentials are injected via -c http.extraHeader (NOT URL-embedded) to
-// prevent token leakage into git's reflog or `git remote -v` output.
+// Credentials are injected through Git's GIT_CONFIG_* environment channel as
+// http.extraHeader, not URL-embedded or argv-embedded.
 func pushBaseRefWithBearer(baseURL, sessionID, bearer string) error {
 	// Verify we're in a git checkout with a HEAD.
 	if err := runGit("rev-parse", "--git-dir"); err != nil {
@@ -516,8 +521,7 @@ func pushBaseRefWithBearer(baseURL, sessionID, bearer string) error {
 
 	refspec := "HEAD:refs/heads/jam/" + sessionID + "/base"
 	return runGitWithEnv(
-		[]string{},
-		"-c", "http.extraHeader="+basicHeader,
+		gitExtraHeaderEnv(basicHeader),
 		"push", remoteURL, refspec,
 	)
 }

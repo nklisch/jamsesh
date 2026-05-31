@@ -1,6 +1,6 @@
 // Tests for the auth rune store.
 //
-// Verifies token/refresh persistence to localStorage, rune-derived
+// Verifies access-token persistence to localStorage, memory-only refresh
 // state (isAuthenticated, token, refresh), and signOut clearing both
 // state and storage then navigating to /login.
 
@@ -16,15 +16,16 @@ describe('auth store', () => {
     vi.restoreAllMocks();
   });
 
-  test('initialises token/refresh from localStorage', async () => {
+  test('initialises token from localStorage and clears legacy refresh storage', async () => {
     localStorage.setItem('jamsesh.token', 'stored-access');
     localStorage.setItem('jamsesh.refresh', 'stored-refresh');
 
     const { auth } = await import('$lib/auth.svelte');
 
     expect(auth.token).toBe('stored-access');
-    expect(auth.refresh).toBe('stored-refresh');
+    expect(auth.refresh).toBeNull();
     expect(auth.isAuthenticated).toBe(true);
+    expect(localStorage.getItem('jamsesh.refresh')).toBeNull();
   });
 
   test('starts unauthenticated when localStorage is empty', async () => {
@@ -35,7 +36,7 @@ describe('auth store', () => {
     expect(auth.isAuthenticated).toBe(false);
   });
 
-  test('setTokens updates rune state and persists to localStorage', async () => {
+  test('setTokens updates rune state and persists only access to localStorage', async () => {
     const { auth } = await import('$lib/auth.svelte');
 
     auth.setTokens('new-access', 'new-refresh');
@@ -44,7 +45,7 @@ describe('auth store', () => {
     expect(auth.refresh).toBe('new-refresh');
     expect(auth.isAuthenticated).toBe(true);
     expect(localStorage.getItem('jamsesh.token')).toBe('new-access');
-    expect(localStorage.getItem('jamsesh.refresh')).toBe('new-refresh');
+    expect(localStorage.getItem('jamsesh.refresh')).toBeNull();
   });
 
   test('signOut clears rune state and localStorage', async () => {
@@ -414,7 +415,7 @@ describe('auth store', () => {
     // Prime the store with both tokens first.
     auth.setTokens('old-access', 'old-refresh');
     expect(auth.refresh).toBe('old-refresh');
-    expect(localStorage.getItem('jamsesh.refresh')).toBe('old-refresh');
+    expect(localStorage.getItem('jamsesh.refresh')).toBeNull();
 
     auth.setAccessOnly('new-access-only');
 

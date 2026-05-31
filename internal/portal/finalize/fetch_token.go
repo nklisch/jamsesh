@@ -22,8 +22,8 @@ const fetchTokenTTL = 5 * time.Minute
 //
 // Mints a short-TTL access token bound to the caller, and returns it
 // alongside a plain git remote URL (no credentials embedded). The plugin
-// passes the token via `git -c http.extraHeader="Authorization: Bearer
-// <token>"` so it never appears in .git/config, ps output, or the URL.
+// passes the token through Git's GIT_CONFIG_* environment channel as
+// http.extraHeader so it never appears in .git/config, argv, or the URL.
 // Only session members may mint a token.
 //
 // The credential is a regular oauth_tokens row with a custom expiry —
@@ -90,7 +90,7 @@ func (h *Handler) IssueFetchToken(ctx context.Context, req openapi.IssueFetchTok
 
 // composeFetchRemoteURL builds a plain git smart-HTTP URL for the given
 // session with no credentials embedded. The caller passes credentials
-// separately via `git -c http.extraHeader="Authorization: Bearer <token>"`.
+// separately through Git's GIT_CONFIG_* environment channel as http.extraHeader.
 // Uses url.Parse so the scheme, host, and port from the configured
 // portalURL are preserved regardless of whether it's
 // https://portal.example.com or http://localhost:8080.

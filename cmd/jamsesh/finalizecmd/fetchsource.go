@@ -25,9 +25,9 @@ const jamseshRemoteName = "jamsesh"
 // remote (idempotent — a missing remote is treated as success so a
 // double-invocation of the cleanup stack is safe).
 type fetchSource struct {
-	Kind  string // "local" | "https"
-	URL   string // local path OR plain https URL (no credentials)
-	Token string // Bearer token for HTTPS fetches; empty for local
+	Kind    string // "local" | "https"
+	URL     string // local path OR plain https URL (no credentials)
+	Token   string // Bearer token for HTTPS fetches; empty for local
 	cleanup func() error
 }
 
@@ -53,8 +53,8 @@ type fetchSource struct {
 //     active by the time we return; the caller pushes our cleanup func
 //     onto the cleanupStack before the corresponding `git fetch jamsesh`
 //   - the token is stored in fetchSource.Token; performFetch passes it
-//     via `git -c http.extraHeader="Authorization: Bearer <token>"` so
-//     it never appears in .git/config or ps output
+//     through Git's GIT_CONFIG_* environment channel as http.extraHeader so
+//     it never appears in .git/config or argv
 //   - cleanup runs `git remote remove jamsesh`, swallowing "No such
 //     remote" so double-invocation is harmless
 func chooseFetchSource(ctx context.Context, pc *portalclient.Client, plan *Plan, orgID, sessionID string) (*fetchSource, error) {
@@ -84,7 +84,8 @@ func chooseFetchSource(ctx context.Context, pc *portalclient.Client, plan *Plan,
 	// something to remove. Any pre-existing `jamsesh` remote (e.g. from a
 	// previous run killed with `kill -9`) is removed first so `remote add`
 	// doesn't fail with "already exists". The URL carries no credentials —
-	// the token is passed at fetch time via http.extraHeader.
+	// the token is passed at fetch time via the GIT_CONFIG_* environment
+	// channel for http.extraHeader.
 	_ = removeJamseshRemote() // best-effort pre-clean
 	if err := runGit("remote", "add", jamseshRemoteName, resp.RemoteUrl); err != nil {
 		return nil, fmt.Errorf("registering jamsesh remote: %w", err)
@@ -101,15 +102,16 @@ func chooseFetchSource(ctx context.Context, pc *portalclient.Client, plan *Plan,
 // performFetch runs the kind-appropriate `git fetch` with verbose
 // logging. For the local path we fetch from the on-disk repo URL; for
 // HTTPS we fetch from the pre-registered jamsesh remote, passing the
-// bearer token via `git -c http.extraHeader=...` so it is never
-// persisted into .git/config or visible in ps output.
+// bearer token through Git's GIT_CONFIG_* environment channel as
+// http.extraHeader so it is never persisted into .git/config or visible in
+// argv.
 func performFetch(out io.Writer, fs *fetchSource) error {
 	switch fs.Kind {
 	case "local":
 		return runGitVerbose(out, "fetch", fs.URL)
 	case "https":
 		header := "Authorization: Bearer " + fs.Token
-		return runGitVerbose(out, "-c", "http.extraHeader="+header, "fetch", jamseshRemoteName)
+		return runGitVerboseWithEnv(out, gitExtraHeaderEnv(header), "fetch", jamseshRemoteName)
 	default:
 		return fmt.Errorf("unknown fetch source kind %q", fs.Kind)
 	}

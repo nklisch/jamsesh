@@ -78,6 +78,7 @@ func commit(t *testing.T, repo, rel, content, message string) string {
 func pinGitToCwd(t *testing.T, cwd string) {
 	t.Helper()
 	oldRunGit := runGit
+	oldRunGitWithEnv := runGitWithEnv
 	oldRunGitOutput := runGitOutput
 	oldRunGitWithStdin := runGitWithStdin
 	oldRunGitCwd := runGitCwd
@@ -85,6 +86,7 @@ func pinGitToCwd(t *testing.T, cwd string) {
 	oldRunGitCombined := runGitCombined
 	t.Cleanup(func() {
 		runGit = oldRunGit
+		runGitWithEnv = oldRunGitWithEnv
 		runGitOutput = oldRunGitOutput
 		runGitWithStdin = oldRunGitWithStdin
 		runGitCwd = oldRunGitCwd
@@ -97,6 +99,16 @@ func pinGitToCwd(t *testing.T, cwd string) {
 		cmd.Dir = cwd
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+	runGitWithEnv = func(env []string, args ...string) error {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = cwd
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if len(env) > 0 {
+			cmd.Env = append(os.Environ(), env...)
+		}
 		return cmd.Run()
 	}
 	runGitOutput = func(args ...string) (string, error) {

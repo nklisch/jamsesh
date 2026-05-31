@@ -257,8 +257,8 @@ func TestRunGitVerbose_redactsAuthorizationInPrint(t *testing.T) {
 	pinGitToCwd(t, repo)
 
 	var buf bytes.Buffer
-	// Use a real git command that succeeds. "git -c http.extraHeader=... status"
-	// ignores the header at runtime but still prints the arg via runGitVerbose.
+	// Use the legacy argv shape as a regression fixture for redaction. Git
+	// ignores the header at runtime but runGitVerbose still prints the arg.
 	_ = runGitVerbose(&buf, "-c", "http.extraHeader=Authorization: Bearer supersecret", "status")
 
 	printed := buf.String()

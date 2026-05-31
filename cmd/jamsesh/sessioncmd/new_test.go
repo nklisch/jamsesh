@@ -63,6 +63,16 @@ func stubGitForNew(t *testing.T, pushErr error) *[][]string {
 	return &calls
 }
 
+func envLookup(env []string, key string) string {
+	prefix := key + "="
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			return strings.TrimPrefix(e, prefix)
+		}
+	}
+	return ""
+}
+
 // stubIsTTY overrides isTTY for the duration of a test.
 func stubIsTTY(t *testing.T, val bool) {
 	t.Helper()
@@ -969,9 +979,9 @@ func TestPlaygroundAction_pushFailureLeavesSessionLiveWithRetry(t *testing.T) {
 }
 
 // TestPlaygroundAction_pushUsesBearerNotOAuthToken verifies that the push
-// injects the just-received bearer (not the account-wide OAuth token) via
-// the -c http.extraHeader argument. The bearer is Base64-encoded inside
-// the Basic auth value: "Authorization: Basic base64(jamsesh:<bearer>)".
+// injects the just-received bearer (not the account-wide OAuth token) through
+// Git's GIT_CONFIG_* env channel. The bearer is Base64-encoded inside the
+// Basic auth value: "Authorization: Basic base64(jamsesh:<bearer>)".
 func TestPlaygroundAction_pushUsesBearerNotOAuthToken(t *testing.T) {
 	const (
 		sessionID  = "sess-pg-003"
@@ -999,8 +1009,9 @@ func TestPlaygroundAction_pushUsesBearerNotOAuthToken(t *testing.T) {
 	_ = os.Chmod(dir, 0o700)
 	t.Setenv("JAMSESH_PORTAL_URL", srv.URL)
 
-	// Capture all git-with-env calls so we can inspect the extraHeader arg.
+	// Capture all git-with-env calls so we can inspect the extraHeader env.
 	var capturedGitArgs [][]string
+	var capturedGitEnvs [][]string
 
 	origRunGit := runGit
 	origRunGitOutput := runGitOutput
@@ -1014,6 +1025,7 @@ func TestPlaygroundAction_pushUsesBearerNotOAuthToken(t *testing.T) {
 	runGitOutput = func(args ...string) (string, error) { return "abc1234", nil }
 	runGitWithEnv = func(env []string, args ...string) error {
 		capturedGitArgs = append(capturedGitArgs, append([]string(nil), args...))
+		capturedGitEnvs = append(capturedGitEnvs, append([]string(nil), env...))
 		return nil
 	}
 
@@ -1023,27 +1035,29 @@ func TestPlaygroundAction_pushUsesBearerNotOAuthToken(t *testing.T) {
 		t.Fatalf("new --playground returned error: %v", err)
 	}
 
-	// Find the -c http.extraHeader=... argument in the push call.
+	// Find the http.extraHeader env in the push call.
 	// The header is injected as Base64 Basic auth: "Authorization: Basic <b64>".
 	foundBearerInPush := false
-	for _, callArgs := range capturedGitArgs {
+	for i, callArgs := range capturedGitArgs {
 		for _, arg := range callArgs {
-			if strings.Contains(arg, "http.extraHeader=") {
-				// The header must contain the anon bearer's Base64 encoding.
-				if strings.Contains(arg, expectedB64) {
-					foundBearerInPush = true
-				}
-				// The OAuth token must NOT appear in any push header.
-				oauthB64 := base64.StdEncoding.EncodeToString([]byte("jamsesh:" + oauthToken))
-				if strings.Contains(arg, oauthB64) || strings.Contains(arg, oauthToken) {
-					t.Errorf("OAuth token leaked into playground push header: %q", arg)
-				}
+			if strings.Contains(arg, "http.extraHeader") || strings.Contains(arg, expectedB64) || strings.Contains(arg, anonBearer) {
+				t.Errorf("credential material leaked into git argv: %q", arg)
 			}
+		}
+		env := capturedGitEnvs[i]
+		if envLookup(env, "GIT_CONFIG_KEY_0") == "http.extraHeader" &&
+			strings.Contains(envLookup(env, "GIT_CONFIG_VALUE_0"), expectedB64) {
+			foundBearerInPush = true
+		}
+		oauthB64 := base64.StdEncoding.EncodeToString([]byte("jamsesh:" + oauthToken))
+		if strings.Contains(envLookup(env, "GIT_CONFIG_VALUE_0"), oauthB64) ||
+			strings.Contains(envLookup(env, "GIT_CONFIG_VALUE_0"), oauthToken) {
+			t.Errorf("OAuth token leaked into playground push env: %v", env)
 		}
 	}
 	if !foundBearerInPush {
-		t.Errorf("expected anon bearer (b64: %q) in push extraHeader, git calls: %v",
-			expectedB64, capturedGitArgs)
+		t.Errorf("expected anon bearer (b64: %q) in push extraHeader env, git calls: %v envs: %v",
+			expectedB64, capturedGitArgs, capturedGitEnvs)
 	}
 }
 

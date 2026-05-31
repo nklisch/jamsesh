@@ -94,6 +94,8 @@ WebSocket.
 - `POST /api/auth/magic-link/request` — request magic link (alternative auth)
 - `POST /api/auth/magic-link/exchange` — exchange magic link for token
 - `POST /api/auth/revoke` — revoke current token
+- `POST /api/auth/logout` — revoke all tokens for the current account
+- `POST /api/auth/refresh` — rotate a refresh token into a fresh token pair
 
 ### Orgs & accounts
 
@@ -137,6 +139,28 @@ WebSocket.
   summary, composed commit message + `Co-authored-by` list (squash mode),
   lock status, and HTTPS-fallback fetch source. See the OpenAPI YAML for
   the precise response schema.
+
+### Session resume
+
+- `POST /api/session-resumes` — authenticated with the caller's bearer token,
+  rate-limited, and used by the CLI `--open` path plus `jamsesh resume`.
+  The body is `{org_id, session_id}`. The response is
+  `{resume_url, expires_in, session_id}`; `resume_url` carries the raw
+  60-second token only in the URL fragment (`#rt=<token>`).
+- `POST /api/session-resumes/exchange` — public and independently
+  rate-limited. The resume token is the sole credential, so ambient
+  `Authorization` headers are ignored. The SPA exchanges `{resume_token}` for
+  either a playground bearer or an access-only durable bearer.
+
+The raw resume token is never stored directly. The portal stores only a
+SHA-256 hash in `resume_tokens` and consumes the row atomically, so replay,
+expired-token, and unknown-token cases all return the same generic 401 shape.
+
+### Portal bootstrap
+
+- `GET /api/portal/info` — public, no-store, rate-limited SPA bootstrap
+  endpoint returning `{playground_enabled, landing_variant}` before auth has
+  completed.
 
 ### Finalize machinery
 

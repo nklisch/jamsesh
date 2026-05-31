@@ -26,6 +26,18 @@ var runGit = func(args ...string) error {
 	return cmd.Run()
 }
 
+// runGitWithEnv invokes `git <args>` with an environment overlay. Use this for
+// git config that may contain credentials, so secrets stay out of argv.
+var runGitWithEnv = func(env []string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	return cmd.Run()
+}
+
 // runGitOutput is like runGit but captures stdout (trimmed). Stderr is
 // inherited so error output still reaches the user.
 var runGitOutput = func(args ...string) (string, error) {
@@ -81,3 +93,10 @@ var runGitCombined = func(args ...string) (string, error) {
 	return string(out), err
 }
 
+func gitExtraHeaderEnv(header string) []string {
+	return []string{
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http.extraHeader",
+		"GIT_CONFIG_VALUE_0=" + header,
+	}
+}

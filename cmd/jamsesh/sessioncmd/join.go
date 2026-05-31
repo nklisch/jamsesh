@@ -127,9 +127,8 @@ func joinAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// 7. Clone the session bare repo.
-	// Bearer is passed via `-c http.extraHeader` (NOT URL-embedded) so the token
-	// does not appear in the process listing (`ps aux`), git's reflog, or
-	// `git remote -v` output for the duration of the clone. The remote URL
+	// Bearer is passed through Git's GIT_CONFIG_* environment channel as
+	// http.extraHeader (NOT URL-embedded or argv-embedded). The remote URL
 	// itself is credential-less. Mirrors the pattern in new.go:pushBaseRef and
 	// finalizecmd/fetchsource.go:performFetch.
 	cloneURL := buildCloneURL(portalURL, orgID, sessionID)
@@ -137,8 +136,7 @@ func joinAction(ctx context.Context, cmd *cli.Command) error {
 		[]byte("x-access-token:"+tok))
 	localPath := sessionID + ".git"
 	if err := runGitWithEnv(
-		nil,
-		"-c", "http.extraHeader="+basicHeader,
+		gitExtraHeaderEnv(basicHeader),
 		"clone", "--bare", cloneURL, localPath,
 	); err != nil {
 		return fmt.Errorf("cloning session repo: %w", err)
@@ -244,8 +242,9 @@ func findOrgForSession(ctx context.Context, pc *portalclient.Client, me openapi.
 
 // buildCloneURL builds a credential-less clone URL for the session's bare
 // repo on the portal. The bearer token is NOT embedded in the URL — the
-// caller passes it via `-c http.extraHeader=...` so it is never visible in
-// the process listing (`ps aux`), git's reflog, or `git remote -v` output.
+// caller passes it through Git's GIT_CONFIG_* environment channel as
+// http.extraHeader so it is never visible in argv, git's reflog, or
+// `git remote -v` output.
 // See join.go's clone call site and new.go:pushBaseRef for the pattern.
 func buildCloneURL(portalURL, orgID, sessionID string) string {
 	u, err := url.Parse(portalURL)

@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.5.0
+
+Released 2026-05-31. Browser resume handoff, typed auth surfaces, and the
+release quality-gate drain for the CLI/browser session-resume work.
+
+### Features
+
+- **CLI-to-browser session resume** — `jamsesh jam new --open`,
+  `jamsesh jam join --open`, and `jamsesh resume [session-id]` mint
+  60-second, single-use resume URLs and open the portal without printing the
+  secret fragment. The SPA resume routes are public, strip `#rt=` before
+  exchange, and adopt either a playground bearer or access-only durable bearer.
+
+### Security
+
+- Git smart-HTTP credentials now flow through Git's `GIT_CONFIG_*`
+  environment channel for `http.extraHeader` instead of argv.
+- OAuth callback handling now requires the callback `state` to match the
+  state captured in the initiating browser tab before exchanging the code.
+- SPA refresh tokens are memory-only; the legacy `jamsesh.refresh`
+  localStorage key is removed on load/token adoption.
+- Public portal info and session-resume exchange are rate-limited, and
+  playground session metadata now returns a 401 membership failure instead of
+  leaking cross-session existence through 404/401 asymmetry.
+
+### Documentation
+
+- ARCHITECTURE, PROTOCOL, SECURITY, UX, and OpenAPI-generated TypeScript/Go
+  contracts refreshed for session resume, public bootstrap routes, and
+  token-storage behavior.
+
 ## v0.4.1
 
 Released 2026-05-25. Patch release introducing the **portal visitor-entry

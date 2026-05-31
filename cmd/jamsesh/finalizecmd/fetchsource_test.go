@@ -333,15 +333,27 @@ func TestPerformFetch_LocalKind(t *testing.T) {
 	}
 }
 
+func envLookup(env []string, key string) string {
+	prefix := key + "="
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			return strings.TrimPrefix(e, prefix)
+		}
+	}
+	return ""
+}
+
 // TestPerformFetch_HTTPSKindPassesTokenViaExtraHeader verifies the HTTPS
 // branch fetches by the named `jamsesh` remote and passes the bearer token
-// via `git -c http.extraHeader=...` rather than embedding it in the remote
-// URL. This prevents the token from persisting into .git/config.
+// through Git's GIT_CONFIG_* environment channel as http.extraHeader rather
+// than embedding it in the remote URL or argv.
 func TestPerformFetch_HTTPSKindPassesTokenViaExtraHeader(t *testing.T) {
 	var gotArgs []string
-	oldRunGit := runGit
-	t.Cleanup(func() { runGit = oldRunGit })
-	runGit = func(args ...string) error {
+	var gotEnv []string
+	oldRunGitWithEnv := runGitWithEnv
+	t.Cleanup(func() { runGitWithEnv = oldRunGitWithEnv })
+	runGitWithEnv = func(env []string, args ...string) error {
+		gotEnv = append([]string(nil), env...)
 		gotArgs = append([]string(nil), args...)
 		return nil
 	}
@@ -356,10 +368,20 @@ func TestPerformFetch_HTTPSKindPassesTokenViaExtraHeader(t *testing.T) {
 	if err := performFetch(&buf, fs); err != nil {
 		t.Fatalf("performFetch: %v", err)
 	}
-	// Must pass: -c, http.extraHeader=Authorization: Bearer <token>, fetch, jamsesh
-	want := []string{"-c", "http.extraHeader=Authorization: Bearer secret-token", "fetch", "jamsesh"}
+	want := []string{"fetch", "jamsesh"}
 	if !equalStrSlice(gotArgs, want) {
 		t.Errorf("git args = %v, want %v", gotArgs, want)
+	}
+	if got := envLookup(gotEnv, "GIT_CONFIG_KEY_0"); got != "http.extraHeader" {
+		t.Errorf("GIT_CONFIG_KEY_0 = %q, want http.extraHeader; env=%v", got, gotEnv)
+	}
+	if got := envLookup(gotEnv, "GIT_CONFIG_VALUE_0"); got != "Authorization: Bearer secret-token" {
+		t.Errorf("GIT_CONFIG_VALUE_0 = %q, want bearer header", got)
+	}
+	for _, arg := range gotArgs {
+		if strings.Contains(arg, "secret-token") || strings.Contains(arg, "http.extraHeader") {
+			t.Errorf("credential material leaked into git argv: %q", arg)
+		}
 	}
 	// CRITICAL: the remote URL passed to git remote add must not contain
 	// the token — the URL in the remote config is credential-free.

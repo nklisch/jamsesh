@@ -127,9 +127,13 @@ and mode operations) and `/jamsesh:finalize`. Each skill at
 `skills/<name>/SKILL.md` contains body text that instructs Claude to
 run the appropriate `jamsesh` subcommand:
 
-- `jamsesh jam new [--org <id>] [--goal <text>] [--scope <glob>] [--mode sync|isolated] [--invite <emails>]`
-- `jamsesh jam new --playground` — ephemeral anonymous variant (no org needed)
-- `jamsesh jam join <session-id-or-url> [--as <branch>] [--from <commit>]`
+- `jamsesh jam new [--org <id>] [--goal <text>] [--scope <glob>] [--mode sync|isolated] [--invite <emails>] [--open]`
+- `jamsesh jam new --playground [--open]` — ephemeral anonymous variant (no org needed)
+- `jamsesh jam join <session-id-or-url> [--as <branch>] [--from <commit>] [--open]`
+- `jamsesh resume [session-id]` — mint a 60-second, single-use resume URL and
+  open the portal in the browser as the CLI's current session identity. Bare
+  `jamsesh resume` resolves the current bound session, or the only known
+  local session when unambiguous.
 - `jamsesh status` — prints tree summary, peers, scope, mode, unresolved
   comments addressed to this user
 - `jamsesh fork <commit> [--as <branch>] [--mode sync|isolated]`
@@ -212,10 +216,11 @@ A Svelte 5 single-page application served by the portal binary. The SPA's
 `auth` rune store (`frontend/src/lib/auth.svelte.ts`) maintains two
 orthogonal identity states that can coexist in the same tab:
 
-**Durable authenticated-user state** — `token` and `refresh` are persisted
-to `localStorage` under `jamsesh.token` / `jamsesh.refresh`. `currentUser`
-and `orgs` are in-memory caches loaded from `/api/me` on first use. This is
-the standard OAuth session; it survives page reloads.
+**Durable authenticated-user state** — the short-lived access `token` is
+persisted to `localStorage` under `jamsesh.token`; the refresh token returned
+by OAuth/magic-link exchange is memory-only for the current page lifetime and
+`jamsesh.refresh` is cleared on module load as a legacy cleanup. `currentUser`
+and `orgs` are in-memory caches loaded from `/api/me` on first use.
 
 **Ephemeral playground context** — `_playgroundContext = $state<PlaygroundContext | null>(null)`
 holds the anonymous-mode identity `{sessionId, bearer, nickname}` for a
@@ -563,6 +568,9 @@ clause where it applies.
 - `orgs` — top-level tenant
 - `accounts` — users within an org
 - `oauth_tokens` — user access tokens, refresh tokens, revocation flags
+- `resume_tokens` — short-lived, single-use CLI-to-browser handoff tokens
+  stored only as SHA-256 hashes, bound to `(org_id, session_id, account_id)`,
+  and atomically consumed by `/api/session-resumes/exchange`
 - `sessions` — session metadata (name, goal, scope, default mode, status,
   base sha, created_at, ended_at)
 - `session_members` — account ↔ session with role (creator | member)

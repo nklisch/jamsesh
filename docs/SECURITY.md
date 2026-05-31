@@ -200,20 +200,19 @@ Mitigation:
 
 The portal SPA stores two categories of token on the client:
 
-**Durable OAuth tokens (refresh tokens persisted to `localStorage`):**
-`frontend/src/lib/auth.svelte.ts` writes both the access token and the
-30-day refresh token to `localStorage` under the keys `jamsesh.token` and
-`jamsesh.refresh`. Any XSS vulnerability in the SPA — including a future
-inline-script regression in the Svelte bundle — can exfiltrate both halves of
-the token pair. The access token has a short TTL (≤1 hour); the refresh token
-is long-lived and would allow an attacker to issue fresh access tokens until
-the refresh token is explicitly revoked.
+**Durable OAuth tokens (access persisted, refresh memory-only):**
+`frontend/src/lib/auth.svelte.ts` writes the short-lived access token to
+`localStorage` under `jamsesh.token` so the SPA can survive a reload while the
+access token is still valid. Refresh tokens are kept only in module memory for
+the current page lifetime, and the legacy `jamsesh.refresh` key is removed on
+module load and on every token adoption path. Any XSS can still exfiltrate the
+current in-memory token values during that page session, but a reload no
+longer leaves a long-lived refresh credential in persistent browser storage.
 
-Residual risk accepted: moving refresh tokens to an `httpOnly Secure` cookie
-requires rework of the token-refresh API contract and is deferred to a future
-hardening pass. The current `script-src 'self'` CSP directive blocks inline
-script injection from known-XSS vectors; a CSP report endpoint (see below)
-surfaces regressions.
+Residual risk accepted: a stronger browser session model would move refresh
+state into an `httpOnly Secure SameSite` cookie or Backend-for-Frontend
+session. The current `script-src 'self'` CSP directive blocks inline script
+injection from known-XSS vectors; the CSP report endpoint surfaces regressions.
 
 **Playground anonymous bearers (in-memory only, NOT in `localStorage`):**
 The `_playgroundContext` rune in `auth.svelte.ts` holds the anonymous bearer
@@ -252,6 +251,29 @@ that complement the server-side single-use enforcement:
 The `requiresAuth: false` flag on both resume routes (`/playground/s/{id}/resume`
 and `/orgs/{orgId}/sessions/{sessionId}/resume`) ensures the SPA auth gate does
 not redirect the user to `/login` before the fragment can be read and stripped.
+
+## Public HTTP surfaces
+
+The default unauthenticated portal surface is intentionally narrow:
+
+- `POST /api/auth/refresh`, `/api/auth/magic-link/request`,
+  `/api/auth/magic-link/exchange`, `/api/auth/oauth/start`, and
+  `/api/auth/oauth/callback` — public auth flow endpoints, all rate-limited.
+- `GET /api/portal/info` — public SPA bootstrap endpoint, no-store and
+  rate-limited.
+- `POST /api/playground/sessions` and
+  `POST /api/playground/sessions/{id}/join` — public playground creation and
+  join endpoints; create is rate-limited, join is bounded by unguessable
+  session IDs and participant caps.
+- `GET /api/playground/sessions/{id}/tombstone` — public idempotent
+  post-destruction summary.
+- `POST /api/session-resumes/exchange` — public, rate-limited resume-token
+  exchange; the resume token is the sole credential and ambient
+  `Authorization` is ignored.
+- `/api/csp-report` — public CSP violation report sink.
+
+All other `/api/*`, `/git/*`, and MCP routes require a valid bearer/basic auth
+credential and server-side membership checks where session data is involved.
 
 **CSP regression detection:** A `Content-Security-Policy-Report-Only` header
 with `report-uri /_csp-report` is emitted alongside the enforced CSP so
@@ -292,13 +314,15 @@ Self-host operators are responsible for:
 - **Finalize fetch tokens passed via Authorization header, not git URL** —
   when the jamsesh plugin fetches session refs during finalize-run, it mints
   an ephemeral fetch token and passes it as an HTTP `Authorization: Bearer`
-  header via `git -c http.extraHeader=...`. The token is **never** embedded
-  in the git remote URL. This means:
+  header through Git's `GIT_CONFIG_*` environment channel for
+  `http.extraHeader`. The token is **never** embedded in the git remote URL or
+  git's process arguments. This means:
   - The token does not persist into `.git/config` after the clone/fetch.
   - The token does not appear in `git remote -v` output.
   - The token is not logged by git's own credential helper chain.
   Operators can confirm this behavior matches their threat model by auditing
-  the `http.extraHeader` env var path (the portal's
+  the `GIT_CONFIG_KEY_0=http.extraHeader` / `GIT_CONFIG_VALUE_0=...` env path
+  (the portal's
   `POST .../finalize/fetch-token` response carries a plain `remote_url` with
   no userinfo segment, and a separate `token` field). Proxy access logs
   will show the Authorization header value on requests to `/git/...` during

@@ -7,8 +7,6 @@
   import Card from '$lib/components/Card.svelte';
 
   // Mode drives card state transitions.
-  // Note: once /api/auth/magic-link/request is in openapi.yaml this fetch
-  // call becomes a typed client.POST. Deferred to epic-portal-foundation-auth-flows.
   type Mode = 'choose' | 'magic-link-sent' | 'magic-link-error' | 'oauth-error';
 
   let email = $state('');
@@ -51,6 +49,7 @@
 
   // Known-safe OAuth provider hostnames. Add one entry per future provider.
   const AUTHORIZE_HOST_ALLOWLIST = ['github.com'] as const;
+  const OAUTH_STATE_KEY = 'oauth.state';
 
   // OAuth start is a two-step flow: POST to mint a state nonce and
   // receive the provider's authorize_url, then navigate the browser to
@@ -98,6 +97,14 @@
         oauthPending = false;
         return;
       }
+      const state = parsed.searchParams.get('state');
+      if (!state) {
+        mode = 'oauth-error';
+        errorMsg = 'Authorization URL could not be validated. Please try again.';
+        oauthPending = false;
+        return;
+      }
+      sessionStorage.setItem(OAUTH_STATE_KEY, state);
       window.location.assign(authorizeUrl);
       return;
     }
@@ -110,15 +117,11 @@
   async function requestMagicLink(e: Event) {
     e.preventDefault();
     errorMsg = null;
-    // Raw fetch — not yet in openapi.yaml. Replace with typed client.POST once
-    // epic-portal-foundation-auth-flows adds POST /api/auth/magic-link/request.
     try {
-      const res = await fetch('/api/auth/magic-link/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+      const { error } = await client.POST('/api/auth/magic-link/request', {
+        body: { email },
       });
-      if (res.ok) {
+      if (!error) {
         mode = 'magic-link-sent';
       } else {
         mode = 'magic-link-error';

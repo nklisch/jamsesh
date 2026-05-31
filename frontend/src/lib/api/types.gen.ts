@@ -741,6 +741,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/session-resumes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mint a single-use resume token for a CLI-to-browser session handoff
+         * @description Mints a short-lived (60 s), single-use resume token bound to the
+         *     authenticated account and the given (org, session) pair. The token
+         *     is embedded in the `resume_url` fragment (`#rt=<token>`) so it never
+         *     appears in server-side request logs. The CLI opens `resume_url`
+         *     verbatim in the default browser; the SPA registers the resume route
+         *     and exchanges the fragment token in a later step.
+         *
+         *     Only session members may mint a token. The raw token is never
+         *     returned as a standalone field — it is always in the URL fragment.
+         */
+        post: operations["createSessionResume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/session-resumes/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a single-use resume token for a session credential
+         * @description Presents the raw resume token (extracted by the SPA from the URL
+         *     fragment `#rt=<token>`) and receives a session-scoped credential.
+         *
+         *     This endpoint is **unauthenticated** — the resume token is the sole
+         *     credential. Any ambient Authorization header is ignored.
+         *
+         *     The token is consumed atomically (winner-returning UPDATE…RETURNING).
+         *     All failure cases (expired, already-used, unknown) return the same
+         *     generic error shape — no oracle distinguishing the three cases.
+         */
+        post: operations["exchangeSessionResume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/playground/sessions/{id}/tombstone": {
         parameters: {
             query?: never;
@@ -1741,14 +1797,15 @@ export interface components {
         /**
          * @description Ephemeral fetch-only credential issued for the plugin's HTTPS-
          *     fallback path. The token is a regular access token bound to the
-         *     caller with a short TTL (5 min). The plugin passes the token via
-         *     `git -c http.extraHeader="Authorization: Bearer <token>"` so it
-         *     never appears in the remote URL or `.git/config`.
+         *     caller with a short TTL (5 min). The plugin passes the token through
+         *     Git's `GIT_CONFIG_*` environment channel as `http.extraHeader` so it
+         *     never appears in the remote URL, `.git/config`, or git argv.
          */
         FetchTokenResponse: {
             /**
-             * @description Raw access token. Pass via `Authorization: Bearer` HTTP header
-             *     (using `git -c http.extraHeader`). Do not splice into the URL.
+             * @description Raw access token. Pass via an `Authorization: Bearer` HTTP header
+             *     using Git's `GIT_CONFIG_*` environment channel for
+             *     `http.extraHeader`. Do not splice into the URL.
              */
             token: string;
             /**
@@ -1939,6 +1996,85 @@ export interface components {
              * @description ISO-8601 timestamp when this tombstone itself expires (default 30 days after ended_at)
              */
             expires_at: string;
+        };
+        /**
+         * @description Request body for POST /api/session-resumes. Identifies the session
+         *     the CLI wants to resume via the browser portal.
+         */
+        SessionResumeRequest: {
+            /** @description The org that owns the session. */
+            org_id: string;
+            /** @description The session the CLI is resuming into. */
+            session_id: string;
+        };
+        /**
+         * @description Request body for POST /api/session-resumes/exchange. Presents the
+         *     single-use resume token (extracted from the URL fragment by the SPA)
+         *     to receive a session-scoped credential.
+         */
+        SessionResumeExchangeRequest: {
+            /**
+             * @description The raw single-use resume token extracted from the URL fragment
+             *     (`#rt=<token>`). This is the credential; it is consumed atomically
+             *     on exchange.
+             */
+            resume_token: string;
+        };
+        /**
+         * @description Response body for POST /api/session-resumes/exchange (200 OK).
+         *     Contains the issued credential and session context.
+         */
+        SessionResumeExchangeResponse: {
+            /**
+             * @description The issued session credential.
+             *     - playground (kind=playground): an anonymous-session bearer, valid
+             *       for the remaining session hard-cap duration.
+             *     - durable (kind=durable): a short-lived access token (AccessTokenTTL),
+             *       no refresh token.
+             */
+            bearer: string;
+            /**
+             * Format: date-time
+             * @description When the issued bearer expires.
+             */
+            expires_at: string;
+            /** @description The session this credential grants access to. */
+            session_id: string;
+            /** @description The org that owns the session. */
+            org_id: string;
+            /**
+             * @description "playground" when the account is anonymous (playground session);
+             *     "durable" when the account has a persistent identity.
+             * @enum {string}
+             */
+            kind: "playground" | "durable";
+            /** @description The account ID for which the credential was issued. */
+            account_id: string;
+            /** @description The display name of the account. */
+            display_name: string;
+        };
+        /**
+         * @description Response body for POST /api/session-resumes (200 OK).
+         *     The resume_url contains the raw single-use token in its URL fragment
+         *     (#rt=<token>) so the token never appears in server logs. The CLI opens
+         *     the URL verbatim in the browser. expires_in is always 60 (seconds).
+         */
+        SessionResumeResponse: {
+            /**
+             * @description The full URL the CLI should open in a browser. The raw token is
+             *     embedded in the URL fragment: `#rt=<raw_token>`. The SPA reads
+             *     the fragment client-side; the token never appears in server-side
+             *     request logs.
+             * @example https://portal.example.com/orgs/org_01abc/sessions/sess_01xyz/resume#rt=deadbeef
+             */
+            resume_url: string;
+            /**
+             * @description Seconds until the resume token expires. Always 60.
+             * @example 60
+             */
+            expires_in: number;
+            /** @description The session ID bound to this token. */
+            session_id: string;
         };
         PortalInfo: {
             /**
@@ -3504,6 +3640,58 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    createSessionResume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionResumeRequest"];
+            };
+        };
+        responses: {
+            /** @description Resume token minted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResumeResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    exchangeSessionResume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionResumeExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Token exchanged; credential issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResumeExchangeResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     getPlaygroundTombstone: {

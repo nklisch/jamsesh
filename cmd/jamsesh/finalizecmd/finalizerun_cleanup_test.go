@@ -199,7 +199,8 @@ func TestFinalizeRun_SIGINTSimulated_RemoteRemovedAfterCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Stub runGit so the FIRST `git fetch jamsesh` invocation simulates
+	// Stub runGitWithEnv so the FIRST credentialed `git fetch jamsesh`
+	// invocation simulates
 	// the SIGINT-mid-fetch scenario:
 	//   - cancels the root context (proxy for the OS delivering SIGINT
 	//     to signal.NotifyContext);
@@ -209,11 +210,11 @@ func TestFinalizeRun_SIGINTSimulated_RemoteRemovedAfterCancel(t *testing.T) {
 	//     for);
 	//   - returns a fetch error so performFetch propagates failure to
 	//     the action and the deferred cleanup.Run drains the stack.
-	oldRunGit := runGit
-	t.Cleanup(func() { runGit = oldRunGit })
+	oldRunGitWithEnv := runGitWithEnv
+	t.Cleanup(func() { runGitWithEnv = oldRunGitWithEnv })
 	fetchSeen := false
-	runGit = func(args ...string) error {
-		// Detect `git -c http.extraHeader=... fetch jamsesh` in any position.
+	runGitWithEnv = func(env []string, args ...string) error {
+		// Detect `git fetch jamsesh` in any position.
 		isFetchJamsesh := false
 		for i, a := range args {
 			if a == "fetch" && i+1 < len(args) && args[i+1] == "jamsesh" {
@@ -227,7 +228,7 @@ func TestFinalizeRun_SIGINTSimulated_RemoteRemovedAfterCancel(t *testing.T) {
 			time.Sleep(150 * time.Millisecond)
 			return errFakeFetchAborted
 		}
-		return oldRunGit(args...)
+		return oldRunGitWithEnv(env, args...)
 	}
 
 	app := &cli.Command{

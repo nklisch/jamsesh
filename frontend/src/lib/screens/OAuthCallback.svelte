@@ -13,6 +13,7 @@
 
   let viewState = $state<ViewState>('exchanging');
   let errorCode = $state<string | null>(null);
+  const OAUTH_STATE_KEY = 'oauth.state';
 
   // ── Mount: read code+state from query params and exchange ─────────────────
 
@@ -31,6 +32,7 @@
     history.replaceState(null, '', window.location.pathname);
 
     const provider = sessionStorage.getItem('oauth.provider') ?? 'github';
+    const expectedState = sessionStorage.getItem(OAUTH_STATE_KEY);
     const storedReturnTo = sessionStorage.getItem('oauth.return_to');
     const returnTo =
       storedReturnTo && storedReturnTo.startsWith('/') && !storedReturnTo.startsWith('//')
@@ -38,7 +40,14 @@
         : null;
 
     sessionStorage.removeItem('oauth.provider');
+    sessionStorage.removeItem(OAUTH_STATE_KEY);
     sessionStorage.removeItem('oauth.return_to');
+
+    if (!expectedState || state !== expectedState) {
+      errorCode = 'oauth.state_mismatch';
+      viewState = 'error';
+      return;
+    }
 
     void exchange(provider, code, state, returnTo);
   });

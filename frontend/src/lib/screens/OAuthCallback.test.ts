@@ -47,6 +47,7 @@ describe('OAuthCallback', () => {
     vi.clearAllMocks();
     setSearch('?code=abc&state=xyz');
     sessionStorage.setItem('oauth.provider', 'github');
+    sessionStorage.setItem('oauth.state', 'xyz');
     sessionStorage.setItem('oauth.return_to', '/orgs/foo/sessions');
   });
 
@@ -106,6 +107,7 @@ describe('OAuthCallback', () => {
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
     expect(sessionStorage.getItem('oauth.provider')).toBeNull();
+    expect(sessionStorage.getItem('oauth.state')).toBeNull();
     expect(sessionStorage.getItem('oauth.return_to')).toBeNull();
   });
 
@@ -182,6 +184,28 @@ describe('OAuthCallback', () => {
       '/api/auth/oauth/callback',
       expect.objectContaining({ body: expect.objectContaining({ provider: 'github' }) }),
     );
+  });
+
+  it('shows error without POST when query state does not match sessionStorage state', async () => {
+    sessionStorage.setItem('oauth.state', 'different');
+    render(OAuthCallback);
+
+    await waitFor(() => {
+      expect(screen.getByText(/this sign-in link is no longer valid/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/oauth\.state_mismatch/)).toBeInTheDocument();
+    expect(mockPOST).not.toHaveBeenCalled();
+  });
+
+  it('shows error without POST when sessionStorage state is missing', async () => {
+    sessionStorage.removeItem('oauth.state');
+    render(OAuthCallback);
+
+    await waitFor(() => {
+      expect(screen.getByText(/this sign-in link is no longer valid/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/oauth\.state_mismatch/)).toBeInTheDocument();
+    expect(mockPOST).not.toHaveBeenCalled();
   });
 
   // ── Missing params ─────────────────────────────────────────────────────────

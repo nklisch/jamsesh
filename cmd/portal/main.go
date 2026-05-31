@@ -49,11 +49,11 @@ import (
 	"jamsesh/internal/portal/postreceive"
 	"jamsesh/internal/portal/prereceive"
 	"jamsesh/internal/portal/probes"
-	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/ratelimit"
+	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/senders"
-	"jamsesh/internal/portal/sessionresume"
 	"jamsesh/internal/portal/server"
+	"jamsesh/internal/portal/sessionresume"
 	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
 	"jamsesh/internal/portal/storage/objectstore"
@@ -68,14 +68,14 @@ type combinedHandler struct {
 	*tokens.Handler
 	*auth.MagicLinkHandler
 	*auth.OAuthHandler
-	AccountsHandler   *accounts.Handler
-	SessionsHandler   *sessions.Handler
-	CommentsHandler   *comments.Handler
-	FinalizeHandler       *finalize.Handler
-	SessionResumeHandler  *sessionresume.Handler
-	WsTicketHandler       *wsgateway.WsTicketHandler
-	PlaygroundHandler *playground.Handler
-	PortalInfoHandler *portalinfo.Handler
+	AccountsHandler      *accounts.Handler
+	SessionsHandler      *sessions.Handler
+	CommentsHandler      *comments.Handler
+	FinalizeHandler      *finalize.Handler
+	SessionResumeHandler *sessionresume.Handler
+	WsTicketHandler      *wsgateway.WsTicketHandler
+	PlaygroundHandler    *playground.Handler
+	PortalInfoHandler    *portalinfo.Handler
 }
 
 // GetMe delegates to the accounts handler.
@@ -782,17 +782,17 @@ func main() {
 	}
 
 	strictAPI := openapi.NewStrictHandlerWithOptions(&combinedHandler{
-		Handler:           tokenHandler,
-		MagicLinkHandler:  magicLinkHandler,
-		OAuthHandler:      oauthHandler,
-		AccountsHandler:   accountsHandler,
-		SessionsHandler:   sessionsHandler,
-		CommentsHandler:   commentsHandler,
+		Handler:              tokenHandler,
+		MagicLinkHandler:     magicLinkHandler,
+		OAuthHandler:         oauthHandler,
+		AccountsHandler:      accountsHandler,
+		SessionsHandler:      sessionsHandler,
+		CommentsHandler:      commentsHandler,
 		FinalizeHandler:      finalizeHandler,
 		SessionResumeHandler: sessionResumeHandler,
 		WsTicketHandler:      &wsgateway.WsTicketHandler{Tickets: wsTicketStore},
-		PlaygroundHandler: playgroundHandler,
-		PortalInfoHandler: portalInfoHandler,
+		PlaygroundHandler:    playgroundHandler,
+		PortalInfoHandler:    portalInfoHandler,
 	}, nil, openapi.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  httperr.WriteBadRequest,
 		ResponseErrorHandlerFunc: httperr.WriteFromError,
@@ -826,7 +826,7 @@ func main() {
 			Log:       eventLog,
 			Syncer:    objSyncer,    // nil in single-instance mode; Emitter handles nil as no-op
 			Lifecycle: objLifecycle, // nil in single-instance mode; provides hydration + long-held lease
-			Storage:   storageSvc,  // used only when Syncer is non-nil
+			Storage:   storageSvc,   // used only when Syncer is non-nil
 		},
 		Metrics:               metricsReg,
 		ReceivePackSem:        receivePackSem,
@@ -890,147 +890,148 @@ func main() {
 			WS:   wsGateway.Handler(),
 			Test: testClk.mountTestEndpointsHook(),
 			API: func(r chi.Router) {
-			// Per-IP rate limiters for each unauthenticated auth endpoint.
-			// Limits: magic-link/request 3/min 10/hr; oauth/start 5/min 20/hr;
-			// exchange/callback 10/min; refresh 20/min.
-			// Controlled by JAMSESH_AUTH_RATE_LIMIT_ENABLED (default: true).
-			rlEnabled := cfg.AuthRateLimitEnabled
-			mlRequestRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 3, PerHour: 10}).Middleware(rlEnabled)
-			oauthStartRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 5, PerHour: 20}).Middleware(rlEnabled)
-			mlExchangeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
-			oauthCallbackRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
-			refreshRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 20}).Middleware(rlEnabled)
-			// Session-resume mint: 10/min per bearer account — generous enough
-			// for normal CLI usage, tight enough to limit token-flood attacks.
-			sessionResumeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
+				// Per-IP rate limiters for each unauthenticated auth endpoint.
+				// Limits: magic-link/request 3/min 10/hr; oauth/start 5/min 20/hr;
+				// exchange/callback 10/min; refresh 20/min.
+				// Controlled by JAMSESH_AUTH_RATE_LIMIT_ENABLED (default: true).
+				rlEnabled := cfg.AuthRateLimitEnabled
+				mlRequestRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 3, PerHour: 10}).Middleware(rlEnabled)
+				oauthStartRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 5, PerHour: 20}).Middleware(rlEnabled)
+				mlExchangeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
+				oauthCallbackRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
+				refreshRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 20}).Middleware(rlEnabled)
+				portalInfoRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 60}).Middleware(rlEnabled)
+				// Session-resume mint: 10/min per bearer account — generous enough
+				// for normal CLI usage, tight enough to limit token-flood attacks.
+				sessionResumeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
 
-			// Public auth endpoints — no Bearer middleware.
-			r.Group(func(r chi.Router) {
-				r.With(refreshRL).Post("/auth/refresh", apiWrapper.RefreshToken)
-				r.With(mlRequestRL).Post("/auth/magic-link/request", apiWrapper.RequestMagicLink)
-				r.With(mlExchangeRL).Post("/auth/magic-link/exchange", apiWrapper.ExchangeMagicLink)
-				r.With(oauthStartRL).Post("/auth/oauth/start", apiWrapper.StartOAuth)
-				r.With(oauthCallbackRL).Post("/auth/oauth/callback", apiWrapper.OauthCallback)
-			})
-
-			// Authenticated endpoints — Bearer middleware required.
-			r.Group(func(r chi.Router) {
-				r.Use(tokens.BearerMiddleware(tokenSvc))
-				r.Post("/auth/revoke", apiWrapper.RevokeToken)
-				// feature-auth-signout-backend-revoke-backend — zero-body
-				// sign-out endpoint; revokes all tokens for the caller.
-				r.Post("/auth/logout", apiWrapper.Logout)
-				r.Post("/auth/ws-ticket", apiWrapper.IssueWsTicket)
-				r.Get("/me", apiWrapper.GetMe)
-				r.Post("/orgs", apiWrapper.CreateOrg)
-
-				// Org members: requires creator or member role.
+				// Public auth endpoints — no Bearer middleware.
 				r.Group(func(r chi.Router) {
-					r.Use(auth.RequireOrgRole(dbStore, "creator", "member"))
-					r.Get("/orgs/{orgID}/members", apiWrapper.ListOrgMembers)
+					r.With(refreshRL).Post("/auth/refresh", apiWrapper.RefreshToken)
+					r.With(mlRequestRL).Post("/auth/magic-link/request", apiWrapper.RequestMagicLink)
+					r.With(mlExchangeRL).Post("/auth/magic-link/exchange", apiWrapper.ExchangeMagicLink)
+					r.With(oauthStartRL).Post("/auth/oauth/start", apiWrapper.StartOAuth)
+					r.With(oauthCallbackRL).Post("/auth/oauth/callback", apiWrapper.OauthCallback)
 				})
 
-				// Org invites create: requires creator role.
+				// Authenticated endpoints — Bearer middleware required.
 				r.Group(func(r chi.Router) {
-					r.Use(auth.RequireOrgRole(dbStore, "creator"))
-					r.Post("/orgs/{orgID}/invites", apiWrapper.CreateOrgInvite)
+					r.Use(tokens.BearerMiddleware(tokenSvc))
+					r.Post("/auth/revoke", apiWrapper.RevokeToken)
+					// feature-auth-signout-backend-revoke-backend — zero-body
+					// sign-out endpoint; revokes all tokens for the caller.
+					r.Post("/auth/logout", apiWrapper.Logout)
+					r.Post("/auth/ws-ticket", apiWrapper.IssueWsTicket)
+					r.Get("/me", apiWrapper.GetMe)
+					r.Post("/orgs", apiWrapper.CreateOrg)
+
+					// Org members: requires creator or member role.
+					r.Group(func(r chi.Router) {
+						r.Use(auth.RequireOrgRole(dbStore, "creator", "member"))
+						r.Get("/orgs/{orgID}/members", apiWrapper.ListOrgMembers)
+					})
+
+					// Org invites create: requires creator role.
+					r.Group(func(r chi.Router) {
+						r.Use(auth.RequireOrgRole(dbStore, "creator"))
+						r.Post("/orgs/{orgID}/invites", apiWrapper.CreateOrgInvite)
+					})
+
+					// Accept invite: Bearer only — the user is joining the org,
+					// so no org-role gate applies yet.
+					r.Post("/orgs/{orgID}/invites/{inviteID}/accept", apiWrapper.AcceptOrgInvite)
+
+					// Get org: auth + org-membership check is performed inside the handler.
+					r.Get("/orgs/{orgID}", apiWrapper.GetOrg)
+
+					// Patch org: auth + creator-role check is performed inside the handler.
+					r.Patch("/orgs/{orgID}", apiWrapper.PatchOrg)
+
+					// Sessions: any org member can create/list; other ops are checked in the handler.
+					r.Get("/orgs/{orgID}/sessions", apiWrapper.ListSessions)
+					r.Post("/orgs/{orgID}/sessions", apiWrapper.CreateSession)
+					r.Get("/orgs/{orgID}/sessions/{sessionID}", apiWrapper.GetSession)
+					r.Patch("/orgs/{orgID}/sessions/{sessionID}", apiWrapper.PatchSession)
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize", apiWrapper.FinalizeSession)
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/abandon", apiWrapper.AbandonSession)
+					r.Get("/orgs/{orgID}/sessions/{sessionID}/refs", apiWrapper.ListSessionRefs)
+					r.Get("/orgs/{orgID}/sessions/{sessionID}/digest", apiWrapper.GetSessionDigest)
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/invites", apiWrapper.InviteToSession)
+					r.Get("/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}", apiWrapper.GetSessionInvite)
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", apiWrapper.AcceptSessionInvite)
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove", apiWrapper.RemoveSessionMember)
+
+					// Comments: any session member can list/create; resolve also requires session membership.
+					r.Get("/orgs/{orgID}/sessions/{sessionID}/comments", apiWrapper.ListComments)
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/comments", apiWrapper.CreateComment)
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve", apiWrapper.ResolveComment)
+
+					// Files: any session member can view file content.
+					r.Get("/orgs/{orgID}/sessions/{sessionID}/files", apiWrapper.GetSessionFile)
+
+					// Ref modes: any session member can upsert ref mode.
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/ref-modes", apiWrapper.UpsertRefMode)
+
+					// Finalize locks: any session member can acquire/patch/release;
+					// caller-vs-holder enforcement happens in the handler.
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize/lock", apiWrapper.AcquireFinalizeLock)
+					r.Patch("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", apiWrapper.PatchFinalizeLock)
+					r.Delete("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", apiWrapper.ReleaseFinalizeLock)
+
+					// Finalize plan: any session member; the handler validates the
+					// lock_id binding and idle/superseded state.
+					r.Get("/orgs/{orgID}/sessions/{sessionID}/finalize-plan", apiWrapper.GetFinalizePlan)
+
+					// Finalize fetch-token: mints an ephemeral fetch-only token +
+					// pre-composed remote URL for the plugin's HTTPS-fallback path.
+					// Session-membership enforced inside the handler.
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token", apiWrapper.IssueFetchToken)
+
+					// Mark-shipped: caller asserts the cherry-pick script ran;
+					// handler validates lock_id binding and transitions the
+					// session to shipped.
+					r.Post("/orgs/{orgID}/sessions/{sessionID}/mark-shipped", apiWrapper.MarkSessionShipped)
+
+					// Session resume: CLI mints a single-use 60-second resume token
+					// so the browser portal can re-authenticate the CLI session.
+					// Session-membership enforced inside the handler.
+					r.With(sessionResumeRL).Post("/session-resumes", apiWrapper.CreateSessionResume)
+
+					// Playground — GET session requires a valid anonymous bearer
+					// (issued at create/join time). The handler validates membership.
+					r.Get("/playground/sessions/{id}", apiWrapper.GetPlaygroundSession)
 				})
 
-				// Accept invite: Bearer only — the user is joining the org,
-				// so no org-role gate applies yet.
-				r.Post("/orgs/{orgID}/invites/{inviteID}/accept", apiWrapper.AcceptOrgInvite)
+				// Portal info — public but rate-limited to protect anonymous SPA
+				// bootstrap from unauthenticated request floods.
+				// Returns deploy-time config (playground_enabled, landing_variant) for
+				// anonymous SPA bootstrap before the auth flow completes.
+				// Cache-Control: no-store so deploy-time toggles propagate immediately
+				// (gate-security-portalinfo-no-cachecontrol-no-store).
+				r.With(portalInfoRL, portalinfo.NoCacheMiddleware).Get("/portal/info", apiWrapper.GetPortalInfo)
 
-				// Get org: auth + org-membership check is performed inside the handler.
-				r.Get("/orgs/{orgID}", apiWrapper.GetOrg)
+				// Session-resume exchange: unauthenticated — the resume token IS the
+				// credential. Rate-limited per source IP to prevent replay-flood attacks
+				// against the single-use consume path.
+				sessionResumeExchangeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
+				r.With(sessionResumeExchangeRL).Post("/session-resumes/exchange", apiWrapper.ExchangeSessionResume)
 
-				// Patch org: auth + creator-role check is performed inside the handler.
-				r.Patch("/orgs/{orgID}", apiWrapper.PatchOrg)
-
-				// Sessions: any org member can create/list; other ops are checked in the handler.
-				r.Get("/orgs/{orgID}/sessions", apiWrapper.ListSessions)
-				r.Post("/orgs/{orgID}/sessions", apiWrapper.CreateSession)
-				r.Get("/orgs/{orgID}/sessions/{sessionID}", apiWrapper.GetSession)
-				r.Patch("/orgs/{orgID}/sessions/{sessionID}", apiWrapper.PatchSession)
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize", apiWrapper.FinalizeSession)
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/abandon", apiWrapper.AbandonSession)
-				r.Get("/orgs/{orgID}/sessions/{sessionID}/refs", apiWrapper.ListSessionRefs)
-				r.Get("/orgs/{orgID}/sessions/{sessionID}/digest", apiWrapper.GetSessionDigest)
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/invites", apiWrapper.InviteToSession)
-				r.Get("/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}", apiWrapper.GetSessionInvite)
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", apiWrapper.AcceptSessionInvite)
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/members/{accountID}/remove", apiWrapper.RemoveSessionMember)
-
-				// Comments: any session member can list/create; resolve also requires session membership.
-				r.Get("/orgs/{orgID}/sessions/{sessionID}/comments", apiWrapper.ListComments)
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/comments", apiWrapper.CreateComment)
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/comments/{commentId}/resolve", apiWrapper.ResolveComment)
-
-				// Files: any session member can view file content.
-				r.Get("/orgs/{orgID}/sessions/{sessionID}/files", apiWrapper.GetSessionFile)
-
-				// Ref modes: any session member can upsert ref mode.
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/ref-modes", apiWrapper.UpsertRefMode)
-
-				// Finalize locks: any session member can acquire/patch/release;
-				// caller-vs-holder enforcement happens in the handler.
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize/lock", apiWrapper.AcquireFinalizeLock)
-				r.Patch("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", apiWrapper.PatchFinalizeLock)
-				r.Delete("/orgs/{orgID}/sessions/{sessionID}/finalize/lock/{lockID}", apiWrapper.ReleaseFinalizeLock)
-
-				// Finalize plan: any session member; the handler validates the
-				// lock_id binding and idle/superseded state.
-				r.Get("/orgs/{orgID}/sessions/{sessionID}/finalize-plan", apiWrapper.GetFinalizePlan)
-
-				// Finalize fetch-token: mints an ephemeral fetch-only token +
-				// pre-composed remote URL for the plugin's HTTPS-fallback path.
-				// Session-membership enforced inside the handler.
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/finalize/fetch-token", apiWrapper.IssueFetchToken)
-
-				// Mark-shipped: caller asserts the cherry-pick script ran;
-				// handler validates lock_id binding and transitions the
-				// session to shipped.
-				r.Post("/orgs/{orgID}/sessions/{sessionID}/mark-shipped", apiWrapper.MarkSessionShipped)
-
-				// Session resume: CLI mints a single-use 60-second resume token
-				// so the browser portal can re-authenticate the CLI session.
-				// Session-membership enforced inside the handler.
-				r.With(sessionResumeRL).Post("/session-resumes", apiWrapper.CreateSessionResume)
-
-
-				// Playground — GET session requires a valid anonymous bearer
-				// (issued at create/join time). The handler validates membership.
-				r.Get("/playground/sessions/{id}", apiWrapper.GetPlaygroundSession)
-			})
-
-			// Portal info — fully public, no auth or rate-limiting needed.
-			// Returns deploy-time config (playground_enabled, landing_variant) for
-			// anonymous SPA bootstrap before the auth flow completes.
-			// Cache-Control: no-store so deploy-time toggles propagate immediately
-			// (gate-security-portalinfo-no-cachecontrol-no-store).
-			r.With(portalinfo.NoCacheMiddleware).Get("/portal/info", apiWrapper.GetPortalInfo)
-
-			// Session-resume exchange: unauthenticated — the resume token IS the
-			// credential. Rate-limited per source IP to prevent replay-flood attacks
-			// against the single-use consume path.
-			sessionResumeExchangeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
-			r.With(sessionResumeExchangeRL).Post("/session-resumes/exchange", apiWrapper.ExchangeSessionResume)
-
-			// Playground — unauthenticated: create and join issue fresh bearers,
-			// tombstone is public (no credential needed to read destruction summary).
-			// CreatePlaygroundSession is rate-limited per source IP to prevent
-			// drive-by abuse. Join and tombstone are NOT rate-limited: joining
-			// requires a valid session ID (already gated by participant cap), and
-			// tombstone reads are idempotent cheap GETs.
-			pgCreateRL := playground.CreateRateLimitMiddleware(
-				playground.NewCreateRateLimiter(pgCfg),
-				cfg.PlaygroundEnabled,
-			)
-			r.Group(func(r chi.Router) {
-				r.With(pgCreateRL).Post("/playground/sessions", apiWrapper.CreatePlaygroundSession)
-				r.Post("/playground/sessions/{id}/join", apiWrapper.JoinPlaygroundSession)
-				r.Get("/playground/sessions/{id}/tombstone", apiWrapper.GetPlaygroundTombstone)
-			})
-		},
+				// Playground — unauthenticated: create and join issue fresh bearers,
+				// tombstone is public (no credential needed to read destruction summary).
+				// CreatePlaygroundSession is rate-limited per source IP to prevent
+				// drive-by abuse. Join and tombstone are NOT rate-limited: joining
+				// requires a valid session ID (already gated by participant cap), and
+				// tombstone reads are idempotent cheap GETs.
+				pgCreateRL := playground.CreateRateLimitMiddleware(
+					playground.NewCreateRateLimiter(pgCfg),
+					cfg.PlaygroundEnabled,
+				)
+				r.Group(func(r chi.Router) {
+					r.With(pgCreateRL).Post("/playground/sessions", apiWrapper.CreatePlaygroundSession)
+					r.Post("/playground/sessions/{id}/join", apiWrapper.JoinPlaygroundSession)
+					r.Get("/playground/sessions/{id}/tombstone", apiWrapper.GetPlaygroundTombstone)
+				})
+			},
 		},
 	})
 

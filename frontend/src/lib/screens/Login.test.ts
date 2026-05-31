@@ -1,5 +1,5 @@
 // Login.test.ts
-// Tests login mode transitions, OAuth redirect, and magic-link fetch.
+// Tests login mode transitions, OAuth redirect, and magic-link requests.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
@@ -24,6 +24,7 @@ vi.mock('$lib/auth.svelte', () => ({
 describe('Login', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     mockAuth.isAuthenticated = false;
   });
 
@@ -78,6 +79,7 @@ describe('Login', () => {
     expect(captured!.method).toBe('POST');
     const body = await captured!.clone().json();
     expect(body).toEqual({ provider: 'github' });
+    expect(sessionStorage.getItem('oauth.state')).toBe('abc');
   });
 
   it('OAuth button shows an error when the start call fails', async () => {
@@ -147,6 +149,32 @@ describe('Login', () => {
         'https://github.com/login/oauth/authorize?state=abc',
       );
     });
+  });
+
+  it('rejects an authorize_url without state and does not navigate', async () => {
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, assign: assignSpy },
+      writable: true,
+      configurable: true,
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ authorize_url: 'https://github.com/login/oauth/authorize' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(Login);
+    await fireEvent.click(screen.getByText('Continue with GitHub').closest('button')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Authorization URL could not be validated/)).toBeInTheDocument();
+    expect(sessionStorage.getItem('oauth.state')).toBeNull();
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 
   // ── authorize_url validation (defense-in-depth) ───────────────────────────
@@ -252,7 +280,9 @@ describe('Login', () => {
   });
 
   it('submitting the magic-link form with 2xx response transitions to magic-link-sent', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
 
     render(Login);
     const emailInput = screen.getByPlaceholderText('you@example.com') as HTMLInputElement;
@@ -268,8 +298,11 @@ describe('Login', () => {
   });
 
   it('posts to /api/auth/magic-link/request with email in body', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true } as Response);
-    global.fetch = fetchMock;
+    let captured: Request | null = null;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      captured = input as Request;
+      return new Response(null, { status: 204 });
+    });
 
     render(Login);
     const emailInput = screen.getByPlaceholderText('you@example.com') as HTMLInputElement;
@@ -283,19 +316,22 @@ describe('Login', () => {
     await fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/auth/magic-link/request',
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ email: 'user@acme.com' }),
-        }),
-      );
+      expect(fetchMock).toHaveBeenCalled();
     });
+    expect(captured).not.toBeNull();
+    expect(captured!.url).toMatch(/\/api\/auth\/magic-link\/request$/);
+    expect(captured!.method).toBe('POST');
+    expect(captured!.headers.get('Content-Type')).toMatch(/application\/json/);
+    await expect(captured!.clone().json()).resolves.toEqual({ email: 'user@acme.com' });
   });
 
   it('transitions to magic-link-error on non-2xx response', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'server_error' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
 
     render(Login);
     const form = screen.getByPlaceholderText('you@example.com').closest('form')!;
@@ -307,7 +343,12 @@ describe('Login', () => {
   });
 
   it('error state shows a Try again button that returns to choose mode', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'server_error' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
 
     render(Login);
     const form = screen.getByPlaceholderText('you@example.com').closest('form')!;
@@ -322,7 +363,9 @@ describe('Login', () => {
   });
 
   it('magic-link-sent state shows the email address and back affordance', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
 
     render(Login);
     const emailInput = screen.getByPlaceholderText('you@example.com') as HTMLInputElement;
@@ -355,10 +398,10 @@ describe('Login', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'));
   });
 
-  // ── Regression: magic-link fetch network failure (Unit 3) ────────────────────
+  // ── Regression: magic-link network failure (Unit 3) ───────────────────────
 
-  it('network failure on magic-link fetch → transitions to magic-link-error (no unhandled rejection)', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+  it('network failure on magic-link request transitions to magic-link-error (no unhandled rejection)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
 
     render(Login);
     const form = screen.getByPlaceholderText('you@example.com').closest('form')!;

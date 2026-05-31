@@ -123,6 +123,14 @@ func runGitVerbose(out io.Writer, args ...string) error {
 	return runGit(args...)
 }
 
+func runGitVerboseWithEnv(out io.Writer, env []string, args ...string) error {
+	fmt.Fprintf(out, "+ git %s\n", strings.Join(redactGitArgs(args), " "))
+	if f, ok := out.(interface{ Sync() error }); ok {
+		_ = f.Sync()
+	}
+	return runGitWithEnv(env, args...)
+}
+
 // redactGitArgs returns a copy of args with the credential value in any
 // http.extraHeader=Authorization: <scheme> <token> arg replaced by
 // "<redacted>". The scheme (Bearer, Basic, etc.) is preserved so

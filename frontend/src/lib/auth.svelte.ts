@@ -1,5 +1,7 @@
 // Auth rune store — token persistence and user state.
-// Persists to localStorage under jamsesh.token / jamsesh.refresh.
+// Persists the short-lived access token to localStorage under jamsesh.token.
+// Refresh tokens are kept memory-only for the current page lifetime so a
+// reload cannot expose a long-lived credential from localStorage.
 // Follows the wrapper-object pattern: Svelte 5 prohibits exporting
 // a raw `$derived` value from a module; use a plain object with get
 // accessors that close over the private rune variables instead.
@@ -23,12 +25,14 @@ export type PlaygroundContext = {
 const TOKEN_KEY = 'jamsesh.token';
 const REFRESH_KEY = 'jamsesh.refresh';
 
+if (typeof localStorage !== 'undefined') {
+  localStorage.removeItem(REFRESH_KEY);
+}
+
 let _token = $state<string | null>(
   typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null,
 );
-let _refresh = $state<string | null>(
-  typeof localStorage !== 'undefined' ? localStorage.getItem(REFRESH_KEY) : null,
-);
+let _refresh = $state<string | null>(null);
 let _currentUser = $state<{ id: string; email: string; displayName: string } | null>(null);
 let _orgs = $state<MeOrgMembership[] | null>(null);
 
@@ -72,7 +76,7 @@ export const auth = {
     _token = access;
     _refresh = refreshTok;
     localStorage.setItem(TOKEN_KEY, access);
-    localStorage.setItem(REFRESH_KEY, refreshTok);
+    localStorage.removeItem(REFRESH_KEY);
   },
 
   // Adopts a durable browser session that carries NO refresh token (e.g. a
