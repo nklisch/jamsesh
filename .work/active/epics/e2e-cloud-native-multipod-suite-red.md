@@ -1,7 +1,7 @@
 ---
 id: e2e-cloud-native-multipod-suite-red
 kind: epic
-stage: backlog
+stage: drafting
 tags: [portal, infra, testing, bug]
 parent: null
 depends_on: []
@@ -20,6 +20,18 @@ has been **failing on `main` for a while** — red on `v0.4.1` (2026-05-25),
 (`epic-cli-browser-session-resume`) — that work is frontend auth + a new portal
 contract and doesn't touch the router/lease/object-storage/git-serving paths
 these tests exercise.
+
+## Strategic decisions
+- **Definition of done**: all 5 suites (`chaos`, `failure`, `fuzz`, `golden`,
+  `scaffolding`) green and reliable in the `e2e` workflow on `main`. Flipping
+  `e2e` to a required/blocking merge gate (branch protection) is explicitly OUT
+  of scope here — it's a separate policy change tracked as follow-up. Keeps this
+  epic focused on stabilization, not CI gating rollout.
+- **Resolution posture**: follow the project test-integrity rules (CLAUDE.md).
+  Real product bugs become child stories and are fixed as defects; test debt
+  (stale waits, missing cross-pod polls, drifted assertions, broken mocks) is
+  repaired in-session. Each suite is sorted on its merits during `epic-design`
+  rather than assuming all five share one root cause.
 
 ## Fixed already (commit ed32b562)
 
