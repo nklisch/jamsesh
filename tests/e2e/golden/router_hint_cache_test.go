@@ -35,6 +35,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"jamsesh/tests/e2e/fixtures/authflow"
@@ -379,7 +380,11 @@ func fetchRouterMetrics(t *testing.T, routerMetricsURL string) map[string]*dto.M
 	require.Equalf(t, http.StatusOK, resp.StatusCode,
 		"fetchRouterMetrics: router /metrics returned %d; want 200", resp.StatusCode)
 
-	var parser expfmt.TextParser
+	// prometheus/common v0.66+ requires the metric-name validation scheme to be
+	// set explicitly; the zero-value expfmt.TextParser carries scheme=Unset and
+	// panics inside IsValidMetricName. NewTextParser(LegacyValidation) mirrors
+	// the fix already applied in metrics_endpoint_test.go.
+	parser := expfmt.NewTextParser(model.LegacyValidation)
 	families, err := parser.TextToMetricFamilies(resp.Body)
 	require.NoError(t, err, "fetchRouterMetrics: parse Prometheus exposition format")
 	return families
