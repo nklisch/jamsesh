@@ -210,6 +210,9 @@ func (h *playgroundOnlyStrict) ListSessionRefs(_ context.Context, _ openapi.List
 func (h *playgroundOnlyStrict) GetPortalInfo(_ context.Context, _ openapi.GetPortalInfoRequestObject) (openapi.GetPortalInfoResponseObject, error) {
 	panic("not wired")
 }
+func (h *playgroundOnlyStrict) CreateSessionResume(_ context.Context, _ openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
+	panic("not wired")
+}
 
 // Compile-time check that playgroundOnlyStrict satisfies the full interface.
 var _ openapi.StrictServerInterface = (*playgroundOnlyStrict)(nil)

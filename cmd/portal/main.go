@@ -52,6 +52,7 @@ import (
 	"jamsesh/internal/portal/router"
 	"jamsesh/internal/portal/ratelimit"
 	"jamsesh/internal/portal/senders"
+	"jamsesh/internal/portal/sessionresume"
 	"jamsesh/internal/portal/server"
 	"jamsesh/internal/portal/sessions"
 	"jamsesh/internal/portal/storage"
@@ -70,8 +71,9 @@ type combinedHandler struct {
 	AccountsHandler   *accounts.Handler
 	SessionsHandler   *sessions.Handler
 	CommentsHandler   *comments.Handler
-	FinalizeHandler   *finalize.Handler
-	WsTicketHandler   *wsgateway.WsTicketHandler
+	FinalizeHandler       *finalize.Handler
+	SessionResumeHandler  *sessionresume.Handler
+	WsTicketHandler       *wsgateway.WsTicketHandler
 	PlaygroundHandler *playground.Handler
 	PortalInfoHandler *portalinfo.Handler
 }
@@ -219,6 +221,11 @@ func (c *combinedHandler) GetFinalizePlan(ctx context.Context, req openapi.GetFi
 // IssueFetchToken delegates to the finalize handler.
 func (c *combinedHandler) IssueFetchToken(ctx context.Context, req openapi.IssueFetchTokenRequestObject) (openapi.IssueFetchTokenResponseObject, error) {
 	return c.FinalizeHandler.IssueFetchToken(ctx, req)
+}
+
+// CreateSessionResume delegates to the session-resume handler.
+func (c *combinedHandler) CreateSessionResume(ctx context.Context, req openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
+	return c.SessionResumeHandler.CreateSessionResume(ctx, req)
 }
 
 // MarkSessionShipped delegates to the finalize handler.
@@ -652,6 +659,9 @@ func main() {
 		finalizeHandler = finalize.New(dbStore, storageSvc, eventLog, tokenSvc, cfg.PortalURL)
 	}
 
+	// Build the session-resume handler (mint endpoint).
+	sessionResumeHandler := sessionresume.New(dbStore, tokenSvc, cfg.PortalURL)
+
 	// Build the MCP endpoint. Auth is handled by the SDK's
 	// auth.RequireBearerToken middleware wired inside Handler(). In e2etest
 	// builds, the Clock field is set to the advanceable clock via the
@@ -766,8 +776,9 @@ func main() {
 		AccountsHandler:   accountsHandler,
 		SessionsHandler:   sessionsHandler,
 		CommentsHandler:   commentsHandler,
-		FinalizeHandler:   finalizeHandler,
-		WsTicketHandler:   &wsgateway.WsTicketHandler{Tickets: wsTicketStore},
+		FinalizeHandler:      finalizeHandler,
+		SessionResumeHandler: sessionResumeHandler,
+		WsTicketHandler:      &wsgateway.WsTicketHandler{Tickets: wsTicketStore},
 		PlaygroundHandler: playgroundHandler,
 		PortalInfoHandler: portalInfoHandler,
 	}, nil, openapi.StrictHTTPServerOptions{
@@ -877,6 +888,9 @@ func main() {
 			mlExchangeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
 			oauthCallbackRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
 			refreshRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 20}).Middleware(rlEnabled)
+			// Session-resume mint: 10/min per bearer account — generous enough
+			// for normal CLI usage, tight enough to limit token-flood attacks.
+			sessionResumeRL := ratelimit.NewStore(ratelimit.Config{PerMinute: 10}).Middleware(rlEnabled)
 
 			// Public auth endpoints — no Bearer middleware.
 			r.Group(func(r chi.Router) {
@@ -964,6 +978,11 @@ func main() {
 				// handler validates lock_id binding and transitions the
 				// session to shipped.
 				r.Post("/orgs/{orgID}/sessions/{sessionID}/mark-shipped", apiWrapper.MarkSessionShipped)
+
+				// Session resume: CLI mints a single-use 60-second resume token
+				// so the browser portal can re-authenticate the CLI session.
+				// Session-membership enforced inside the handler.
+				r.With(sessionResumeRL).Post("/session-resumes", apiWrapper.CreateSessionResume)
 
 				// Playground — GET session requires a valid anonymous bearer
 				// (issued at create/join time). The handler validates membership.

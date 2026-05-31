@@ -1698,6 +1698,45 @@ components:
           format: date-time
           description: ISO-8601 timestamp when this tombstone itself expires (default 30 days after ended_at)
 
+    SessionResumeRequest:
+      type: object
+      required: [org_id, session_id]
+      description: |
+        Request body for POST /api/session-resumes. Identifies the session
+        the CLI wants to resume via the browser portal.
+      properties:
+        org_id:
+          type: string
+          description: The org that owns the session.
+        session_id:
+          type: string
+          description: The session the CLI is resuming into.
+
+    SessionResumeResponse:
+      type: object
+      required: [resume_url, expires_in, session_id]
+      description: |
+        Response body for POST /api/session-resumes (200 OK).
+        The resume_url contains the raw single-use token in its URL fragment
+        (#rt=<token>) so the token never appears in server logs. The CLI opens
+        the URL verbatim in the browser. expires_in is always 60 (seconds).
+      properties:
+        resume_url:
+          type: string
+          description: |
+            The full URL the CLI should open in a browser. The raw token is
+            embedded in the URL fragment: `#rt=<raw_token>`. The SPA reads
+            the fragment client-side; the token never appears in server-side
+            request logs.
+          example: "https://portal.example.com/orgs/org_01abc/sessions/sess_01xyz/resume#rt=deadbeef"
+        expires_in:
+          type: integer
+          description: Seconds until the resume token expires. Always 60.
+          example: 60
+        session_id:
+          type: string
+          description: The session ID bound to this token.
+
     PortalInfo:
       type: object
       required: [playground_enabled, landing_variant]
@@ -3392,6 +3431,42 @@ paths:
                 $ref: '#/components/schemas/PlaygroundSessionSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/session-resumes:
+    post:
+      summary: Mint a single-use resume token for a CLI-to-browser session handoff
+      description: |
+        Mints a short-lived (60 s), single-use resume token bound to the
+        authenticated account and the given (org, session) pair. The token
+        is embedded in the `resume_url` fragment (`#rt=<token>`) so it never
+        appears in server-side request logs. The CLI opens `resume_url`
+        verbatim in the default browser; the SPA registers the resume route
+        and exchanges the fragment token in a later step.
+
+        Only session members may mint a token. The raw token is never
+        returned as a standalone field — it is always in the URL fragment.
+      operationId: createSessionResume
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionResumeRequest'
+      responses:
+        '200':
+          description: Resume token minted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResumeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 

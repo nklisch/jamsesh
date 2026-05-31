@@ -151,6 +151,9 @@ func (h *portalInfoOnlyStrict) JoinPlaygroundSession(_ context.Context, _ openap
 func (h *portalInfoOnlyStrict) GetPlaygroundTombstone(_ context.Context, _ openapi.GetPlaygroundTombstoneRequestObject) (openapi.GetPlaygroundTombstoneResponseObject, error) {
 	panic("not wired")
 }
+func (h *portalInfoOnlyStrict) CreateSessionResume(_ context.Context, _ openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
+	panic("not wired")
+}
 
 // Compile-time assertion that portalInfoOnlyStrict satisfies the full interface.
 var _ openapi.StrictServerInterface = (*portalInfoOnlyStrict)(nil)

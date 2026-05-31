@@ -164,6 +164,9 @@ func (h *wsTicketOnlyHandler) GetPlaygroundTombstone(_ context.Context, _ openap
 func (h *wsTicketOnlyHandler) GetPortalInfo(_ context.Context, _ openapi.GetPortalInfoRequestObject) (openapi.GetPortalInfoResponseObject, error) {
 	panic("not wired")
 }
+func (h *wsTicketOnlyHandler) CreateSessionResume(_ context.Context, _ openapi.CreateSessionResumeRequestObject) (openapi.CreateSessionResumeResponseObject, error) {
+	panic("not wired")
+}
 
 // Ensure wsTicketOnlyHandler satisfies the interface at compile time.
 var _ openapi.StrictServerInterface = (*wsTicketOnlyHandler)(nil)

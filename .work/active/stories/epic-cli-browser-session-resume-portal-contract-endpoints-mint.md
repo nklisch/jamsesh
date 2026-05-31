@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-portal-contract-endpoints-mint
 kind: story
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: epic-cli-browser-session-resume-portal-contract
 depends_on: [epic-cli-browser-session-resume-portal-contract-token-store]
@@ -46,3 +46,26 @@ the feature body.
 - [ ] Mounted under bearer middleware (not the public group) and rate-limited.
 - [ ] `expires_in` reflects the 60s TTL.
 - [ ] `go build ./...`, `go vet`, sqlc/oapi generate clean; handler tests pass.
+
+## Implementation notes
+
+- Added `POST /api/session-resumes` to `docs/openapi.yaml` with `operationId: createSessionResume`.
+  Added `SessionResumeRequest` and `SessionResumeResponse` schemas. Exchange op deliberately omitted
+  from this story (per guardrail) to keep the StrictServerInterface implementation complete.
+- Regenerated `internal/api/openapi/server.gen.go` via `make generate-api-go`.
+- New package `internal/portal/sessionresume/` with three files:
+  - `handler.go`: `Handler` struct + `New`/`NewWithClock` constructors, `sessionResumeStore` narrow
+    interface composed from `store.SessionStore + SessionMemberStore + OrgMemberStore + ResumeTokenStore`.
+  - `membership.go`: package-private `checkSessionMembership` replicating finalize's helper (cannot
+    import finalize's private function).
+  - `mint.go`: `CreateSessionResume` implementation — 401/403/404 guard, crypto/rand token generation,
+    SHA-256 hash stored, raw token embedded ONLY in `resume_url` fragment (`#rt=<token>`). Canonical
+    paths: playground → `/playground/s/{sessionID}/resume`; durable → `/orgs/{orgID}/sessions/{sessionID}/resume`.
+    `playgroundOrgID` mirrored as local const per `reserved-org-id-local-const-mirror` pattern.
+- `cmd/portal/main.go`: added `SessionResumeHandler` field to `combinedHandler`, `CreateSessionResume`
+  delegation method, `sessionresume.New(dbStore, tokenSvc, cfg.PortalURL)` construction, `sessionResumeRL`
+  rate limiter (10/min), route `POST /api/session-resumes` in the bearer-authenticated group.
+- All existing strict-server partial shims in 10 test files updated with `CreateSessionResume` panic stub.
+- `internal/portal/sessionresume/mint_test.go`: 7 tests covering 401/403/404/success-durable/
+  success-playground/no-standalone-token/hash-stored-not-raw. All pass.
+- `go build ./...`, `go vet ./cmd/... ./internal/portal/...`, finalize tests all clean.
