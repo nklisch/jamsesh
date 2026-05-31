@@ -5,6 +5,15 @@
 -- missing account row.
 
 -- +goose StatementBegin
+-- Purge orphan tokens first: pre-FK, deleting an account/session left resume
+-- tokens behind, and ADD CONSTRAINT validates existing rows. Orphans are stale
+-- single-use tokens — deleting them is the correct cleanup.
+DELETE FROM resume_tokens
+WHERE account_id NOT IN (SELECT id FROM accounts)
+   OR session_id NOT IN (SELECT id FROM sessions);
+-- +goose StatementEnd
+
+-- +goose StatementBegin
 ALTER TABLE resume_tokens
     ADD CONSTRAINT resume_tokens_session_id_fk
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE;

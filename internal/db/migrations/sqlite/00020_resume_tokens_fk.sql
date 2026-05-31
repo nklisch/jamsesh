@@ -22,9 +22,15 @@ CREATE TABLE resume_tokens_new (
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- Copy only rows whose account AND session still exist. Pre-FK, deleting an
+-- account/session left orphan resume_tokens behind; copying those into the
+-- FK-constrained table would fail with FOREIGN KEY constraint failed. Orphans
+-- are stale single-use tokens — dropping them is the correct cleanup.
 INSERT INTO resume_tokens_new
 SELECT id, token_hash, session_id, org_id, account_id, issued_at, expires_at, used_at
-FROM resume_tokens;
+FROM resume_tokens
+WHERE account_id IN (SELECT id FROM accounts)
+  AND session_id IN (SELECT id FROM sessions);
 -- +goose StatementEnd
 
 -- +goose StatementBegin
