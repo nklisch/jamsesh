@@ -90,3 +90,4 @@ updated: 2026-05-31
 - **gate-tests** (2026-05-31) — 7 coverage gaps (7 critical, 0 high, 0 medium, 0 low); created 7 release-blocking test items.
 - **gate-cruft** (2026-05-31) — 10 cleanup findings (1 high confidence, 9 medium confidence, 0 low confidence); created 10 cleanup items.
 - **gate-docs** (2026-05-31) — 6 rolling-foundation findings (4 foundation-doc assertions, 1 changelog gap, 1 generated-contract regen); created 6 documentation items.
+- **gate-patterns** (2026-05-31) — 4 patterns extracted, 1 inconsistency item created; skipped 1 candidate pattern because it conflicts with the security gate.

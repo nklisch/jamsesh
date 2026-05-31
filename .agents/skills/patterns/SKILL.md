@@ -36,3 +36,7 @@ Available patterns:
 - [test-narrow-store-delegation.md](test-narrow-store-delegation.md) — Test Narrow-Store Delegation Wrapper
 - [testenv-harness-struct.md](testenv-harness-struct.md) — testEnv Harness Struct
 - [reserved-org-id-local-const-mirror.md](reserved-org-id-local-const-mirror.md) — Reserved-Org-ID Local-Const Mirror
+- [opaque-token-hash-at-rest.md](opaque-token-hash-at-rest.md) — Opaque credentials return raw random tokens to callers but store and look up only SHA-256 hex hashes in `token_hash` fields.
+- [fragment-secret-handoff.md](fragment-secret-handoff.md) — Secret browser handoff links carry raw tokens only in URL fragments and SPA screens scrub the fragment immediately after reading it.
+- [session-scoped-portal-client.md](session-scoped-portal-client.md) — Session-bound CLI portal calls construct `portalclient.Client{BaseURL, SessionID}` and wire refresh only for durable credentials.
+- [nullable-timestamp-transition-guard.md](nullable-timestamp-transition-guard.md) — Terminal transitions set nullable `*_at` fields through `UPDATE ... WHERE *_at IS NULL`, using affected rows or `RETURNING` when caller must know who won.
