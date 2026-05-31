@@ -1,7 +1,7 @@
 ---
 id: lease-holder-killed-eager-vs-request-driven-slo
 kind: story
-stage: drafting
+stage: implementing
 tags: [portal, infra, testing]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: [e2e-cloud-native-multipod-suite-red-lease-migration]
@@ -34,6 +34,16 @@ test still fails because nothing triggers it.
 
 The brief is ambiguous on the trigger. Resolve the architecture question first;
 do not change the test's assertion to whatever the code happens to do.
+
+## Decision (2026-05-31, user)
+**Request-driven is the intended architecture.** In production the router
+redispatches a request to a survivor, which triggers `AcquireForRequest`; there
+is no background failover loop and none will be added. Therefore the test is
+wrong: fix `lease_holder_killed_test.go` to route/replay a real git request to
+the surviving pod (as a router redispatch would) before asserting the lease
+migrated within the 30s SLO. This is a test-debt fix — do NOT add an eager
+background re-acquisition loop, and do NOT weaken the assertion to whatever the
+code happens to do.
 
 ## References
 - `tests/e2e/chaos/lease_holder_killed_test.go`,
