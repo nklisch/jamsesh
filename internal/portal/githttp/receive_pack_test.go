@@ -408,6 +408,82 @@ func TestReceivePack_MultipleCommits(t *testing.T) {
 	}
 }
 
+// TestReceivePack_ThinPackAgainstOnDiskBase is the regression test for the
+// hydrated-survivor push failure (story
+// e2e-handoff-githttp-push-disconnect-to-hydrated-survivor):
+//
+// git send-pack transmits a THIN pack on an incremental push — new objects are
+// REF_DELTA-encoded against base objects the server already has but which are
+// NOT included in the pack. buildValidationRepo must resolve those external
+// bases from the on-disk repo while parsing the pack into memory. Before the
+// fix it handed the parser only the in-memory storer, so any thin-pack delta
+// whose base lived on disk failed with "object not found" → HTTP 500 → the git
+// client reported "unexpected disconnect while reading sideband packet".
+//
+// Reproduction: push a large file (commit 1) so its blob lands on disk, then
+// push a small edit (commit 2) from a FRESH clone. git deltifies commit 2's
+// blob/tree against commit 1's on-disk objects, producing a thin pack. The
+// second push must succeed.
+func TestReceivePack_ThinPackAgainstOnDiskBase(t *testing.T) {
+	env := newPushEnv(t)
+	acc, token := env.mustIssueToken(t, "push-thin@example.com")
+	orgID, sessionID := env.mustCreateSession(t, acc, `["**"]`)
+
+	bareDir := filepath.Join(env.storageRoot, "orgs", orgID, "sessions", sessionID+".git")
+	workDir := initBareRepo(t, bareDir)
+	refName := fmt.Sprintf("refs/heads/jam/%s/%s/main", sessionID, acc.ID)
+	pushURLStr := env.pushURL(token, orgID, sessionID)
+
+	// Commit 1: a large, highly-compressible file. A big base blob makes git
+	// strongly prefer REF_DELTA encoding for the small follow-up edit.
+	var sb strings.Builder
+	for i := 0; i < 4000; i++ {
+		fmt.Fprintf(&sb, "line %05d: the quick brown fox jumps over the lazy dog\n", i)
+	}
+	baseContent := sb.String()
+	makeCommitWithTrailers(t, workDir, sessionID, acc.ID, "big.txt", baseContent)
+
+	pushCmd := exec.Command("git", "push", pushURLStr, fmt.Sprintf("HEAD:%s", refName))
+	pushCmd.Dir = workDir
+	pushCmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := pushCmd.CombinedOutput(); err != nil {
+		t.Fatalf("first push failed: %v\n%s", err, out)
+	}
+
+	// Fresh clone so the second push negotiates purely against the remote's
+	// advertised refs and the on-disk base — exactly the hydrated-survivor
+	// situation where the client's pack is thin relative to the server.
+	clone2 := t.TempDir()
+	runGit(t, "", "clone", pushURLStr, clone2)
+	runGit(t, clone2, "config", "user.email", "test@jamsesh.test")
+	runGit(t, clone2, "config", "user.name", "Test")
+	// Check out the pushed ref tip so commit 2 builds on commit 1 (the bare
+	// repo's HEAD symref points at an unborn default branch, so the clone has
+	// no checkout otherwise).
+	runGit(t, clone2, "checkout", "-B", "main", "origin/"+strings.TrimPrefix(refName, "refs/heads/"))
+
+	// Commit 2: a tiny edit to the large file. The new blob/tree delta well
+	// against commit 1's objects, which are NOT in the thin pack.
+	editedContent := strings.Replace(baseContent, "line 02000:", "line 02000 EDITED:", 1)
+	makeCommitWithTrailers(t, clone2, sessionID, acc.ID, "big.txt", editedContent)
+
+	push2 := exec.Command("git", "push", "origin", fmt.Sprintf("HEAD:%s", refName))
+	push2.Dir = clone2
+	push2.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out2, err := push2.CombinedOutput()
+	if err != nil {
+		t.Fatalf("thin-pack push to hydrated-style repo failed: %v\n%s\n"+
+			"This is the hydrated-survivor regression: buildValidationRepo could "+
+			"not resolve a thin-pack delta base that lives on disk.", err, out2)
+	}
+
+	// The second commit's ref must have landed.
+	tip := runGit(t, bareDir, "rev-parse", refName)
+	if tip == "" {
+		t.Fatal("second (thin-pack) push did not update the ref on the server")
+	}
+}
+
 // TestReceivePack_PackSizeLimitExceeded verifies that the 413 response is
 // returned when the body exceeds MaxPackBytes. We test this by constructing a
 // very small limit on a test handler.

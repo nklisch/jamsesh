@@ -452,16 +452,37 @@ func findBaseRefUpdate(sessionID string, updates []gitref.RefUpdate) *gitref.Ref
 // a temp directory that go-git's dotgit storage cannot see
 // (src-d/go-git#886). By parsing the pack ourselves we bypass the quarantine.
 func buildValidationRepo(repoPath string, packData io.Reader) (*git.Repository, error) {
-	// 1. Parse the pushed pack into memory storage.
 	memStore := memory.NewStorage()
 	packBytes, err := io.ReadAll(packData)
 	if err != nil {
 		return nil, err
 	}
 
+	// Open the on-disk bare repo first. It is needed both as a fallback object
+	// store for the validation repo AND as the delta-base source for parsing a
+	// *thin* pack (see below).
+	diskRepo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return nil, err
+	}
+
 	if len(packBytes) > 0 {
+		// git send-pack transmits a THIN pack: incoming objects may be
+		// REF_DELTA-encoded against base objects the server already has but
+		// which are NOT included in the pack. The parser resolves those
+		// external bases via storage.EncodedObject. If we hand the parser only
+		// memStore, any thin-pack delta whose base lives on disk fails with
+		// "object not found" — which is exactly the case on a freshly-hydrated
+		// survivor: the base objects (prior commits) are on disk from MinIO
+		// hydration, not in the just-uploaded pack. Layer disk reads behind
+		// memStore so external thin-pack bases resolve, while newly-parsed
+		// objects are still written only to memStore (never to disk).
+		parserStore := &parserStorer{
+			EncodedObjectStorer: memStore,
+			disk:                diskRepo.Storer,
+		}
 		scanner := packfile.NewScanner(bytes.NewReader(packBytes))
-		parser, err := packfile.NewParserWithStorage(scanner, memStore)
+		parser, err := packfile.NewParserWithStorage(scanner, parserStore)
 		if err != nil {
 			return nil, err
 		}
@@ -470,19 +491,38 @@ func buildValidationRepo(repoPath string, packData io.Reader) (*git.Repository, 
 		}
 	}
 
-	// 2. Open the on-disk bare repo for fallback object lookups.
-	diskRepo, err := git.PlainOpen(repoPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. Build a layered store: objects from memory first, then disk.
+	// Build a layered store: objects from memory first, then disk.
 	ls := &layeredStorer{
-		Storage:      memStore,
-		diskObjects:  diskRepo.Storer,
-		diskRefs:     diskRepo.Storer,
+		Storage:     memStore,
+		diskObjects: diskRepo.Storer,
+		diskRefs:    diskRepo.Storer,
 	}
 	return git.Open(ls, nil)
+}
+
+// parserStorer adapts the packfile parser's object storage so that a *thin*
+// pack can be parsed against base objects that live only on the on-disk repo.
+//
+// Writes (SetEncodedObject) go to the embedded in-memory storer so the pushed
+// objects never touch disk during validation. Reads (EncodedObject) try memory
+// first, then fall through to disk — this is what lets the parser resolve a
+// REF_DELTA whose external base is an object the server already has on disk
+// (the common case for any incremental push, and the failure mode on a
+// freshly-hydrated survivor whose base objects came from object-storage
+// hydration rather than the current pack).
+type parserStorer struct {
+	storer.EncodedObjectStorer // memory: SetEncodedObject + in-memory reads
+	disk                       storer.EncodedObjectStorer
+}
+
+// EncodedObject tries memory first; on a miss falls through to disk so external
+// thin-pack delta bases resolve.
+func (s *parserStorer) EncodedObject(t plumbing.ObjectType, h plumbing.Hash) (plumbing.EncodedObject, error) {
+	obj, err := s.EncodedObjectStorer.EncodedObject(t, h)
+	if err == plumbing.ErrObjectNotFound {
+		return s.disk.EncodedObject(t, h)
+	}
+	return obj, err
 }
 
 // layeredStorer embeds the in-memory Storage to satisfy storage.Storer, but
