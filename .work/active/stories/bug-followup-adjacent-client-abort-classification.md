@@ -1,7 +1,14 @@
 ---
 id: bug-followup-adjacent-client-abort-classification
-created: 2026-05-30
+kind: story
+stage: implementing
 tags: [bug, portal, error-handling]
+parent: null
+depends_on: []
+release_binding: null
+gate_origin: null
+created: 2026-05-30
+updated: 2026-05-30
 bug_origin: gate
 bug_severity: low
 bug_domain: error-handling
