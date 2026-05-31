@@ -232,20 +232,44 @@ func (h *Handler) receivePack(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	var subprocOut bytes.Buffer
-	io.Copy(&subprocOut, stdout) //nolint:errcheck // read until EOF; errors manifest as truncation
+	_, stdoutErr := io.Copy(&subprocOut, stdout)
 
-	// Wait for subprocess to exit.
+	// Wait for subprocess to exit; drain the stdin goroutine.
 	cmdErr := cmd.Wait()
-	<-stdinErrCh // drain stdin goroutine
+	stdinErr := <-stdinErrCh
+
+	// A truncated stdout read means the report-status payload is incomplete.
+	// Do not acknowledge the push — return 500 so the git client exits non-zero.
+	if stdoutErr != nil {
+		slog.ErrorContext(r.Context(), "receive-pack: stdout read error (truncated report)",
+			"err", stdoutErr, "org", orgID, "session", sessionID)
+		httperr.Write(w, r, httperr.ErrInternal(stdoutErr))
+		return
+	}
 
 	if cmdErr != nil {
 		slog.ErrorContext(r.Context(), "receive-pack subprocess exited non-zero",
 			"err", cmdErr, "org", orgID, "session", sessionID)
-		// Subprocess already wrote its own error report into subprocOut. Flush
-		// it to the client now — headers are not yet committed so we can set 200
-		// (the report-status payload is what git parses for the error detail).
+		// Non-zero exit. Return 200 + report-status ONLY when stdout carries a
+		// parseable git report-status payload (push rejected by hook / non-ff).
+		// A non-zero exit with no recognizable report is a crash/kill → 500.
+		if !looksLikeReportStatus(subprocOut.Bytes()) {
+			slog.ErrorContext(r.Context(), "receive-pack: non-zero exit without report-status (subprocess crash)",
+				"err", cmdErr, "org", orgID, "session", sessionID)
+			httperr.Write(w, r, httperr.ErrInternal(cmdErr))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(subprocOut.Bytes())
+		return
+	}
+
+	// subprocess exited 0. A stdin feed failure here is inconsistent with a
+	// clean success — fail loudly rather than acknowledge a partially-fed push.
+	if stdinErr != nil {
+		slog.ErrorContext(r.Context(), "receive-pack: stdin feed error with clean subprocess exit",
+			"err", stdinErr, "org", orgID, "session", sessionID)
+		httperr.Write(w, r, httperr.ErrInternal(stdinErr))
 		return
 	}
 
@@ -536,5 +560,32 @@ func (s *layeredStorer) CountLooseRefs() (int, error) {
 // PackRefs delegates to the disk repo.
 func (s *layeredStorer) PackRefs() error {
 	return s.diskRefs.PackRefs()
+}
+
+// looksLikeReportStatus reports whether buf looks like a git pkt-line
+// report-status payload. A valid report starts with a 4-hex-digit length
+// prefix (the pkt-line length field) and contains at least one of the
+// canonical report-status keywords: "unpack ", "ng ", or "ok ".
+//
+// This is intentionally conservative: a malformed or absent report returns
+// false so a subprocess crash (non-zero exit, no report) becomes a 500 rather
+// than a false 200. False-positives (a crash that happens to start with hex)
+// are extremely unlikely and would result in a no-op 200 — acceptable because
+// git clients parse the report-status and would surface the inconsistency.
+func looksLikeReportStatus(buf []byte) bool {
+	if len(buf) < 4 {
+		return false
+	}
+	// Verify the first 4 bytes form a valid hex pkt-line length.
+	for _, b := range buf[:4] {
+		if !((b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')) {
+			return false
+		}
+	}
+	// Require at least one of the canonical report-status keywords.
+	s := string(buf)
+	return strings.Contains(s, "unpack ") ||
+		strings.Contains(s, "ng ") ||
+		strings.Contains(s, "ok ")
 }
 

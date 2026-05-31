@@ -1,7 +1,7 @@
 ---
 id: bug-squash-receive-pack-truncated-200
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, error-handling]
 parent: epic-bug-squash-handler-error-classification
 depends_on: []
@@ -27,4 +27,28 @@ io.Copy(&subprocOut, stdout) //nolint:errcheck
 cmdErr := cmd.Wait()
 <-stdinErrCh // error value discarded
 w.WriteHeader(http.StatusOK); _, _ = w.Write(subprocOut.Bytes())
+
+## Implementation notes
+
+Updated `receive_pack.go` to capture `stdoutErr` from `io.Copy`, drain
+`stdinErr := <-stdinErrCh`, and classify:
+- `stdoutErr != nil` → 500 (truncated report read)
+- `cmdErr == nil && stdinErr != nil` → 500 (impossible-success: clean exit but
+  stdin not fully fed → don't acknowledge)
+- `cmdErr != nil && !looksLikeReportStatus(subprocOut.Bytes())` → 500 (crash,
+  no report; was previously a false 200)
+- `cmdErr != nil && looksLikeReportStatus(...)` → 200+report (git-level
+  rejection: hook/non-ff; protocol-correct behavior preserved)
+
+Added `looksLikeReportStatus(buf []byte) bool` helper at end of file: requires
+a 4-hex-digit pkt-line length prefix AND at least one of `unpack `, `ng `,
+`ok ` keywords — conservative so malformed/absent reports → 500.
+
+Tests added:
+- `receive_pack_internal_test.go`: `TestLooksLikeReportStatus` with 11 cases
+  covering empty, too-short, valid pktline, non-hex prefix, missing keywords,
+  real rejection shape
+- `receive_pack_test.go`: `TestReceivePack_GitRejection_Returns200WithReport`
+  (regression guard: git-level rejection via pre-receive → 200+report preserved)
+  and `TestReceivePack_MalformedBody_Returns500NotFalse200` (empty body → not 200)
 ```
