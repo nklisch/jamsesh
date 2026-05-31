@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,12 +297,20 @@ func podKillGetMe(ctx context.Context, t *testing.T, podURL, accessToken string)
 }
 
 // podKillRefTip queries GET /api/orgs/{orgID}/sessions/{sessionID}/refs on
-// podURL and returns the SHA for the given ref. Returns "" if the ref is absent.
+// podURL and returns the SHA for the given ref. The caller passes the short
+// push form ("jam/<sid>/<uid>/main", matching gitclient.Push and RevParse);
+// the REST /refs API reports the FULL ref name ("refs/heads/jam/...", from
+// ListSessionRefs -> r.Name().String()), so we canonicalize to the full form
+// before comparing. Returns "" if the ref is absent.
 func podKillRefTip(
 	ctx context.Context, t *testing.T,
 	podURL, accessToken, orgID, sessionID, ref string,
 ) string {
 	t.Helper()
+	wantRef := ref
+	if !strings.HasPrefix(wantRef, "refs/heads/") {
+		wantRef = "refs/heads/" + wantRef
+	}
 	type refEntry struct {
 		Ref string `json:"ref"`
 		Sha string `json:"sha"`
@@ -332,7 +341,7 @@ func podKillRefTip(
 		t.Fatalf("podKillRefTip: decode: %v; body: %s", err, body)
 	}
 	for _, r := range rl.Refs {
-		if r.Ref == ref {
+		if r.Ref == wantRef {
 			return r.Sha
 		}
 	}
