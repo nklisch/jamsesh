@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-spa-route-route-screen
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-cli-browser-session-resume-spa-route
 depends_on: [epic-cli-browser-session-resume-spa-route-auth-access-only]
@@ -60,3 +60,33 @@ body (Other agent review + Unit 2) for the full rules.
 Test patterns: `spa-test-module-mock-barrel`, `window-location-defineproperty-stub`,
 `view-state-union-machine`. Read `JoinerPicker.svelte` to replicate the working
 playground adoption.
+
+## Implementation notes
+
+- **Router**: added `playground-resume` (`/playground/s/{sessionId}/resume`,
+  `requiresAuth:false`) and `session-resume` (`/orgs/{orgId}/sessions/{sessionId}/resume`,
+  `requiresAuth:false`) routes, both inserted BEFORE `session-view` to win
+  under first-match semantics.
+- **App.svelte**: imports `ResumeExchange` and maps both `playground-resume` and
+  `session-resume` → `<ResumeExchange />` (no props needed; reads route from
+  exchange response).
+- **ResumeExchange.svelte**: union state `exchanging | confirming | error`.
+  `onMount` reads `#rt`, strips via `history.replaceState(null,'',pathname+search)`,
+  then fires bare `fetch` with `credentials:'omit'` and no Authorization header.
+  Success with no existing identity → adopt directly. Existing differing/unknown
+  identity → `confirming` (only `display_name` in `$state`; bearer kept in plain
+  non-reactive local). Accept → adopt; decline → wipe bearer + transition to
+  `error`. Playground adoption mirrors `JoinerPicker` success path exactly
+  (`auth.setPlaygroundContext({sessionId, bearer, nickname})`). Durable adoption
+  uses `auth.setAccessOnly(bearer)`. Navigation derived from the exchange response.
+  Error/missing token shows generic retry hint only — no oracle.
+- **Docs**: `docs/UX.md` — "Flow: resuming a session from the CLI" added before
+  the "joining a session" flow. `docs/SECURITY.md` — "CLI resume-exchange
+  client-side safeguards" section added (fragment strip, bare fetch
+  `credentials:omit`, token/bearer never in reactive state).
+- **Tests** (18 passing): bare-fetch-no-Authorization, `#rt` strip via
+  `replaceState`, durable adopt+navigate, playground adopt+navigate (via
+  `setPlaygroundContext`), URI segment encoding, confirm accept/decline,
+  all three confirming triggers (differing id, authenticated+null user,
+  existing playground context), error on non-ok + network failure, token/bearer
+  never rendered in DOM. `vitest` 18/18 green; `svelte-check` 0 errors.

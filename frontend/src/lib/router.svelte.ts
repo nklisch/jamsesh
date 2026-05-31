@@ -16,9 +16,12 @@ const routes: Route[] = [
   { pattern: /^\/orgs\/([^/]+)\/sessions$/,                            name: 'sessions',       params: ['orgId'],                             requiresAuth: true  },
   // `finalize` and `invite-accept` must come BEFORE `session-view` so the
   // more specific patterns win under first-match semantics.
-  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/finalize$/,                        name: 'finalize',      params: ['orgId', 'sessionId'],             requiresAuth: true  },
-  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/invites\/([^/]+)\/accept$/,        name: 'invite-accept', params: ['orgId', 'sessionId', 'inviteId'], requiresAuth: true  },
-  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)$/,                                  name: 'session-view',  params: ['orgId', 'sessionId'],             requiresAuth: true  },
+  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/finalize$/,                        name: 'finalize',        params: ['orgId', 'sessionId'],             requiresAuth: true  },
+  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/invites\/([^/]+)\/accept$/,        name: 'invite-accept',   params: ['orgId', 'sessionId', 'inviteId'], requiresAuth: true  },
+  // `resume` routes must come BEFORE `session-view` so the more specific pattern wins.
+  { pattern: /^\/playground\/s\/([^/]+)\/resume$/,                                    name: 'playground-resume', params: ['sessionId'],                     requiresAuth: false },
+  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)\/resume$/,                          name: 'session-resume',  params: ['orgId', 'sessionId'],             requiresAuth: false },
+  { pattern: /^\/orgs\/([^/]+)\/sessions\/([^/]+)$/,                                  name: 'session-view',    params: ['orgId', 'sessionId'],             requiresAuth: true  },
   { pattern: /^\/orgs\/([^/]+)\/settings$/,                            name: 'org-settings',   params: ['orgId'],                             requiresAuth: true  },
   // Playground public routes — requiresAuth: false, anonymous-mode is handled
   // by the playground-aware components (JoinerPicker, SessionTombstone).

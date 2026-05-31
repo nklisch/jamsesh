@@ -15,6 +15,7 @@
   import PlaygroundLanding from '$lib/screens/PlaygroundLanding.svelte';
   import JoinerPicker from '$lib/screens/JoinerPicker.svelte';
   import SessionTombstone from '$lib/screens/SessionTombstone.svelte';
+  import ResumeExchange from '$lib/screens/ResumeExchange.svelte';
   import NotFound from '$lib/screens/NotFound.svelte';
 
   // Bootstrap: kick off portalInfo.init() immediately alongside auth so that
@@ -121,6 +122,8 @@
   <JoinerPicker sessionId={current.params.sessionId} />
 {:else if current.name === 'playground-ended'}
   <SessionTombstone sessionId={current.params.sessionId} />
+{:else if current.name === 'playground-resume' || current.name === 'session-resume'}
+  <ResumeExchange />
 {:else}
   <NotFound />
 {/if}

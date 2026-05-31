@@ -223,6 +223,34 @@ playground context (by design). XSS can still exfiltrate the in-memory bearer
 during the page session, but the blast radius is limited to the single
 playground session (see [Anonymous session-scoped bearers](#anonymous-session-scoped-bearers)).
 
+**CLI resume-exchange client-side safeguards:** The resume exchange flow
+(`ResumeExchange.svelte`) implements three independent client-side defenses
+that complement the server-side single-use enforcement:
+
+1. **Fragment strip before any other action.** On mount, `history.replaceState`
+   removes `#rt=<token>` from the address bar immediately — before the exchange
+   fetch is dispatched, before any reactive render cycle, and before any further
+   SPA navigation. The token does not appear in DevTools "current URL",
+   subsequent `window.location.href` reads, or browser history entries created
+   after the strip.
+2. **Bare fetch, `credentials: 'omit'`.** The exchange POST uses a hand-rolled
+   `fetch(…, {credentials:'omit', headers:{'content-type':'application/json'},
+   body})` rather than the shared openapi-fetch client. The shared client's
+   `bearerMiddleware` would attach any currently authenticated user's access
+   token as an `Authorization` header. The resume token is the sole credential
+   for the exchange and must arrive without interference from ambient browser
+   auth state.
+3. **Token and bearer never enter reactive state.** The raw resume token is
+   read from the hash into a local variable and never assigned to any `$state`
+   rune. The returned bearer is stored in a plain non-reactive variable during
+   the confirm flow and is discarded immediately after adoption (or on decline).
+   Neither value is ever passed to a template rendering expression, preventing
+   accidental DOM exposure, screenshot capture, or logging via reactivity traces.
+
+The `requiresAuth: false` flag on both resume routes (`/playground/s/{id}/resume`
+and `/orgs/{orgId}/sessions/{sessionId}/resume`) ensures the SPA auth gate does
+not redirect the user to `/login` before the fragment can be read and stripped.
+
 **CSP regression detection:** A `Content-Security-Policy-Report-Only` header
 with `report-uri /_csp-report` is emitted alongside the enforced CSP so
 inline-script policy violations surface in server logs. The `/_csp-report`

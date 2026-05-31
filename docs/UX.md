@@ -133,6 +133,53 @@ A collaborator received a `/playground/s/{id}/join` URL.
    `410 playground.session_ended` and the SPA redirects to
    `/playground/s/{id}/ended` for the post-destruction tombstone view.
 
+## Flow: resuming a session from the CLI
+
+When a CLI participant (or the `jamsesh` binary acting on their behalf) wants
+to open the browser to a live session they are already participating in, the
+CLI mints a single-use resume token and constructs a resume URL with the token
+in the fragment:
+
+- Playground: `/playground/s/{sessionId}/resume#rt=<token>`
+- Durable: `/orgs/{orgId}/sessions/{sessionId}/resume#rt=<token>`
+
+Both routes are public (`requiresAuth: false`). The fragment is never sent in
+Referer headers and does not appear in proxy access logs.
+
+1. The browser opens the resume URL. The SPA renders the `ResumeExchange`
+   screen with a "Resuming your session…" status.
+2. `onMount` extracts the `rt` value from `location.hash` and immediately
+   calls `history.replaceState` to strip the fragment from the address bar
+   before any other navigation or network request. The token is never stored
+   in reactive state and is never rendered.
+3. A bare (unauthenticated) `fetch` POSTs `{resume_token}` to
+   `POST /api/session-resumes/exchange`. The shared API client (whose
+   middleware attaches any existing durable bearer) is intentionally bypassed
+   — the resume token is the sole credential for the exchange.
+4. On success the server returns `{bearer, session_id, org_id, kind,
+   account_id, display_name, expires_at}`.
+5. **No existing identity** (no durable token and no playground context) →
+   the SPA adopts directly:
+   - `kind==="playground"` → `auth.setPlaygroundContext({sessionId, bearer,
+     nickname})`, then navigate to `/orgs/org_playground/sessions/{session_id}`.
+     Mirrors `JoinerPicker`'s successful-join path exactly.
+   - `kind==="durable"` → `auth.setAccessOnly(bearer)` (access-only, no
+     refresh token), then navigate to `/orgs/{org_id}/sessions/{session_id}`.
+6. **Existing differing/unconfirmable identity** (signed-in user whose id
+   differs from `account_id`, or authenticated but `currentUser` not yet
+   loaded, or an existing playground context) → `confirming` state:
+   - The screen surfaces only `display_name` (never the bearer or token).
+   - **Accept** → adopt as above and navigate.
+   - **Decline** → the bearer is discarded (never persisted), and a generic
+     retry hint is shown ("This resume link expired or was already used — run
+     the command again from your terminal"). The token is already consumed;
+     the user must re-invoke the CLI command to mint a fresh token.
+7. **Failure / expired / used token** → generic error state with the same
+   retry hint. No oracle (no detail distinguishing the cases).
+
+The resume exchange token is single-use. A declined or failed exchange
+requires the user to run the CLI command again to mint a fresh token.
+
 ## Flow: joining a session
 
 A collaborator received an invite or a join URL.
