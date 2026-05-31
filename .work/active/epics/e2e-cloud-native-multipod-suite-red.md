@@ -1,7 +1,7 @@
 ---
 id: e2e-cloud-native-multipod-suite-red
 kind: epic
-stage: drafting
+stage: implementing
 tags: [portal, infra, testing, bug]
 parent: null
 depends_on: []
@@ -32,6 +32,23 @@ these tests exercise.
   (stale waits, missing cross-pod polls, drifted assertions, broken mocks) is
   repaired in-session. Each suite is sorted on its merits during `epic-design`
   rather than assuming all five share one root cause.
+
+## Design decisions
+- **Decomposition shape**: split by **subsystem** (vertical capability), not by
+  suite. Each suite (`chaos`/`failure`/`golden`) contains tests from several
+  subsystems; a suite goes green when all its subsystem-owned tests pass. By-suite
+  would be the layer anti-pattern. — Keeps each feature a cohesive root-cause fix.
+- **Triage approach**: per-subsystem — no shared triage/bisect feature. Each
+  subsystem feature reproduces its own suite, confirms its root cause, and fixes
+  it, so the four independent features parallelize. The only shared harness crash
+  (prometheus parse) is already fixed in `ed32b562`. — Avoids a serializing root.
+- **Regression vs never-green**: these suites **never passed green on main**
+  (user-confirmed). This epic *finishes the stabilization* the cloud-native-deploy
+  / e2e-cnd-coverage epics left red — it is NOT a regression. No `git bisect`;
+  each feature root-causes forward from the current red state.
+- **Fuzz scope**: fuzz stabilization is a child feature of this epic. If
+  characterization reveals a deep input-handling product arc, split it out then
+  (see Decomposition risks).
 
 ## Fixed already (commit ed32b562)
 
@@ -83,11 +100,52 @@ these tests exercise.
   widen to chaos/failure. The harness uses testcontainers (minio, toxiproxy,
   postgres, multiple portal pods, router, mailhog). NOTE: a full `/tmp` tmpfs
   breaks builds — set `GOTMPDIR`/`TMPDIR` off it.
-- Bisect: did these suites EVER pass green on main? If the cloud-native-deploy
-  epic landed them red, this is finishing that epic's stabilization, not a
-  regression. If they regressed, `git bisect` the router/lease/object-storage/
-  githttp commits.
-- Likely splits into child features: object-storage cross-pod sync, lease
-  migration on Postgres conn-drop, router redispatch/metrics, cluster git clone.
+- These suites never passed green on main (confirmed): this is finishing the
+  cloud-native-deploy / e2e-cnd-coverage stabilization, not a regression — no
+  `git bisect`, root-cause forward from the current red state.
+- Scope boundary: this epic owns the **cloud-native multi-pod** failures
+  (object-storage sync, lease, router, cluster git serving) + fuzz. Playground-
+  specific tests in the chaos/failure/golden suites are owned by the playground
+  epics (already done) and are out of scope here.
 
-Promote via `/agile-workflow:scope` and decompose with `epic-design`.
+## Decomposition
+
+Split by subsystem so each child feature is a self-contained root-cause fix that
+reproduces its own slice of the red suites. Three subsystem fixes
+(object-storage sync, lease migration, router redispatch/metrics) plus fuzz are
+mutually independent and parallelize; the clustered-smoke scaffolding test is a
+cross-cutting end-to-end gate, so it depends on the three subsystem fixes
+landing first (its green is then a true signal, not a mask). No shared triage
+feature — the only common harness crash (prometheus parse) is already fixed.
+
+### Child features
+
+- `e2e-cloud-native-multipod-suite-red-objectstore-sync` — cross-pod base-ref
+  visibility / RPO=0 hydration timing (chaos prereqs) — depends on: `[]`
+- `e2e-cloud-native-multipod-suite-red-lease-migration` — advisory-lock
+  auto-release on Postgres conn-drop + re-acquisition within 30s SLO
+  (failure/golden lease) — depends on: `[]`
+- `e2e-cloud-native-multipod-suite-red-router-redispatch` — transparent
+  redispatch on 503 + router metric counters (failure/golden router) —
+  depends on: `[]`
+- `e2e-cloud-native-multipod-suite-red-fuzz` — characterize + stabilize the red
+  fuzz harnesses — depends on: `[]`
+- `e2e-cloud-native-multipod-suite-red-cluster-smoke` — fix `git clone` over
+  router (githttp regression check) + the end-to-end clustered smoke; the
+  scaffolding integration gate — depends on:
+  `[objectstore-sync, lease-migration, router-redispatch]`
+
+### Decomposition risks
+
+- **Shared cross-pod git-serving root.** Root cause (1) object-storage sync and
+  the cluster-smoke `git clone` exit-128 may share a cross-pod git-serving root,
+  or the clone may be an independent githttp/router-routing regression. The gate
+  feature is sequenced after objectstore-sync to absorb this; if a single fix
+  resolves both, the gate shrinks to a verification pass.
+- **Cross-cutting chaos tests.** A few chaos tests (`cross_pod_clock_skew`,
+  `runtime_and_clock`, `network_and_provider`, `router_pod_disappears`,
+  `object_storage_partition`) don't map cleanly to one subsystem. Each feature's
+  own design pass must claim exactly one owner per test to avoid gaps/overlap.
+- **Fuzz may grow an arc.** If fuzz characterization uncovers deep product
+  input-handling bugs, split them out as a separate item rather than ballooning
+  the fuzz feature.
