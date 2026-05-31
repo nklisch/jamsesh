@@ -12,6 +12,7 @@ package store_test
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -43,15 +44,17 @@ func TestTombstoneBIGINTSQLiteRoundTrip(t *testing.T) {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
-	// Use values that fit in int32 to stay within SQLite's normal range,
-	// but verify they round-trip as int64 (the domain type).
+	// Use values > math.MaxInt32 to exercise the actual truncation class the
+	// BIGINT widening guards against — these literals would not compile if the
+	// generated params were still int32, and would truncate if any int32 cast
+	// remained on the write path.
 	want := store.RecordTombstoneParams{
 		SessionID:       "ts-bigint-s",
 		OrgID:           org.ID,
 		MembersCount:    42,
-		CommitsCount:    1000,
+		CommitsCount:    int64(math.MaxInt32) + 1000, // > 2^31
 		AutoMergesCount: 7,
-		DurationSeconds: 3600,
+		DurationSeconds: 5_000_000_000, // > math.MaxInt32
 		EndReason:       "idle",
 		EndedAt:         now.Truncate(time.Second),
 		ExpiresAt:       now.Add(30 * 24 * time.Hour).Truncate(time.Second),
@@ -106,13 +109,15 @@ func TestTombstoneBIGINTPostgresMigration(t *testing.T) {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
+	// Values > math.MaxInt32 — an INTEGER column (pre-migration) could not hold
+	// these; round-tripping them confirms the BIGINT migration applied.
 	want := store.RecordTombstoneParams{
 		SessionID:       "pgts-bigint-s",
 		OrgID:           org.ID,
 		MembersCount:    5,
-		CommitsCount:    200,
+		CommitsCount:    int64(math.MaxInt32) + 200, // > 2^31
 		AutoMergesCount: 3,
-		DurationSeconds: 7200,
+		DurationSeconds: 5_000_000_000, // > math.MaxInt32
 		EndReason:       "hard_cap",
 		EndedAt:         now.Truncate(time.Second),
 		ExpiresAt:       now.Add(30 * 24 * time.Hour).Truncate(time.Second),
