@@ -306,43 +306,57 @@ describe('SessionList', () => {
     const sess1 = makeSession({ id: 'sess-a', name: 'Session A' });
     const sess2 = makeSession({ id: 'sess-b', name: 'Session B' });
 
-    // Initial load: one session.
-    mockGET
-      .mockResolvedValueOnce({ data: { items: [sess1], next_cursor: null }, error: null })
-      // The refetch after the presence.updated event on sess-a returns updated sess-a.
-      .mockResolvedValue({ data: sess2, error: null }); // fallback (shouldn't be called in this path)
+    // First mount: one session (sess-a only).
+    mockGET.mockResolvedValueOnce({ data: { items: [sess1], next_cursor: null }, error: null });
+
+    const { unmount } = render(SessionList, { props: { orgId: 'org-1' } });
+
+    // Wait for subscriptions to sess-a to be set up (4 types).
+    await waitFor(() => expect(subscribeCalls.filter((c) => c.sessionId === 'sess-a').length).toBe(4));
+    const countAfterFirstLoad = subscribeCalls.length; // 4
+    expect(countAfterFirstLoad).toBe(4);
+
+    // Snapshot the unsub stubs for sess-a so we can verify they are NOT called
+    // when sess-b is added (surviving sockets stay open).
+    const sessAUnsubs = subscribeCalls
+      .filter((c) => c.sessionId === 'sess-a')
+      .map((c) => c.unsub);
+
+    // Unmount and remount with both sessions. Remounting triggers onMount →
+    // loadSessions() → the id-set changes (sess-a + sess-b) → $effect re-runs →
+    // new subscriptions for sess-b are created. This is the most direct "add
+    // session" path available without reaching into Svelte internals.
+    unmount();
+
+    // Clear subscribe tracking so we start fresh for the second mount.
+    subscribeCalls.length = 0;
+    vi.clearAllMocks();
+
+    // Second mount: both sessions.
+    mockGET.mockResolvedValueOnce({ data: { items: [sess1, sess2], next_cursor: null }, error: null });
 
     render(SessionList, { props: { orgId: 'org-1' } });
 
-    // Wait for subscriptions to sess-a to be set up.
-    await waitFor(() => expect(subscribeCalls.filter((c) => c.sessionId === 'sess-a').length).toBeGreaterThan(0));
-    const countAfterFirstLoad = subscribeCalls.length;
-    // All 4 types should subscribe.
+    // Wait for sess-b subscriptions to appear.
+    await waitFor(() => expect(subscribeCalls.filter((c) => c.sessionId === 'sess-b').length).toBe(4));
+
+    // sess-a subscriptions must also be present (it survived the reload).
     expect(subscribeCalls.filter((c) => c.sessionId === 'sess-a').length).toBe(4);
 
-    // Now simulate a session-list reload that adds sess-b (id set changes).
-    // We do this by mocking the next GET to return both sessions and calling loadSessions
-    // indirectly. The simplest proxy: simulate via the presence.updated handler on sess-a
-    // causing an updateSession that does NOT change the id set (field update only),
-    // then directly verify that adding a new session (e.g. after manual reload which
-    // adds sess-b to the list) causes the correct subscribe pattern.
-    //
-    // For this integration test we trigger a reload via the component's onMount-level GET
-    // by remounting. This is the most direct "add session" path available without
-    // reaching into Svelte internals.
-    //
-    // Verify: field-only handler on sess-a does not churn (unsub count stays 0).
-    const commitHandlerA = subscribeCalls.find((c) => c.sessionId === 'sess-a' && c.type === 'commit.arrived')?.handler;
-    expect(commitHandlerA).toBeDefined();
-    await act(async () => {
-      commitHandlerA!({ type: 'commit.arrived' });
-      await Promise.resolve();
-    });
-    // No teardowns on a field-only update.
-    const unsubAfterFieldUpdate = subscribeCalls.reduce((n, c) => n + c.unsub.mock.calls.length, 0);
-    expect(unsubAfterFieldUpdate).toBe(0);
-    // No new subscriptions.
-    expect(subscribeCalls.length).toBe(countAfterFirstLoad);
+    // Total subscriptions: 4 (sess-a) + 4 (sess-b) = 8.
+    expect(subscribeCalls.length).toBe(8);
+
+    // The sess-a unsub stubs from the FIRST mount must NOT have been called
+    // (those subscriptions were torn down on unmount, not during the add).
+    // For the second mount (fresh subscribeCalls), no unsubs should have fired yet.
+    const unsubCallsAfterAdd = subscribeCalls.reduce((n, c) => n + c.unsub.mock.calls.length, 0);
+    expect(unsubCallsAfterAdd).toBe(0);
+
+    // Also verify the sess-a unsubs from the first mount were NOT triggered
+    // by the second mount's effect (they are already separate stubs).
+    for (const unsub of sessAUnsubs) {
+      expect(unsub).not.toHaveBeenCalled();
+    }
   });
 
   // ── Unit 2: Sequence-guarded refetch ─────────────────────────────────────

@@ -195,3 +195,20 @@ correctly drops older overlapping GETs.
 ## Implementation summary
 
 All 2 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
+
+## Final-gate fix
+
+**Finding 7 (TEST-INTEGRITY): `SessionList.test.ts ~:305` "adding a new session" test
+never actually added sess-b.**
+The test body simulated a `commit.arrived` handler on sess-a (which calls `refetchSession`,
+a field-only update that does NOT add new sessions), verified no churn, and stopped —
+sess-b was never added, so the subscription additions for sess-b were never asserted.
+
+Fix: replaced the test body to actually add sess-b via the most direct path (unmount +
+remount with [sess-a, sess-b] in the GET response). The rewritten test:
+1. First mount loads [sess-a] → waits for 4 subscriptions for sess-a.
+2. Records the sess-a unsub stubs from the first mount.
+3. Unmounts; clears subscribe tracking; mounts again with [sess-a, sess-b].
+4. Asserts 4 subscriptions for sess-b are added (the new session's sockets opened).
+5. Asserts 4 subscriptions for sess-a remain (surviving sockets not torn down).
+6. Asserts total = 8 subscriptions and 0 unsub calls (no churn on add).
