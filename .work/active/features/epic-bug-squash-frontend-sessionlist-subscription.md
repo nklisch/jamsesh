@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-frontend-sessionlist-subscription
 kind: feature
-stage: implementing
+stage: review
 tags: [bug, ui]
 parent: epic-bug-squash
 depends_on: [epic-bug-squash-frontend-ws-lifecycle]
@@ -191,3 +191,7 @@ correctly drops older overlapping GETs.
   the per-session `refetchSeq` so an in-flight `commit.arrived` refetch can't
   resolve later and overwrite the ended status; documented the Map as bounded by
   component lifetime with monotonic (non-reset) counters.
+
+## Implementation summary
+
+All 2 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
