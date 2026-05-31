@@ -227,12 +227,14 @@ playground session (see [Anonymous session-scoped bearers](#anonymous-session-sc
 (`ResumeExchange.svelte`) implements three independent client-side defenses
 that complement the server-side single-use enforcement:
 
-1. **Fragment strip before any other action.** On mount, `history.replaceState`
-   removes `#rt=<token>` from the address bar immediately — before the exchange
-   fetch is dispatched, before any reactive render cycle, and before any further
-   SPA navigation. The token does not appear in DevTools "current URL",
+1. **Fragment strip in `onMount`, before exchange and navigation.** On mount,
+   `history.replaceState` removes `#rt=<token>` from the address bar — after the
+   initial render but before the exchange fetch is dispatched and before any
+   further SPA navigation. The token does not appear in DevTools "current URL",
    subsequent `window.location.href` reads, or browser history entries created
-   after the strip.
+   after the strip. (The strip cannot happen before the first render because it
+   runs in `onMount`; it does happen before any meaningful action the component
+   takes on the token.)
 2. **Bare fetch, `credentials: 'omit'`.** The exchange POST uses a hand-rolled
    `fetch(…, {credentials:'omit', headers:{'content-type':'application/json'},
    body})` rather than the shared openapi-fetch client. The shared client's

@@ -115,9 +115,12 @@
     _pendingOrgId = body.org_id;
     _pendingKind = body.kind;
 
+    // Always capture the display_name so adopt() can use it as the nickname
+    // on BOTH the direct and confirm paths (mirrors JoinerPicker's shape).
+    pendingDisplayName = body.display_name;
+
     if (requiresConfirm(body.account_id)) {
       // Surface only the display-safe field; keep the bearer non-reactive.
-      pendingDisplayName = body.display_name;
       viewState = 'confirming';
       return;
     }

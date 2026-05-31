@@ -83,6 +83,7 @@ const mockLoadCurrentUser = vi.fn().mockResolvedValue(undefined);
 const mockAuth = {
   isAuthenticated: false as boolean,
   orgs: null as unknown[] | null,
+  playgroundContext: null as { sessionId: string; bearer: string; nickname: string } | null,
 };
 
 vi.mock('$lib/auth.svelte', () => ({
@@ -90,6 +91,7 @@ vi.mock('$lib/auth.svelte', () => ({
     return {
       get isAuthenticated() { return mockAuth.isAuthenticated; },
       get orgs() { return mockAuth.orgs; },
+      get playgroundContext() { return mockAuth.playgroundContext; },
       loadCurrentUser: () => mockLoadCurrentUser(),
     };
   },
@@ -135,6 +137,7 @@ describe('App — auth-gate $effect', () => {
     // Safe defaults: unauthed user on the home route (protected).
     mockAuth.isAuthenticated = false;
     mockAuth.orgs = null;
+    mockAuth.playgroundContext = null;
     mockRouterCurrent.name = 'home';
     mockRouterCurrent.params = {};
     mockRouterCurrent.requiresAuth = true;
@@ -333,6 +336,61 @@ describe('App — auth-gate $effect', () => {
     // separately above — this asserts the template's mounting behavior.
     expect(mockHomeStub).not.toHaveBeenCalled();
     expect(mockProjectLandingStub).not.toHaveBeenCalled();
+  });
+
+  // ── Playground-context session-view gate ──────────────────────────────────
+
+  it('playground-context user on org_playground session-view is NOT redirected to /login', async () => {
+    // A playground participant has isAuthenticated=false but holds a
+    // playgroundContext whose sessionId matches the route. The gate must let
+    // them through so SessionViewShell's org_playground branch can render.
+    mockAuth.isAuthenticated = false;
+    mockAuth.playgroundContext = {
+      sessionId: 'play-sess-42',
+      bearer: 'anon-bearer',
+      nickname: 'TestNick',
+    };
+    mockRouterCurrent.name = 'session-view';
+    mockRouterCurrent.params = { orgId: 'org_playground', sessionId: 'play-sess-42' };
+    mockRouterCurrent.requiresAuth = true;
+
+    render(App);
+
+    await new Promise((r) => setTimeout(r, 50));
+    // Must NOT redirect to /login — the playground exception applies.
+    expect(mockNavigate).not.toHaveBeenCalledWith('/login');
+  });
+
+  it('token-less playground-less user on a durable session-view IS redirected to /login', async () => {
+    // Control case: without a matching playgroundContext the gate must still
+    // enforce the requiresAuth redirect for regular session-view routes.
+    mockAuth.isAuthenticated = false;
+    mockAuth.playgroundContext = null;
+    mockRouterCurrent.name = 'session-view';
+    mockRouterCurrent.params = { orgId: 'org-durable', sessionId: 'sess-durable-1' };
+    mockRouterCurrent.requiresAuth = true;
+
+    render(App);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+  });
+
+  it('playground-context user whose sessionId does NOT match the route IS still redirected', async () => {
+    // The exception is session-scoped: a stale or mismatched playgroundContext
+    // must not grant access to a different session.
+    mockAuth.isAuthenticated = false;
+    mockAuth.playgroundContext = {
+      sessionId: 'play-sess-OTHER',
+      bearer: 'anon-bearer',
+      nickname: 'TestNick',
+    };
+    mockRouterCurrent.name = 'session-view';
+    mockRouterCurrent.params = { orgId: 'org_playground', sessionId: 'play-sess-42' };
+    mockRouterCurrent.requiresAuth = true;
+
+    render(App);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
   });
 });
 

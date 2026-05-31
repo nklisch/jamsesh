@@ -46,7 +46,18 @@
     // Unauthed user on a protected route → /login, with landing-variant
     // branching for the home route. Gate on portalInfo.loaded so the variant
     // decision isn't made before the bootstrap fetch resolves.
-    if (current.requiresAuth && !auth.isAuthenticated) {
+    //
+    // Playground-resume exception: a playground participant has no durable
+    // auth token (isAuthenticated === false) but does have a playgroundContext.
+    // Allow them into the org_playground session-view when the context's
+    // sessionId matches the route — SessionViewShell already handles the
+    // org_playground branch. This is additive and does not widen durable
+    // session access in any way.
+    const playgroundView =
+      current.name === 'session-view' &&
+      current.params.orgId === 'org_playground' &&
+      auth.playgroundContext?.sessionId === current.params.sessionId;
+    if (current.requiresAuth && !auth.isAuthenticated && !playgroundView) {
       if (current.name === 'home') {
         // Wait until portalInfo has resolved its bootstrap fetch.
         if (!portalInfo.loaded) return;

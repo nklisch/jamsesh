@@ -240,8 +240,34 @@ describe('ResumeExchange', () => {
     const [ctx] = mockSetPlaygroundContext.mock.calls[0] as [{ sessionId: string; bearer: string; nickname: string }][];
     expect((ctx as unknown as { sessionId: string }).sessionId).toBe('play-sess-1');
     expect((ctx as unknown as { bearer: string }).bearer).toBe('test-bearer-token');
+    // display_name must be passed as nickname on the DIRECT path (no confirm).
+    expect((ctx as unknown as { nickname: string }).nickname).toBe('GreenFox');
     expect(mockSetAccessOnly).not.toHaveBeenCalled();
     expect(mockNavigate).toHaveBeenCalledWith('/orgs/org_playground/sessions/play-sess-1');
+  });
+
+  it('playground direct adopt: passes display_name as nickname (not session id fallback)', async () => {
+    // Regression test: before the fix, pendingDisplayName was only set on the
+    // confirming path so direct adopt fell back to _pendingSessionId as nickname.
+    const resp = makeExchangeResponse({
+      kind: 'playground',
+      session_id: 'play-sess-2',
+      display_name: 'PurpleLynx',
+      // No existing identity → requiresConfirm returns false → direct adopt.
+      account_id: 'new-user-999',
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(resp),
+    }));
+
+    render(ResumeExchange);
+
+    await waitFor(() => expect(mockSetPlaygroundContext).toHaveBeenCalledOnce());
+    const [ctx] = mockSetPlaygroundContext.mock.calls[0] as [{ sessionId: string; bearer: string; nickname: string }][];
+    // Nickname must be the exchange response display_name, NOT the session id.
+    expect((ctx as unknown as { nickname: string }).nickname).toBe('PurpleLynx');
+    expect((ctx as unknown as { nickname: string }).nickname).not.toBe('play-sess-2');
   });
 
   it('playground: never calls setAccessOnly', async () => {
