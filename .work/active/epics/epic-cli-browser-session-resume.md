@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume
 kind: epic
-stage: implementing
+stage: review
 tags: [plugin, portal, ui, security]
 parent: null
 depends_on: [feature-cli-jam-open-in-browser]
@@ -217,3 +217,33 @@ body is the durable direction). When the child features land, roll forward:
   resume handoff is additive, in the opposite direction.
 - A general "share a live link that logs anyone in" — resume is for the
   identity the CLI already holds, bound to the minting account.
+
+## Completion (autopilot, 2026-05-30)
+
+All 3 child features done. Two major milestones, each with a full Codex xhigh
+peer-review loop (per the run directive):
+
+- **Portal contract** (done): 3 stories. Milestone review Block (consume race)
+  → fixed (winner-returning consume) → confirm-clean (orphan-FK fix).
+- **CLI handoff** (done): 3 stories — `--open` adopts identity, `jamsesh resume
+  [session-id]`, token-safe `OpenSilent`. Durable resume works end-to-end.
+- **SPA route** (done): 2 stories — `ResumeExchange` screen, `setAccessOnly`,
+  public resume routes. Consumer-milestone review Block → fixes across 3
+  confirm passes: playground session-view auth-gate exception; the SPA now
+  sends the anonymous playground bearer (`bearerMiddleware` + WS) — a
+  PRE-EXISTING foundation gap that also blocked playground *join*; and a
+  non-overwrite middleware fix (signOut regression). Full Go + 799 SPA tests
+  green.
+
+End-to-end status: **durable resume fully works**; **playground resume's core
+path works** (gate → session GET → WS now carry the anon bearer).
+
+Deferred (filed as backlog, NOT resume-code defects — pre-existing):
+- `cli-resolvesession-env-var-mismatch` — `ResolveSession` reads `CC_SESSION_ID`
+  vs `instance_id` written from `CLAUDE_SESSION_ID` (affects finalize too).
+- `playground-bearer-raw-fetch-components` — `ArtifactPane`/`ForkDialog` use raw
+  `fetch`+`auth.token`, so playground participants 401 on artifact/fork (broader
+  playground-SPA bearer-coverage debt; affects join too).
+
+Foundation-doc roll-forward landed during implementation: `docs/openapi.yaml`,
+`docs/SECURITY.md`, `docs/UX.md`, `plugins/jamsesh/skills/jam/SKILL.md`.
