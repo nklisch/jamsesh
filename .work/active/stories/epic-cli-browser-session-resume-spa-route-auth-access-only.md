@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-spa-route-auth-access-only
 kind: story
-stage: implementing
+stage: review
 tags: [ui]
 parent: epic-cli-browser-session-resume-spa-route
 depends_on: []
@@ -33,6 +33,20 @@ Implements **Unit 1** of `epic-cli-browser-session-resume-spa-route`. See featur
 - [ ] Cached current-user/orgs + `_loadingMe` cleared (next `/me` fresh).
 - [ ] Follows the `wrapper-object-rune-store` pattern (no raw `$state` export).
 - [ ] `npm run -C frontend test` (or the project's vitest cmd) passes; typecheck clean.
+
+## Implementation notes
+
+- Added `setAccessOnly(access: string): void` to the `auth` wrapper-object on
+  lines after `setTokens`. Mirrors `signOut`'s clearing logic for `_currentUser`,
+  `_orgs`, and `_loadingMe` so the next `loadCurrentUser()` runs fresh.
+- Uses `localStorage.setItem(TOKEN_KEY, access)` (consistent with `setTokens`)
+  and `localStorage.removeItem(REFRESH_KEY)` (consistent with `signOut`).
+- No raw `$state` export; follows wrapper-object-rune-store throughout.
+- 5 new tests added covering: token persistence, refresh clearing, user/orgs
+  cache invalidation, `_loadingMe` reset for fresh fetch, and absent-refresh
+  idempotency. All 34 tests pass; typecheck clean (0 errors).
+- `TMPDIR=/home/nathan/.cache/jamsesh-gotmp` used for vitest and svelte-check
+  due to `/tmp` tmpfs at capacity.
 
 ## Notes
 

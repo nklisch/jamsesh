@@ -396,6 +396,115 @@ describe('auth store', () => {
     });
   });
 
+  // --- setAccessOnly ---
+
+  test('setAccessOnly sets token and persists to localStorage', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+
+    auth.setAccessOnly('access-only-token');
+
+    expect(auth.token).toBe('access-only-token');
+    expect(auth.isAuthenticated).toBe(true);
+    expect(localStorage.getItem('jamsesh.token')).toBe('access-only-token');
+  });
+
+  test('setAccessOnly clears refresh and removes jamsesh.refresh from localStorage', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+
+    // Prime the store with both tokens first.
+    auth.setTokens('old-access', 'old-refresh');
+    expect(auth.refresh).toBe('old-refresh');
+    expect(localStorage.getItem('jamsesh.refresh')).toBe('old-refresh');
+
+    auth.setAccessOnly('new-access-only');
+
+    expect(auth.refresh).toBeNull();
+    expect(localStorage.getItem('jamsesh.refresh')).toBeNull();
+  });
+
+  test('setAccessOnly clears cached currentUser and orgs', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'user-123',
+          email: 'ada@example.com',
+          display_name: 'Ada Lovelace',
+          orgs: [{ id: 'org-1', name: 'acme', slug: 'acme', role: 'creator' }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('prior-access', 'prior-refresh');
+    await auth.loadCurrentUser();
+
+    expect(auth.currentUser).not.toBeNull();
+    expect(auth.orgs).not.toBeNull();
+
+    auth.setAccessOnly('resume-access-token');
+
+    expect(auth.currentUser).toBeNull();
+    expect(auth.orgs).toBeNull();
+  });
+
+  test('setAccessOnly resets _loadingMe so next loadCurrentUser fetches fresh', async () => {
+    // After setAccessOnly, a subsequent loadCurrentUser() must NOT be a no-op
+    // caused by a stale _loadingMe promise from a prior in-flight request.
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'old-user',
+            email: 'old@example.com',
+            display_name: 'Old User',
+            orgs: [],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'new-user',
+            email: 'new@example.com',
+            display_name: 'New User',
+            orgs: [],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('old-access', 'old-refresh');
+    await auth.loadCurrentUser();
+
+    expect(auth.currentUser?.id).toBe('old-user');
+
+    // Adopt a new access-only session — must clear the loaded cache.
+    auth.setAccessOnly('resume-access-token');
+    expect(auth.currentUser).toBeNull();
+
+    // Next loadCurrentUser should fetch fresh data for the new account.
+    await auth.loadCurrentUser();
+
+    expect(auth.currentUser?.id).toBe('new-user');
+  });
+
+  test('setAccessOnly when no prior refresh leaves localStorage clean', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+
+    // No refresh was ever set.
+    expect(localStorage.getItem('jamsesh.refresh')).toBeNull();
+
+    auth.setAccessOnly('access-only-fresh');
+
+    // removeItem on an absent key is a no-op — key stays absent.
+    expect(localStorage.getItem('jamsesh.refresh')).toBeNull();
+    expect(auth.token).toBe('access-only-fresh');
+    expect(auth.refresh).toBeNull();
+  });
+
   // --- playgroundContext ---
 
   test('playgroundContext starts null', async () => {

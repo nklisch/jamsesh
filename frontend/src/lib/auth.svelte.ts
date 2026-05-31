@@ -75,6 +75,20 @@ export const auth = {
     localStorage.setItem(REFRESH_KEY, refreshTok);
   },
 
+  // Adopts a durable browser session that carries NO refresh token (e.g. a
+  // CLI resume-exchange bearer). Sets the access token, clears any stale
+  // refresh, and resets cached user state so the next loadCurrentUser() runs
+  // a fresh /api/me as the newly adopted account.
+  setAccessOnly(access: string): void {
+    _token = access;
+    _refresh = null;
+    _currentUser = null;
+    _orgs = null;
+    _loadingMe = null;
+    localStorage.setItem(TOKEN_KEY, access);
+    localStorage.removeItem(REFRESH_KEY);
+  },
+
   async signOut(): Promise<void> {
     // Best-effort: tell the server to revoke all tokens for this account.
     // Capture the bearer FIRST so the server-side call can authenticate;
