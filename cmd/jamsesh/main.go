@@ -57,6 +57,7 @@ func main() {
 			sessioncmd.InviteCommand(),
 			sessioncmd.JoinCommand(),
 			sessioncmd.StatusCommand(),
+			sessioncmd.ResumeCommand(),
 			sessioncmd.ForkCommand(),
 			sessioncmd.ModeCommand(),
 			finalizecmd.FinalizeCommand(),

@@ -3,9 +3,13 @@ package sessioncmd
 import (
 	"context"
 	"fmt"
+	"os"
+
+	"github.com/urfave/cli/v3"
 
 	"jamsesh/cmd/jamsesh/internal/osopen"
 	"jamsesh/cmd/jamsesh/portalclient"
+	"jamsesh/cmd/jamsesh/state"
 	"jamsesh/internal/api/openapi"
 )
 
@@ -49,4 +53,92 @@ func mintAndOpenResume(ctx context.Context, pc *portalclient.Client, orgID, sess
 
 	// Open the portal-returned URL verbatim. OpenSilent never prints the URL.
 	return openSilent(resp.ResumeUrl)
+}
+
+// ResumeCommand returns the urfave/cli command descriptor for "jamsesh resume".
+func ResumeCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "resume",
+		Usage:     "Open a jamsesh session in the browser as your CLI identity",
+		ArgsUsage: "[session-id]",
+		Action:    resumeAction,
+	}
+}
+
+// resumeAction implements the session-id resolution and mint+open logic for
+// "jamsesh resume [session-id]".
+func resumeAction(ctx context.Context, cmd *cli.Command) error {
+	portalURL, err := state.ReadPortalURL()
+	if err != nil {
+		return fmt.Errorf("resolving portal URL: %w", err)
+	}
+
+	sessionID, err := resolveResumeSession(cmd)
+	if err != nil {
+		return err
+	}
+
+	orgID, _ := readSessionState(sessionID)
+	if orgID == "" {
+		return fmt.Errorf("no org_id found for session %q; run `jamsesh status` to inspect sessions", sessionID)
+	}
+
+	pc := &portalclient.Client{
+		BaseURL:   portalURL,
+		SessionID: sessionID,
+	}
+	portalclient.WireRefresh(pc)
+
+	return mintAndOpenResume(ctx, pc, orgID, sessionID)
+}
+
+// resolveResumeSession determines which session to resume.
+//
+// Resolution order:
+//  1. Explicit <session-id> argument → use it directly.
+//  2. Bare (no arg): check state.CurrentSessionID() — uses CLAUDE_SESSION_ID-based
+//     binding (write-consistent, NOT ResolveSession — see backlog
+//     cli-resolvesession-env-var-mismatch). If mapped, return it.
+//  3. If CLAUDE_SESSION_ID is set but unmapped → error with jamsesh status hint.
+//  4. Outside CC context (CLAUDE_SESSION_ID unset): enumerate sessions.
+//     - Exactly one session → resume it (unambiguous).
+//     - Zero or multiple sessions → error with jamsesh status hint.
+func resolveResumeSession(cmd *cli.Command) (string, error) {
+	// 1. Explicit session-id argument.
+	if cmd.NArg() > 0 {
+		return cmd.Args().First(), nil
+	}
+
+	// 2. Try the write-consistent CLAUDE_SESSION_ID-based resolver.
+	if sessionID, ok := state.CurrentSessionID(); ok {
+		return sessionID, nil
+	}
+
+	// 3. If CLAUDE_SESSION_ID is present but unmapped, require explicit id.
+	if os.Getenv("CLAUDE_SESSION_ID") != "" {
+		return "", fmt.Errorf(
+			"this Claude Code instance is not mapped to any jamsesh session\n" +
+				"hint: run `jamsesh status` to see sessions and then use `jamsesh resume <session-id>`",
+		)
+	}
+
+	// 4. Outside CC context: enumerate sessions and resume if exactly one.
+	sessions, err := state.ListSessions()
+	if err != nil {
+		return "", fmt.Errorf("listing sessions: %w", err)
+	}
+	switch len(sessions) {
+	case 0:
+		return "", fmt.Errorf(
+			"no sessions found\n" +
+				"hint: run `jamsesh status` to see sessions and then use `jamsesh resume <session-id>`",
+		)
+	case 1:
+		return sessions[0], nil
+	default:
+		return "", fmt.Errorf(
+			"multiple sessions found — specify which one to resume\n"+
+				"hint: run `jamsesh status` to see sessions and then use `jamsesh resume <session-id>`",
+		)
+	}
 }

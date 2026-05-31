@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-cli-handoff-resume-command
 kind: story
-stage: implementing
+stage: review
 tags: [plugin]
 parent: epic-cli-browser-session-resume-cli-handoff
 depends_on: [epic-cli-browser-session-resume-cli-handoff-mint-open-adopt]
@@ -45,3 +45,23 @@ Implements **Unit 2** of `epic-cli-browser-session-resume-cli-handoff`. Uses the
 
 References backlog `cli-resolvesession-env-var-mismatch` (root fix of the
 resolver inconsistency is out of scope here; use the write-consistent resolver).
+
+## Implementation notes
+
+- `ResumeCommand()` + `resumeAction` + `resolveResumeSession()` added to
+  `cmd/jamsesh/sessioncmd/resume.go` in the same file as `mintAndOpenResume`.
+- Resolver uses `state.CurrentSessionID()` (CLAUDE_SESSION_ID-based) for the
+  bare case, falling back to single-session auto-select only when
+  CLAUDE_SESSION_ID is unset. Multi-session + unmapped or CC-instance-set but
+  unmapped → error citing `jamsesh status`.
+- `portalclient.Client{SessionID: sessionID}` construction ensures per-session
+  bearer is used for the mint request (both durable and playground paths).
+- `portalclient.WireRefresh(pc)` attached for 401-refresh support.
+- Mint failure → nonzero exit, `openSilent` never called (no token-free fallback,
+  unlike the `--open` adoption path).
+- `cmd/jamsesh/main.go`: `ResumeCommand()` registered after `StatusCommand()`.
+- Tests in `resume_test.go`: resolver matrix (explicit, bare-CC, bare-single,
+  multi-unmapped, CC-set-unmapped), mint failure (nonzero + nothing opened +
+  no fallback), bearer verification (per-session token used in mint request).
+- `go build ./...`, `go vet ./cmd/jamsesh/...`, `go test ./cmd/jamsesh/sessioncmd/...`
+  all pass (8 new tests, full suite green).
