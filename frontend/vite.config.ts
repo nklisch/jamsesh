@@ -44,5 +44,23 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    // Run workers as worker_threads rather than vitest 2's default `forks`
+    // pool. Fork workers are separate child processes; when `vitest run` is
+    // hard-killed (terminal close, agent/CI interrupt, OOM-killer) they miss
+    // the shutdown IPC, get reparented to init, and spin forever at multi-GB
+    // RSS. Threads live inside the runner process and die with it — they
+    // cannot orphan that way. Trade-off: marginally weaker isolation than
+    // forks, acceptable for this jsdom/Svelte unit suite. `make test-clean`
+    // remains as a manual safety net.
+    pool: 'threads',
+    poolOptions: {
+      // Cap concurrency (machine has 16 cores) so a runaway/leaky suite
+      // can't exhaust RAM. Workers have been observed at multi-GB RSS; the
+      // underlying per-worker memory growth is tracked as a separate bug.
+      threads: { minThreads: 1, maxThreads: 8 },
+    },
+    // Surface per-worker heap usage in the run summary so memory growth is
+    // visible instead of climbing silently until the OOM-killer fires.
+    logHeapUsage: true,
   },
 });

@@ -101,6 +101,21 @@ test-router-image:
 test-router-image-clean:
 	-docker rmi jamsesh/router:e2e
 
+.PHONY: test-clean
+
+# test-clean: kill leaked/dangling vitest processes. The vitest-2 default
+# `forks` pool spawns child Node processes ("node (vitest N)") that get
+# reparented to init and spin (multi-GB RSS, pegged CPU) when `vitest run` is
+# hard-killed — terminal close, agent/CI interrupt, or the OOM-killer.
+# frontend/vite.config.ts now uses the `threads` pool, which can't orphan that
+# way; this stays as a manual safety net. NOTE: this also kills any live
+# `vitest`/`npm test` run you have going in another terminal.
+test-clean:
+	@pkill -TERM -f 'node.*vitest' 2>/dev/null || true
+	@sleep 1
+	@pkill -KILL -f 'node.*vitest' 2>/dev/null || true
+	@echo "cleared dangling vitest processes"
+
 .PHONY: dev dev-down dev-down-v dev-rebuild
 
 # dev: bring up the local development stack via docker compose.
