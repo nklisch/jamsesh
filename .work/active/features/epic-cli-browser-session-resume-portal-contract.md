@@ -309,3 +309,8 @@ Confirmed safe (no change needed): CSRF/open-redirect are not primary risks
 external return target); `Referrer-Policy: no-referrer` is already global
 (`internal/portal/router/security_headers.go`); playground authz checks session
 membership after token validation (`internal/portal/handlerauth/handlerauth.go`).
+
+**Confirm pass (Codex, 2026-05-30): clean.** Blocker resolved by the
+winner-returning consume; no new blocker/important/nit from the fixes;
+dual-dialect `UPDATE … RETURNING` confirmed already used in-repo, so the
+approach is implementable. Design is ready for implementation.
