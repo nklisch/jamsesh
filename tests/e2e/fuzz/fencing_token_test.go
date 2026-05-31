@@ -43,6 +43,7 @@ import (
 	"jamsesh/tests/e2e/fixtures/authflow"
 	"jamsesh/tests/e2e/fixtures/mailhog"
 	"jamsesh/tests/e2e/fixtures/minio"
+	"jamsesh/tests/e2e/fixtures/portal"
 	"jamsesh/tests/e2e/fixtures/portalcluster"
 	"jamsesh/tests/e2e/fixtures/postgres"
 )
@@ -237,53 +238,68 @@ func fencingCloneURL(podURL, user, pass, orgID, sessionID string) string {
 	return u + "/git/" + orgID + "/" + sessionID + ".git"
 }
 
-// runFencingSeed exercises the fencing-token fuzz property for one seed:
-//  1. Injects a manifest with rawToken as the fencing_token JSON value into MinIO.
-//  2. Starts a fresh 1-pod clustered portal so its next push reads the injected
-//     manifest.
-//  3. Clones the session and attempts a git push.
+// fencingFuzzEnv bundles the long-lived, per-suite fixtures every fuzz seed
+// shares: the one running portal pod, the seed-independent auth identity, and
+// the org all seeds create their sessions in. It is built ONCE by
+// TestFencingTokenFuzz and reused across every seed.
+//
+// Seeds are independent — they only need a distinct session id (a distinct
+// manifest object key in MinIO), not cluster isolation. The manifest store
+// loads each session's manifest from MinIO lazily on the session's first git
+// access (hydration in lifecycle.AcquireForRequest → ManifestStore.Load), so
+// injecting a per-session manifest before that session's first clone is enough
+// to drive the fencing-token comparison for that seed on the shared portal.
+type fencingFuzzEnv struct {
+	pod         *portal.Portal
+	accessToken string
+	userID      string
+	orgID       string
+}
+
+// runFencingSeed exercises the fencing-token fuzz property for one seed against
+// the shared portal in env:
+//  1. Creates a fresh session (distinct manifest key) on the shared portal.
+//  2. Injects a manifest with rawToken as the fencing_token JSON value into
+//     MinIO under that session's key, BEFORE the session's first git access.
+//  3. Clones the session and attempts a git push. The portal hydrates the
+//     session on this first access and so reads the injected manifest.
 //  4. Checks: no 5xx from the portal, no panic in logs.
 //
-// Note: each seed gets its own session (pre-created in the shared bootstrap
-// cluster) and its own hot cluster. This ensures the hot cluster cold-starts
-// with our injected manifest rather than a portal-authored one.
+// One running portal serves every seed. Because the manifest store is keyed per
+// session and loaded lazily on first git access, a fresh session id per seed is
+// the only isolation a seed needs — there is no shared mutable in-process state
+// across sessions. Reusing one cluster instead of cold-starting two containers
+// per seed removes the dominant cold-start flake source (Docker-host saturation
+// under parallel boots) and is dramatically faster.
 func runFencingSeed(
 	ctx context.Context,
 	t *testing.T,
+	env *fencingFuzzEnv,
 	mn *minio.MinIO,
-	pg *postgres.Postgres,
-	mh *mailhog.MailHog,
 	desc, rawToken string,
 ) {
 	t.Helper()
 
-	// Bound concurrent container cold-starts across all parallel seeds so the
-	// Docker host is not saturated (see limiter_test.go). The slot is held until
-	// this seed's containers are torn down, serialising boot+teardown I/O.
-	acquireStartupSlot(t)
+	pod := env.pod
 
-	// Step 1: create the session via a short-lived bootstrap cluster.
-	bootstrapCluster := portalcluster.Start(ctx, t, portalcluster.Options{
-		Pods:        1,
-		Postgres:    pg,
-		ObjectStore: mn,
-		Router:      false,
-		PortalExtraEnv: map[string]string{
-			"JAMSESH_EMAIL_PROVIDER":  "smtp",
-			"JAMSESH_EMAIL_SMTP_HOST": mh.ContainerSMTPHost,
-			"JAMSESH_EMAIL_SMTP_PORT": strconv.Itoa(mh.ContainerSMTPPort),
-			"JAMSESH_EMAIL_SMTP_TLS":  "none",
-		},
-	})
-	pod0 := bootstrapCluster.Pods[0]
+	// The portal is shared across all seeds, so its log buffer accumulates lines
+	// from every seed. Capture the current log length as a baseline so the panic
+	// check below inspects ONLY the log content this seed produces — otherwise a
+	// panic from one seed would falsely fail every subsequent seed (and a panic
+	// here would be wrongly attributed to whichever seed scraped logs first).
+	logBaseline := fencingLogLen(ctx, t, pod)
 
-	userEmail := randEmail(t, "fuzz-fence")
-	pair := authflow.SignInViaMagicLink(ctx, t, pod0, mh, userEmail)
-	userID := fencingGetMe(ctx, t, pod0.URL, pair.AccessToken)
-	orgID := authflow.CreateOrg(ctx, t, pod0, pair.AccessToken, "Fencing Fuzz Org")
-	sessionID := fencingCreateSession(ctx, t, pod0.URL, pair.AccessToken, orgID, "fuzz-fencing")
+	// Step 1: create a fresh session on the shared portal. Session creation is a
+	// pure Postgres write — it does NOT touch object storage, hydration, or the
+	// lifecycle manager (see internal/portal/sessions/handler.go) — so it is safe
+	// to create the session on the same portal that later serves the push, and it
+	// does not read or write the manifest before we inject it below.
+	sessionID := fencingCreateSession(ctx, t, pod.URL, env.accessToken, env.orgID, "fuzz-fencing-"+sanitizeFencingName(desc))
 
-	// Step 2: inject the fuzz manifest into MinIO BEFORE the hot cluster starts.
+	// Step 2: inject the fuzz manifest into MinIO BEFORE the session's first git
+	// access. The portal hydrates a session (and thus loads its manifest) only on
+	// the first git request for that session on this pod, so the injected
+	// manifest is the one ManifestStore.Load returns during the push below.
 	manifestBytes := buildFencingManifest(sessionID, rawToken)
 	mKey := fencingManifestKey(sessionID)
 	if err := mn.PutObject(ctx, mKey, manifestBytes); err != nil {
@@ -292,32 +308,19 @@ func runFencingSeed(
 	t.Logf("seed %q: wrote %d bytes manifest (fencing_token=%s) to %s",
 		desc, len(manifestBytes), rawToken, mKey)
 
-	// Step 3: start a fresh hot cluster. Its cold-start will read the injected
-	// manifest on first access to the session.
-	hotCluster := portalcluster.Start(ctx, t, portalcluster.Options{
-		Pods:        1,
-		Postgres:    pg,
-		ObjectStore: mn,
-		Router:      false,
-		PortalExtraEnv: map[string]string{
-			"JAMSESH_EMAIL_PROVIDER":  "smtp",
-			"JAMSESH_EMAIL_SMTP_HOST": mh.ContainerSMTPHost,
-			"JAMSESH_EMAIL_SMTP_PORT": strconv.Itoa(mh.ContainerSMTPPort),
-			"JAMSESH_EMAIL_SMTP_TLS":  "none",
-		},
-	})
-	hotPod := hotCluster.Pods[0]
-
-	// Step 4: clone and push to trigger the fencing-token comparison path.
+	// Step 3+4: clone and push to trigger the fencing-token comparison path. The
+	// clone is this session's first git access, so the portal hydrates from the
+	// injected manifest here.
 	cloneDir := t.TempDir()
+	userID := env.userID
 	ref := "jam/" + sessionID + "/" + userID + "/main"
 
-	cloneURL := fencingCloneURL(hotPod.URL, "x-access-token", pair.AccessToken, orgID, sessionID)
+	cloneURL := fencingCloneURL(pod.URL, "x-access-token", env.accessToken, env.orgID, sessionID)
 	cloneOut, cloneErr := exec.CommandContext(ctx, "git", "clone", cloneURL, cloneDir).CombinedOutput()
 	if cloneErr != nil {
 		// Clone failed — the portal may have rejected the session because the
 		// injected manifest is unparseable. Check for panics and return.
-		logs, _ := hotPod.Logs(ctx)
+		logs := fencingLogsSince(ctx, t, pod, logBaseline)
 		if fencingLogsPanic(logs) {
 			t.Errorf(
 				"BUG DETECTED (panic in portal logs on clone) — production bug.\n"+
@@ -382,7 +385,7 @@ func runFencingSeed(
 	}
 
 	// Step 5: check for panics in portal logs regardless of push outcome.
-	logs, _ := hotPod.Logs(ctx)
+	logs := fencingLogsSince(ctx, t, pod, logBaseline)
 	if fencingLogsPanic(logs) {
 		t.Errorf(
 			"BUG DETECTED (panic in portal logs on push) — production bug.\n"+
@@ -434,11 +437,45 @@ func TestFencingTokenFuzz(t *testing.T) {
 	requireFencingDockerAvailable(t)
 	requireFencingPortalImage(t)
 
-	// Shared infrastructure: all seeds share MinIO, Postgres, and MailHog.
-	// Each seed gets its own session and its own hot cluster.
+	// Shared infrastructure: all seeds share MinIO, Postgres, MailHog AND one
+	// running portal. Each seed gets its own session (a distinct manifest key) on
+	// that single shared portal — see runFencingSeed / fencingFuzzEnv for why a
+	// fresh session id is the only per-seed isolation the property needs.
+	//
+	// Single-cluster reuse (vs the previous two-cold-starts-per-seed design) is
+	// the reliability fix: cold-starting 2*N portal containers under parallel
+	// seeds saturated the shared Docker host, stalling boots past the readiness
+	// deadline ("pod 0 is nil after startup"). One cold-start sidesteps that
+	// failure mode entirely and is far faster.
 	mn := minio.Start(ctx, t, minio.Options{})
 	pg := postgres.Start(ctx, t, postgres.Options{})
 	mh := mailhog.Start(ctx, t)
+
+	// One portal pod serves every seed.
+	cluster := portalcluster.Start(ctx, t, portalcluster.Options{
+		Pods:        1,
+		Postgres:    pg,
+		ObjectStore: mn,
+		Router:      false,
+		PortalExtraEnv: map[string]string{
+			"JAMSESH_EMAIL_PROVIDER":  "smtp",
+			"JAMSESH_EMAIL_SMTP_HOST": mh.ContainerSMTPHost,
+			"JAMSESH_EMAIL_SMTP_PORT": strconv.Itoa(mh.ContainerSMTPPort),
+			"JAMSESH_EMAIL_SMTP_TLS":  "none",
+		},
+	})
+	pod := cluster.Pods[0]
+
+	// Seed-independent auth identity + org, established once. Seeds differ only by
+	// their session id, so they can share one user and one org.
+	userEmail := randEmail(t, "fuzz-fence")
+	pair := authflow.SignInViaMagicLink(ctx, t, pod, mh, userEmail)
+	env := &fencingFuzzEnv{
+		pod:         pod,
+		accessToken: pair.AccessToken,
+		userID:      fencingGetMe(ctx, t, pod.URL, pair.AccessToken),
+		orgID:       authflow.CreateOrg(ctx, t, pod, pair.AccessToken, "Fencing Fuzz Org"),
+	}
 
 	// ---------------------------------------------------------------------------
 	// Phase 1: seed corpus
@@ -459,7 +496,7 @@ func TestFencingTokenFuzz(t *testing.T) {
 	for i, seed := range seeds {
 		seed := seed // capture
 		t.Run(fmt.Sprintf("seed_%02d_%s", i, sanitizeFencingName(seed.Description)), func(t *testing.T) {
-			runFencingSeed(ctx, t, mn, pg, mh, seed.Description, seed.Token)
+			runFencingSeed(ctx, t, env, mn, seed.Description, seed.Token)
 		})
 	}
 
@@ -467,7 +504,7 @@ func TestFencingTokenFuzz(t *testing.T) {
 	// Phase 2: random property iterations
 	// ---------------------------------------------------------------------------
 
-	iterations := 10 // low default: each iteration is a full cold-start cycle
+	iterations := 10 // each iteration is one session+push against the shared portal
 	if v := os.Getenv("FENCING_FUZZ_COUNT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			iterations = n
@@ -488,7 +525,7 @@ func TestFencingTokenFuzz(t *testing.T) {
 		i := i // capture
 		rawToken := generateRandomFencingTokenValue(rng)
 		t.Run(fmt.Sprintf("rand_%04d", i), func(t *testing.T) {
-			runFencingSeed(ctx, t, mn, pg, mh, fmt.Sprintf("rand_%04d", i), rawToken)
+			runFencingSeed(ctx, t, env, mn, fmt.Sprintf("rand_%04d", i), rawToken)
 		})
 	}
 }
@@ -815,6 +852,40 @@ func generateRandomFencingTokenValue(rng *mrand.Rand) string {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
+
+// fencingLogLen returns the current length (in bytes) of the pod's accumulated
+// logs. Used as a per-seed baseline so a later panic check inspects only the
+// log content produced after this point — necessary because the portal is
+// shared across every fuzz seed.
+func fencingLogLen(ctx context.Context, t *testing.T, pod *portal.Portal) int {
+	t.Helper()
+	logs, err := pod.Logs(ctx)
+	if err != nil {
+		// Treat an unreadable log as an empty baseline: fencingLogsSince clamps
+		// the offset, so a transient read failure just means this seed scans
+		// slightly more log than strictly its own — conservative, never unsafe.
+		t.Logf("fencingLogLen: pod.Logs failed (treating baseline as 0): %v", err)
+		return 0
+	}
+	return len(logs)
+}
+
+// fencingLogsSince returns the portal log content produced after the byte
+// offset baseline, so the panic check attributes panics to the correct seed on
+// the shared portal. If logs shrank or rotated (offset past end), it returns the
+// full current logs rather than panicking on a bad slice.
+func fencingLogsSince(ctx context.Context, t *testing.T, pod *portal.Portal, baseline int) string {
+	t.Helper()
+	logs, err := pod.Logs(ctx)
+	if err != nil {
+		t.Logf("fencingLogsSince: pod.Logs failed: %v", err)
+		return ""
+	}
+	if baseline < 0 || baseline > len(logs) {
+		return logs
+	}
+	return logs[baseline:]
+}
 
 // fencingTailLogs returns the last n lines of logs (or all if fewer than n).
 func fencingTailLogs(logs string, n int) string {
