@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-data-tx-integrity
 kind: feature
-stage: implementing
+stage: review
 tags: [bug, portal]
 parent: epic-bug-squash
 depends_on: []
@@ -306,3 +306,7 @@ are seq-based); ULID `id` DESC is a valid tiebreaker.
 **Deferred (out of scope, recorded for the run summary):** tombstone aggregate
 fields are the same Postgres-INTEGER vs domain-int64 mismatch (schema ~:284) but
 not a bug-scan finding — to be parked as a separate story by the user.
+
+## Implementation summary
+
+All 5 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
