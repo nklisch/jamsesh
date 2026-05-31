@@ -283,3 +283,17 @@ confined to `useFinalizeCuration`.
 ## Implementation summary
 
 All 5 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
+
+## Final-gate fix
+
+**Finding 3 (BLOCKING): ForkDialog `/mcp` fork POST missing bearer auth.**
+`ForkDialog.svelte` line 88: the fetch to `/mcp` had no `Authorization` header.
+The MCP endpoint requires bearer auth (`internal/portal/mcpendpoint/handler.go:94`).
+Fix: import `auth` from `$lib/auth.svelte`; read `auth.token` before the fetch;
+set `Authorization: Bearer ${token}` on the request headers (same pattern as
+`ArtifactPane.svelte`).
+
+Added test `'fork POST to /mcp carries Authorization: Bearer header'` in
+`ForkDialog.test.ts`: mocks `$lib/auth.svelte` with a known token, resolves refs,
+clicks Fork, asserts `fetch('/mcp')` was called with `Authorization: Bearer
+test-bearer-token-abc123`.

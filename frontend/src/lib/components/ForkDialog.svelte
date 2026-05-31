@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { auth } from '$lib/auth.svelte';
   import { client } from '$lib/api/client';
   import Button from './Button.svelte';
   import Modal from './Modal.svelte';
@@ -85,12 +86,16 @@
     };
 
     try {
+      const token = auth.token;
+      const mcpHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      };
+      if (token) mcpHeaders['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/mcp', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json, text/event-stream',
-        },
+        headers: mcpHeaders,
         body: JSON.stringify(body),
       });
 

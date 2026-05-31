@@ -6,6 +6,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import ForkDialog from './ForkDialog.svelte';
 
+// ── Mock auth ────────────────────────────────────────────────────────────────
+
+// Note: vi.mock factories are hoisted to the top of the file, so we cannot
+// reference a module-level const here. Use a literal string and mirror it below.
+vi.mock('$lib/auth.svelte', () => ({
+  auth: {
+    token: 'test-bearer-token-abc123',
+    isAuthenticated: true,
+    currentUser: { id: 'user-1', email: 'test@example.com', displayName: 'Test' },
+  },
+}));
+
+// Mirror the literal above so assertions can reference it without duplication.
+const TEST_TOKEN = 'test-bearer-token-abc123';
+
 // ── Mock the API client ──────────────────────────────────────────────────────
 
 const mockGET = vi.fn();
@@ -143,5 +158,33 @@ describe('ForkDialog', () => {
       params: { arguments: { target_commit_sha?: string } };
     };
     expect(body.params.arguments.target_commit_sha).toBe('deadbeef');
+  });
+
+  it('fork POST to /mcp carries Authorization: Bearer header', async () => {
+    const refsResponse = {
+      refs: [{ ref: 'refs/heads/jam/sess-1/user/main', sha: 'cafebabe' }],
+    };
+    mockGET.mockResolvedValueOnce({ data: refsResponse, error: null });
+
+    renderDialog({
+      orgId: 'org-real',
+      sessionId: 'sess-1',
+      sourceRef: 'refs/heads/jam/sess-1/user/main',
+    });
+
+    await clickFork();
+
+    await waitFor(() => {
+      expect(vi.mocked(fetch)).toHaveBeenCalled();
+    });
+
+    const fetchCalls = vi.mocked(fetch).mock.calls;
+    expect(fetchCalls.length).toBeGreaterThan(0);
+    const [url, options] = fetchCalls[0] as [string, RequestInit];
+    expect(url).toBe('/mcp');
+
+    // The Authorization header must be present and carry the bearer token.
+    const headers = options.headers as Record<string, string>;
+    expect(headers['Authorization']).toBe(`Bearer ${TEST_TOKEN}`);
   });
 });
