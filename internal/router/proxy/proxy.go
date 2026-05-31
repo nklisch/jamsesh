@@ -37,6 +37,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"sync/atomic"
+	"time"
 
 	"jamsesh/internal/portal/metrics"
 	"jamsesh/internal/router/cache"
@@ -134,8 +135,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if first.status != http.StatusServiceUnavailable {
-		// Not a 503: commit this response to the client.
+	// A pod is "failed" for redispatch purposes in two distinct ways:
+	//   - it returned a 503 (lease held elsewhere — a live pod saying "not me"), or
+	//   - the upstream dial/connection errored (a SIGKILLed/black-holed pod that
+	//     produced no HTTP response at all — recorded as transport error).
+	// Both warrant the same transparent failover to a distinct pod. Without the
+	// transport-error case, a killed pod returned a bare 502 and the client never
+	// failed over (the dead-pod-502 bug).
+	if first.transportErr == nil && first.status != http.StatusServiceUnavailable {
+		// Not a failure: commit this response to the client.
 		first.flush(w)
 		// Success path: update hint cache on 2xx (or an implicit 200).
 		if first.status == 0 || (first.status >= 200 && first.status < 300) {
@@ -144,25 +152,32 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 503 from first pod: invalidate hint and retry once on a distinct pod.
-	slog.WarnContext(r.Context(), "router: pod returned 503, retrying",
+	// Failure from first pod: invalidate hint and retry once on a distinct pod.
+	failKind := "503"
+	if first.transportErr != nil {
+		failKind = "transport error"
+	}
+	slog.WarnContext(r.Context(), "router: pod attempt failed, retrying",
 		"session_id", sessionID,
 		"failed_pod", pod.ID,
+		"kind", failKind,
 	)
 	h.Hint.Invalidate(sessionID)
 
 	retryPod := h.Ring.GetNext(sessionID, pod.ID)
-	// Surface the 503 without retrying when there is no distinct retry target,
-	// or when the request body is too large to replay faithfully.
+	// Surface the failure without retrying when there is no distinct retry
+	// target, or when the request body is too large to replay faithfully.
 	if retryPod.Address == "" || retryPod.ID == pod.ID || !retrySafe {
 		reason := "no retry target"
 		if !retrySafe && retryPod.Address != "" && retryPod.ID != pod.ID {
 			reason = "request body not replayable"
 		}
-		slog.WarnContext(r.Context(), "router: propagating 503 without retry",
-			"session_id", sessionID, "reason", reason)
+		slog.WarnContext(r.Context(), "router: propagating failure without retry",
+			"session_id", sessionID, "kind", failKind, "reason", reason)
 		h.incDecision("error_503")
-		first.flush(w)
+		// A transport error left the buffer empty (no status/body); synthesise a
+		// 502 so the client gets a clean bad-gateway rather than an empty 200.
+		writeFirstFailure(w, first)
 		return
 	}
 
@@ -176,17 +191,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rewind()
 
 	// Retry against the distinct pod, buffered as well so a successful retry
-	// fully replaces the discarded 503. This is the bounded retry: exactly one
-	// additional pod attempt. Whatever the retry produces (2xx on success, or
-	// another 503 when the second pod is also unavailable) is what the client
-	// sees — we never fall back to the discarded first-attempt 503.
+	// fully replaces the discarded first failure. This is the bounded retry:
+	// exactly one additional pod attempt. Whatever the retry produces (2xx on
+	// success, another 503, or a transport error when the second pod is also
+	// down) is what the client sees — we never fall back to the discarded first
+	// attempt.
 	retry := newBufferedResponse(w)
 	h.proxyTo(retryPod, retry, r)
 	if retry.committed {
 		return
 	}
-	retry.flush(w)
+	writeFirstFailure(w, retry)
 	// Don't update hint on retry; let the next request re-establish via ring.
+}
+
+// writeFirstFailure commits the buffered attempt br to w. When br carries a
+// transport error its buffer is empty (the ErrorHandler wrote no status/body),
+// so a 502 Bad Gateway is synthesised; otherwise the buffered response (e.g. a
+// 503 or a 2xx retry success) is flushed through unchanged.
+func writeFirstFailure(w http.ResponseWriter, br *bufferedResponse) {
+	if br.transportErr != nil && !br.wrote {
+		http.Error(w, "bad gateway", http.StatusBadGateway)
+		return
+	}
+	br.flush(w)
 }
 
 // maxRetryBodyBytes caps how much request body the router buffers to enable a
@@ -285,7 +313,50 @@ func (h *Handler) resolvePod(sessionID string) (ring.Pod, string) {
 	return h.Ring.Get(sessionID), "ring"
 }
 
+// upstreamTransport is the shared transport for all upstream proxy legs. It
+// imposes a bounded dial timeout so a black-holed pod (one that accepts no
+// connection, or whose route silently drops packets) fails fast instead of
+// hanging the request. Without this bound a SIGKILLed-then-replaced pod, or a
+// pod behind injected latency, would stall the whole request past any SLO.
+//
+// Only the dial is bounded here: response streaming (long git fetches, SSE,
+// WebSocket upgrades) must not be cut by a transport-level timeout, so
+// ResponseHeaderTimeout and the overall request deadline are deliberately left
+// to the server's ReadHeaderTimeout and the upstream pods' own per-request
+// timeouts (see cmd/jamsesh-router/main.go). The dial timeout is the single
+// fast-fail gate that converts "dead pod" into a prompt transport error the
+// failover path can act on.
+var upstreamTransport http.RoundTripper = &http.Transport{
+	Proxy: http.ProxyFromEnvironment,
+	DialContext: (&net.Dialer{
+		Timeout:   dialTimeout,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	ForceAttemptHTTP2:     false, // portal pods speak HTTP/1.1 (WebSocket requires it)
+	MaxIdleConns:          100,
+	MaxIdleConnsPerHost:   8,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   dialTimeout,
+	ExpectContinueTimeout: 1 * time.Second,
+	// ResponseHeaderTimeout intentionally unset: streaming upstream responses
+	// (git packfiles, WebSocket) must not be cut at the transport layer.
+}
+
+// dialTimeout bounds how long the router waits to establish a TCP connection to
+// an upstream pod before treating it as a transport failure (and failing over).
+// Kept short so a dead/black-holed pod is detected well within request SLOs;
+// long enough to tolerate ordinary cross-node connection setup latency.
+const dialTimeout = 3 * time.Second
+
 // proxyTo reverse-proxies r to pod, writing the response to w.
+//
+// When the upstream dial or connection fails (a dead/SIGKILLed pod refuses the
+// connection, or a black-holed pod times out the dial), the ReverseProxy
+// ErrorHandler records the error on the bufferedResponse via setTransportErr
+// rather than writing a 502 into the buffer. ServeHTTP inspects that signal and
+// fails over to a distinct pod, exactly as it redispatches on a 503. Only when
+// no buffered response is in play (it always is for session routes) does the
+// ErrorHandler fall back to writing a 502 directly.
 func (h *Handler) proxyTo(pod ring.Pod, w http.ResponseWriter, r *http.Request) {
 	target := &url.URL{
 		Scheme: "http",
@@ -293,6 +364,7 @@ func (h *Handler) proxyTo(pod ring.Pod, w http.ResponseWriter, r *http.Request) 
 	}
 
 	proxy := &httputil.ReverseProxy{
+		Transport: upstreamTransport,
 		Director: func(req *http.Request) {
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host
@@ -308,6 +380,13 @@ func (h *Handler) proxyTo(pod ring.Pod, w http.ResponseWriter, r *http.Request) 
 				"pod_addr", pod.Address,
 				"err", err,
 			)
+			// Record the transport error on the buffered response so ServeHTTP
+			// can fail over to a distinct pod. If the response is not buffered
+			// (no failover possible), surface a 502 directly.
+			if br, ok := rw.(*bufferedResponse); ok {
+				br.setTransportErr(err)
+				return
+			}
 			http.Error(rw, "bad gateway", http.StatusBadGateway)
 		},
 		// ModifyResponse is nil — pass upstream response through unmodified.
@@ -337,13 +416,14 @@ func (h *Handler) writeNoBackend(w http.ResponseWriter) {
 // sent), committed is set: from that point the response has reached the client
 // directly and must not be retried or replayed.
 type bufferedResponse struct {
-	real      http.ResponseWriter // underlying writer (for Hijack/Flush delegation)
-	header    http.Header         // buffered response headers
-	body      bytes.Buffer        // buffered response body
-	status    int                 // captured status code (0 = WriteHeader not yet called)
-	wrote     bool                // WriteHeader has been called
-	committed bool                // response went directly to real (hijack/flush) — do not retry/replay
-	hijacked  bool                // connection was hijacked — caller owns the raw conn
+	real         http.ResponseWriter // underlying writer (for Hijack/Flush delegation)
+	header       http.Header         // buffered response headers
+	body         bytes.Buffer        // buffered response body
+	status       int                 // captured status code (0 = WriteHeader not yet called)
+	wrote        bool                // WriteHeader has been called
+	committed    bool                // response went directly to real (hijack/flush) — do not retry/replay
+	hijacked     bool                // connection was hijacked — caller owns the raw conn
+	transportErr error               // non-nil when the upstream dial/connection failed (set by ErrorHandler)
 }
 
 // newBufferedResponse returns a bufferedResponse wrapping real. Its header map
@@ -367,6 +447,15 @@ func (b *bufferedResponse) Header() http.Header {
 		return b.real.Header()
 	}
 	return b.header
+}
+
+// setTransportErr records an upstream dial/connection failure reported by the
+// ReverseProxy ErrorHandler. The ErrorHandler runs before any upstream status
+// or body reaches the buffer, so the buffered response is still clean and the
+// caller (ServeHTTP) can discard it and fail over to a distinct pod. It does not
+// write a status or body; ServeHTTP decides whether to retry or surface a 502.
+func (b *bufferedResponse) setTransportErr(err error) {
+	b.transportErr = err
 }
 
 // WriteHeader records the upstream status code without touching the client.
@@ -480,6 +569,9 @@ func (f *roundRobinFallback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Host:   pod.Address,
 	}
 	proxy := &httputil.ReverseProxy{
+		// Share the bounded-dial transport so a dead pod selected by round-robin
+		// fails fast (502) instead of hanging the request.
+		Transport: upstreamTransport,
 		Director: func(req *http.Request) {
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host

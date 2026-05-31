@@ -258,6 +258,109 @@ func Test503RetrySucceeds(t *testing.T) {
 	}
 }
 
+// TestDeadPodTransportErrorFailsOver verifies that when the primary pod is dead
+// (the upstream dial fails with connection-refused — the SIGKILLed-pod case, NOT
+// a 503 status), the router invalidates the hint, redispatches to a distinct
+// live pod, and the client sees that pod's 2xx — never a 502.
+//
+// This is the dead-pod-502 bug: a killed pod produces a transport error, not a
+// 503, so the 503-only redispatch path never fired and the client got a 502.
+// The first attempt is pinned to the dead pod via the hint cache so the failover
+// path is exercised deterministically.
+func TestDeadPodTransportErrorFailsOver(t *testing.T) {
+	const okBody = "OK-FROM-LIVE-POD"
+
+	// "Dead" pod: start a server, capture its address, then close it so any dial
+	// to that address fails with connection-refused (mirrors a SIGKILLed pod).
+	tsDead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	deadAddr := strings.TrimPrefix(tsDead.URL, "http://")
+	tsDead.Close() // now deadAddr refuses connections
+
+	// Live pod: always returns 200.
+	var liveHits int32
+	tsLive := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&liveHits, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, okBody)
+	}))
+	t.Cleanup(tsLive.Close)
+
+	r := ring.New(50)
+	r.SetPods([]ring.Pod{
+		{ID: "pod-dead", Address: deadAddr},
+		{ID: "pod-live", Address: strings.TrimPrefix(tsLive.URL, "http://")},
+	})
+	hint := cache.New(100, 60*time.Second)
+	// Pin the first attempt to the dead pod so the failover path always runs.
+	hint.Set("dead-session", "pod-dead")
+	h := &proxy.Handler{
+		Extract:  staticExtract,
+		Ring:     r,
+		Hint:     hint,
+		Fallback: proxy.NewRoundRobinFallback(r),
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/o/sessions/dead-session/x", nil)
+	req.Header.Set("X-Test-Session", "dead-session")
+	h.ServeHTTP(rr, req)
+
+	body, _ := io.ReadAll(rr.Body)
+
+	// Invariant: the client sees the live pod's 200, never a 502 from the dead pod.
+	if rr.Code != http.StatusOK {
+		t.Errorf("dead-pod failover: got status %d (body %q); want 200 from the live pod — "+
+			"a dial/transport error to a dead pod must fail over, not return 502", rr.Code, body)
+	}
+	if string(body) != okBody {
+		t.Errorf("dead-pod failover: client received body %q; want %q from the live pod", body, okBody)
+	}
+	if got := atomic.LoadInt32(&liveHits); got != 1 {
+		t.Errorf("dead-pod failover: live pod hit %d times; want exactly 1 (the failover must reach it)", got)
+	}
+	// The dead pod's hint must be invalidated so future requests don't re-pin it.
+	if _, ok := hint.Get("dead-session"); ok {
+		t.Error("dead-pod failover: hint for dead session was not invalidated after the transport error")
+	}
+}
+
+// TestBothPodsDeadReturns502 verifies the failover-exhaustion path for transport
+// errors: when both the primary and retry pods are dead (dial failures), the
+// client receives a 502 after exactly two pod attempts — never an indefinite
+// hang and never more than the bounded retry.
+func TestBothPodsDeadReturns502(t *testing.T) {
+	// Two dead addresses: start then close so both refuse connections.
+	mkDead := func() string {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		ts.Close()
+		return addr
+	}
+	deadA := mkDead()
+	deadB := mkDead()
+
+	r := ring.New(50)
+	r.SetPods([]ring.Pod{
+		{ID: "pod-a", Address: deadA},
+		{ID: "pod-b", Address: deadB},
+	})
+	h := &proxy.Handler{
+		Extract:  staticExtract,
+		Ring:     r,
+		Hint:     cache.New(100, 60*time.Second),
+		Fallback: proxy.NewRoundRobinFallback(r),
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/o/sessions/both-dead/x", nil)
+	req.Header.Set("X-Test-Session", "both-dead")
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Errorf("both pods dead: got %d, want 502 (bad gateway) after bounded failover", rr.Code)
+	}
+}
+
 // Test503BothPodsPropagate verifies the bounded-retry exhaustion path: when
 // both the primary and retry pods return 503, the client receives 503 after
 // exactly two pod attempts (initial + one retry) — never more.
