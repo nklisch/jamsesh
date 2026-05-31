@@ -541,6 +541,122 @@ func TestAcquireFinalizeLock_StaleLockRefreshedMidTx(t *testing.T) {
 	}
 }
 
+// TestAcquireFinalizeLock_ConditionalRelease_RefreshedLock is the final-gate-2
+// regression test for Finding 2. It verifies that the conditional (atomic)
+// release UPDATE correctly prevents a stale-takeover when the lock holder
+// refreshes last_activity_at between the preflight read and the UPDATE.
+//
+// The test uses staleLockRefreshStore to deliver a stale preflight snapshot
+// while keeping the real DB row fresh. Because the conditional UPDATE guards
+// on last_activity_at < cutoff, and the DB row is fresh, 0 rows are affected →
+// takeover is aborted → 409. The lock must NOT be released.
+//
+// A second sub-test verifies the inverse: a genuinely stale row in the DB
+// (not just in the snapshot) IS released and the takeover succeeds.
+func TestAcquireFinalizeLock_ConditionalRelease_RefreshedLock(t *testing.T) {
+	t.Run("refreshed lock NOT released (conditional UPDATE returns 0 rows)", func(t *testing.T) {
+		env := newFinalizeEnv(t)
+		ctx := context.Background()
+
+		now := time.Now().UTC()
+		lockID := ulid.Make().String()
+
+		// DB holds a FRESH lock (last_activity_at = now).
+		if err := env.store.InsertFinalizeLock(ctx, store.InsertFinalizeLockParams{
+			ID:                  lockID,
+			OrgID:               env.orgID,
+			SessionID:           env.sessID,
+			AcquiredByAccountID: env.otherID,
+			AcquiredAt:          now.Add(-35 * time.Minute),
+			LastActivityAt:      now, // fresh in DB
+			SelectedCommitSHAs:  "[]",
+			Mode:                "squash",
+		}); err != nil {
+			t.Fatalf("seed fresh lock: %v", err)
+		}
+
+		// Preflight snapshot claims the lock is stale (last_activity_at 31 min ago).
+		staleSnapshot := store.FinalizeLock{
+			ID:                  lockID,
+			OrgID:               env.orgID,
+			SessionID:           env.sessID,
+			AcquiredByAccountID: env.otherID,
+			AcquiredAt:          now.Add(-35 * time.Minute),
+			LastActivityAt:      now.Add(-31 * time.Minute), // stale in snapshot
+			SelectedCommitSHAs:  "[]",
+			Mode:                "squash",
+		}
+		ws := &staleLockRefreshStore{Store: env.store, staleSnapshot: staleSnapshot}
+		h := newFinalizeHandlerWith(t, ws, env.store)
+
+		resp, err := h.AcquireFinalizeLock(env.callerCtx, openapi.AcquireFinalizeLockRequestObject{
+			OrgID:     env.orgID,
+			SessionID: env.sessID,
+		})
+		if err != nil {
+			t.Fatalf("unexpected Go error: %v", err)
+		}
+		if _, ok := resp.(openapi.AcquireFinalizeLock409JSONResponse); !ok {
+			t.Errorf("expected 409 (holder refreshed lock), got %T", resp)
+		}
+
+		// Lock must NOT have been released — conditional UPDATE found 0 rows.
+		lock, err := env.store.GetFinalizeLockByID(ctx, lockID)
+		if err != nil {
+			t.Fatalf("GetFinalizeLockByID: %v", err)
+		}
+		if lock.ReleasedAt != nil {
+			t.Errorf("lock.released_at = %v; want nil — conditional release must not fire on a refreshed lock", lock.ReleasedAt)
+		}
+	})
+
+	t.Run("genuinely stale lock IS released and takeover succeeds", func(t *testing.T) {
+		env := newFinalizeEnv(t)
+		ctx := context.Background()
+
+		stale := time.Now().UTC().Add(-31 * time.Minute)
+		lockID := ulid.Make().String()
+
+		// DB holds a STALE lock (last_activity_at = 31 min ago).
+		if err := env.store.InsertFinalizeLock(ctx, store.InsertFinalizeLockParams{
+			ID:                  lockID,
+			OrgID:               env.orgID,
+			SessionID:           env.sessID,
+			AcquiredByAccountID: env.otherID,
+			AcquiredAt:          stale,
+			LastActivityAt:      stale, // stale in DB
+			SelectedCommitSHAs:  "[]",
+			Mode:                "squash",
+		}); err != nil {
+			t.Fatalf("seed stale lock: %v", err)
+		}
+
+		resp, err := env.handler.AcquireFinalizeLock(env.callerCtx, openapi.AcquireFinalizeLockRequestObject{
+			OrgID:     env.orgID,
+			SessionID: env.sessID,
+		})
+		if err != nil {
+			t.Fatalf("acquire: %v", err)
+		}
+		got201, status := asAcquire201(t, resp)
+		if !got201 {
+			t.Fatalf("expected 201 (stale takeover), got %T", resp)
+		}
+		if status.HeldByAccountId != env.caller.ID {
+			t.Errorf("HeldByAccountId = %q; want %q", status.HeldByAccountId, env.caller.ID)
+		}
+
+		// Original stale lock must now be released.
+		old, err := env.store.GetFinalizeLockByID(ctx, lockID)
+		if err != nil {
+			t.Fatalf("GetFinalizeLockByID: %v", err)
+		}
+		if old.ReleasedAt == nil {
+			t.Error("stale lock released_at is nil; conditional UPDATE should have released it")
+		}
+	})
+}
+
 func TestAcquireFinalizeLock_Unauthenticated(t *testing.T) {
 	env := newFinalizeEnv(t)
 	resp, err := env.handler.AcquireFinalizeLock(context.Background(), openapi.AcquireFinalizeLockRequestObject{

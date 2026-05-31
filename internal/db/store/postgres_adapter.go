@@ -1809,6 +1809,15 @@ func (a *postgresAdapter) ReleaseFinalizeLock(ctx context.Context, p ReleaseFina
 	}))
 }
 
+func (a *postgresAdapter) ReleaseFinalizeLockIfStale(ctx context.Context, p ReleaseFinalizeLockIfStaleParams) (int64, error) {
+	n, err := a.q.ReleaseFinalizeLockIfStale(ctx, pgstore.ReleaseFinalizeLockIfStaleParams{
+		ID:             p.ID,
+		ReleasedAt:     &p.ReleasedAt,
+		LastActivityAt: p.Cutoff,
+	})
+	return n, mapPostgresErr(err)
+}
+
 func (a *postgresAdapter) SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error {
 	return mapPostgresErr(a.q.SupersedeFinalizeLock(ctx, pgstore.SupersedeFinalizeLockParams{
 		ID:                 p.ID,
@@ -1859,6 +1868,15 @@ func (s *postgresTxStore) ReleaseFinalizeLock(ctx context.Context, p ReleaseFina
 		ID:         p.ID,
 		ReleasedAt: &p.ReleasedAt,
 	}))
+}
+
+func (s *postgresTxStore) ReleaseFinalizeLockIfStale(ctx context.Context, p ReleaseFinalizeLockIfStaleParams) (int64, error) {
+	n, err := s.q.ReleaseFinalizeLockIfStale(ctx, pgstore.ReleaseFinalizeLockIfStaleParams{
+		ID:             p.ID,
+		ReleasedAt:     &p.ReleasedAt,
+		LastActivityAt: p.Cutoff,
+	})
+	return n, mapPostgresErr(err)
 }
 
 func (s *postgresTxStore) SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error {

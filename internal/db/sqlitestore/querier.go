@@ -105,6 +105,7 @@ type Querier interface {
 	PurgeExpiredTombstones(ctx context.Context, expiresAt time.Time) error
 	RecordTombstone(ctx context.Context, arg RecordTombstoneParams) error
 	ReleaseFinalizeLock(ctx context.Context, arg ReleaseFinalizeLockParams) error
+	ReleaseFinalizeLockIfStale(ctx context.Context, arg ReleaseFinalizeLockIfStaleParams) (int64, error)
 	RemoveOrgMember(ctx context.Context, arg RemoveOrgMemberParams) error
 	RemoveSessionMember(ctx context.Context, arg RemoveSessionMemberParams) error
 	ResetSessionIdleTimer(ctx context.Context, arg ResetSessionIdleTimerParams) error

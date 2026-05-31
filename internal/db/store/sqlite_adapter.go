@@ -1815,6 +1815,15 @@ func (a *sqliteAdapter) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinali
 	}))
 }
 
+func (a *sqliteAdapter) ReleaseFinalizeLockIfStale(ctx context.Context, p ReleaseFinalizeLockIfStaleParams) (int64, error) {
+	n, err := a.q.ReleaseFinalizeLockIfStale(ctx, sqlitestore.ReleaseFinalizeLockIfStaleParams{
+		ID:             p.ID,
+		ReleasedAt:     &p.ReleasedAt,
+		LastActivityAt: p.Cutoff,
+	})
+	return n, mapSQLiteErr(err)
+}
+
 func (a *sqliteAdapter) SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error {
 	return mapSQLiteErr(a.q.SupersedeFinalizeLock(ctx, sqlitestore.SupersedeFinalizeLockParams{
 		ID:                 p.ID,
@@ -1865,6 +1874,15 @@ func (s *sqliteTxStore) ReleaseFinalizeLock(ctx context.Context, p ReleaseFinali
 		ID:         p.ID,
 		ReleasedAt: &p.ReleasedAt,
 	}))
+}
+
+func (s *sqliteTxStore) ReleaseFinalizeLockIfStale(ctx context.Context, p ReleaseFinalizeLockIfStaleParams) (int64, error) {
+	n, err := s.q.ReleaseFinalizeLockIfStale(ctx, sqlitestore.ReleaseFinalizeLockIfStaleParams{
+		ID:             p.ID,
+		ReleasedAt:     &p.ReleasedAt,
+		LastActivityAt: p.Cutoff,
+	})
+	return n, mapSQLiteErr(err)
 }
 
 func (s *sqliteTxStore) SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error {

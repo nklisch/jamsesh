@@ -136,6 +136,28 @@ func (q *Queries) ReleaseFinalizeLock(ctx context.Context, arg ReleaseFinalizeLo
 	return err
 }
 
+const releaseFinalizeLockIfStale = `-- name: ReleaseFinalizeLockIfStale :execrows
+UPDATE finalize_locks
+SET released_at = $1
+WHERE id = $2
+  AND released_at IS NULL
+  AND last_activity_at < $3
+`
+
+type ReleaseFinalizeLockIfStaleParams struct {
+	ReleasedAt     *time.Time `json:"released_at"`
+	ID             string     `json:"id"`
+	LastActivityAt time.Time  `json:"last_activity_at"`
+}
+
+func (q *Queries) ReleaseFinalizeLockIfStale(ctx context.Context, arg ReleaseFinalizeLockIfStaleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseFinalizeLockIfStale, arg.ReleasedAt, arg.ID, arg.LastActivityAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const supersedeFinalizeLock = `-- name: SupersedeFinalizeLock :exec
 UPDATE finalize_locks
 SET superseded_by_lock_id = $1

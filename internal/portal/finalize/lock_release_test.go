@@ -148,6 +148,9 @@ func (f *failingReleaseLockStore) TouchFinalizeLock(ctx context.Context, p store
 func (f *failingReleaseLockStore) ReleaseFinalizeLock(_ context.Context, _ store.ReleaseFinalizeLockParams) error {
 	return errors.New("conn refused")
 }
+func (f *failingReleaseLockStore) ReleaseFinalizeLockIfStale(ctx context.Context, p store.ReleaseFinalizeLockIfStaleParams) (int64, error) {
+	return f.realStore.ReleaseFinalizeLockIfStale(ctx, p)
+}
 func (f *failingReleaseLockStore) SupersedeFinalizeLock(ctx context.Context, p store.SupersedeFinalizeLockParams) error {
 	return f.realStore.SupersedeFinalizeLock(ctx, p)
 }

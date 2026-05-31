@@ -51,6 +51,9 @@ func (f *failingInsertLockStore) TouchFinalizeLock(ctx context.Context, p store.
 func (f *failingInsertLockStore) ReleaseFinalizeLock(ctx context.Context, p store.ReleaseFinalizeLockParams) error {
 	return f.realStore.ReleaseFinalizeLock(ctx, p)
 }
+func (f *failingInsertLockStore) ReleaseFinalizeLockIfStale(ctx context.Context, p store.ReleaseFinalizeLockIfStaleParams) (int64, error) {
+	return f.realStore.ReleaseFinalizeLockIfStale(ctx, p)
+}
 func (f *failingInsertLockStore) SupersedeFinalizeLock(ctx context.Context, p store.SupersedeFinalizeLockParams) error {
 	return f.realStore.SupersedeFinalizeLock(ctx, p)
 }

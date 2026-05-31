@@ -46,6 +46,13 @@ UPDATE finalize_locks
 SET released_at = ?
 WHERE id = ? AND released_at IS NULL;
 
+-- name: ReleaseFinalizeLockIfStale :execrows
+UPDATE finalize_locks
+SET released_at = ?
+WHERE id = ?
+  AND released_at IS NULL
+  AND last_activity_at < ?;
+
 -- name: SupersedeFinalizeLock :exec
 UPDATE finalize_locks
 SET superseded_by_lock_id = ?

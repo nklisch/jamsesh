@@ -25,10 +25,10 @@ import (
 var ErrOverrideRaceLost = errors.New("finalize: override race lost — another caller inserted the active lock first")
 
 // errStaleLockRefreshed is a private sentinel returned from inside the tx
-// closure when a preflight-stale lock was refreshed by its holder between the
-// preflight read and the in-tx re-read. The tx is rolled back and the caller
-// receives a 409 (lock_held_by_other).
-var errStaleLockRefreshed = errors.New("finalize: stale lock was refreshed before in-tx re-read")
+// closure when the holder refreshed last_activity_at between the preflight
+// read and the conditional release UPDATE (TOCTOU window). The tx is rolled
+// back and the caller receives a 409 (lock_held_by_other).
+var errStaleLockRefreshed = errors.New("finalize: stale lock was refreshed before conditional release")
 
 // AcquireFinalizeLock implements POST
 // /api/orgs/{orgID}/sessions/{sessionID}/finalize/lock.
@@ -175,36 +175,52 @@ func (h *Handler) AcquireFinalizeLock(ctx context.Context, req openapi.AcquireFi
 	if hadExisting {
 		existingID = existing.ID
 		// Branch 3 (stale takeover): the preflight decided the lock was expired.
-		// We must re-check staleness INSIDE the tx to close the TOCTOU window
+		// We must perform the release atomically, conditioned on last_activity_at
+		// still being below the staleness cutoff, to close the TOCTOU window
 		// where the holder refreshes last_activity_at between the preflight read
-		// and the in-tx release. Override (branch 5) does not need this guard
-		// because it applies regardless of freshness.
+		// and the release. Override (branch 5) does not need this guard because
+		// it applies regardless of freshness.
 		staleRelease = supersedeOldID == "" // only branch 3, not branch 5
 	}
+	// staleCutoff is the exclusive upper bound used by the conditional UPDATE:
+	// the lock row must still have last_activity_at < staleCutoff at the moment
+	// the UPDATE executes. This is now - FinalizeLockTTL (the expiry threshold).
+	staleCutoff := now.Add(-FinalizeLockTTL)
 	err = h.store.WithTx(ctx, func(tx store.TxStore) error {
 		// Branch 3 or 5: release the current lock (stale or override) first so
 		// InsertFinalizeLock can satisfy the unique partial index.
 		if hadExisting {
-			// Branch 3 (stale takeover only): re-read the lock in-tx and verify it
-			// is still expired. If the holder refreshed last_activity_at after the
-			// preflight read, abort the takeover — return errStaleLockRefreshed so
-			// the caller sends a 409.
 			if staleRelease {
-				live, err := tx.GetFinalizeLockByID(ctx, existingID)
+				// Branch 3 (stale takeover): use a single conditional UPDATE that
+				// atomically guards on last_activity_at < staleCutoff. If the holder
+				// refreshed the lock after the preflight read, the WHERE predicate
+				// evaluates to false under the row lock and 0 rows are affected —
+				// we abort the takeover and return 409. This is the only correct
+				// way to close the TOCTOU window; a separate SELECT then UPDATE
+				// cannot close it because the holder can refresh between the two
+				// statements.
+				n, err := tx.ReleaseFinalizeLockIfStale(ctx, store.ReleaseFinalizeLockIfStaleParams{
+					ID:         existingID,
+					ReleasedAt: now,
+					Cutoff:     staleCutoff,
+				})
 				if err != nil {
-					return fmt.Errorf("in-tx re-read stale lock: %w", err)
+					return fmt.Errorf("conditional release stale lock: %w", err)
 				}
-				if !IsLockExpired(live.LastActivityAt, now) {
-					// Holder refreshed the lock between preflight and tx — abort.
+				if n == 0 {
+					// Holder refreshed the lock between preflight and conditional
+					// UPDATE — the lock is now live. Abort the takeover.
 					return errStaleLockRefreshed
 				}
-			}
-
-			if err := tx.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
-				ID:         existingID,
-				ReleasedAt: now,
-			}); err != nil {
-				return fmt.Errorf("release lock: %w", err)
+			} else {
+				// Branch 5 (override): unconditional release; override applies
+				// regardless of freshness.
+				if err := tx.ReleaseFinalizeLock(ctx, store.ReleaseFinalizeLockParams{
+					ID:         existingID,
+					ReleasedAt: now,
+				}); err != nil {
+					return fmt.Errorf("release lock (override): %w", err)
+				}
 			}
 		}
 

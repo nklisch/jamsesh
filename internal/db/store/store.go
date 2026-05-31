@@ -1154,6 +1154,18 @@ type ReleaseFinalizeLockParams struct {
 	ReleasedAt time.Time
 }
 
+// ReleaseFinalizeLockIfStaleParams are the parameters for the conditional
+// stale-takeover release. The UPDATE only commits when the row still satisfies
+// released_at IS NULL AND last_activity_at < Cutoff, making the staleness
+// check and the release a single atomic operation.
+type ReleaseFinalizeLockIfStaleParams struct {
+	ID         string
+	ReleasedAt time.Time
+	// Cutoff is the exclusive upper bound: last_activity_at must be strictly
+	// before Cutoff for the UPDATE to affect a row (i.e. the lock is stale).
+	Cutoff time.Time
+}
+
 // SupersedeFinalizeLockParams sets superseded_by_lock_id on an older lock
 // when a fresh override creates a replacement.
 type SupersedeFinalizeLockParams struct {
@@ -1198,6 +1210,13 @@ type FinalizeLockStore interface {
 	// ReleaseFinalizeLock sets released_at on the row. Idempotent against
 	// already-released rows.
 	ReleaseFinalizeLock(ctx context.Context, p ReleaseFinalizeLockParams) error
+	// ReleaseFinalizeLockIfStale atomically releases a lock only when it is
+	// still unreleased AND last_activity_at < p.Cutoff (i.e. still stale at
+	// the moment the UPDATE executes). Returns 1 when the row was released,
+	// 0 when the holder refreshed last_activity_at between the caller's
+	// preflight read and this UPDATE (TOCTOU window closed). A zero return
+	// means the lock is live; the caller must treat it as lock_held_by_other.
+	ReleaseFinalizeLockIfStale(ctx context.Context, p ReleaseFinalizeLockIfStaleParams) (int64, error)
 	// SupersedeFinalizeLock points superseded_by_lock_id at a replacement lock.
 	SupersedeFinalizeLock(ctx context.Context, p SupersedeFinalizeLockParams) error
 }
