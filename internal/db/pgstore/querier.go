@@ -20,6 +20,7 @@ type Querier interface {
 	ClearFinalizeLock(ctx context.Context, arg ClearFinalizeLockParams) error
 	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) (int64, error)
 	ConsumeOAuthState(ctx context.Context, nonce string) (OauthState, error)
+	ConsumeResumeToken(ctx context.Context, arg ConsumeResumeTokenParams) (ResumeToken, error)
 	CountSessionMembers(ctx context.Context, arg CountSessionMembersParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	// Creates an anonymous account for a playground session participant.
@@ -39,6 +40,7 @@ type Querier interface {
 	// playground provisioning hook for the reserved `playground` org.
 	// Slug uniqueness is enforced by the existing UNIQUE constraint on orgs.slug.
 	CreateProtectedOrg(ctx context.Context, arg CreateProtectedOrgParams) (Org, error)
+	CreateResumeToken(ctx context.Context, arg CreateResumeTokenParams) (ResumeToken, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	DeleteReleasedLeasesOlderThan(ctx context.Context, releasedAt *time.Time) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
@@ -60,6 +62,7 @@ type Querier interface {
 	GetOrgMember(ctx context.Context, arg GetOrgMemberParams) (OrgMember, error)
 	GetOrgSessionInvitePolicy(ctx context.Context, id string) (string, error)
 	GetRefMode(ctx context.Context, arg GetRefModeParams) (RefMode, error)
+	GetResumeTokenByHash(ctx context.Context, tokenHash string) (ResumeToken, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	GetSessionInviteByID(ctx context.Context, id string) (SessionInvite, error)
 	GetSessionInviteByTokenHash(ctx context.Context, tokenHash string) (SessionInvite, error)

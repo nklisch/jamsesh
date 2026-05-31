@@ -187,6 +187,19 @@ func pgMagicLinkToken(row pgstore.MagicLinkToken) MagicLinkToken {
 	}
 }
 
+func pgResumeToken(row pgstore.ResumeToken) ResumeToken {
+	return ResumeToken{
+		ID:        row.ID,
+		TokenHash: row.TokenHash,
+		SessionID: row.SessionID,
+		OrgID:     row.OrgID,
+		AccountID: row.AccountID,
+		IssuedAt:  row.IssuedAt,
+		ExpiresAt: row.ExpiresAt,
+		UsedAt:    row.UsedAt,
+	}
+}
+
 func pgArchivedSession(row pgstore.ArchivedSession) ArchivedSession {
 	var ids []string
 	_ = json.Unmarshal([]byte(row.MemberAccountIds), &ids)
@@ -690,6 +703,38 @@ func (a *postgresAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMa
 		UsedAt: p.UsedAt,
 	})
 	return n, mapPostgresErr(err)
+}
+
+// ---------------------------------------------------------------------------
+// ResumeTokenStore
+// ---------------------------------------------------------------------------
+
+func (a *postgresAdapter) CreateResumeToken(ctx context.Context, p CreateResumeTokenParams) (ResumeToken, error) {
+	row, err := a.q.CreateResumeToken(ctx, pgstore.CreateResumeTokenParams{
+		ID:        p.ID,
+		TokenHash: p.TokenHash,
+		SessionID: p.SessionID,
+		OrgID:     p.OrgID,
+		AccountID: p.AccountID,
+		IssuedAt:  p.IssuedAt,
+		ExpiresAt: p.ExpiresAt,
+		UsedAt:    p.UsedAt,
+	})
+	return wrap1(row, err, mapPostgresErr, pgResumeToken)
+}
+
+func (a *postgresAdapter) GetResumeTokenByHash(ctx context.Context, tokenHash string) (ResumeToken, error) {
+	row, err := a.q.GetResumeTokenByHash(ctx, tokenHash)
+	return wrap1(row, err, mapPostgresErr, pgResumeToken)
+}
+
+func (a *postgresAdapter) ConsumeResumeToken(ctx context.Context, p ConsumeResumeTokenParams) (ResumeToken, error) {
+	row, err := a.q.ConsumeResumeToken(ctx, pgstore.ConsumeResumeTokenParams{
+		TokenHash: p.TokenHash,
+		UsedAt:    p.UsedAt,
+		ExpiresAt: p.Now,
+	})
+	return wrap1(row, err, mapPostgresErr, pgResumeToken)
 }
 
 // ---------------------------------------------------------------------------
@@ -1322,6 +1367,20 @@ func (s *postgresTxStore) GetMagicLinkTokenByHash(ctx context.Context, tokenHash
 func (s *postgresTxStore) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) (int64, error) {
 	n, err := s.q.ConsumeMagicLinkToken(ctx, pgstore.ConsumeMagicLinkTokenParams{ID: p.ID, UsedAt: p.UsedAt})
 	return n, mapPostgresErr(err)
+}
+
+// ResumeTokenStore
+func (s *postgresTxStore) CreateResumeToken(ctx context.Context, p CreateResumeTokenParams) (ResumeToken, error) {
+	row, err := s.q.CreateResumeToken(ctx, pgstore.CreateResumeTokenParams{ID: p.ID, TokenHash: p.TokenHash, SessionID: p.SessionID, OrgID: p.OrgID, AccountID: p.AccountID, IssuedAt: p.IssuedAt, ExpiresAt: p.ExpiresAt, UsedAt: p.UsedAt})
+	return wrap1(row, err, mapPostgresErr, pgResumeToken)
+}
+func (s *postgresTxStore) GetResumeTokenByHash(ctx context.Context, tokenHash string) (ResumeToken, error) {
+	row, err := s.q.GetResumeTokenByHash(ctx, tokenHash)
+	return wrap1(row, err, mapPostgresErr, pgResumeToken)
+}
+func (s *postgresTxStore) ConsumeResumeToken(ctx context.Context, p ConsumeResumeTokenParams) (ResumeToken, error) {
+	row, err := s.q.ConsumeResumeToken(ctx, pgstore.ConsumeResumeTokenParams{TokenHash: p.TokenHash, UsedAt: p.UsedAt, ExpiresAt: p.Now})
+	return wrap1(row, err, mapPostgresErr, pgResumeToken)
 }
 
 // ArchivedSessionStore

@@ -187,6 +187,19 @@ func sqliteMagicLinkToken(row sqlitestore.MagicLinkToken) MagicLinkToken {
 	}
 }
 
+func sqliteResumeToken(row sqlitestore.ResumeToken) ResumeToken {
+	return ResumeToken{
+		ID:        row.ID,
+		TokenHash: row.TokenHash,
+		SessionID: row.SessionID,
+		OrgID:     row.OrgID,
+		AccountID: row.AccountID,
+		IssuedAt:  row.IssuedAt,
+		ExpiresAt: row.ExpiresAt,
+		UsedAt:    row.UsedAt,
+	}
+}
+
 func sqliteArchivedSession(row sqlitestore.ArchivedSession) ArchivedSession {
 	var ids []string
 	_ = json.Unmarshal([]byte(row.MemberAccountIds), &ids)
@@ -693,6 +706,38 @@ func (a *sqliteAdapter) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagi
 		UsedAt: p.UsedAt,
 	})
 	return n, mapSQLiteErr(err)
+}
+
+// ---------------------------------------------------------------------------
+// ResumeTokenStore
+// ---------------------------------------------------------------------------
+
+func (a *sqliteAdapter) CreateResumeToken(ctx context.Context, p CreateResumeTokenParams) (ResumeToken, error) {
+	row, err := a.q.CreateResumeToken(ctx, sqlitestore.CreateResumeTokenParams{
+		ID:        p.ID,
+		TokenHash: p.TokenHash,
+		SessionID: p.SessionID,
+		OrgID:     p.OrgID,
+		AccountID: p.AccountID,
+		IssuedAt:  p.IssuedAt,
+		ExpiresAt: p.ExpiresAt,
+		UsedAt:    p.UsedAt,
+	})
+	return wrap1(row, err, mapSQLiteErr, sqliteResumeToken)
+}
+
+func (a *sqliteAdapter) GetResumeTokenByHash(ctx context.Context, tokenHash string) (ResumeToken, error) {
+	row, err := a.q.GetResumeTokenByHash(ctx, tokenHash)
+	return wrap1(row, err, mapSQLiteErr, sqliteResumeToken)
+}
+
+func (a *sqliteAdapter) ConsumeResumeToken(ctx context.Context, p ConsumeResumeTokenParams) (ResumeToken, error) {
+	row, err := a.q.ConsumeResumeToken(ctx, sqlitestore.ConsumeResumeTokenParams{
+		TokenHash: p.TokenHash,
+		UsedAt:    p.UsedAt,
+		ExpiresAt: p.Now,
+	})
+	return wrap1(row, err, mapSQLiteErr, sqliteResumeToken)
 }
 
 // ---------------------------------------------------------------------------
@@ -1330,6 +1375,20 @@ func (s *sqliteTxStore) GetMagicLinkTokenByHash(ctx context.Context, tokenHash s
 func (s *sqliteTxStore) ConsumeMagicLinkToken(ctx context.Context, p ConsumeMagicLinkTokenParams) (int64, error) {
 	n, err := s.q.ConsumeMagicLinkToken(ctx, sqlitestore.ConsumeMagicLinkTokenParams{ID: p.ID, UsedAt: p.UsedAt})
 	return n, mapSQLiteErr(err)
+}
+
+// ResumeTokenStore
+func (s *sqliteTxStore) CreateResumeToken(ctx context.Context, p CreateResumeTokenParams) (ResumeToken, error) {
+	row, err := s.q.CreateResumeToken(ctx, sqlitestore.CreateResumeTokenParams{ID: p.ID, TokenHash: p.TokenHash, SessionID: p.SessionID, OrgID: p.OrgID, AccountID: p.AccountID, IssuedAt: p.IssuedAt, ExpiresAt: p.ExpiresAt, UsedAt: p.UsedAt})
+	return wrap1(row, err, mapSQLiteErr, sqliteResumeToken)
+}
+func (s *sqliteTxStore) GetResumeTokenByHash(ctx context.Context, tokenHash string) (ResumeToken, error) {
+	row, err := s.q.GetResumeTokenByHash(ctx, tokenHash)
+	return wrap1(row, err, mapSQLiteErr, sqliteResumeToken)
+}
+func (s *sqliteTxStore) ConsumeResumeToken(ctx context.Context, p ConsumeResumeTokenParams) (ResumeToken, error) {
+	row, err := s.q.ConsumeResumeToken(ctx, sqlitestore.ConsumeResumeTokenParams{TokenHash: p.TokenHash, UsedAt: p.UsedAt, ExpiresAt: p.Now})
+	return wrap1(row, err, mapSQLiteErr, sqliteResumeToken)
 }
 
 // ArchivedSessionStore

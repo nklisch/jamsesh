@@ -177,6 +177,17 @@ type RefMode struct {
 	Mode      string `json:"mode"`
 }
 
+type ResumeToken struct {
+	ID        string     `json:"id"`
+	TokenHash string     `json:"token_hash"`
+	SessionID string     `json:"session_id"`
+	OrgID     string     `json:"org_id"`
+	AccountID string     `json:"account_id"`
+	IssuedAt  time.Time  `json:"issued_at"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at"`
+}
+
 type Session struct {
 	ID                        string             `json:"id"`
 	OrgID                     string             `json:"org_id"`

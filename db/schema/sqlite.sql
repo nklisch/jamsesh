@@ -80,6 +80,17 @@ CREATE TABLE magic_link_tokens (
     used_at DATETIME
 );
 
+CREATE TABLE resume_tokens (
+    id          TEXT PRIMARY KEY,
+    token_hash  TEXT NOT NULL UNIQUE,
+    session_id  TEXT NOT NULL,
+    org_id      TEXT NOT NULL,
+    account_id  TEXT NOT NULL,
+    issued_at   DATETIME NOT NULL,
+    expires_at  DATETIME NOT NULL,
+    used_at     DATETIME
+);
+
 CREATE TABLE archived_sessions (
     session_id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,

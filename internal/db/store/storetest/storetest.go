@@ -116,7 +116,7 @@ func truncateAll(t *testing.T, dsn string) {
 	// Truncate root tables with CASCADE — child tables are handled
 	// automatically.
 	_, err = sqlDB.ExecContext(context.Background(),
-		`TRUNCATE orgs, accounts, magic_link_tokens, oauth_tokens CASCADE`)
+		`TRUNCATE orgs, accounts, magic_link_tokens, resume_tokens, oauth_tokens CASCADE`)
 	if err != nil {
 		t.Logf("storetest.truncateAll: truncate: %v", err)
 	}

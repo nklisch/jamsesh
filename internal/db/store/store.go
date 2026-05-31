@@ -29,6 +29,7 @@ type TxStore interface {
 	SessionMemberStore
 	OAuthTokenStore
 	MagicLinkTokenStore
+	ResumeTokenStore
 	ArchivedSessionStore
 	OAuthStateStore
 	EventLogStore
@@ -55,6 +56,7 @@ type Store interface {
 	SessionMemberStore
 	OAuthTokenStore
 	MagicLinkTokenStore
+	ResumeTokenStore
 	ArchivedSessionStore
 	OAuthStateStore
 	EventLogStore
@@ -226,6 +228,22 @@ type MagicLinkToken struct {
 	ID        string
 	TokenHash string
 	Email     string
+	IssuedAt  time.Time
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+}
+
+// ResumeToken is a short-lived, single-use token that allows a CLI client to
+// resume (re-authenticate into) an existing session via the browser portal.
+// ConsumeResumeToken validates not-used AND not-expired atomically in a single
+// UPDATE…RETURNING statement; a zero-row result (ErrNotFound) is the
+// definitive signal that the token is already used, expired, or unknown.
+type ResumeToken struct {
+	ID        string
+	TokenHash string
+	SessionID string
+	OrgID     string
+	AccountID string
 	IssuedAt  time.Time
 	ExpiresAt time.Time
 	UsedAt    *time.Time
@@ -419,6 +437,26 @@ type CreateMagicLinkTokenParams struct {
 type ConsumeMagicLinkTokenParams struct {
 	ID     string
 	UsedAt *time.Time
+}
+
+type CreateResumeTokenParams struct {
+	ID        string
+	TokenHash string
+	SessionID string
+	OrgID     string
+	AccountID string
+	IssuedAt  time.Time
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+}
+
+// ConsumeResumeTokenParams carries the token hash and the current time.
+// The adapter passes Now as the lower bound for expires_at > Now in the
+// atomic UPDATE…RETURNING statement.
+type ConsumeResumeTokenParams struct {
+	TokenHash string
+	UsedAt    *time.Time
+	Now       time.Time
 }
 
 type InsertOAuthStateParams struct {
@@ -661,6 +699,21 @@ type MagicLinkTokenStore interface {
 	// concurrent exchange already consumed it (race lost). A non-nil error
 	// indicates a transient driver failure, not a business-logic condition.
 	ConsumeMagicLinkToken(ctx context.Context, arg ConsumeMagicLinkTokenParams) (int64, error)
+}
+
+// ResumeTokenStore covers resume-token lifecycle for the CLI session-resume
+// portal contract.
+type ResumeTokenStore interface {
+	CreateResumeToken(ctx context.Context, arg CreateResumeTokenParams) (ResumeToken, error)
+	GetResumeTokenByHash(ctx context.Context, tokenHash string) (ResumeToken, error)
+	// ConsumeResumeToken atomically marks the token used and returns the row
+	// (winner-returning pattern). The UPDATE WHERE token_hash = ? AND used_at
+	// IS NULL AND expires_at > ? ensures single-use and non-expired in one
+	// statement. Returns ErrNotFound when the token is already used, expired,
+	// or unknown — the caller treats this as a definitive "no winner" signal
+	// without a separate fetch. A non-nil error other than ErrNotFound
+	// indicates a transient driver failure.
+	ConsumeResumeToken(ctx context.Context, arg ConsumeResumeTokenParams) (ResumeToken, error)
 }
 
 // Event is a persisted event-log row.
