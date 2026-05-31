@@ -36,13 +36,13 @@ is needed.
 - `--scope '<glob>'` — writable scope; defaults to `**` if not provided
 - `--mode sync|isolated` — ref mode; defaults to `sync`
 - `--invite alice@x,bob@y` — comma-separated emails to invite at create
-- `--open` — open the created session in your browser (playground → the join page; durable → the session view). Non-interactive; failures print the URL.
+- `--open` — open the created session in your browser **as your CLI identity** (durable: opens the session view signed in as you; playground: resumes your anonymous participant, not a fresh one). Non-interactive. On mint failure, warns and falls back to a token-free open.
 
 **For `jam join`:**
 - `<url-or-id>` — required; the session URL or just the session ID
 - `--as <branch>` — optional ref-branch name (defaults to `main`)
 - `--from <commit>` — optional fork point
-- `--open` — open the joined session in your browser (durable session view).
+- `--open` — open the joined session in your browser **as your CLI identity** (signed in as you). Non-interactive. On mint failure, warns and falls back to a token-free open.
 
 ## Opening in the browser
 
@@ -51,9 +51,10 @@ flag is non-interactive. When `jam` is invoked, **offer to open the session
 for the human**: fold the offer into the questions you are already asking
 (org, goal, etc.) and pass `--open` if they say yes.
 
-Playground `new --open` opens the join page (`/playground/s/{id}/join`),
-which mints a **fresh** browser participant via the `JoinerPicker` (nickname
-picker). It does not resume the CLI's anonymous identity.
+`--open` adopts the CLI identity: it mints a single-use resume token and
+opens a `/resume#rt=<token>` URL so the browser lands in the session *as
+you* — the same participant and bearer the CLI is acting as. On mint failure,
+the CLI warns and falls back to opening the plain session URL without identity.
 
 **Destruction warnings:** when a `playground.destruction_warning`
 event surfaces in your UserPromptSubmit digest (the session is ~5
@@ -92,3 +93,21 @@ Mode-flip semantics:
   expect conflicts proportional to drift while isolated
 - `sync → isolated`: subsequent pushes don't auto-merge; existing
   merged commits remain in draft
+
+## Resume
+
+When the user wants to reopen an existing session in the browser as their CLI
+identity ("reopen the session", "open the browser", "resume the session"),
+invoke `jamsesh resume [session-id]`.
+
+- **Bare** (`jamsesh resume`) — resumes the session bound to the current
+  Claude Code instance (`CLAUDE_SESSION_ID`). Errors if the instance is not
+  mapped to a session (hint: `jamsesh status`). Outside CC context, resumes
+  the single session if exactly one exists; errors on zero or multiple.
+- **Explicit id** (`jamsesh resume <session-id>`) — resumes that specific
+  session regardless of the current CC instance. Useful when managing multiple
+  sessions.
+- On mint failure the command exits with an error and opens nothing. Run the
+  command again to mint a fresh token.
+- `jamsesh status` lists all sessions and their IDs when disambiguation is
+  needed.

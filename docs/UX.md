@@ -60,9 +60,10 @@ On success:
    `jamsesh new` from plain bash without a CC instance attached.
 4. A success summary is printed with the session URL, org, goal, scope,
    mode, and the `jamsesh join <session-id>` command collaborators can run.
-5. If `--open` was passed, the portal session view opens in the default
-   browser. Browser-launch failure degrades gracefully: the URL is printed
-   and the command still exits 0.
+5. If `--open` was passed, the CLI mints a single-use resume token and opens
+   the session **as the CLI identity** (durable: session view signed in as
+   you; playground: resumes your anonymous participant). On mint failure the
+   CLI warns, falls back to a token-free open, and still exits 0.
 
 If the push fails the session stays **live** with `base_sha: null`. The CLI
 prints the explicit retry command:
@@ -112,10 +113,10 @@ fires first.
    `jamsesh new --playground`; the flag binds the new session to the
    playground org and writes the anonymous bearer into the per-session
    token file at `${JAMSESH_DATA_DIR}/sessions/<id>/token`.
-   Adding `--open` opens the join page (`/playground/s/{id}/join`) in
-   the browser, where a fresh browser participant is minted via the
-   `JoinerPicker` (nickname picker). This is a new identity — it does
-   not resume the CLI's anonymous session identity.
+   Adding `--open` mints a resume token and opens the session in the browser
+   **as the CLI's anonymous identity** (resumes the same participant, not a
+   fresh one). On mint failure the CLI warns and falls back to opening the
+   join page (`/playground/s/{id}/join`) instead.
 
 ## Flow: joining a playground
 
@@ -195,10 +196,20 @@ A collaborator received an invite or a join URL.
 5. The SessionStart hook fires, injecting the session goal, writable scope,
    peer ref tips, current draft state, and any unresolved addressed comments
    into the agent's context.
-6. If `--open` was passed, the portal session view opens in the browser.
-   Browser-launch failure degrades gracefully: the URL is printed and the
-   command still exits 0.
+6. If `--open` was passed, the CLI mints a single-use resume token and opens
+   the session **as the CLI identity** (signed in as you). On mint failure the
+   CLI warns, falls back to a token-free open, and still exits 0.
 7. They start prompting their agent normally.
+
+### Reopening the session later
+
+If `--open` was not used at create/join time, or the participant wants to
+reopen the browser at any point, they run `jamsesh resume [session-id]`.
+The CLI mints a fresh resume token and opens the session as the CLI identity.
+Bare (`jamsesh resume`) targets the session bound to the current CC instance;
+an explicit id targets a specific session. `jamsesh status` lists sessions
+and their IDs. The browser-side exchange is described in
+**Flow: resuming a session from the CLI** above.
 
 ## Flow: an agent turn
 

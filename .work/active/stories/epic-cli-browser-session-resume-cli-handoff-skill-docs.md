@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-cli-handoff-skill-docs
 kind: story
-stage: implementing
+stage: review
 tags: [plugin, documentation]
 parent: epic-cli-browser-session-resume-cli-handoff
 depends_on: [epic-cli-browser-session-resume-cli-handoff-resume-command]
@@ -27,6 +27,14 @@ feature body.
 
 ## Acceptance criteria
 
-- [ ] `SKILL.md` documents `--open` identity adoption + `jamsesh resume`.
-- [ ] `docs/UX.md` covers the resume handoff in create/join + reopen-later.
-- [ ] Copy matches the shipped behavior from Units 1-2.
+- [x] `SKILL.md` documents `--open` identity adoption + `jamsesh resume`.
+- [x] `docs/UX.md` covers the resume handoff in create/join + reopen-later.
+- [x] Copy matches the shipped behavior from Units 1-2.
+
+## Implementation notes
+
+- Updated `--open` bullets in both "Optional flags for `jam new`" and "For `jam join`" to document identity adoption and fallback behavior.
+- Updated `## Opening in the browser` section to explain the resume-token mechanism.
+- Added `## Resume` section documenting `jamsesh resume [session-id]` with bare/explicit-id resolution, error behavior, and `jamsesh status` disambiguation hint.
+- Updated `docs/UX.md` step 5 of "Flow: creating a session" and step 3 of "Flow: spinning up a playground" and step 6 of "Flow: joining a session" to reflect identity adoption via resume token.
+- Added "Reopening the session later" subsection under "Flow: joining a session" documenting `jamsesh resume`, pointing to the SPA-side resume flow section without duplicating it.
