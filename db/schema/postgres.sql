@@ -108,14 +108,14 @@ CREATE INDEX oauth_state_expires_idx ON oauth_state(expires_at);
 
 CREATE TABLE event_seq (
     session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-    next INTEGER NOT NULL DEFAULT 0
+    next BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE events (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    seq INTEGER NOT NULL,
+    seq BIGINT NOT NULL,
     type TEXT NOT NULL,
     payload TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,

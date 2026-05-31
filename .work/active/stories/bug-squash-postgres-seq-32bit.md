@@ -1,7 +1,7 @@
 ---
 id: bug-squash-postgres-seq-32bit
 kind: story
-stage: implementing
+stage: review
 tags: [bug, portal, data-layer]
 parent: epic-bug-squash-data-tx-integrity
 depends_on: []
@@ -25,3 +25,7 @@ bug_location: db/schema/postgres.sql:118
 CREATE TABLE events ( ... seq INTEGER NOT NULL, ... );      -- 32-bit; sqlite + domain use int64
 CREATE TABLE event_seq ( ... next INTEGER NOT NULL DEFAULT 0 );
 ```
+
+## Implementation notes
+
+Changed `events.seq` and `event_seq.next` from `INTEGER` to `BIGINT` in `db/schema/postgres.sql`. Ran sqlc generate: `AllocateNextSeq*`, `InsertEvent`, `ListEventsSince`, `ListEventsSinceForDigest` now use `int64` in pgstore. Deleted every `int32(...)` seq cast in `postgres_adapter.go` (outer + tx): `AllocateNextSeq`, `AllocateNextSeqN`, `InsertEvent`, `ListEventsSince`, `ListEventsSinceForDigest`. Added forward goose migration `00019_seq_bigint.sql` (ALTER TABLE... TYPE BIGINT for both columns); Down section is an intentional no-op with documentation explaining the irreversibility. Tests: `TestSeqBIGINTSQLiteRoundTrip` verifies end-to-end int64 round-trip on SQLite; `TestSeqBIGINTPostgresMigration` is skipped without JAMSESH_TEST_PG_DSN (no testcontainer in this environment).

@@ -69,7 +69,7 @@ type Event struct {
 	ID        string    `json:"id"`
 	OrgID     string    `json:"org_id"`
 	SessionID string    `json:"session_id"`
-	Seq       int32     `json:"seq"`
+	Seq       int64     `json:"seq"`
 	Type      string    `json:"type"`
 	Payload   string    `json:"payload"`
 	CreatedAt time.Time `json:"created_at"`
@@ -77,7 +77,7 @@ type Event struct {
 
 type EventSeq struct {
 	SessionID string `json:"session_id"`
-	Next      int32  `json:"next"`
+	Next      int64  `json:"next"`
 }
 
 type FinalizeLock struct {

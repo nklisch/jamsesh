@@ -14,9 +14,9 @@ const allocateNextSeq = `-- name: AllocateNextSeq :one
 UPDATE event_seq SET next = next + 1 WHERE session_id = $1 RETURNING next
 `
 
-func (q *Queries) AllocateNextSeq(ctx context.Context, sessionID string) (int32, error) {
+func (q *Queries) AllocateNextSeq(ctx context.Context, sessionID string) (int64, error) {
 	row := q.db.QueryRow(ctx, allocateNextSeq, sessionID)
-	var next int32
+	var next int64
 	err := row.Scan(&next)
 	return next, err
 }
@@ -26,13 +26,13 @@ UPDATE event_seq SET next = next + $1 WHERE session_id = $2 RETURNING next
 `
 
 type AllocateNextSeqNParams struct {
-	Next      int32  `json:"next"`
+	Next      int64  `json:"next"`
 	SessionID string `json:"session_id"`
 }
 
-func (q *Queries) AllocateNextSeqN(ctx context.Context, arg AllocateNextSeqNParams) (int32, error) {
+func (q *Queries) AllocateNextSeqN(ctx context.Context, arg AllocateNextSeqNParams) (int64, error) {
 	row := q.db.QueryRow(ctx, allocateNextSeqN, arg.Next, arg.SessionID)
-	var next int32
+	var next int64
 	err := row.Scan(&next)
 	return next, err
 }
@@ -56,7 +56,7 @@ type InsertEventParams struct {
 	ID        string    `json:"id"`
 	OrgID     string    `json:"org_id"`
 	SessionID string    `json:"session_id"`
-	Seq       int32     `json:"seq"`
+	Seq       int64     `json:"seq"`
 	Type      string    `json:"type"`
 	Payload   string    `json:"payload"`
 	CreatedAt time.Time `json:"created_at"`
@@ -85,7 +85,7 @@ LIMIT $3
 
 type ListEventsSinceParams struct {
 	SessionID string `json:"session_id"`
-	Seq       int32  `json:"seq"`
+	Seq       int64  `json:"seq"`
 	Limit     int32  `json:"limit"`
 }
 
@@ -135,7 +135,7 @@ LIMIT $3
 
 type ListEventsSinceForDigestParams struct {
 	SessionID string `json:"session_id"`
-	Seq       int32  `json:"seq"`
+	Seq       int64  `json:"seq"`
 	Limit     int32  `json:"limit"`
 }
 
