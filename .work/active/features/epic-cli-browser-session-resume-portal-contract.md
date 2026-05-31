@@ -342,3 +342,28 @@ Verification: `go build ./...`, `go vet ./cmd/... ./internal/...`, and
 ./internal/db/…` all pass. Deviation noted for review: the single-use test is
 sequential back-to-back (atomicity is in the SQL `UPDATE … WHERE used_at IS NULL`,
 not goroutine scheduling) rather than true-parallel goroutines.
+
+## Milestone review (Codex xhigh, 2026-05-30) — Block, then fixed
+
+Major-milestone cross-model review. Verdict **Block** on a real playground-mint
+defect; all findings accepted and fixed before advancing to done:
+
+- [BLOCKER] **Playground mint 403'd.** `membership.go` required `GetOrgMember`
+  before session membership, but playground participants are anonymous SESSION
+  members (never in the playground org's `org_members`). The mint/exchange tests
+  masked it by adding playground org-membership in setup. Fix: membership check
+  accepts a session member without org membership for the playground org (mirror
+  `handlerauth.RequireAnonymousSessionMember`); corrected the tests to NOT add
+  org-membership for anon accounts so they exercise the real path.
+- [important] Sequential "concurrency" test → real concurrent single-use test.
+- [important] `ConsumeResumeTokenParams.UsedAt` nullable at the store boundary →
+  hardened so consume always marks `used_at` non-null.
+- [important] No-new-account test counted org-members not account rows →
+  strengthened to assert the `accounts` row count is unchanged.
+- [important] `sessionresume` not wired to the portal test clock → use
+  `NewWithClock` in `cmd/portal/main.go` (mirror finalize).
+- [important] Consumed-token→deleted-account returned a wrapped DB error not the
+  generic failure → map account-not-found to the generic 401; add FK/cascade on
+  `resume_tokens` (account/session deletion cleans up tokens).
+- [good] single-use path airtight; exchange public + ambient-auth-ignored;
+  durable no-refresh + identity metadata; hash-only persistence.
