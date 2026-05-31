@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -300,11 +301,21 @@ func handoffGetMe(ctx context.Context, t *testing.T, podURL, accessToken string)
 // This is a REST-layer query (not git ls-remote) so it works even when the pod
 // has not had a git clone against it yet — it reads from the portal's internal
 // ref store which is populated during hydration.
+//
+// The caller passes the SHORT push form ("jam/<sid>/<uid>/main", matching
+// gitclient.Push and RevParse); the REST /refs API reports the FULL ref name
+// ("refs/heads/jam/...", from ListSessionRefs -> r.Name().String()), so we
+// canonicalize the expected ref to the full form before comparing.
 func handoffRevParseViaPod(
 	ctx context.Context, t *testing.T,
 	podURL, accessToken, orgID, sessionID, ref string,
 ) string {
 	t.Helper()
+
+	wantRef := ref
+	if !strings.HasPrefix(wantRef, "refs/heads/") {
+		wantRef = "refs/heads/" + wantRef
+	}
 
 	type refEntry struct {
 		Ref string `json:"ref"`
@@ -338,7 +349,7 @@ func handoffRevParseViaPod(
 	}
 
 	for _, r := range rl.Refs {
-		if r.Ref == ref {
+		if r.Ref == wantRef {
 			return r.Sha
 		}
 	}

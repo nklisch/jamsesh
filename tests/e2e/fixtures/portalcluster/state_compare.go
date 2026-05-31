@@ -175,9 +175,14 @@ func fetchSessionState(ctx context.Context, podURL, orgID, sessionID, accessToke
 		return SessionState{}, fmt.Errorf("get refs: %w", err)
 	}
 
+	// The REST /refs API reports the FULL ref name ("refs/heads/jam/...", from
+	// ListSessionRefs -> r.Name().String()). Normalize to the SHORT push form
+	// ("jam/<sid>/<uid>/main") so the Refs map keys match the form the e2e suite
+	// uses elsewhere (gitclient.Push / RevParse), keeping cross-pod diffs and any
+	// short-ref lookups consistent.
 	refs := make(map[string]string, len(refsResp.Refs))
 	for _, r := range refsResp.Refs {
-		refs[r.Ref] = r.Sha
+		refs[strings.TrimPrefix(r.Ref, "refs/heads/")] = r.Sha
 	}
 
 	return SessionState{

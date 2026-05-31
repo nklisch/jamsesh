@@ -145,13 +145,17 @@ func TestObjectStorageRPO0(t *testing.T) {
 		t.Logf("multi_pack_push: %d object(s) in bucket under %s", len(keys), prefix)
 	})
 
-	// ── Subtest 3: refs_only_update ──────────────────────────────────────────
-	// Force-push an existing ref to a different commit SHA (ref moves without
-	// new unique objects). Asserts the bucket is updated (refs/manifest written).
+	// ── Subtest 3: refs_only_update (non-fast-forward force-push REJECTED) ────
+	// A non-fast-forward force-push that rewinds a jam/ ref is INTENTIONALLY
+	// rejected by the pre-receive hook (internal/portal/prereceive/refs.go
+	// checkForcePush, code push.force_push_rejected). jam/ refs are append-only
+	// collaborative refs; history rewrites are disallowed by product policy.
 	//
-	// Implementation: push two commits; the second push force-resets the ref to
-	// the first commit (rewrites history). The server must still record the ref
-	// update in the bucket synchronously before returning 2xx.
+	// This subtest asserts that intended rejection, then re-confirms RPO=0: the
+	// last *accepted* state is still durable in the bucket (the rejected push
+	// never reaches the storage-sync path, so nothing is lost or partially
+	// written). The accepted refs-update durability path (fast-forward) is
+	// already covered by small_commit / multi_pack_push.
 	t.Run("refs_only_update", func(t *testing.T) {
 		userEmail := randEmail(t, "rpo0-refs")
 		pair := authflow.SignInViaMagicLink(ctx, t, pod0, mh, userEmail)
@@ -175,31 +179,54 @@ func TestObjectStorageRPO0(t *testing.T) {
 			mn.BucketName, prefix)
 		t.Logf("refs_only_update: %d object(s) after first push", len(keysAfterFirst))
 
-		// Second commit: advance the ref.
+		// Second commit: advance the ref (fast-forward, accepted).
 		repo.Commit(ctx, t, "second.md", "second content", "rpo0: refs-only second")
 		repo.Push(ctx, t, ref)
 
-		// Now force-reset the local branch back to firstSHA and force-push, creating
-		// a refs-only update (the object already exists; only the ref tip changes).
-		rpo0GitRun(t, repo.Dir, "git", "reset", "--hard", firstSHA)
-		rpo0GitForcePush(ctx, t, repo, ref)
+		keysAfterSecond, err := mn.ListObjects(ctx, prefix)
+		require.NoError(t, err, "RPO=0: second push ListObjects error")
+		require.NotEmpty(t, keysAfterSecond,
+			"RPO=0 violated: second (fast-forward) push returned 2xx but bucket empty "+
+				"(bucket=%q prefix=%q)", mn.BucketName, prefix)
 
-		// RPO=0 assertion after force-push (refs-only update path).
-		keysAfterForce, err := mn.ListObjects(ctx, prefix)
-		require.NoError(t, err, "RPO=0: force-push ListObjects error")
-		require.NotEmpty(t, keysAfterForce,
-			"RPO=0 violated: force-push returned 2xx but bucket empty "+
-				"under prefix %q (bucket=%q) — refs-only update must still be durable",
+		// Now force-reset the local branch back to firstSHA and force-push. This is
+		// a non-fast-forward update (firstSHA is an ancestor of the current tip, not
+		// a descendant), which the pre-receive hook MUST reject.
+		rpo0GitRun(t, repo.Dir, "git", "reset", "--hard", firstSHA)
+		out, err := rpo0GitForcePush(ctx, t, repo, ref)
+		require.Errorf(t, err,
+			"refs_only_update: force-push that rewinds a jam/ ref MUST be rejected by "+
+				"pre-receive (force_push_rejected); git push --force unexpectedly succeeded.\n%s", out)
+		require.Truef(t,
+			strings.Contains(out, "force_push_rejected") ||
+				strings.Contains(out, "non-fast-forward") ||
+				strings.Contains(strings.ToLower(out), "not an ancestor"),
+			"refs_only_update: force-push was rejected (good) but not for the expected "+
+				"non-fast-forward / force_push_rejected reason; output:\n%s", out)
+		t.Logf("refs_only_update: force-push correctly rejected by pre-receive")
+
+		// RPO=0 re-confirm: the rejected push must NOT have damaged durable state.
+		// The bucket still reflects the last accepted (fast-forward) tip.
+		keysAfterReject, err := mn.ListObjects(ctx, prefix)
+		require.NoError(t, err, "RPO=0: post-reject ListObjects error")
+		require.NotEmpty(t, keysAfterReject,
+			"RPO=0 violated: bucket empty under %q after a rejected force-push — "+
+				"a rejected push must leave durable state intact (bucket=%q)",
 			prefix, mn.BucketName)
-		t.Logf("refs_only_update: %d object(s) after force-push", len(keysAfterForce))
+		t.Logf("refs_only_update: %d object(s) still durable after rejected force-push", len(keysAfterReject))
 	})
 
-	// ── Subtest 4: tag_creation ──────────────────────────────────────────────
-	// Push an annotated tag; assert the bucket reflects the updated ref state.
+	// ── Subtest 4: tag_creation (tag object as branch tip REJECTED) ──────────
+	// Pushing an annotated TAG object as the tip of a branch ref
+	// (jam/<sid>/<uid>/v1.0 lives under refs/heads/) is not a supported product
+	// operation. Branch refs hold commits; the pre-receive walker
+	// (internal/portal/prereceive/commits.go WalkAndValidate) runs repo.Log from
+	// the ref tip, and go-git's CommitObject() fails on a tag object → the push
+	// is rejected with "could not walk commits: object not found". The portal
+	// does not expose a user-writable refs/tags/* namespace today.
 	//
-	// An annotated tag creates a tag object (not just a ref pointer), so the
-	// portal must sync both the new tag object and the updated packed-refs/manifest
-	// to satisfy RPO=0.
+	// This subtest asserts that intended rejection, then re-confirms RPO=0: the
+	// preceding accepted commit push remains durable in the bucket.
 	t.Run("tag_creation", func(t *testing.T) {
 		userEmail := randEmail(t, "rpo0-tag")
 		pair := authflow.SignInViaMagicLink(ctx, t, pod0, mh, userEmail)
@@ -214,7 +241,8 @@ func TestObjectStorageRPO0(t *testing.T) {
 		repo.Commit(ctx, t, "tagged.md", "content to tag", "rpo0: tag commit")
 		repo.Push(ctx, t, ref)
 
-		// Confirm objects landed after the commit push.
+		// Confirm objects landed after the commit push (the accepted state we will
+		// re-verify is still durable after the tag push is rejected).
 		prefix := "sessions/" + sessionID + "/"
 		keysAfterCommit, err := mn.ListObjects(ctx, prefix)
 		require.NoError(t, err, "RPO=0: commit push ListObjects error")
@@ -223,24 +251,35 @@ func TestObjectStorageRPO0(t *testing.T) {
 			mn.BucketName, prefix)
 		t.Logf("tag_creation: %d object(s) after commit push", len(keysAfterCommit))
 
-		// Create and push an annotated tag. The tag namespace (refs/tags/) is
-		// separate from the jam/ namespace; the portal's pre-receive hook may only
-		// permit jam/ refs. We push the tag into the jam/ namespace to stay within
-		// allowed ref namespaces: jam/<sessionID>/<userID>/v1.0.
+		// Create an annotated tag and push the tag OBJECT as a branch ref tip. The
+		// server's pre-receive walker cannot Log() from a non-commit object, so the
+		// push is rejected.
 		tagRef := "jam/" + sessionID + "/" + userID + "/v1.0"
 		rpo0GitRun(t, repo.Dir,
 			"git", "tag", "-a", "v1.0", "-m", "annotated tag for RPO=0 test",
 		)
-		rpo0PushTag(ctx, t, repo, tagRef)
+		out, err := rpo0PushTag(ctx, t, repo, tagRef)
+		require.Errorf(t, err,
+			"tag_creation: pushing an annotated tag object as a branch ref tip MUST be "+
+				"rejected by pre-receive (branch refs hold commits, not tag objects); "+
+				"git push unexpectedly succeeded.\n%s", out)
+		require.Truef(t,
+			strings.Contains(out, "could not walk commits") ||
+				strings.Contains(out, "object not found") ||
+				strings.Contains(out, "scope_violation"),
+			"tag_creation: tag-object push was rejected (good) but not for the expected "+
+				"commit-walk reason; output:\n%s", out)
+		t.Logf("tag_creation: tag-object-as-branch-tip push correctly rejected by pre-receive")
 
-		// RPO=0 assertion after tag push.
-		keysAfterTag, err := mn.ListObjects(ctx, prefix)
-		require.NoError(t, err, "RPO=0: tag push ListObjects error")
-		require.NotEmpty(t, keysAfterTag,
-			"RPO=0 violated: tag push returned 2xx but bucket empty "+
-				"under prefix %q (bucket=%q) — annotated tag object must be durable",
+		// RPO=0 re-confirm: the rejected tag push must not have damaged durable
+		// state — the preceding accepted commit is still in the bucket.
+		keysAfterReject, err := mn.ListObjects(ctx, prefix)
+		require.NoError(t, err, "RPO=0: post-reject ListObjects error")
+		require.NotEmpty(t, keysAfterReject,
+			"RPO=0 violated: bucket empty under %q after a rejected tag push — "+
+				"a rejected push must leave durable state intact (bucket=%q)",
 			prefix, mn.BucketName)
-		t.Logf("tag_creation: %d object(s) after tag push", len(keysAfterTag))
+		t.Logf("tag_creation: %d object(s) still durable after rejected tag push", len(keysAfterReject))
 	})
 }
 
@@ -315,33 +354,32 @@ func rpo0GitRun(t *testing.T, dir string, name string, args ...string) {
 	}
 }
 
-// rpo0GitForcePush force-pushes HEAD to the given ref on the repo's origin remote.
-// This is the refs-only-update path: the objects are already in the repo, only
-// the ref tip changes.
-func rpo0GitForcePush(ctx context.Context, t *testing.T, repo *gitclient.Repo, ref string) {
+// rpo0GitForcePush force-pushes HEAD to the given ref on the repo's origin
+// remote and returns the combined git output and the exec error (nil if git
+// exited 0). The caller asserts on the result — a non-fast-forward force-push to
+// a jam/ ref is expected to be rejected by the pre-receive hook, so this helper
+// does NOT fatal on a non-zero exit.
+func rpo0GitForcePush(ctx context.Context, t *testing.T, repo *gitclient.Repo, ref string) (string, error) {
 	t.Helper()
-	// We must re-encode credentials in the push URL since gitclient.Push calls
-	// "git push origin HEAD:refs/heads/<ref>", but force-push requires --force.
-	// Exec directly against the repo working tree which already has the
-	// credentialed remote URL from Clone.
+	// The repo's origin remote already carries the credentialed URL from Clone.
 	cmd := exec.CommandContext(ctx, "git", "push", "--force", "origin", "HEAD:refs/heads/"+ref)
 	cmd.Dir = repo.Dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("rpo0GitForcePush: git push --force: %v\n%s", err, out)
-	}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 // rpo0PushTag pushes the local annotated tag v1.0 to the remote under the given
-// jam/ ref. The portal's pre-receive hook only allows jam/ refs; we push the tag
-// object as a branch-like ref so it is accepted and stored in the repo.
-func rpo0PushTag(ctx context.Context, t *testing.T, repo *gitclient.Repo, tagRef string) {
+// jam/ branch ref and returns the combined git output and the exec error (nil if
+// git exited 0). Pushing a tag OBJECT as a branch ref tip is not a supported
+// product operation (branch refs hold commits), so the server is expected to
+// reject it; this helper does NOT fatal on a non-zero exit.
+func rpo0PushTag(ctx context.Context, t *testing.T, repo *gitclient.Repo, tagRef string) (string, error) {
 	t.Helper()
-	// Push the tag object (v1.0) as the tip of tagRef. git resolves v1.0 to the
-	// annotated tag object SHA; the server stores it as a ref update.
+	// git resolves v1.0 to the annotated tag object SHA; we push it as the tip of
+	// tagRef (a refs/heads/ branch ref).
 	cmd := exec.CommandContext(ctx, "git", "push", "origin", "v1.0:refs/heads/"+tagRef)
 	cmd.Dir = repo.Dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("rpo0PushTag: git push v1.0 to %s: %v\n%s", tagRef, err, out)
-	}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
