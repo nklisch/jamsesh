@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Chrome from '$lib/components/Chrome.svelte';
   import ModePill from '$lib/components/ModePill.svelte';
   import AuthorDot from '$lib/components/AuthorDot.svelte';
@@ -63,35 +63,72 @@
     sessions = sessions.map((s) => (s.id === updated.id ? { ...s, ...updated } : s));
   }
 
-  // WS subscription per session — refetch to keep list current.
-  // v1: per-session connections as noted in the feature design.
+  // ── Unit 2: Per-session sequence guard for concurrent refetches ───────────
+  //
+  // Each refetch bumps the session's counter before the GET. On resolve, the
+  // response is dropped if a newer refetch has started (seq mismatch). Counters
+  // are monotonic and never reset — a returning id cannot accept an older response.
+  //
+  // Status-event handlers (session.finalizing, session.ended) call bumpAndUpdate
+  // so any in-flight commit.arrived refetch is invalidated and cannot overwrite
+  // the terminal status.
+  const refetchSeq = new Map<string, number>();
+
+  function bumpAndUpdate(id: string, patch: Partial<Session> & { id: string }) {
+    refetchSeq.set(id, (refetchSeq.get(id) ?? 0) + 1);
+    updateSession(patch);
+  }
+
+  function refetchSession(id: string) {
+    const seq = (refetchSeq.get(id) ?? 0) + 1;
+    refetchSeq.set(id, seq);
+    void client
+      .GET('/api/orgs/{orgID}/sessions/{sessionID}', {
+        params: { path: { orgID: orgId, sessionID: id } },
+      })
+      .then(({ data, error: _err }) => {
+        if (refetchSeq.get(id) !== seq) return; // a newer refetch superseded this one
+        if (data) updateSession(data);
+        // else: leave prior state; a failed GET is best-effort (error is ignored)
+      });
+  }
+
+  // ── Unit 1: Stable subscription effect keyed on the session-id SET ────────
+  //
+  // The $effect reads only `sessionIdsKey` (a derived string of sorted ids) as
+  // its reactive dependency. Reading the actual session list inside the effect is
+  // done via `untrack(...)` so a field-only `updateSession` call (which reassigns
+  // `sessions` but does not change the id set) does NOT re-run this effect.
+  //
+  // On a genuine id-set change the effect re-runs: it unsubscribes the old set
+  // and immediately re-subscribes the current set within the same synchronous
+  // run. The ws.svelte macrotask linger absorbs this cleanup→resubscribe window
+  // so surviving sessions' sockets stay open.
+  const TYPES = ['commit.arrived', 'session.finalizing', 'session.ended', 'presence.updated'] as const;
+  type EventType = (typeof TYPES)[number];
+
+  const sessionIdsKey = $derived(sessions.map((s) => s.id).sort().join(','));
+
+  function makeHandler(id: string, type: EventType) {
+    return (_env: { type: string; [key: string]: unknown }) => {
+      if (type === 'session.finalizing') {
+        bumpAndUpdate(id, { id, status: 'finalizing' });
+      } else if (type === 'session.ended') {
+        bumpAndUpdate(id, { id, status: 'ended' });
+      } else {
+        // commit.arrived + presence.updated: sequence-guarded refetch for fresh data.
+        refetchSession(id);
+      }
+    };
+  }
+
   $effect(() => {
+    sessionIdsKey; // the ONLY reactive dependency — a field update doesn't change it
+    const ids = untrack(() => sessions.map((s) => s.id));
     const unsubs: (() => void)[] = [];
-    for (const s of sessions) {
-      const types = [
-        'commit.arrived',
-        'session.finalizing',
-        'session.ended',
-        'presence.updated',
-      ] as const;
-      for (const type of types) {
-        const unsub = subscribe(s.id, type, (env) => {
-          if (type === 'session.finalizing') {
-            updateSession({ id: s.id, status: 'finalizing' });
-          } else if (type === 'session.ended') {
-            updateSession({ id: s.id, status: 'ended' });
-          }
-          // commit.arrived + presence.updated: trigger a re-fetch of just this session
-          // to get fresh commit count / presence data. Light approach for v1.
-          void client
-            .GET('/api/orgs/{orgID}/sessions/{sessionID}', {
-              params: { path: { orgID: orgId, sessionID: s.id } },
-            })
-            .then(({ data }) => {
-              if (data) updateSession(data);
-            });
-        });
-        unsubs.push(unsub);
+    for (const id of ids) {
+      for (const type of TYPES) {
+        unsubs.push(subscribe(id, type, makeHandler(id, type)));
       }
     }
     return () => {
