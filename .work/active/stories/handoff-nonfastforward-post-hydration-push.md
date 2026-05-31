@@ -1,7 +1,7 @@
 ---
 id: handoff-nonfastforward-post-hydration-push
 kind: story
-stage: drafting
+stage: review
 tags: [portal, infra, testing, bug]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: [e2e-cloud-native-multipod-suite-red-lease-migration]
@@ -47,3 +47,28 @@ defect in the test.
   `internal/portal/storage/objectstore/hydrate.go`, `internal/portal/githttp/`.
 - Likely shares surface with the `cluster-smoke` integration gate (which also
   pushes post-handoff) — coordinate.
+
+## Resolution (2026-05-31) — CLASSIFIED AS TEST, fixed + verified (commit `44f949b2`)
+Classified as a **test-harness** bug, not product: the product cannot point a
+single served `HEAD` at "the" jam ref because each user has their own
+`jam/<sid>/<uid>/main` ref — so the CLIENT must check out its user ref, exactly
+as the production CLI does (`cmd/jamsesh/sessioncmd/join.go`:
+`git checkout -b jam/<sid>/<uid>/main <fromRef>`). The e2e `gitclient.Clone`
+fixture didn't mirror that, so commits landed on the unborn default branch (a
+disconnected root → non-fast-forward).
+
+Fix: `gitclient.Clone` now checks out the existing `jam/<sid>/<uid>/main` ref
+after cloning (no-op on first clone); the same checkout was added to
+`stale_fencing`'s push helpers (without it git rejects the push *before* the
+server's fencing logic runs — a false positive that masks the real assertion).
+
+Verified: `stale_fencing` → **PASS**. The non-fast-forward error is GONE from the
+handoff tests (survivors hydrate ✓, the push gets past the base-ref problem).
+
+**New downstream layer (separate, filed):** with non-fast-forward gone, both
+handoff tests now fail on a githttp `send-pack: unexpected disconnect while
+reading sideband packet / remote end hung up` when pushing to the freshly-
+hydrated survivor — a product githttp/receive-pack issue (relates to the
+released `bug-receive-pack-report-status-sideband-wrapping`). And
+`lease_acquire_and_fence` failed only on a portal container cold-start infra
+flake (5×60s start retries exhausted), not code. See the epic body.

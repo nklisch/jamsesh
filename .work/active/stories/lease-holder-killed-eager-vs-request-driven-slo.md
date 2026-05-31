@@ -1,7 +1,7 @@
 ---
 id: lease-holder-killed-eager-vs-request-driven-slo
 kind: story
-stage: implementing
+stage: review
 tags: [portal, infra, testing]
 parent: e2e-cloud-native-multipod-suite-red
 depends_on: [e2e-cloud-native-multipod-suite-red-lease-migration]
@@ -50,3 +50,19 @@ code happens to do.
   `tests/e2e/fixtures/portalcluster/` (`WaitForLeaseMigration`),
   `internal/portal/lease/`, `internal/portal/storage/objectstore/lifecycle.go`
   (`LifecycleManager.AcquireForRequest`).
+
+## Resolution (2026-05-31) — test fixed + verified (commit `44f949b2`)
+Applied the decided request-driven fix: after SIGKILLing the holder, the test
+now routes a git push to the surviving pod (as a router redispatch would) to
+trigger `AcquireForRequest`, THEN asserts migration within the 30s SLO.
+
+Verified: lease **migrated pod 1 → pod 0 within the SLO ✓** and the monotonic
+fencing-token invariant **T2 (2) > T1 (1) ✓** both now pass — the lease-takeover
+fix + this request-trigger work. No background failover loop was added.
+
+**New downstream layer (separate):** the test then performs a git clone via the
+router URL and gets a **502** — the router still routes to the killed pod. This
+is the long-known `bug-router-static-discoverer-not-started` (released in v0.1.0
+but evidently persists, or a missing per-request failover timeout); the
+`router_pod_disappears` chaos test already references it. Tracked at the epic
+level — NOT this story's surface (this story's request-driven test fix is done).

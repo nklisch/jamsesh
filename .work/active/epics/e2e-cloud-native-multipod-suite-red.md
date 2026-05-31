@@ -176,6 +176,41 @@ Never-green peeling exposed two NEW root causes, filed as child stories:
   design. Architecture decision needed (fix the test to trigger acquisition, or
   add a background failover loop) — do NOT game the test.
 
-Remaining planned features: `router-redispatch` (independent), `cluster-smoke`
-(integration gate; will also hit the non-fast-forward push). The two new stories
-gate the handoff/lease suites going fully green.
+`router-redispatch` → review: fixed a real proxy 503-retry response-leak; the
+router e2e tests were found to be mis-premised (REST never takes the per-session
+lease — only git ops do) and are skipped with backlog links
+(`idea-router-e2e-lease-premise`); router product verified by unit tests.
+
+The two discovery stories (`handoff-nonfastforward-post-hydration-push`,
+`lease-holder-killed-eager-vs-request-driven-slo`) → review: both targeted
+test-premise fixes are delivered and VERIFIED working (commit `44f949b2`) —
+non-fast-forward gone, `stale_fencing` PASS, lease migrates within SLO with
+monotonic token. `cluster-smoke` (integration gate) is still drafting.
+
+### Peeled layers still blocking the handoff/lease suites (verification 2026-05-31)
+
+With the takeover + test-premise fixes in, the handoff/lease chaos tests advanced
+to TWO deeper layers — both tracing to PRIOR, supposedly-released bugs:
+
+1. **githttp `send-pack: unexpected disconnect` pushing to a freshly-hydrated
+   survivor** — blocks both handoff tests. Product githttp/receive-pack issue;
+   relates to `bug-receive-pack-report-status-sideband-wrapping` (released
+   v0.3.0). The survivor hydrates fine, then the push to it hangs up mid-sideband.
+2. **Router 502 routing to a killed pod** — blocks `lease_holder_killed`'s
+   post-migration clone (and is why the handoff tests assert directly against the
+   survivor, bypassing the router). This is `bug-router-static-discoverer-not-started`
+   (released v0.1.0) — dead pods linger in the ring → 502; possibly an incomplete
+   prior fix or a missing per-request failover timeout. Referenced by
+   `router_pod_disappears_test.go`.
+
+Plus an infra flake: `golden/lease_acquire_and_fence` failed only on portal
+container cold-start (5×60s retries exhausted) under host load — re-verify in
+isolation; not a code defect.
+
+Net so far: real product bugs FIXED — manifest corrupt-input, lease takeover,
+proxy 503-leak. The suite is heavily mis-premised (ref-name, non-fast-forward,
+lease request-trigger, router lease-premise) — those are corrected. The
+remaining blockers (githttp sideband disconnect, router dead-pod 502) are
+residual product defects from prior releases, converging on the
+"git-clone/push over the router across handoff/eviction" surface that
+`cluster-smoke` is the gate for.
