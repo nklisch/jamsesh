@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"jamsesh/cmd/jamsesh/state"
 )
 
 func setupRefreshDir(t *testing.T, refreshToken string) {
@@ -61,6 +63,45 @@ func TestRefresher_Refresh_WritesTokens(t *testing.T) {
 	}
 	if string(gotRefresh) != "rt-new" {
 		t.Errorf("refresh token: got %q, want %q", string(gotRefresh), "rt-new")
+	}
+}
+
+// TestRefresher_Refresh_WritesSessionScopedToken verifies that a Refresher
+// scoped to an explicit session (SessionID, set by WireRefresh from
+// client.SessionID) writes the refreshed access token to that session's
+// per-session path — not the legacy ${data-dir}/token (a MIGRATED_TO_PER_SESSION
+// stub after migration). Keeps the refresh write-back consistent with the
+// session the client's requests use.
+func TestRefresher_Refresh_WritesSessionScopedToken(t *testing.T) {
+	setupRefreshDir(t, "rt-initial")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(tokenPair{
+			AccessToken:      "at-sess",
+			RefreshToken:     "rt-sess",
+			AccessExpiresAt:  time.Now().Add(time.Hour),
+			RefreshExpiresAt: time.Now().Add(24 * time.Hour),
+		})
+	}))
+	defer srv.Close()
+
+	r := &Refresher{BaseURL: srv.URL, HTTP: srv.Client(), SessionID: "sess-x"}
+	if err := r.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh error: %v", err)
+	}
+
+	got, err := state.ReadSessionToken("sess-x")
+	if err != nil {
+		t.Fatalf("ReadSessionToken: %v", err)
+	}
+	if string(got) != "at-sess" {
+		t.Errorf("session-scoped access token: got %q, want %q (sessions/sess-x/token)", string(got), "at-sess")
+	}
+	// The legacy account-wide token must NOT be written for a session-scoped refresh.
+	dir := os.Getenv("JAMSESH_DATA_DIR")
+	if _, err := os.Stat(dir + "/token"); err == nil {
+		t.Errorf("legacy ${data-dir}/token should not be written for a session-scoped refresh")
 	}
 }
 

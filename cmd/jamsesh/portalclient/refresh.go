@@ -31,6 +31,13 @@ type Refresher struct {
 	BaseURL string
 	// HTTP is the underlying transport. If nil, http.DefaultClient is used.
 	HTTP *http.Client
+	// SessionID, when non-empty, scopes the refreshed access-token write-back to
+	// sessions/<id>/token — matching the session this client's requests use, so a
+	// 401-triggered refresh persists the new token to the SAME session rather than
+	// one inferred from the ambient CC-instance binding (which can differ, e.g. a
+	// hook operating on a non-current session). Set by WireRefresh from
+	// client.SessionID.
+	SessionID string
 
 	group singleflight.Group
 }
@@ -105,21 +112,32 @@ func (r *Refresher) doRefresh(ctx context.Context) error {
 		return fmt.Errorf("portalclient: writing new refresh token: %w", err)
 	}
 
-	// Write the new access token to the per-session path when a session is
-	// bound to this CC instance. This is required because the legacy
-	// ${data-dir}/token file is replaced with a MIGRATED_TO_PER_SESSION
-	// stub after the unified per-session storage migration runs; writing back to
-	// that path would overwrite the stub and break the migration invariant.
+	// Write the new access token to the per-session path. This is required
+	// because the legacy ${data-dir}/token file is replaced with a
+	// MIGRATED_TO_PER_SESSION stub after the unified per-session storage
+	// migration runs; writing back to that path would overwrite the stub and
+	// break the migration invariant.
 	//
-	// If no session is currently bound (e.g. the binary is invoked standalone
-	// outside of the CC plugin runtime), fall back to the legacy WriteToken so
-	// that auth flows that run before session binding still persist the token.
-	if sessID, ok := state.CurrentSessionID(); ok {
-		if err := state.WriteSessionToken(sessID, []byte(pair.AccessToken)); err != nil {
-			return fmt.Errorf("portalclient: writing new access token for session %q: %w", sessID, err)
+	// Resolution order:
+	//  1. r.SessionID — the session this client is explicitly scoped to (set via
+	//     WireRefresh from client.SessionID). Preferred so the refresh persists
+	//     to the SAME session the request used, not one inferred from the ambient
+	//     CC-instance binding (which can differ — e.g. a hook operating on a
+	//     non-current session).
+	//  2. the currently-bound session, for clients built without an explicit id.
+	//  3. the legacy token, when no session is bound at all (e.g. a standalone
+	//     auth flow before session binding).
+	switch {
+	case r.SessionID != "":
+		if err := state.WriteSessionToken(r.SessionID, []byte(pair.AccessToken)); err != nil {
+			return fmt.Errorf("portalclient: writing new access token for session %q: %w", r.SessionID, err)
 		}
-	} else {
-		if err := state.WriteToken(pair.AccessToken); err != nil {
+	default:
+		if sessID, ok := state.CurrentSessionID(); ok {
+			if err := state.WriteSessionToken(sessID, []byte(pair.AccessToken)); err != nil {
+				return fmt.Errorf("portalclient: writing new access token for session %q: %w", sessID, err)
+			}
+		} else if err := state.WriteToken(pair.AccessToken); err != nil {
 			return fmt.Errorf("portalclient: writing new access token: %w", err)
 		}
 	}
