@@ -94,6 +94,33 @@ func TestLooksLikeReportStatus(t *testing.T) {
 			buf:  buildFakeReportStatus("ok refs/heads/main"),
 			want: false,
 		},
+		// Final-gate-2 regression (Finding 4): "unpack " appears in a LATER pkt-line,
+		// not the first. The prior fix used strings.Contains over the whole buffer,
+		// which passed this — the correct fix checks only the first pkt-line payload.
+		{
+			// First pkt-line body is "garbage\n"; "unpack " appears only in a
+			// second pkt-line appended after it. Must return false: git report-status
+			// requires the FIRST pkt-line to start with "unpack ".
+			name: "unpack only in second pkt-line (first is garbage) — must be false",
+			buf: func() []byte {
+				// Build first pkt-line with garbage body.
+				firstBody := "garbage junk line\n"
+				first := buildFakeReportStatus(firstBody) // valid length prefix + body
+				// Append a second pkt-line that starts with "unpack ok".
+				secondBody := "unpack ok\n"
+				secondLen := len(secondBody) + 4
+				second := append([]byte(strings.ToUpper(formatHex(secondLen))), []byte(secondBody)...)
+				return append(first, second...)
+			}(),
+			want: false,
+		},
+		{
+			// A valid "unpack ok\n" first pkt-line followed by an ng line — regression
+			// guard: this must still return true after the HasPrefix fix.
+			name: "valid first pkt-line unpack ok followed by ng ref — must be true",
+			buf:  buildFakeReportStatus("unpack ok\nng refs/heads/main hook rejected\n0000"),
+			want: true,
+		},
 	}
 
 	for _, tc := range tests {

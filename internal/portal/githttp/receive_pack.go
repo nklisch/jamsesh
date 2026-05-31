@@ -606,9 +606,12 @@ func looksLikeReportStatus(buf []byte) bool {
 		return false
 	}
 
-	// Step 2: the payload must contain "unpack " (the first line of a valid
-	// report-status). Do not accept "ok " or "ng " alone — those are
-	// ref-status lines and could appear in garbage output.
-	return strings.Contains(string(buf), "unpack ")
+	// Step 2: extract exactly the first pkt-line's payload (buf[4:pktLen]) and
+	// require IT to start with "unpack " (the git report-status protocol
+	// mandates the first line is "unpack ok" or "unpack <error>"). Searching
+	// the whole buffer would allow "unpack " appearing only after a malformed
+	// first pkt-line to falsely return true.
+	payload := string(buf[4:pktLen])
+	return strings.HasPrefix(payload, "unpack ")
 }
 
