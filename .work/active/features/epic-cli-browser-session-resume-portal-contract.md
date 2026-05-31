@@ -1,7 +1,7 @@
 ---
 id: epic-cli-browser-session-resume-portal-contract
 kind: feature
-stage: implementing
+stage: review
 tags: [portal, security]
 parent: epic-cli-browser-session-resume
 depends_on: []
@@ -314,3 +314,31 @@ membership after token validation (`internal/portal/handlerauth/handlerauth.go`)
 winner-returning consume; no new blocker/important/nit from the fixes;
 dual-dialect `UPDATE … RETURNING` confirmed already used in-repo, so the
 approach is implementable. Design is ready for implementation.
+
+## Implementation (orchestrator run, 2026-05-30)
+
+All 3 stories implemented (3 sequential single-item waves — linear chain, shared
+`sessionresume` package + generated artifacts) and advanced to `review`:
+
+1. `…-token-store` (commit `fa43e5f`) — `resume_tokens` dual-dialect store
+   (sqlc + goose migrations sqlite 00019 / postgres 00020); **winner-returning**
+   `ConsumeResumeToken :one … RETURNING *` (validate+expiry+consume atomic, no
+   TOCTOU); store-only-hash; 7 store tests incl. single-use + expired.
+2. `…-endpoints-mint` (commit `0aabd5b`) — new `internal/portal/sessionresume/`
+   package; `POST /api/session-resumes` (bearer group, rate-limited 10/min);
+   `AccountFromContext` + replicated `checkSessionMembership` (401/403/404);
+   returns only `{ resume_url, expires_in:60, session_id }` (raw token only in
+   the `#rt=` fragment); 7 handler tests.
+3. `…-exchange-credential` (commit `569afd8`) — `POST /api/session-resumes/exchange`
+   (PUBLIC group, own rate limit, unauthenticated); winner-returning consume →
+   generic no-oracle failure; durable → `IssueShortLived` (no refresh),
+   playground → new `tokens.IssueAnonymousSessionBearerForExistingAccount`
+   (existing anon account, shape-identical bearer, rejects non-anonymous);
+   identity metadata in response; 15 tests incl. no-new-account + no-oracle +
+   single-use + ambient-auth-ignored.
+
+Verification: `go build ./...`, `go vet ./cmd/... ./internal/...`, and
+`go test ./internal/portal/sessionresume/… ./internal/portal/tokens/…
+./internal/db/…` all pass. Deviation noted for review: the single-use test is
+sequential back-to-back (atomicity is in the SQL `UPDATE … WHERE used_at IS NULL`,
+not goroutine scheduling) rather than true-parallel goroutines.
