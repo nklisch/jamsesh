@@ -1,7 +1,7 @@
 ---
 id: epic-bug-squash-frontend-ws-lifecycle
 kind: feature
-stage: implementing
+stage: review
 tags: [bug, ui]
 parent: epic-bug-squash
 depends_on: []
@@ -254,3 +254,7 @@ is the right contract repair.
   resubscribe.
 - **Unit 1 (nice-to-have)**: prune empty per-type handler sets on unsubscribe.
 - **Unit 3 (nice-to-have)**: test the documented late-token limitation.
+
+## Implementation summary
+
+All 3 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
