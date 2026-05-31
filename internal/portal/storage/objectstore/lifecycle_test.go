@@ -946,3 +946,77 @@ func TestLifecycle_LRU_RaceAcquireEvict(t *testing.T) {
 	wg.Wait()
 	// The race detector will flag any concurrent access to sessionEntry fields.
 }
+
+// TestLifecycle_LRU_ReleasingBytesCountTowardCap is a final-gate-2 regression
+// test for Finding 5. It verifies that a session whose releasing flag is set
+// (but whose repo is still on disk) has its bytes counted toward the LRU cap,
+// so that cold eviction candidates are still evicted even when the total would
+// look under-cap if releasing bytes were excluded.
+//
+// Setup:
+//   - sessA: releasing (repo still on disk, 1 KB) — NOT an eviction candidate.
+//   - sessB: cold active candidate (1 KB).
+//   - Cap = 1500 bytes (< 2 KB combined; > 1 KB so sessB alone would look fine
+//     if releasing bytes were excluded).
+//
+// Expected: sessB is evicted (releasing bytes + sessB bytes exceed the cap).
+// Prior bug: releasing bytes excluded → totalBytes = 1 KB (sessB only) ≤ cap →
+// eviction loop exits without evicting sessB.
+func TestLifecycle_LRU_ReleasingBytesCountTowardCap(t *testing.T) {
+	epoch := time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC)
+	clk := newFakeClock(epoch)
+
+	mgr, _, stor := newTestLifecycleManager(t)
+	mgr.clock = clk
+	ctx := context.Background()
+
+	sessA := "sess-releasing-cap-a"
+	sessB := "sess-releasing-cap-b"
+
+	// Acquire both sessions.
+	if _, err := mgr.AcquireForRequest(ctx, sessA); err != nil {
+		t.Fatalf("AcquireForRequest A: %v", err)
+	}
+	clk.Advance(time.Second)
+	if _, err := mgr.AcquireForRequest(ctx, sessB); err != nil {
+		t.Fatalf("AcquireForRequest B: %v", err)
+	}
+
+	// Write 1 KB into both repo dirs so dirSize returns non-zero.
+	for _, sess := range []string{sessA, sessB} {
+		repoPath := stor.RepoPath("test-org", sess)
+		if err := os.MkdirAll(repoPath, 0o750); err != nil {
+			t.Fatalf("mkdir %s: %v", sess, err)
+		}
+		if err := os.WriteFile(filepath.Join(repoPath, "data"), make([]byte, 1024), 0o600); err != nil {
+			t.Fatalf("write data for %s: %v", sess, err)
+		}
+	}
+
+	// Mark sessA as releasing (simulating a concurrent releaseWithReason that
+	// has set the flag but not yet removed the repo directory). Its bytes are
+	// still on disk.
+	rawA, ok := mgr.sessions.Load(sessA)
+	if !ok {
+		t.Fatal("sessA not in map")
+	}
+	entryA := rawA.(*sessionEntry)
+	entryA.releasing.Store(true)
+
+	// Cap = 1500 bytes. sessA (releasing, 1 KB) + sessB (active, 1 KB) = 2 KB > cap.
+	// If releasing bytes are excluded: totalBytes = 1 KB (sessB only) ≤ 1500 → no eviction (BUG).
+	// With fix: totalBytes = 2 KB > 1500 → sessB must be evicted.
+	mgr.CacheMaxBytes = 1500
+
+	mgr.evictIdleAndOversize(ctx)
+
+	// sessB (cold, eviction candidate) must have been evicted.
+	if _, ok := mgr.sessions.Load(sessB); ok {
+		t.Error("sessB (cold candidate) was NOT evicted — releasing bytes were excluded from totalBytes (regression)")
+	}
+
+	// sessA (releasing, cannot be double-evicted) must remain in the map.
+	if _, ok := mgr.sessions.Load(sessA); !ok {
+		t.Error("sessA (releasing) was removed from the map — should not be double-evicted")
+	}
+}

@@ -386,12 +386,30 @@ func (m *LifecycleManager) evictIdleAndOversize(ctx context.Context) {
 
 	var active []candidate
 
+	// residentSkippedBytes accumulates the on-disk byte count of sessions that
+	// are NOT eviction candidates (already releasing or idle-evicted during this
+	// pass) but whose data is still present on disk. These bytes count toward
+	// the LRU cap — if we exclude them, the loop may think the cache is under
+	// cap and stop evicting cold candidates prematurely.
+	//
+	// Sessions marked releasing.Load()==true started their cleanup but have not
+	// yet removed the repo directory; they are resident until the background
+	// release goroutine calls RemoveRepo. We must count them here rather than
+	// only inside the LRU loop, because they are filtered out before entering
+	// the active candidate list.
+	var residentSkippedBytes int64
+
 	// Refresh per-session repo sizes and collect idle-eviction candidates.
 	m.sessions.Range(func(k, v any) bool {
 		sessionID := k.(string)
 		entry := v.(*sessionEntry)
 
 		if entry.releasing.Load() {
+			// Session is being released concurrently. Its repo is still on disk
+			// until the release goroutine finishes, so count its bytes toward the
+			// cap. Do NOT add it as an eviction candidate (we can't double-evict).
+			repoPath := m.Storage.RepoPath(entry.orgID, sessionID)
+			residentSkippedBytes += dirSize(repoPath)
 			return true
 		}
 
@@ -407,6 +425,10 @@ func (m *LifecycleManager) evictIdleAndOversize(ctx context.Context) {
 				"idle_for", now.Sub(la).Round(time.Second),
 			)
 			_ = m.releaseWithReason(ctx, sessionID, "idle")
+			// Idle-evicted: the release is in progress. We do NOT count these
+			// bytes in residentSkippedBytes because releaseWithReason begins
+			// the repo removal synchronously (or near-synchronously) before
+			// returning, and the session is no longer an LRU candidate.
 			return true
 		}
 
@@ -421,15 +443,10 @@ func (m *LifecycleManager) evictIdleAndOversize(ctx context.Context) {
 	// LRU eviction: while cumulative size exceeds the cap, evict the least-
 	// recently-active session.
 	if m.CacheMaxBytes <= 0 || len(active) == 0 {
+		// Even if there are no evictable candidates, we still ran the Range pass.
+		// If only releasing sessions are over cap, we cannot do more — return.
 		return
 	}
-
-	// residentBytes tracks bytes from sessions that are still resident but
-	// skipped as eviction candidates (they are hot or already being released by
-	// another goroutine). These bytes count toward the cap — a hot-skip must
-	// not falsely drop the byte total below the cap and stop eviction of other
-	// genuinely-cold sessions.
-	var residentSkippedBytes int64
 
 	for {
 		// Total resident bytes = evictable candidates + skipped-but-still-resident.
