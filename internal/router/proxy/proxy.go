@@ -459,7 +459,21 @@ func (b *bufferedResponse) setTransportErr(err error) {
 }
 
 // WriteHeader records the upstream status code without touching the client.
+//
+// Informational 1xx responses (100 Continue, 103 Early Hints) are a special
+// case: httputil.ReverseProxy forwards an upstream 1xx through WriteHeader
+// BEFORE the final response. They must NOT be recorded as the final buffered
+// status — otherwise the real 200/503 would be dropped and the retry/commit
+// decision would act on the 1xx. This is reachable in production: git push
+// sends "Expect: 100-continue", so a push routed through the router drives a
+// 100 here. We ignore the forwarded 1xx and keep buffering: the router's own
+// http.Server already satisfies the client's Expect: 100-continue when
+// ReverseProxy reads the request body to forward it, so the client is not left
+// waiting.
 func (b *bufferedResponse) WriteHeader(code int) {
+	if code >= 100 && code < 200 {
+		return
+	}
 	if b.wrote {
 		return
 	}

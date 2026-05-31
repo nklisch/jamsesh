@@ -258,6 +258,50 @@ func Test503RetrySucceeds(t *testing.T) {
 	}
 }
 
+// Test1xxInformationalNotCapturedAsFinalStatus verifies that an upstream
+// informational 1xx response (100 Continue — which git push drives via
+// Expect: 100-continue, forwarded by httputil.ReverseProxy through WriteHeader
+// before the final response) is NOT recorded as the final buffered status.
+// Before the fix the buffered response captured the 100 and dropped the real
+// 200, so a push routed through the router would fail.
+func Test1xxInformationalNotCapturedAsFinalStatus(t *testing.T) {
+	const okBody = "FINAL-200-BODY"
+	var hits int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusContinue) // 100 informational, like a reply to Expect: 100-continue
+		w.WriteHeader(http.StatusOK)       // 200 final
+		_, _ = io.WriteString(w, okBody)
+	}))
+	t.Cleanup(ts.Close)
+
+	r := ring.New(50)
+	r.SetPods([]ring.Pod{{ID: "pod-a", Address: strings.TrimPrefix(ts.URL, "http://")}})
+	h := &proxy.Handler{
+		Extract:  staticExtract,
+		Ring:     r,
+		Hint:     cache.New(100, 60*time.Second),
+		Fallback: proxy.NewRoundRobinFallback(r),
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/o/sessions/onexx-session/x", nil)
+	req.Header.Set("X-Test-Session", "onexx-session")
+	h.ServeHTTP(rr, req)
+
+	body, _ := io.ReadAll(rr.Body)
+	if rr.Code != http.StatusOK {
+		t.Errorf("1xx: client got status %d (body %q); want the final 200 — a forwarded "+
+			"100 Continue must not be captured as the final status", rr.Code, body)
+	}
+	if string(body) != okBody {
+		t.Errorf("1xx: client body = %q; want %q (the final response body)", body, okBody)
+	}
+	if hits != 1 {
+		t.Errorf("1xx: backend hit %d times; want 1 (no spurious retry triggered by the 100)", hits)
+	}
+}
+
 // TestDeadPodTransportErrorFailsOver verifies that when the primary pod is dead
 // (the upstream dial fails with connection-refused — the SIGKILLed-pod case, NOT
 // a 503 status), the router invalidates the hint, redispatches to a distinct
