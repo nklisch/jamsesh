@@ -10,6 +10,14 @@ import (
 )
 
 // TestLooksLikeReportStatus verifies the pkt-line report-status detector.
+//
+// The detector requires:
+//  1. A valid 4-hex pkt-line length prefix whose numeric value matches the
+//     actual first-packet size (pkt-line framing validated, not just hex).
+//  2. The payload must contain "unpack " (the mandatory first line of any
+//     git report-status). "ng " or "ok " alone are insufficient.
+//
+// Malformed/truncated input (bad framing, missing "unpack ") → false → 500.
 func TestLooksLikeReportStatus(t *testing.T) {
 	tests := []struct {
 		name string
@@ -22,54 +30,69 @@ func TestLooksLikeReportStatus(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "too short",
+			name: "too short (under 8 bytes)",
 			buf:  []byte("003"),
 			want: false,
-		},
-		{
-			name: "valid pktline with unpack ok",
-			buf:  []byte("0030unpack ok\n0000"),
-			want: true,
-		},
-		{
-			name: "valid pktline with ng line",
-			buf:  []byte("001e\x01unpack ok\n002eng refs/heads/main hook rejected\n0000"),
-			want: true,
-		},
-		{
-			name: "valid pktline with ok ref",
-			buf:  []byte("001e\x01unpack ok\n001aok refs/heads/main\n0000"),
-			want: true,
-		},
-		{
-			name: "non-hex prefix (crash/kill output)",
-			buf:  []byte("fatal: bad object abc123\n"),
-			want: false,
-		},
-		{
-			name: "hex prefix but no keywords",
-			buf:  []byte("0000"),
-			want: false,
-		},
-		{
-			name: "contains unpack keyword",
-			buf:  append([]byte("0030"), []byte("unpack ok\n0000")...),
-			want: true,
-		},
-		{
-			name: "real git rejection payload shape",
-			buf:  buildFakeReportStatus("ng refs/heads/main pre-receive hook declined"),
-			want: true,
 		},
 		{
 			name: "nil buf",
 			buf:  nil,
 			want: false,
 		},
+		// Well-formed pkt-line report-status payloads (length matches actual data).
 		{
-			name: "uppercase hex prefix + unpack",
-			buf:  []byte("00AB" + "unpack ok\n0000"),
+			name: "valid: unpack ok only",
+			buf:  buildFakeReportStatus("unpack ok\n"),
 			want: true,
+		},
+		{
+			name: "valid: unpack ok + ok ref",
+			buf:  buildFakeReportStatus("unpack ok\nok refs/heads/main\n0000"),
+			want: true,
+		},
+		{
+			name: "valid: unpack ok + ng ref (hook rejection)",
+			buf:  buildFakeReportStatus("unpack ok\nng refs/heads/main pre-receive hook declined\n0000"),
+			want: true,
+		},
+		{
+			name: "valid: real git rejection payload shape (contains unpack)",
+			buf:  buildFakeReportStatus("unpack ok\nng refs/heads/main hook rejected"),
+			want: true,
+		},
+		// Malformed: correct hex prefix but pkt-line length does NOT match actual buf size.
+		{
+			name: "malformed: length prefix does not match buf (truncated)",
+			buf:  []byte("0030unpack ok\n0000"), // 0x30=48 but buf is only 18 bytes
+			want: false,
+		},
+		{
+			name: "malformed: uppercase hex but length mismatch",
+			buf:  []byte("00ABunpack ok\n0000"), // 0xAB=171 but buf is only 18 bytes
+			want: false,
+		},
+		// Non-hex prefix (subprocess crash output).
+		{
+			name: "non-hex prefix (crash/kill output)",
+			buf:  []byte("fatal: bad object abc123\n"),
+			want: false,
+		},
+		// Flush-pkt (0000) is not a report-status.
+		{
+			name: "flush pkt only (0000)",
+			buf:  []byte("0000"),
+			want: false,
+		},
+		// "ng " or "ok " alone without "unpack " — insufficient (could be garbage).
+		{
+			name: "ng only without unpack (malformed/truncated report)",
+			buf:  buildFakeReportStatus("ng refs/heads/main pre-receive hook declined"),
+			want: false,
+		},
+		{
+			name: "ok only without unpack (malformed/truncated report)",
+			buf:  buildFakeReportStatus("ok refs/heads/main"),
+			want: false,
 		},
 	}
 

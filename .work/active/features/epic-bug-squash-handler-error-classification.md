@@ -242,3 +242,25 @@ token validation can become a 503, and receive-pack body-read errors can become
 ## Implementation summary
 
 All 3 child stories implemented and advanced to `stage: review` (per-story `implement: bug-squash-*` commits). Each landed a failing-first regression test; the codex feature-gate findings (see `## Other agent review`) were applied during design and honored in implementation. Verification at the orchestrator level: `go build ./...` + `go vet` clean; backend `-race`/package tests and frontend `vitest` (764 passing) + `svelte-check` green; `sqlc generate` matches spec.
+
+## Final-gate fix
+
+**Finding 4 (BLOCKING): `looksLikeReportStatus` too permissive — accepts malformed
+pkt-lines on hex prefix + keyword alone.**
+`receive_pack.go ~:575`: the detector accepted any buffer starting with 4 hex chars
+that contained "unpack ", "ng ", or "ok " anywhere in the buffer, even if the
+pkt-line length prefix did not match the actual buffer size. A truncated/garbage
+report with `ng ` or `ok ` in noise could pass and return HTTP 200.
+
+Fix (two-step validation):
+1. Parse the 4-hex length prefix with `strconv.ParseUint`; reject if not valid hex
+   or if `pktLen < 4` (flush-pkt or encoding shorter than prefix itself).
+2. The first pkt-line must fit within `buf` (`pktLen <= len(buf)`); truncated
+   reports where the claimed length exceeds available data return `false` → 500.
+3. Only accept "unpack " (mandatory first line of any report-status); "ng " and
+   "ok " alone without "unpack " are insufficient (could be garbage noise).
+
+Updated `receive_pack_internal_test.go`: replaced the old test cases (some of which
+had mismatched length prefixes and incorrectly expected `true`) with well-formed cases
+via `buildFakeReportStatus` and explicit malformed/truncated cases that must return
+`false`.

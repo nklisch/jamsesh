@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -562,30 +563,52 @@ func (s *layeredStorer) PackRefs() error {
 	return s.diskRefs.PackRefs()
 }
 
-// looksLikeReportStatus reports whether buf looks like a git pkt-line
-// report-status payload. A valid report starts with a 4-hex-digit length
-// prefix (the pkt-line length field) and contains at least one of the
-// canonical report-status keywords: "unpack ", "ng ", or "ok ".
+// looksLikeReportStatus reports whether buf looks like a well-formed git
+// pkt-line report-status payload.
 //
-// This is intentionally conservative: a malformed or absent report returns
-// false so a subprocess crash (non-zero exit, no report) becomes a 500 rather
-// than a false 200. False-positives (a crash that happens to start with hex)
-// are extremely unlikely and would result in a no-op 200 — acceptable because
-// git clients parse the report-status and would surface the inconsistency.
+// Validation is two-step:
+//  1. The first 4 bytes must form a valid hex pkt-line length whose numeric
+//     value matches the actual length of the first pkt-line in buf (i.e.
+//     pktLen == len of first line including the 4-byte prefix itself). A
+//     flush-pkt (0000) at position 0 is not a report-status.
+//  2. The payload must contain the canonical report-status opening keyword
+//     "unpack " (followed by a status word). "ng " and "ok " are ref-status
+//     lines that appear after the unpack line; a buffer containing only
+//     "ok " without "unpack " is malformed/truncated and returns false.
+//
+// Malformed or truncated input returns false so a subprocess crash (non-zero
+// exit, no report) becomes a 500 rather than a false 200.
 func looksLikeReportStatus(buf []byte) bool {
-	if len(buf) < 4 {
+	if len(buf) < 8 {
+		// Minimum well-formed report: 4-hex + at least 4 bytes of content
+		// (e.g. "0005X" for a 5-byte pkt-line). We need at least 8 bytes
+		// to have a meaningful payload after the length prefix.
 		return false
 	}
-	// Verify the first 4 bytes form a valid hex pkt-line length.
-	for _, b := range buf[:4] {
-		if !((b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')) {
-			return false
-		}
+
+	// Step 1: parse the 4-hex length prefix.
+	hexLen, err := strconv.ParseUint(string(buf[:4]), 16, 32)
+	if err != nil {
+		// Not valid hex — definitely not a pkt-line.
+		return false
 	}
-	// Require at least one of the canonical report-status keywords.
-	s := string(buf)
-	return strings.Contains(s, "unpack ") ||
-		strings.Contains(s, "ng ") ||
-		strings.Contains(s, "ok ")
+	pktLen := int(hexLen)
+
+	// A flush-pkt (0000) is not a report-status header.
+	// pktLen < 4 means the encoded length is less than the prefix size — malformed.
+	if pktLen < 4 {
+		return false
+	}
+
+	// The first pkt-line must fit within buf. A report-status buffer that was
+	// truncated mid-packet is rejected.
+	if pktLen > len(buf) {
+		return false
+	}
+
+	// Step 2: the payload must contain "unpack " (the first line of a valid
+	// report-status). Do not accept "ok " or "ng " alone — those are
+	// ref-status lines and could appear in garbage output.
+	return strings.Contains(string(buf), "unpack ")
 }
 
