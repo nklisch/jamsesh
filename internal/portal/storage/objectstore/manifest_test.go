@@ -215,6 +215,50 @@ func TestManifestStore_Load_Existing(t *testing.T) {
 	}
 }
 
+// TestManifestStore_Load_Corrupt verifies that Load rejects a manifest object
+// that exists in storage but is not a readable schema-version-1 manifest for
+// the requested session. Such objects must surface as ErrCorruptManifest rather
+// than decode silently into a degenerate (empty/partial) Manifest — otherwise
+// hydration would treat the corrupt object as a fresh/empty session and drop the
+// session's real history (silent truncation / data loss).
+//
+// These corrupt bodies are written straight through the Backend (bypassing Save,
+// which would normalise version and stamp the body) to simulate corruption that
+// occurred outside the Save path.
+func TestManifestStore_Load_Corrupt(t *testing.T) {
+	const sessionID = "sess-corrupt"
+	key := ManifestKey(sessionID)
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"null JSON", `null`},
+		{"empty object", `{}`},
+		{"unknown version 99", `{"version":99,"session_id":"sess-corrupt","packs":[],"refs":{}}`},
+		{"version 0", `{"version":0,"session_id":"sess-corrupt","packs":[],"refs":{}}`},
+		{"duplicate version key (last wins → 2)", `{"version":1,"version":2,"session_id":"sess-corrupt","packs":[],"refs":{}}`},
+		{"empty session_id", `{"version":1,"session_id":"","packs":[],"refs":{}}`},
+		{"session_id mismatch", `{"version":1,"session_id":"a-different-session","packs":[],"refs":{}}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			backend := newMemBackend()
+			store := newStore(backend)
+			// Write the raw corrupt body directly, bypassing Save normalisation.
+			if _, err := backend.Put(context.Background(), key, []byte(tc.body), 0, ""); err != nil {
+				t.Fatalf("seed corrupt body: %v", err)
+			}
+
+			_, _, err := store.Load(context.Background(), sessionID)
+			if !errors.Is(err, ErrCorruptManifest) {
+				t.Fatalf("Load(corrupt %q) error = %v; want ErrCorruptManifest", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestManifestStore_Save_FreshSession(t *testing.T) {
 	store := newStore(newMemBackend())
 	m := Manifest{

@@ -41,6 +41,15 @@ import (
 const (
 	image         = "jamsesh/portal:e2e"
 	containerPort = "8443/tcp"
+
+	// startupAttemptTimeout bounds how long each container-start attempt waits
+	// for /healthz before being treated as a transient stall and retried.
+	startupAttemptTimeout = 60 * time.Second
+	// startupMaxAttempts is the number of container-start attempts before
+	// giving up. Healthy boots succeed on the first; retries absorb transient
+	// readiness stalls on a busy shared Docker host (the portal binary itself
+	// boots in ~1s, so a stalled attempt is host contention, not a crash).
+	startupMaxAttempts = 5
 )
 
 // Options configures a portal container. Every field maps directly to a
@@ -247,14 +256,43 @@ func Start(ctx context.Context, t *testing.T, opts Options) *Portal {
 			WaitingFor: wait.ForHTTP("/healthz").
 				WithPort(containerPort).
 				WithStatusCodeMatcher(func(code int) bool { return code == 200 }).
-				WithStartupTimeout(30 * time.Second),
+				// Healthy boots are ~1s. This per-attempt ceiling is generous
+				// headroom for a cold-start on a busy Docker host; if it is
+				// exceeded the boot is treated as a transient stall and retried
+				// below rather than failing the test outright.
+				WithStartupTimeout(startupAttemptTimeout),
 		},
 		Started: true,
 	}
 
-	c, err := testcontainers.GenericContainer(ctx, req)
+	// Retry the start on readiness failure. On a shared/busy Docker host an
+	// individual portal cold-start occasionally stalls past the readiness
+	// deadline even though the binary is healthy (observed ~4 stalls per ~80
+	// boots in the fuzz suites, each an isolated single-container event). These
+	// stalls are transient, so a fresh container almost always comes up cleanly.
+	// A successful first attempt is unaffected; only failures pay the retry cost.
+	var c testcontainers.Container
+	var err error
+	for attempt := 1; attempt <= startupMaxAttempts; attempt++ {
+		c, err = testcontainers.GenericContainer(ctx, req)
+		if err == nil {
+			break
+		}
+		// Best-effort terminate the half-started container before retrying so we
+		// do not leak it (GenericContainer may return a non-nil container on a
+		// readiness failure).
+		if c != nil {
+			_ = c.Terminate(ctx)
+			c = nil
+		}
+		if attempt < startupMaxAttempts {
+			t.Logf("portal: start container attempt %d/%d failed (%v) — retrying",
+				attempt, startupMaxAttempts, err)
+		}
+	}
 	if err != nil {
-		t.Fatalf("portal: start container: %v\n\nHint: if the portal crashed, check its logs with `docker logs <id>`", err)
+		t.Fatalf("portal: start container failed after %d attempts: %v\n\nHint: if the portal crashed, check its logs with `docker logs <id>`",
+			startupMaxAttempts, err)
 	}
 
 	t.Cleanup(func() {

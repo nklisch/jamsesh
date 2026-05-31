@@ -18,6 +18,26 @@ import (
 // caller's lease is permanently stale (abort and 503 is the right response).
 var ErrFenced = errors.New("objectstore: write blocked by higher on-disk fencing token (stale lease)")
 
+// ErrCorruptManifest is returned by Load when a manifest object exists in
+// storage but is not a readable schema-version-1 manifest for the requested
+// session: it decodes to an unknown/zero Version, carries an empty SessionID,
+// or carries a SessionID that does not match the key it was fetched under.
+//
+// Such a manifest cannot be trusted to describe the session's pack/ref state,
+// so Load refuses to return it. Callers (hydration, sync pre-flight) MUST fail
+// fast rather than treat a corrupt manifest as a clean slate — silently
+// hydrating an empty repo from an unreadable manifest would drop the session's
+// real history (silent truncation / data loss). This realises the contract
+// stated on the Manifest type: "Unknown versions should be treated as
+// unreadable by future code — return an error rather than silently
+// mis-parsing."
+var ErrCorruptManifest = errors.New("objectstore: manifest exists but is corrupt (unreadable schema)")
+
+// manifestSchemaVersion is the only manifest schema version this code accepts.
+// Save normalises a zero Version to this value on write, so every manifest
+// legitimately written by the system carries exactly this version on disk.
+const manifestSchemaVersion = 1
+
 // Manifest is the per-session linearizable state object stored at
 // sessions/<id>/manifest.json. It lists the current pack files, the current
 // ref map, the raw packed-refs content, and the high-water fencing token.
@@ -108,6 +128,12 @@ func ManifestKey(sessionID string) string {
 // case as "clean slate" and proceed with Save(ifMatch="") to create the
 // manifest.
 //
+// If a manifest object exists but does not decode to a readable
+// schema-version-1 manifest for sessionID (unknown/zero Version, empty or
+// mismatched SessionID, or a body that does not unmarshal), Load returns
+// ErrCorruptManifest (wrapped). Callers must fail fast rather than treat a
+// corrupt manifest as a clean slate.
+//
 // Any other Backend error is returned wrapped with context.
 func (s *ManifestStore) Load(ctx context.Context, sessionID string) (Manifest, string, error) {
 	data, etag, _, err := s.Backend.Get(ctx, ManifestKey(sessionID))
@@ -122,6 +148,23 @@ func (s *ManifestStore) Load(ctx context.Context, sessionID string) (Manifest, s
 	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
 		return Manifest{}, "", fmt.Errorf("objectstore: unmarshal manifest for session %q: %w", sessionID, err)
+	}
+
+	// Validate the decoded manifest. encoding/json is lenient: a body of `null`,
+	// `{}`, `{"version":99,...}`, or a manifest whose session_id was tampered
+	// decodes without error into a degenerate struct. Returning such a manifest
+	// would let hydration treat a corrupt object as an empty/fresh session and
+	// silently lose the real history. Reject anything that is not a readable
+	// schema-version-1 manifest for the session we asked for.
+	if m.Version != manifestSchemaVersion {
+		return Manifest{}, "", fmt.Errorf(
+			"objectstore: manifest for session %q has unsupported schema version %d (want %d): %w",
+			sessionID, m.Version, manifestSchemaVersion, ErrCorruptManifest)
+	}
+	if m.SessionID != sessionID {
+		return Manifest{}, "", fmt.Errorf(
+			"objectstore: manifest fetched for session %q carries session_id %q (key/body mismatch): %w",
+			sessionID, m.SessionID, ErrCorruptManifest)
 	}
 
 	return m, etag, nil

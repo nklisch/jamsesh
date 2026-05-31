@@ -257,6 +257,11 @@ func runFencingSeed(
 ) {
 	t.Helper()
 
+	// Bound concurrent container cold-starts across all parallel seeds so the
+	// Docker host is not saturated (see limiter_test.go). The slot is held until
+	// this seed's containers are torn down, serialising boot+teardown I/O.
+	acquireStartupSlot(t)
+
 	// Step 1: create the session via a short-lived bootstrap cluster.
 	bootstrapCluster := portalcluster.Start(ctx, t, portalcluster.Options{
 		Pods:        1,

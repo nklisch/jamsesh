@@ -64,6 +64,19 @@ type manifestSeedCase struct {
 // This seed must produce a 2xx from git push; if it fails, the harness is broken.
 const controlSeedDescription = "valid manifest no packs"
 
+// validManifestSeedDescriptions lists corpus seeds that LOOK corrupt by name but
+// actually decode to a legitimate, readable schema-version-1 manifest for the
+// session — so a 2xx push is the CORRECT outcome, not silent truncation.
+//
+// In particular, Go's encoding/json marshals a nil slice/map as JSON `null`, so
+// a manifest the portal itself writes with no packs and no refs serialises as
+// `"packs":null,"refs":null`. A pre-seeded `"packs":null` is therefore
+// indistinguishable from a valid empty manifest and must NOT be treated as
+// corruption. These seeds are asserted to succeed, exactly like the control.
+var validManifestSeedDescriptions = map[string]bool{
+	"packs is null instead of array": true,
+}
+
 // manifestPanicTerms are substrings in container logs that indicate a Go runtime panic.
 var manifestPanicTerms = []string{
 	"panic:",
@@ -236,6 +249,11 @@ func runManifestSeed(
 	seed manifestSeedCase,
 ) {
 	t.Helper()
+
+	// Bound concurrent container cold-starts across all parallel seeds so the
+	// Docker host is not saturated (see limiter_test.go). The slot is held until
+	// this seed's containers are torn down, serialising boot+teardown I/O.
+	acquireStartupSlot(t)
 
 	// Step 1: create the session via the portal (using a short-lived bootstrap cluster).
 	// We need a real session ID before we can write the manifest to the bucket.
@@ -412,6 +430,23 @@ func runManifestSeed(
 			)
 		} else {
 			t.Logf("seed %q (control): push succeeded as expected", seed.Description)
+		}
+		return
+	}
+
+	// Some seeds look corrupt by name but actually decode to a valid, readable
+	// manifest (e.g. "packs":null == no packs). For those, a successful push is
+	// the CORRECT outcome — the portal read a legitimate manifest. Assert success
+	// like the control rather than flagging silent truncation.
+	if validManifestSeedDescriptions[seed.Description] {
+		if !pushResult.Success {
+			t.Errorf(
+				"seed %q is a VALID manifest (decodes to a readable v1 manifest) and must push successfully, "+
+					"but the push was rejected.\n  push output: %s\n  logs (tail):\n%s",
+				seed.Description, pushResult.Output, tailLogs(logs, 50),
+			)
+		} else {
+			t.Logf("seed %q: push succeeded as expected (valid manifest variant)", seed.Description)
 		}
 		return
 	}
