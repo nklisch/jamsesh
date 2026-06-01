@@ -95,6 +95,29 @@ describe('client — Bearer middleware', () => {
     await client.POST('/api/auth/refresh', { body: { refresh_token: 'r' } });
     expect(captured!.headers.get('Authorization')).toBe('Bearer after-set-token');
   });
+
+  test('does not overwrite an explicit Authorization header', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('account-token', 'account-refresh');
+
+    const { client } = await import('./client');
+
+    let captured: Request | null = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      captured = input as Request;
+      return new Response(JSON.stringify({ ticket: 't', expires_in_seconds: 60 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    await client.POST('/api/auth/ws-ticket', {
+      headers: { Authorization: 'Bearer explicit-token' },
+    });
+
+    expect(captured).not.toBeNull();
+    expect(captured!.headers.get('Authorization')).toBe('Bearer explicit-token');
+  });
 });
 
 describe('client — playground bearer selection', () => {

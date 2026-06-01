@@ -376,3 +376,11 @@ alignment, lightweight auth/security, public contract behavior, foundation-doc
 alignment, and browser/WS lifecycle risks. Fresh-context review is deferred to
 the autopilot final peer-review loop rather than duplicated here. Child stories
 are approved and done.
+
+## Peer Review Follow-up (2026-06-01)
+
+- Accepted peer finding: explicit WS-ticket `Authorization` headers were being
+  overwritten by the shared bearer middleware when a durable account token
+  coexisted with a playground context.
+- Fixed `client.ts` to preserve explicit `Authorization` headers and added
+  client/WS coexistence tests for playground and durable bearer selection.

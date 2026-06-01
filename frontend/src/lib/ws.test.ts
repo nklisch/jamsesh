@@ -209,6 +209,48 @@ describe('ws — subscribe / lifecycle', () => {
     unsub();
   });
 
+  test('playground session uses playground bearer even when durable token exists', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setPlaygroundContext({
+      sessionId: 'pg-sess',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const { client } = await import('$lib/api/client');
+    const { subscribe } = await import('$lib/ws.svelte');
+
+    const unsub = subscribe('pg-sess', 'any', vi.fn());
+    await flushMicrotasks();
+
+    expect(client.POST).toHaveBeenCalledWith('/api/auth/ws-ticket', {
+      headers: { Authorization: 'Bearer pg-bearer' },
+    });
+
+    unsub();
+  });
+
+  test('durable session uses account bearer when playground context exists for another session', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setPlaygroundContext({
+      sessionId: 'pg-sess',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const { client } = await import('$lib/api/client');
+    const { subscribe } = await import('$lib/ws.svelte');
+
+    const unsub = subscribe('durable-sess', 'any', vi.fn());
+    await flushMicrotasks();
+
+    expect(client.POST).toHaveBeenCalledWith('/api/auth/ws-ticket', {
+      headers: { Authorization: 'Bearer test-token' },
+    });
+
+    unsub();
+  });
+
   test('second subscribe() to same sessionId reuses the socket (no second ticket fetch)', async () => {
     const { client } = await import('$lib/api/client');
     const { subscribe } = await import('$lib/ws.svelte');

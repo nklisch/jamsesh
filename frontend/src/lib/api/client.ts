@@ -38,7 +38,9 @@ function bearerForRequest(pathname: string): string | null {
 const bearerMiddleware: Middleware = {
   onRequest({ request }) {
     const token = bearerForRequest(new URL(request.url).pathname);
-    if (token) request.headers.set('Authorization', `Bearer ${token}`);
+    if (token && !request.headers.has('Authorization')) {
+      request.headers.set('Authorization', `Bearer ${token}`);
+    }
     return request;
   },
 };
