@@ -85,13 +85,22 @@
   // ── Data loading ──────────────────────────────────────────────────────────
   async function loadSession() {
     if (orgId === 'org_playground') {
+      if (!auth.restorePlaygroundContext(sessionId)) {
+        navigate(`/playground/s/${encodeURIComponent(sessionId)}/join`);
+        return;
+      }
       // Playground sessions: use the dedicated endpoint that returns
       // PlaygroundSessionSummary — it carries hard_cap_at and idle_timeout_at
       // which are needed for the countdown. The generic Session endpoint
       // does not include those fields.
-      const { data, error } = await client.GET('/api/playground/sessions/{id}', {
+      const { data, error, response } = await client.GET('/api/playground/sessions/{id}', {
         params: { path: { id: sessionId } },
       });
+      if (response?.status === 401) {
+        auth.clearPlaygroundContext(sessionId);
+        navigate(`/playground/s/${encodeURIComponent(sessionId)}/ended`);
+        return;
+      }
       if (error) {
         loadError = 'Failed to load session.';
       } else if (data) {

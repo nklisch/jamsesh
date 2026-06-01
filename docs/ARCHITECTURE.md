@@ -223,16 +223,17 @@ by OAuth/magic-link exchange is memory-only for the current page lifetime and
 and `orgs` are in-memory caches loaded from `/api/me` on first use.
 
 **Ephemeral playground context** — `_playgroundContext = $state<PlaygroundContext | null>(null)`
-holds the anonymous-mode identity `{sessionId, bearer, nickname}` for a
-playground session. It is **in-memory only** — never written to localStorage.
-A tab reload drops the playground identity, which is intentional: the
-server-side bearer is destroyed when the playground session ends (or when
-the destruction sweep revokes it), so retaining a stale bearer across
-reloads would be misleading. The store exposes this state via
-`auth.playgroundContext` (read) and `auth.setPlaygroundContext(ctx | null)`
-(write). `auth.isAuthenticated` reflects only the OAuth token; a tab in
-playground-only mode has `isAuthenticated === false` and a non-null
-`playgroundContext`.
+holds the anonymous-mode identity `{sessionId, bearer, nickname, expiresAt}`
+for a playground session. The active value is kept in memory and mirrored to
+browser-local storage under a per-session key so a participant can reload or
+return in the same browser while the bearer is still live. Restore is explicit:
+playground session routes call `auth.restorePlaygroundContext(sessionId)`,
+which rejects missing, malformed, or expired entries and removes stale
+storage. The store exposes this state via `auth.playgroundContext` (read),
+`auth.setPlaygroundContext(ctx | null)` (write/replace), and
+`auth.clearPlaygroundContext(sessionId?)` (revoke local state). `auth.isAuthenticated`
+reflects only the OAuth token; a browser in playground-only mode has
+`isAuthenticated === false` and a non-null `playgroundContext`.
 
 The `auth` export follows the **wrapper-object rune store** pattern (private
 `$state` vars, `export const auth = { get ... }` facade) required by Svelte

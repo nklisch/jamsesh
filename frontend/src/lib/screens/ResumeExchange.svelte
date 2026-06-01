@@ -25,6 +25,7 @@
   let _pendingSessionId: string | null = null;
   let _pendingOrgId: string | null = null;
   let _pendingKind: 'playground' | 'durable' | null = null;
+  let _pendingExpiresAt: string | null = null;
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -114,6 +115,7 @@
     _pendingSessionId = body.session_id;
     _pendingOrgId = body.org_id;
     _pendingKind = body.kind;
+    _pendingExpiresAt = body.expires_at;
 
     // Always capture the display_name so adopt() can use it as the nickname
     // on BOTH the direct and confirm paths (mirrors JoinerPicker's shape).
@@ -138,6 +140,10 @@
     }
 
     if (_pendingKind === 'playground') {
+      if (!_pendingExpiresAt) {
+        viewState = 'error';
+        return;
+      }
       // Mirror JoinerPicker's successful-join handling exactly.
       auth.setPlaygroundContext({
         sessionId: _pendingSessionId,
@@ -146,6 +152,7 @@
         // playground session — the server tracks the original nickname but
         // the exchange response uses display_name.
         nickname: pendingDisplayName ?? _pendingSessionId,
+        expiresAt: _pendingExpiresAt,
       });
       navigate(`/orgs/org_playground/sessions/${encodeURIComponent(_pendingSessionId)}`);
     } else {
@@ -161,6 +168,7 @@
     _pendingSessionId = null;
     _pendingOrgId = null;
     _pendingKind = null;
+    _pendingExpiresAt = null;
   }
 
   // ── Confirm handlers ───────────────────────────────────────────────────────
@@ -175,6 +183,7 @@
     _pendingSessionId = null;
     _pendingOrgId = null;
     _pendingKind = null;
+    _pendingExpiresAt = null;
     pendingDisplayName = null;
     viewState = 'error';
   }

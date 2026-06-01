@@ -215,7 +215,11 @@ user creates.
   schema relaxation) so the existing `session_members.account_id` FK and the
   `RequireSessionMember` middleware work unchanged. Anonymous accounts and
   their session-scoped bearers are cascade-deleted with the session and
-  never appear in `org_members`.
+  never appear in `org_members`. In the portal UI, the anonymous bearer is
+  browser-scoped: the frontend stores `{sessionId, bearer, nickname, expiresAt}`
+  under a per-session localStorage key, restores it only for the matching
+  playground session route, and clears it when it is expired, rejected, or the
+  session ends.
 
 ## Lifecycle
 

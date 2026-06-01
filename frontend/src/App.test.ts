@@ -73,10 +73,12 @@ vi.mock('$lib/router.svelte', () => ({
 // Tests mutate mockAuth.isAuthenticated and mockAuth.orgs directly.
 
 const mockLoadCurrentUser = vi.fn().mockResolvedValue(undefined);
+type MockPlaygroundContext = { sessionId: string; bearer: string; nickname: string; expiresAt: string };
+const mockRestorePlaygroundContext = vi.fn((_sessionId: string) => false);
 const mockAuth = {
   isAuthenticated: false as boolean,
   orgs: null as unknown[] | null,
-  playgroundContext: null as { sessionId: string; bearer: string; nickname: string } | null,
+  playgroundContext: null as MockPlaygroundContext | null,
 };
 
 vi.mock('$lib/auth.svelte', () => ({
@@ -85,6 +87,7 @@ vi.mock('$lib/auth.svelte', () => ({
       get isAuthenticated() { return mockAuth.isAuthenticated; },
       get orgs() { return mockAuth.orgs; },
       get playgroundContext() { return mockAuth.playgroundContext; },
+      restorePlaygroundContext: (sessionId: string) => mockRestorePlaygroundContext(sessionId),
       loadCurrentUser: () => mockLoadCurrentUser(),
     };
   },
@@ -131,6 +134,7 @@ describe('App — auth-gate $effect', () => {
     mockAuth.isAuthenticated = false;
     mockAuth.orgs = null;
     mockAuth.playgroundContext = null;
+    mockRestorePlaygroundContext.mockImplementation(() => false);
     mockRouterCurrent.name = 'home';
     mockRouterCurrent.params = {};
     mockRouterCurrent.requiresAuth = true;
@@ -322,7 +326,12 @@ describe('App — auth-gate $effect', () => {
 
   it('unauthed playground participant on their own session-view → does NOT navigate', async () => {
     mockAuth.isAuthenticated = false;
-    mockAuth.playgroundContext = { sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' };
+    mockAuth.playgroundContext = {
+      sessionId: 's1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
     mockRouterCurrent.name = 'session-view';
     mockRouterCurrent.params = { orgId: 'org_playground', sessionId: 's1' };
     mockRouterCurrent.requiresAuth = true;
@@ -333,17 +342,43 @@ describe('App — auth-gate $effect', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('unauthed visitor on a playground session-view they did not join → /login', async () => {
+  it('unauthed visitor on a playground session-view they did not join → join page', async () => {
     mockAuth.isAuthenticated = false;
     // playgroundContext is for a DIFFERENT session — must not satisfy the gate.
-    mockAuth.playgroundContext = { sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' };
+    mockAuth.playgroundContext = {
+      sessionId: 's1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
     mockRouterCurrent.name = 'session-view';
     mockRouterCurrent.params = { orgId: 'org_playground', sessionId: 's2' };
     mockRouterCurrent.requiresAuth = true;
 
     render(App);
 
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/playground/s/s2/join'));
+  });
+
+  it('unauthed visitor with live browser-scoped playground context → restores and does NOT navigate', async () => {
+    mockAuth.isAuthenticated = false;
+    mockRouterCurrent.name = 'session-view';
+    mockRouterCurrent.params = { orgId: 'org_playground', sessionId: 's3' };
+    mockRouterCurrent.requiresAuth = true;
+    mockRestorePlaygroundContext.mockImplementation((sessionId: string) => {
+      mockAuth.playgroundContext = {
+        sessionId,
+        bearer: 'pg-restored',
+        nickname: 'n',
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      };
+      return true;
+    });
+
+    render(App);
+
+    await waitFor(() => expect(mockRestorePlaygroundContext).toHaveBeenCalledWith('s3'));
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });
 

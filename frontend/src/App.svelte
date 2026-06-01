@@ -47,18 +47,29 @@
       return;
     }
 
-    // Anonymous playground participants hold a session-scoped bearer in
-    // auth.playgroundContext instead of an account token, so isAuthenticated is
-    // false — yet they ARE authorized for their own playground session view.
-    // The session-view route is shared with durable sessions (requiresAuth:
-    // true), so without this exception the gate would bounce a joiner to /login
-    // immediately after a successful join. This check is optimistic: the
-    // server's session-membership check is the real authority — a stale context
-    // just yields a transient view, then a 401-driven signOut.
-    const inOwnPlaygroundSession =
+    const isPlaygroundSessionView =
       current.name === 'session-view' &&
-      current.params.orgId === PLAYGROUND_ORG_ID &&
+      current.params.orgId === PLAYGROUND_ORG_ID;
+
+    if (
+      isPlaygroundSessionView &&
+      auth.playgroundContext?.sessionId !== current.params.sessionId
+    ) {
+      auth.restorePlaygroundContext(current.params.sessionId);
+    }
+
+    // Anonymous playground participants hold a session-scoped bearer in
+    // auth.playgroundContext instead of an account token. The shared
+    // session-view route is protected for durable sessions, but playground
+    // sessions route through the browser-scoped join/resume context.
+    const inOwnPlaygroundSession =
+      isPlaygroundSessionView &&
       auth.playgroundContext?.sessionId === current.params.sessionId;
+
+    if (isPlaygroundSessionView && !inOwnPlaygroundSession) {
+      navigate(`/playground/s/${encodeURIComponent(current.params.sessionId)}/join`);
+      return;
+    }
 
     // Unauthed user on a protected route → /login, with landing-variant
     // branching for the home route. Gate on portalInfo.loaded so the variant

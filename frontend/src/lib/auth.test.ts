@@ -515,36 +515,77 @@ describe('auth store', () => {
 
   test('setPlaygroundContext populates playgroundContext', async () => {
     const { auth } = await import('$lib/auth.svelte');
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
 
     auth.setPlaygroundContext({
       sessionId: 'sess-pg-1',
       bearer: 'anon-bearer-abc',
       nickname: 'swift-fox',
+      expiresAt,
     });
 
     expect(auth.playgroundContext).toEqual({
       sessionId: 'sess-pg-1',
       bearer: 'anon-bearer-abc',
       nickname: 'swift-fox',
+      expiresAt,
     });
+    expect(localStorage.getItem('jamsesh.playground.sess-pg-1')).toContain('anon-bearer-abc');
   });
 
   test('setPlaygroundContext(null) clears the context', async () => {
     const { auth } = await import('$lib/auth.svelte');
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
 
     auth.setPlaygroundContext({
       sessionId: 'sess-pg-2',
       bearer: 'anon-bearer-xyz',
       nickname: 'bold-hawk',
+      expiresAt,
     });
     expect(auth.playgroundContext).not.toBeNull();
 
     auth.setPlaygroundContext(null);
     expect(auth.playgroundContext).toBeNull();
+    expect(localStorage.getItem('jamsesh.playground.sess-pg-2')).toBeNull();
+  });
+
+  test('restorePlaygroundContext loads a live browser-scoped context', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    localStorage.setItem('jamsesh.playground.sess-pg-live', JSON.stringify({
+      sessionId: 'sess-pg-live',
+      bearer: 'anon-bearer-live',
+      nickname: 'live-nick',
+      expiresAt,
+    }));
+
+    expect(auth.restorePlaygroundContext('sess-pg-live')).toBe(true);
+    expect(auth.playgroundContext).toEqual({
+      sessionId: 'sess-pg-live',
+      bearer: 'anon-bearer-live',
+      nickname: 'live-nick',
+      expiresAt,
+    });
+  });
+
+  test('restorePlaygroundContext rejects expired context and clears storage', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    localStorage.setItem('jamsesh.playground.sess-pg-expired', JSON.stringify({
+      sessionId: 'sess-pg-expired',
+      bearer: 'anon-bearer-expired',
+      nickname: 'expired-nick',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    }));
+
+    expect(auth.restorePlaygroundContext('sess-pg-expired')).toBe(false);
+    expect(auth.playgroundContext).toBeNull();
+    expect(localStorage.getItem('jamsesh.playground.sess-pg-expired')).toBeNull();
   });
 
   test('setting playgroundContext does not affect isAuthenticated (orthogonal states)', async () => {
     const { auth } = await import('$lib/auth.svelte');
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
 
     // Start unauthenticated.
     expect(auth.isAuthenticated).toBe(false);
@@ -553,6 +594,7 @@ describe('auth store', () => {
       sessionId: 'sess-pg-3',
       bearer: 'anon-bearer-456',
       nickname: 'calm-river',
+      expiresAt,
     });
 
     // playgroundContext populated — isAuthenticated must remain false.
@@ -563,6 +605,7 @@ describe('auth store', () => {
   test('isAuthenticated true and playgroundContext non-null can coexist', async () => {
     // A signed-in user clicking a playground share link: both states are set.
     const { auth } = await import('$lib/auth.svelte');
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
 
     auth.setTokens('real-access-token', 'real-refresh-token');
     expect(auth.isAuthenticated).toBe(true);
@@ -571,6 +614,7 @@ describe('auth store', () => {
       sessionId: 'sess-pg-4',
       bearer: 'anon-bearer-789',
       nickname: 'quick-storm',
+      expiresAt,
     });
 
     expect(auth.isAuthenticated).toBe(true);

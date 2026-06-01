@@ -121,7 +121,12 @@ describe('client — playground bearer selection', () => {
 
   test('attaches the playground bearer for /api/playground/* requests', async () => {
     const { auth } = await import('$lib/auth.svelte');
-    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+    auth.setPlaygroundContext({
+      sessionId: 's1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
 
     const { client } = await import('./client');
     const cap = captureFetch();
@@ -133,7 +138,12 @@ describe('client — playground bearer selection', () => {
 
   test('attaches the playground bearer for /api/orgs/org_playground/* requests', async () => {
     const { auth } = await import('$lib/auth.svelte');
-    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+    auth.setPlaygroundContext({
+      sessionId: 's1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
 
     const { client } = await import('./client');
     const cap = captureFetch();
@@ -148,7 +158,12 @@ describe('client — playground bearer selection', () => {
   test('a signed-in account token does NOT shadow the playground bearer on playground requests', async () => {
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('account-token', 'account-refresh');
-    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+    auth.setPlaygroundContext({
+      sessionId: 's1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
 
     const { client } = await import('./client');
     const cap = captureFetch();
@@ -161,7 +176,12 @@ describe('client — playground bearer selection', () => {
   test('non-playground requests still use the account token when a playground context exists', async () => {
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('account-token', 'account-refresh');
-    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+    auth.setPlaygroundContext({
+      sessionId: 's1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
 
     const { client } = await import('./client');
     const cap = captureFetch();
@@ -174,7 +194,12 @@ describe('client — playground bearer selection', () => {
   test('org-scoped requests to a non-playground org use the account token, not the playground bearer', async () => {
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('account-token', 'account-refresh');
-    auth.setPlaygroundContext({ sessionId: 's1', bearer: 'pg-bearer', nickname: 'n' });
+    auth.setPlaygroundContext({
+      sessionId: 's1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
 
     const { client } = await import('./client');
     const cap = captureFetch();
@@ -343,6 +368,34 @@ describe('client — 401 interceptor', () => {
     expect(auth.token).toBeNull();
     expect(auth.refresh).toBeNull();
     expect(window.location.pathname).toBe('/login');
+  });
+
+  test('auth.* 401 on playground request clears playground context but not durable auth', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('account-token', 'account-refresh');
+    auth.setPlaygroundContext({
+      sessionId: 's1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const { client } = await import('./client');
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return new Response(
+        JSON.stringify({ error: 'auth.invalid_token', message: 'token rejected' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    await client.GET('/api/playground/sessions/{id}', { params: { path: { id: 's1' } } });
+
+    expect(auth.token).toBe('account-token');
+    expect(auth.refresh).toBe('account-refresh');
+    expect(auth.playgroundContext).toBeNull();
+    expect(localStorage.getItem('jamsesh.playground.s1')).toBeNull();
+    expect(window.location.pathname).not.toBe('/login');
   });
 
   test('auth.* error on non-401 response (e.g. 403) does NOT trigger signOut', async () => {

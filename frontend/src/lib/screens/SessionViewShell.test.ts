@@ -13,12 +13,31 @@ vi.mock('$lib/api/client', () => ({
   client: { GET: (...args: unknown[]) => mockGET(...args) },
 }));
 
+type MockPlaygroundContext = { sessionId: string; bearer: string; nickname: string; expiresAt: string };
+const mockAuth = {
+  currentUser: { id: 'user-1', email: 'test@example.com', displayName: 'Test User' },
+  isAuthenticated: true,
+  token: 'test-token',
+  playgroundContext: null as MockPlaygroundContext | null,
+};
+const mockRestorePlaygroundContext = vi.fn((sessionId: string) => {
+  if (mockAuth.playgroundContext?.sessionId === sessionId) return true;
+  return false;
+});
+const mockClearPlaygroundContext = vi.fn((sessionId?: string) => {
+  if (!sessionId || mockAuth.playgroundContext?.sessionId === sessionId) {
+    mockAuth.playgroundContext = null;
+  }
+});
+
 vi.mock('$lib/auth.svelte', () => ({
   auth: {
-    currentUser: { id: 'user-1', email: 'test@example.com', displayName: 'Test User' },
-    isAuthenticated: true,
-    token: 'test-token',
-    playgroundContext: null,
+    get currentUser() { return mockAuth.currentUser; },
+    get isAuthenticated() { return mockAuth.isAuthenticated; },
+    get token() { return mockAuth.token; },
+    get playgroundContext() { return mockAuth.playgroundContext; },
+    restorePlaygroundContext: (sessionId: string) => mockRestorePlaygroundContext(sessionId),
+    clearPlaygroundContext: (sessionId?: string) => mockClearPlaygroundContext(sessionId),
   },
 }));
 
@@ -96,6 +115,24 @@ describe('SessionViewShell', () => {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
       writable: true,
       configurable: true,
+    });
+    mockAuth.currentUser = { id: 'user-1', email: 'test@example.com', displayName: 'Test User' };
+    mockAuth.isAuthenticated = true;
+    mockAuth.token = 'test-token';
+    mockAuth.playgroundContext = {
+      sessionId: 'pg-sess-1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    mockRestorePlaygroundContext.mockImplementation((sessionId: string) => {
+      if (mockAuth.playgroundContext?.sessionId === sessionId) return true;
+      return false;
+    });
+    mockClearPlaygroundContext.mockImplementation((sessionId?: string) => {
+      if (!sessionId || mockAuth.playgroundContext?.sessionId === sessionId) {
+        mockAuth.playgroundContext = null;
+      }
     });
     // Default GET mock: durable session data
     mockGET.mockImplementation((path: string) => {
@@ -308,6 +345,37 @@ describe('SessionViewShell', () => {
         '/api/orgs/{orgID}/sessions/{sessionID}',
         expect.anything(),
       );
+    });
+
+    it('navigates to the join page when no live playground context is restorable', async () => {
+      mockAuth.playgroundContext = null;
+      mockRestorePlaygroundContext.mockReturnValue(false);
+
+      render(SessionViewShell, { props: { orgId: 'org_playground', sessionId: pgSessionId } });
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith(`/playground/s/${pgSessionId}/join`);
+      });
+    });
+
+    it('clears context and navigates to ended on playground summary 401', async () => {
+      mockGET.mockImplementation((path: string) => {
+        if (path === '/api/playground/sessions/{id}') {
+          return Promise.resolve({
+            data: null,
+            error: { error: 'auth.invalid_token', message: 'token rejected' },
+            response: new Response(null, { status: 401 }),
+          });
+        }
+        return Promise.resolve({ data: { refs: [] }, error: null });
+      });
+
+      render(SessionViewShell, { props: { orgId: 'org_playground', sessionId: pgSessionId } });
+
+      await waitFor(() => {
+        expect(mockClearPlaygroundContext).toHaveBeenCalledWith(pgSessionId);
+        expect(mockNavigate).toHaveBeenCalledWith(`/playground/s/${pgSessionId}/ended`);
+      });
     });
 
     it('renders PlaygroundChip when orgId is org_playground', async () => {

@@ -6,19 +6,30 @@ import { auth } from '$lib/auth.svelte';
 // playground.ReservedOrgID on the server (reserved-org-id-local-const-mirror).
 const PLAYGROUND_ORG_ID = 'org_playground';
 
+function playgroundSessionIdForPath(pathname: string): string | null {
+  const publicSummaryPrefix = '/api/playground/sessions/';
+  if (pathname.startsWith(publicSummaryPrefix)) {
+    const rest = pathname.slice(publicSummaryPrefix.length);
+    if (rest && !rest.includes('/')) return decodeURIComponent(rest);
+  }
+
+  const orgSessionPrefix = `/api/orgs/${PLAYGROUND_ORG_ID}/sessions/`;
+  if (pathname.startsWith(orgSessionPrefix)) {
+    const sessionId = pathname.slice(orgSessionPrefix.length).split('/')[0];
+    if (sessionId) return decodeURIComponent(sessionId);
+  }
+
+  return null;
+}
+
 // bearerForRequest picks the token to attach. Anonymous playground participants
 // hold a session-scoped bearer in auth.playgroundContext rather than an account
-// access token, so for playground-scoped requests that bearer must be used: it
-// would otherwise be shadowed by a coexisting signed-in account token (yielding
-// auth.not_a_member) or simply never sent (a signed-out joiner has no
-// auth.token). All other requests use the account token as before.
+// access token, so playground requests for that exact session must use it. All
+// other requests use the account token as before.
 function bearerForRequest(pathname: string): string | null {
   const pg = auth.playgroundContext;
-  if (
-    pg &&
-    (pathname.startsWith('/api/playground/') ||
-      pathname.startsWith(`/api/orgs/${PLAYGROUND_ORG_ID}/`))
-  ) {
+  const playgroundSessionId = playgroundSessionIdForPath(pathname);
+  if (pg && playgroundSessionId === pg.sessionId) {
     return pg.bearer;
   }
   return auth.token;
@@ -52,8 +63,9 @@ const bearerMiddleware: Middleware = {
 // auth.signOut() is idempotent — multiple parallel auth-domain 401s simply
 // re-run the no-op clear and re-navigate to /login.
 const unauthorizedMiddleware: Middleware = {
-  async onResponse({ response }) {
+  async onResponse({ request, response }) {
     if (response.status !== 401) return;
+    const playgroundSessionId = playgroundSessionIdForPath(new URL(request.url).pathname);
 
     // Clone before reading the body — downstream openapi-fetch callers also
     // need to consume it (a Response body is a single-shot stream).
@@ -71,7 +83,11 @@ const unauthorizedMiddleware: Middleware = {
     }
 
     if (errorCode && errorCode.startsWith('auth.')) {
-      auth.signOut();
+      if (playgroundSessionId) {
+        auth.clearPlaygroundContext(playgroundSessionId);
+      } else {
+        auth.signOut();
+      }
     }
     // Otherwise: surface to the caller. Don't signOut.
   },

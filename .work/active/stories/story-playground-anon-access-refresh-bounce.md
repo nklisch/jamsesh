@@ -1,14 +1,14 @@
 ---
 id: story-playground-anon-access-refresh-bounce
 kind: story
-stage: implementing
+stage: review
 tags: [playground, ui, auth, bug]
 parent: feature-playground-anon-session-access
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-06-01
-updated: 2026-05-31
+updated: 2026-06-01
 ---
 
 # Refreshing an anonymous playground session bounces to login
@@ -173,3 +173,21 @@ OAuth accounts and never appear in `org_members`.
 - `frontend/src/lib/api/client.test.ts`: active-session playground requests use
   the playground bearer; cross-session playground requests do not; playground
   401 does not trigger durable sign-out.
+
+## Implementation Notes
+
+- Added `expiresAt` to `PlaygroundContext` and browser-scoped localStorage
+  persistence under `jamsesh.playground.<sessionId>`, with synchronous restore
+  and expiry pruning.
+- Updated join and resume adoption paths to persist the server `expires_at`.
+- Restored playground context before the auth gate on org-scoped playground
+  session routes; missing context now routes to `/playground/s/:id/join`.
+- Playground summary 401s clear the stored context and route to
+  `/playground/s/:id/ended` without durable account sign-out.
+- Tightened client bearer selection to the active playground session and
+  updated foundation docs from in-memory-only to browser-scoped persistence.
+
+## Verification
+
+- `npm test -- --run src/lib/auth.test.ts src/lib/api/client.test.ts src/lib/components/ArtifactPane.test.ts src/App.test.ts src/lib/screens/SessionViewShell.test.ts src/lib/ws.test.ts`
+- `npm run check` (0 errors, 1 pre-existing Svelte warning in `ModeSwitchDialog.svelte`)

@@ -41,6 +41,7 @@
         sessionId: data.session.id,
         bearer: data.bearer,
         nickname: data.nickname,
+        expiresAt: data.expires_at,
       });
       navigate(`/orgs/org_playground/sessions/${data.session.id}`);
       return;

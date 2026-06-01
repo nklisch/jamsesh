@@ -20,10 +20,12 @@ export type PlaygroundContext = {
   sessionId: string;
   bearer: string;
   nickname: string;
+  expiresAt: string;
 };
 
 const TOKEN_KEY = 'jamsesh.token';
 const REFRESH_KEY = 'jamsesh.refresh';
+const PLAYGROUND_CONTEXT_PREFIX = 'jamsesh.playground.';
 
 if (typeof localStorage !== 'undefined') {
   localStorage.removeItem(REFRESH_KEY);
@@ -39,6 +41,65 @@ let _orgs = $state<MeOrgMembership[] | null>(null);
 // _playgroundContext tracks the anonymous-mode bearer for a single playground
 // session. null means the current view is not in playground/anonymous mode.
 let _playgroundContext = $state<PlaygroundContext | null>(null);
+
+function playgroundContextKey(sessionId: string): string {
+  return PLAYGROUND_CONTEXT_PREFIX + encodeURIComponent(sessionId);
+}
+
+function hasLocalStorage(): boolean {
+  return typeof localStorage !== 'undefined';
+}
+
+function isLivePlaygroundContext(ctx: PlaygroundContext): boolean {
+  const expiresAt = Date.parse(ctx.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+}
+
+function readStoredPlaygroundContext(sessionId: string): PlaygroundContext | null {
+  if (!hasLocalStorage()) return null;
+  const raw = localStorage.getItem(playgroundContextKey(sessionId));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PlaygroundContext>;
+    if (
+      typeof parsed.sessionId === 'string' &&
+      parsed.sessionId === sessionId &&
+      typeof parsed.bearer === 'string' &&
+      typeof parsed.nickname === 'string' &&
+      typeof parsed.expiresAt === 'string'
+    ) {
+      return {
+        sessionId: parsed.sessionId,
+        bearer: parsed.bearer,
+        nickname: parsed.nickname,
+        expiresAt: parsed.expiresAt,
+      };
+    }
+  } catch {
+    // Invalid JSON is treated like a stale context.
+  }
+  localStorage.removeItem(playgroundContextKey(sessionId));
+  return null;
+}
+
+function storePlaygroundContext(ctx: PlaygroundContext): void {
+  if (!hasLocalStorage()) return;
+  localStorage.setItem(playgroundContextKey(ctx.sessionId), JSON.stringify(ctx));
+}
+
+function clearStoredPlaygroundContext(sessionId?: string): void {
+  if (!hasLocalStorage()) return;
+  if (sessionId) {
+    localStorage.removeItem(playgroundContextKey(sessionId));
+    return;
+  }
+  for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(PLAYGROUND_CONTEXT_PREFIX)) {
+      localStorage.removeItem(key);
+    }
+  }
+}
 
 // Guards a single in-flight /api/me call. Concurrent callers await the
 // same promise; resolved-state callers return immediately.
@@ -69,7 +130,39 @@ export const auth = {
   },
 
   setPlaygroundContext(ctx: PlaygroundContext | null): void {
+    if (ctx === null) {
+      clearStoredPlaygroundContext(_playgroundContext?.sessionId);
+      _playgroundContext = null;
+      return;
+    }
     _playgroundContext = ctx;
+    storePlaygroundContext(ctx);
+  },
+
+  restorePlaygroundContext(sessionId: string): boolean {
+    if (_playgroundContext?.sessionId === sessionId) {
+      if (isLivePlaygroundContext(_playgroundContext)) return true;
+      clearStoredPlaygroundContext(sessionId);
+      _playgroundContext = null;
+      return false;
+    }
+
+    const stored = readStoredPlaygroundContext(sessionId);
+    if (!stored) return false;
+    if (!isLivePlaygroundContext(stored)) {
+      clearStoredPlaygroundContext(sessionId);
+      return false;
+    }
+    _playgroundContext = stored;
+    return true;
+  },
+
+  clearPlaygroundContext(sessionId?: string): void {
+    const currentSessionId = _playgroundContext?.sessionId;
+    if (!sessionId || currentSessionId === sessionId) {
+      _playgroundContext = null;
+    }
+    clearStoredPlaygroundContext(sessionId ?? currentSessionId);
   },
 
   setTokens(access: string, refreshTok: string): void {
