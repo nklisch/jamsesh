@@ -1,14 +1,14 @@
 ---
 id: story-playground-anon-access-file-tree-403
 kind: story
-stage: drafting
+stage: implementing
 tags: [playground, portal, auth, bug]
 parent: feature-playground-anon-session-access
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-06-01
-updated: 2026-06-01
+updated: 2026-05-31
 ---
 
 # Anonymous playground file tree renders nothing (org-gated endpoints 403)
@@ -47,3 +47,88 @@ server-side authorization change and its tests, whichever direction is chosen.
   anonymous account still cannot read another session's refs/files).
 - Regression test covers the playground anon path through the chosen
   authorization point.
+
+## Design
+
+Use session membership, not org membership, for concrete session-resource
+endpoints. Anonymous playground accounts remain absent from `org_members`; the
+server should authorize their own session resources because they are
+`session_members`.
+
+### Backend units
+
+**Files**:
+- `internal/portal/sessions/state.go`
+- `internal/portal/sessions/files.go`
+- `internal/portal/sessions/refmodes.go`
+- `internal/portal/sessions/handler.go`
+
+Replace leading `GetOrgMember` gates on concrete session-resource handlers with
+the established auth helper:
+
+```go
+_, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
+if !ok {
+    if fail.Err != nil {
+        return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: <op>: session member: %w", fail.Err))
+    }
+    return <operation>Fail(fail), nil
+}
+```
+
+Target handlers:
+- `GetSession`
+- `ListSessionRefs`
+- `GetSessionDigest`
+- `GetSessionFile`
+- `UpsertRefMode`
+
+Keep `ListSessions` and session-invite creation org-member gated because those
+are org inventory/invite surfaces, not playground session resources.
+
+Add operation-specific auth-fail wrappers where needed, following the
+`authfail-three-branch-guard` pattern:
+
+```go
+func listSessionRefsFail(f handlerauth.AuthFail) openapi.ListSessionRefsResponseObject {
+    if f.Status == 401 {
+        return openapi.ListSessionRefs401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+    }
+    return openapi.ListSessionRefs403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+```
+
+### Frontend unit
+
+**File**: `frontend/src/lib/components/ArtifactPane.svelte`
+
+Convert the manual `fetch()` to the shared typed client so the existing bearer
+middleware can attach the active playground bearer:
+
+```ts
+const { data, error } = await client.GET(
+  '/api/orgs/{orgID}/sessions/{sessionID}/files',
+  {
+    params: {
+      path: { orgID: orgId, sessionID },
+      query: { commit: selectedSha, path: selectedPath },
+    },
+    signal: controller.signal,
+  },
+);
+```
+
+Preserve the current abort-on-change behavior and the existing binary,
+too-large, not-found, and generic error UI states.
+
+## Tests
+
+- Add per-dialect backend regression tests in
+  `internal/portal/sessions/handler_test.go` or `files_test.go`:
+  - seed `org_playground`, two sessions, an anonymous account bearer for
+    session A, and a `session_members` row only for session A;
+  - assert session A refs/digest pass without `org_members`;
+  - assert session B refs/files fail with 403 for the session A bearer.
+- Extend `frontend/src/lib/components/ArtifactPane` coverage or shell-level
+  tests to prove file fetches go through `client.GET` and therefore inherit
+  playground bearer selection.
