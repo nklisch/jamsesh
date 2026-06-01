@@ -1,14 +1,14 @@
 ---
 id: story-playground-anon-access-ws-live-updates
 kind: story
-stage: implementing
+stage: review
 tags: [playground, ui, auth, websocket, bug]
 parent: feature-playground-anon-session-access
 depends_on: [story-playground-anon-access-refresh-bounce]
 release_binding: null
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-31
+updated: 2026-06-01
 ---
 
 # Anonymous playground participants get no live WebSocket updates
@@ -87,3 +87,19 @@ Implementation details:
 - The WS ticket request is playground-scoped by bearer choice, while the socket
   URL remains `/ws/sessions/:sessionID`.
 - Expired/revoked playground bearers fail without redirecting to durable login.
+
+## Implementation Notes
+
+- Added `bearerForSession(sessionId)` to choose the matching playground bearer
+  before falling back to the durable account token.
+- Changed WS ticket fetches to pass an explicit `Authorization` header and
+  updated both initial open and reconnect paths to use the session-specific
+  bearer choice.
+- Preserved the existing ticket/subprotocol model; raw bearers still never go
+  into `Sec-WebSocket-Protocol`.
+- Added playground-only WS coverage and updated durable ticket expectations.
+
+## Verification
+
+- `npm test -- --run src/lib/auth.test.ts src/lib/api/client.test.ts src/lib/components/ArtifactPane.test.ts src/App.test.ts src/lib/screens/SessionViewShell.test.ts src/lib/ws.test.ts`
+- `npm run check` (0 errors, 1 pre-existing Svelte warning in `ModeSwitchDialog.svelte`)

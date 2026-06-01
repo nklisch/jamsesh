@@ -116,7 +116,7 @@ class MockWebSocket {
  * the same client instance.
  *
  * We stub the `client` object from '$lib/api/client' so that
- *   client.POST('/api/auth/ws-ticket', {})
+ *   client.POST('/api/auth/ws-ticket', { headers: { Authorization: 'Bearer ...' } })
  * resolves with { data: { ticket, expires_in_seconds } }.
  */
 async function installTicketMock(ticket: string): Promise<void> {
@@ -202,7 +202,9 @@ describe('ws — subscribe / lifecycle', () => {
     const unsub = subscribe('sess-2b', 'any', vi.fn());
     await flushMicrotasks();
 
-    expect(client.POST).toHaveBeenCalledWith('/api/auth/ws-ticket', {});
+    expect(client.POST).toHaveBeenCalledWith('/api/auth/ws-ticket', {
+      headers: { Authorization: 'Bearer test-token' },
+    });
 
     unsub();
   });
@@ -1051,6 +1053,31 @@ describe('ws — Unit 3: open() null on no-token', () => {
 
     // Status must be null (not 'connecting' or anything else).
     expect(wsStatus.for('sess-n1')).toBe(null);
+
+    unsub();
+  });
+
+  test('open() uses a matching playground bearer when no durable token exists', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setPlaygroundContext({
+      sessionId: 'pg-sess',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    await installTicketMock('pg-ticket');
+
+    const { client } = await import('$lib/api/client');
+    const { subscribe } = await import('$lib/ws.svelte');
+
+    const unsub = subscribe('pg-sess', 'ev', vi.fn());
+    await flushMicrotasks();
+
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(MockWebSocket.instances[0].protocol).toBe('jamsesh-ticket.pg-ticket');
+    expect(client.POST).toHaveBeenCalledWith('/api/auth/ws-ticket', {
+      headers: { Authorization: 'Bearer pg-bearer' },
+    });
 
     unsub();
   });

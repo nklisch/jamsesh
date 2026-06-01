@@ -137,9 +137,19 @@ function backoffDelay(attempt: number): number {
  * fails (network error, 401, etc.). A null result causes the open/reopen
  * paths to abort the connection attempt and drop the record.
  */
-async function fetchTicket(): Promise<string | null> {
+function bearerForSession(sessionId: string): string | null {
+  const pg = auth.playgroundContext;
+  if (pg?.sessionId === sessionId) return pg.bearer;
+  return auth.token;
+}
+
+async function fetchTicket(sessionId: string): Promise<string | null> {
+  const bearer = bearerForSession(sessionId);
+  if (!bearer) return null;
   try {
-    const { data } = await client.POST('/api/auth/ws-ticket', {});
+    const { data } = await client.POST('/api/auth/ws-ticket', {
+      headers: { Authorization: `Bearer ${bearer}` },
+    });
     return data?.ticket ?? null;
   } catch {
     return null;
@@ -285,14 +295,14 @@ async function reopen(sessionId: string): Promise<void> {
   const rec = records.get(sessionId);
   if (!rec) return;
 
-  if (!auth.token) {
+  if (!bearerForSession(sessionId)) {
     // No bearer token — can't obtain a ticket. Give up and drop the record.
     records.delete(sessionId);
     setStatus(sessionId, null);
     return;
   }
 
-  const ticket = await fetchTicket();
+  const ticket = await fetchTicket(sessionId);
   if (!ticket) {
     // Ticket fetch failed (auth expired, network error). Drop the record.
     records.delete(sessionId);
@@ -322,12 +332,12 @@ async function open(sessionId: string): Promise<WebSocket | null> {
 
   // Unit 3: resolve null instead of throwing — void open() in subscribe() is
   // then safe (no floated rejection). Surface disconnected status.
-  if (!auth.token) {
+  if (!bearerForSession(sessionId)) {
     setStatus(sessionId, null);
     return null;
   }
 
-  const ticket = await fetchTicket();
+  const ticket = await fetchTicket(sessionId);
   if (!ticket) {
     // Ticket fetch failed — can't open the socket.
     return null;
