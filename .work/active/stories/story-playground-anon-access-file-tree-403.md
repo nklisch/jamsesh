@@ -1,7 +1,7 @@
 ---
 id: story-playground-anon-access-file-tree-403
 kind: story
-stage: review
+stage: done
 tags: [playground, portal, auth, bug]
 parent: feature-playground-anon-session-access
 depends_on: []
@@ -152,3 +152,14 @@ too-large, not-found, and generic error UI states.
 - `go test ./internal/portal/sessions`
 - `npm test -- --run src/lib/auth.test.ts src/lib/api/client.test.ts src/lib/components/ArtifactPane.test.ts src/App.test.ts src/lib/screens/SessionViewShell.test.ts src/lib/ws.test.ts`
 - `npm run check` (0 errors, 1 pre-existing Svelte warning in `ModeSwitchDialog.svelte`)
+
+## Review (2026-06-01)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Fast-lane story review. Implementation notes and green verification
+are present; no lens walk run for story lane.
