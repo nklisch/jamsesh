@@ -1,7 +1,7 @@
 ---
 id: story-playground-anon-access-ws-live-updates
 kind: story
-stage: review
+stage: done
 tags: [playground, ui, auth, websocket, bug]
 parent: feature-playground-anon-session-access
 depends_on: [story-playground-anon-access-refresh-bounce]
@@ -103,3 +103,14 @@ Implementation details:
 
 - `npm test -- --run src/lib/auth.test.ts src/lib/api/client.test.ts src/lib/components/ArtifactPane.test.ts src/App.test.ts src/lib/screens/SessionViewShell.test.ts src/lib/ws.test.ts`
 - `npm run check` (0 errors, 1 pre-existing Svelte warning in `ModeSwitchDialog.svelte`)
+
+## Review (2026-06-01)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Fast-lane story review. Implementation notes and green verification
+are present; no lens walk run for story lane.
