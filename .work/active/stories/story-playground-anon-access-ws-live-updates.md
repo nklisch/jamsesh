@@ -1,14 +1,14 @@
 ---
-id: playground-anonymous-websocket-live-updates
+id: story-playground-anon-access-ws-live-updates
 kind: story
-stage: backlog
-tags: [playground, bug, websocket]
-parent: null
+stage: drafting
+tags: [playground, ui, auth, websocket, bug]
+parent: feature-playground-anon-session-access
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-06-01
 ---
 
 # Anonymous playground participants get no live WebSocket updates
