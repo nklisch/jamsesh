@@ -67,7 +67,20 @@ const bearerMiddleware: Middleware = {
 const unauthorizedMiddleware: Middleware = {
   async onResponse({ request, response }) {
     if (response.status !== 401) return;
-    const playgroundSessionId = playgroundSessionIdForPath(new URL(request.url).pathname);
+    const pathname = new URL(request.url).pathname;
+    const playgroundSessionId = playgroundSessionIdForPath(pathname);
+    const sentAuthorization = request.headers.get('Authorization');
+    const activePlaygroundContext = auth.playgroundContext;
+    const activePlaygroundAuthorization = activePlaygroundContext
+      ? `Bearer ${activePlaygroundContext.bearer}`
+      : null;
+    const durableAuthorization = auth.token ? `Bearer ${auth.token}` : null;
+    const usedPlaygroundBearer =
+      sentAuthorization !== null &&
+      (
+        sentAuthorization === activePlaygroundAuthorization ||
+        (pathname === '/api/auth/ws-ticket' && sentAuthorization !== durableAuthorization)
+      );
 
     // Clone before reading the body — downstream openapi-fetch callers also
     // need to consume it (a Response body is a single-shot stream).
@@ -85,8 +98,8 @@ const unauthorizedMiddleware: Middleware = {
     }
 
     if (errorCode && errorCode.startsWith('auth.')) {
-      if (playgroundSessionId) {
-        auth.clearPlaygroundContext(playgroundSessionId);
+      if (playgroundSessionId || usedPlaygroundBearer) {
+        auth.clearPlaygroundContext(playgroundSessionId ?? activePlaygroundContext?.sessionId);
       } else {
         auth.signOut();
       }

@@ -421,6 +421,36 @@ describe('client — 401 interceptor', () => {
     expect(window.location.pathname).not.toBe('/login');
   });
 
+  test('auth.* 401 on ws-ticket with playground bearer does not durable signOut', async () => {
+    const { auth } = await import('$lib/auth.svelte');
+    auth.setTokens('account-token', 'account-refresh');
+    auth.setPlaygroundContext({
+      sessionId: 's1',
+      bearer: 'pg-bearer',
+      nickname: 'n',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const { client } = await import('./client');
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return new Response(
+        JSON.stringify({ error: 'auth.invalid_token', message: 'token rejected' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    await client.POST('/api/auth/ws-ticket', {
+      headers: { Authorization: 'Bearer pg-bearer' },
+    });
+
+    expect(auth.token).toBe('account-token');
+    expect(auth.refresh).toBe('account-refresh');
+    expect(auth.playgroundContext).toBeNull();
+    expect(localStorage.getItem('jamsesh.playground.s1')).toBeNull();
+    expect(window.location.pathname).not.toBe('/login');
+  });
+
   test('auth.* error on non-401 response (e.g. 403) does NOT trigger signOut', async () => {
     const { auth } = await import('$lib/auth.svelte');
     auth.setTokens('valid-token', 'valid-refresh');

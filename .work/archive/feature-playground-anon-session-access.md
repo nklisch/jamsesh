@@ -384,3 +384,8 @@ are approved and done.
   coexisted with a playground context.
 - Fixed `client.ts` to preserve explicit `Authorization` headers and added
   client/WS coexistence tests for playground and durable bearer selection.
+- Accepted second peer finding: 401 handling for `/api/auth/ws-ticket` still
+  classified failures by URL rather than the bearer actually sent.
+- Fixed `client.ts` to treat requests that used a playground bearer as
+  playground failures even on the WS-ticket path, clearing playground context
+  without durable sign-out.
