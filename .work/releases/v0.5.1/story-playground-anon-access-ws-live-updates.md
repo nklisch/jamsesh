@@ -5,7 +5,7 @@ stage: done
 tags: [playground, ui, auth, websocket, bug]
 parent: feature-playground-anon-session-access
 depends_on: [story-playground-anon-access-refresh-bounce]
-release_binding: null
+release_binding: v0.5.1
 gate_origin: null
 created: 2026-05-30
 updated: 2026-06-01

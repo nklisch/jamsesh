@@ -5,7 +5,7 @@ stage: done
 tags: [playground, portal, auth, bug]
 parent: feature-playground-anon-session-access
 depends_on: []
-release_binding: null
+release_binding: v0.5.1
 gate_origin: null
 created: 2026-06-01
 updated: 2026-06-01

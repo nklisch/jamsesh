@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.5.1
+
+Released 2026-06-01. Patch release for anonymous playground session access.
+Full release gates were skipped by maintainer request; targeted backend,
+frontend, and Svelte checks passed.
+
+### Fixes
+
+- Anonymous playground participants are now treated as first-class session
+  members on concrete session resources: own-session refs, digest, file
+  previews, and ref-mode updates authorize through `session_members` without
+  adding anonymous accounts to `org_members`.
+- Reloading or directly opening `/orgs/org_playground/sessions/<id>` restores
+  the browser-scoped playground context while the bearer is live, and routes to
+  join/ended states instead of durable login when the context is missing or
+  rejected.
+- Playground file preview now uses the shared typed API client, so anonymous
+  playground bearers flow through the same middleware as the rest of the SPA.
+- WebSocket ticket requests now choose the session-specific bearer and handle
+  playground-bearer 401s without signing out a coexisting durable account.
+
+### Documentation
+
+- ARCHITECTURE and SPEC now document browser-scoped, session-keyed playground
+  context persistence with expiry/revocation clearing.
+
 ## v0.5.0
 
 Released 2026-05-31. Browser resume handoff, typed auth surfaces, and the
