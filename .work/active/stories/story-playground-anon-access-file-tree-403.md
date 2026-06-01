@@ -1,14 +1,14 @@
 ---
 id: story-playground-anon-access-file-tree-403
 kind: story
-stage: implementing
+stage: review
 tags: [playground, portal, auth, bug]
 parent: feature-playground-anon-session-access
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-06-01
-updated: 2026-05-31
+updated: 2026-06-01
 ---
 
 # Anonymous playground file tree renders nothing (org-gated endpoints 403)
@@ -132,3 +132,23 @@ too-large, not-found, and generic error UI states.
 - Extend `frontend/src/lib/components/ArtifactPane` coverage or shell-level
   tests to prove file fetches go through `client.GET` and therefore inherit
   playground bearer selection.
+
+## Implementation Notes
+
+- Replaced the org-member gate on concrete session-resource handlers
+  (`GetSession`, `ListSessionRefs`, `GetSessionDigest`, `GetSessionFile`, and
+  `UpsertRefMode`) with `handlerauth.RequireSessionMember`; org inventory and
+  invite surfaces remain org-member gated.
+- Added strict-server auth-fail wrappers for the newly shared session-member
+  guards.
+- Added a per-dialect regression that seeds `org_playground`, two sessions, and
+  an anonymous session member with no `org_members` row; own session refs/digest
+  pass and cross-session refs/files return 403.
+- Switched `ArtifactPane.svelte` from manual `fetch` + `auth.token` to the
+  shared typed `client.GET`, preserving abort/stale-response behavior.
+
+## Verification
+
+- `go test ./internal/portal/sessions`
+- `npm test -- --run src/lib/auth.test.ts src/lib/api/client.test.ts src/lib/components/ArtifactPane.test.ts src/App.test.ts src/lib/screens/SessionViewShell.test.ts src/lib/ws.test.ts`
+- `npm run check` (0 errors, 1 pre-existing Svelte warning in `ModeSwitchDialog.svelte`)

@@ -320,6 +320,8 @@ func newTestEnvWithStore(t *testing.T, handlerStore testSessionsStore, baseStore
 		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/abandon", apiWrapper.AbandonSession)
 		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/refs", apiWrapper.ListSessionRefs)
 		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/digest", apiWrapper.GetSessionDigest)
+		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/files", apiWrapper.GetSessionFile)
+		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/ref-modes", apiWrapper.UpsertRefMode)
 		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/invites", apiWrapper.InviteToSession)
 		r.Get("/api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}", apiWrapper.GetSessionInvite)
 		r.Post("/api/orgs/{orgID}/sessions/{sessionID}/invites/{inviteID}/accept", apiWrapper.AcceptSessionInvite)
@@ -425,6 +427,51 @@ func seedOrgMember(t *testing.T, s store.Store, orgID, accountID, role string) {
 	}); err != nil {
 		t.Fatalf("seed org member: %v", err)
 	}
+}
+
+func seedPlaygroundAccessSession(t *testing.T, s store.Store, sessionID string, now time.Time) {
+	t.Helper()
+	if _, err := s.CreateSession(context.Background(), store.CreateSessionParams{
+		ID:            sessionID,
+		OrgID:         "org_playground",
+		Name:          "playground test",
+		Goal:          "exercise anonymous session member access",
+		WritableScope: `["**"]`,
+		DefaultMode:   "sync",
+		Status:        "active",
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("seed playground session %s: %v", sessionID, err)
+	}
+}
+
+func seedPlaygroundAnonMember(t *testing.T, env *testEnv, sessionID string) string {
+	t.Helper()
+	rawBearer, accountID, _, err := env.svc.IssueAnonymousSessionBearer(
+		context.Background(),
+		sessionID,
+		"browser-guest",
+		time.Hour,
+	)
+	if err != nil {
+		t.Fatalf("issue anonymous bearer: %v", err)
+	}
+	if err := env.s.AddSessionMember(context.Background(), store.AddSessionMemberParams{
+		OrgID:     "org_playground",
+		SessionID: sessionID,
+		AccountID: accountID,
+		Role:      "member",
+		JoinedAt:  time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("add anonymous session member: %v", err)
+	}
+	if _, err := env.s.GetOrgMember(context.Background(), store.GetOrgMemberParams{
+		OrgID:     "org_playground",
+		AccountID: accountID,
+	}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("anonymous account should not be an org member, got err=%v", err)
+	}
+	return rawBearer
 }
 
 // ---------------------------------------------------------------------------
@@ -536,6 +583,56 @@ func TestCreateSession_NotOrgMember_Returns403(t *testing.T) {
 			if resp.StatusCode != http.StatusForbidden {
 				t.Fatalf("expected 403, got %d", resp.StatusCode)
 			}
+		})
+	}
+}
+
+func TestPlaygroundAnonymousSessionMemberAccessesConcreteSessionEndpointsWithoutOrgMember(t *testing.T) {
+	for _, h := range storetest.Stores(t) {
+		h := h
+		t.Run(h.Name, func(t *testing.T) {
+			env := newTestEnv(t, h.Open(t))
+			now := time.Now().UTC()
+			if _, err := env.s.CreateOrg(context.Background(), store.CreateOrgParams{
+				ID:        "org_playground",
+				Name:      "playground",
+				Slug:      "playground",
+				CreatedAt: now,
+			}); err != nil {
+				t.Fatalf("create playground org: %v", err)
+			}
+			sessionA := "sess-a-" + uuid.New().String()
+			sessionB := "sess-b-" + uuid.New().String()
+			seedPlaygroundAccessSession(t, env.s, sessionA, now)
+			seedPlaygroundAccessSession(t, env.s, sessionB, now)
+			bearer := seedPlaygroundAnonMember(t, env, sessionA)
+
+			checkStatus := func(method, path string, body any, want int) {
+				t.Helper()
+				var resp *http.Response
+				switch method {
+				case http.MethodGet:
+					resp = getRequest(t, env.srv, path, bearer)
+				case http.MethodPost:
+					resp = postJSON(t, env.srv, path, bearer, body)
+				default:
+					t.Fatalf("unsupported method %s", method)
+				}
+				if resp.StatusCode != want {
+					t.Fatalf("%s %s: want %d, got %d", method, path, want, resp.StatusCode)
+				}
+			}
+
+			checkStatus(http.MethodGet, "/api/orgs/org_playground/sessions/"+sessionA, nil, http.StatusOK)
+			checkStatus(http.MethodGet, "/api/orgs/org_playground/sessions/"+sessionA+"/refs", nil, http.StatusOK)
+			checkStatus(http.MethodGet, "/api/orgs/org_playground/sessions/"+sessionA+"/digest", nil, http.StatusOK)
+			checkStatus(http.MethodPost, "/api/orgs/org_playground/sessions/"+sessionA+"/ref-modes", map[string]any{
+				"ref":  "refs/heads/jam/" + sessionA + "/anon/test",
+				"mode": "isolated",
+			}, http.StatusNoContent)
+
+			checkStatus(http.MethodGet, "/api/orgs/org_playground/sessions/"+sessionB+"/refs", nil, http.StatusForbidden)
+			checkStatus(http.MethodGet, "/api/orgs/org_playground/sessions/"+sessionB+"/files?commit=0000000000000000000000000000000000000000&path=README.md", nil, http.StatusForbidden)
 		})
 	}
 }
@@ -910,14 +1007,14 @@ func seedPlaygroundSession(
 	hardCap := T0.Add(2 * time.Hour)
 	ito := T0.Add(idleTimeout)
 	if _, err := s.CreateSession(ctx, store.CreateSessionParams{
-		ID:            sessID,
-		OrgID:         orgID,
-		Name:          "pg-session",
-		Goal:          "playground test",
-		WritableScope: `["**"]`,
-		DefaultMode:   "sync",
-		Status:        "active",
-		CreatedAt:     T0,
+		ID:                        sessID,
+		OrgID:                     orgID,
+		Name:                      "pg-session",
+		Goal:                      "playground test",
+		WritableScope:             `["**"]`,
+		DefaultMode:               "sync",
+		Status:                    "active",
+		CreatedAt:                 T0,
 		LastSubstantiveActivityAt: &T0,
 		HardCapAt:                 &hardCap,
 		IdleTimeoutAt:             &ito,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { auth } from '$lib/auth.svelte';
+  import { client } from '$lib/api/client';
 
   let {
     sessionId,
@@ -33,19 +33,22 @@
     loading = true;
     loadError = null;
     const controller = new AbortController();
-    const url =
-      `/api/orgs/${orgId}/sessions/${sessionId}/files` +
-      `?commit=${encodeURIComponent(selectedSha)}&path=${encodeURIComponent(selectedPath)}`;
-    const token = auth.token;
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch(url, { headers, signal: controller.signal })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: { content: string; mime: string; is_binary: boolean }) => {
+    const sha = selectedSha;
+    const filePath = selectedPath;
+    client.GET('/api/orgs/{orgID}/sessions/{sessionID}/files', {
+      params: {
+        path: { orgID: orgId, sessionID: sessionId },
+        query: { commit: sha, path: filePath },
+      },
+      signal: controller.signal,
+    })
+      .then(({ data, error, response }) => {
         if (controller.signal.aborted) return;
+        if (error) {
+          const message = (error as { message?: string }).message ?? `HTTP ${response.status}`;
+          throw new Error(message);
+        }
+        if (!data) throw new Error('Failed to load file.');
         content = data.content;
         isBinary = data.is_binary;
         mime = data.mime;

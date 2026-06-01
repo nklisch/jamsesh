@@ -16,7 +16,7 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/deperr"
-	"jamsesh/internal/portal/tokens"
+	"jamsesh/internal/portal/handlerauth"
 )
 
 const (
@@ -27,52 +27,17 @@ const (
 // GetSessionFile returns the text content of a file at the specified commit.
 // Binary files and files > 1 MiB are handled gracefully.
 func (h *Handler) GetSessionFile(ctx context.Context, req openapi.GetSessionFileRequestObject) (openapi.GetSessionFileResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
-	if !ok {
-		return openapi.GetSessionFile401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
-	}
-
 	orgID := req.OrgID
 	sessionID := req.SessionID
 	commitSHA := req.Params.Commit
 	filePath := req.Params.Path
 
-	// Require org membership.
-	if _, err := h.store.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.GetSessionFile403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this org",
-				},
-			}, nil
+	_, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: files: get session member: %w", fail.Err))
 		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: files: get org member: %w", err))
-	}
-
-	// Require session membership.
-	if _, err := h.store.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.GetSessionFile403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this session",
-				},
-			}, nil
-		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: files: get session member: %w", err))
+		return getSessionFileFail(fail), nil
 	}
 
 	// Verify session exists.

@@ -11,22 +11,12 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/deperr"
-	"jamsesh/internal/portal/tokens"
+	"jamsesh/internal/portal/handlerauth"
 )
 
 // UpsertRefMode upserts the collaboration mode for a specific ref in a session
 // and emits a mode.changed event.
 func (h *Handler) UpsertRefMode(ctx context.Context, req openapi.UpsertRefModeRequestObject) (openapi.UpsertRefModeResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
-	if !ok {
-		return openapi.UpsertRefMode401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
-	}
-
 	if req.Body == nil {
 		return openapi.UpsertRefMode400JSONResponse(openapi.ErrorEnvelope{
 			Error:   "request.invalid",
@@ -39,37 +29,12 @@ func (h *Handler) UpsertRefMode(ctx context.Context, req openapi.UpsertRefModeRe
 	ref := req.Body.Ref
 	mode := string(req.Body.Mode)
 
-	// Require org membership.
-	if _, err := h.store.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.UpsertRefMode403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this org",
-				},
-			}, nil
+	_, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: ref-modes: get session member: %w", fail.Err))
 		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: ref-modes: get org member: %w", err))
-	}
-
-	// Require session membership.
-	if _, err := h.store.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.UpsertRefMode403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this session",
-				},
-			}, nil
-		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: ref-modes: get session member: %w", err))
+		return upsertRefModeFail(fail), nil
 	}
 
 	// Verify session exists.

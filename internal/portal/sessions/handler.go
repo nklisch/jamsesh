@@ -483,11 +483,46 @@ func createSessionFail(f handlerauth.AuthFail) openapi.CreateSessionResponseObje
 	return openapi.CreateSession403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
 }
 
+func getSessionFail(f handlerauth.AuthFail) openapi.GetSessionResponseObject {
+	if f.Status == 401 {
+		return openapi.GetSession401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.GetSession403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
 func patchSessionFail(f handlerauth.AuthFail) openapi.PatchSessionResponseObject {
 	if f.Status == 401 {
 		return openapi.PatchSession401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
 	}
 	return openapi.PatchSession403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+func listSessionRefsFail(f handlerauth.AuthFail) openapi.ListSessionRefsResponseObject {
+	if f.Status == 401 {
+		return openapi.ListSessionRefs401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.ListSessionRefs403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+func getSessionDigestFail(f handlerauth.AuthFail) openapi.GetSessionDigestResponseObject {
+	if f.Status == 401 {
+		return openapi.GetSessionDigest401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.GetSessionDigest403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+func getSessionFileFail(f handlerauth.AuthFail) openapi.GetSessionFileResponseObject {
+	if f.Status == 401 {
+		return openapi.GetSessionFile401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.GetSessionFile403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
+}
+
+func upsertRefModeFail(f handlerauth.AuthFail) openapi.UpsertRefModeResponseObject {
+	if f.Status == 401 {
+		return openapi.UpsertRefMode401JSONResponse{UnauthorizedJSONResponse: f.Unauthorized}
+	}
+	return openapi.UpsertRefMode403JSONResponse{ForbiddenJSONResponse: f.Forbidden}
 }
 
 func finalizeSessionFail(f handlerauth.AuthFail) openapi.FinalizeSessionResponseObject {

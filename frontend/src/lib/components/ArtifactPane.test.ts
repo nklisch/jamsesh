@@ -5,8 +5,9 @@ import ArtifactPane from './ArtifactPane.svelte';
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
-vi.mock('$lib/auth.svelte', () => ({
-  auth: { token: 'test-token', isAuthenticated: true, currentUser: null },
+const mockGET = vi.fn();
+vi.mock('$lib/api/client', () => ({
+  client: { GET: (...args: unknown[]) => mockGET(...args) },
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -34,11 +35,9 @@ function renderPane(
 describe('ArtifactPane', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('fetch', vi.fn());
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
@@ -48,16 +47,17 @@ describe('ArtifactPane', () => {
   });
 
   it('shows loading state while fetching', () => {
-    vi.mocked(fetch).mockReturnValue(new Promise(() => {})); // never resolves
+    mockGET.mockReturnValue(new Promise(() => {})); // never resolves
     renderPane({ selectedSha: 'abc123', selectedPath: 'src/foo.ts' });
     expect(screen.getByText(/loading file/i)).toBeInTheDocument();
   });
 
   it('renders file content with line numbers', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ content: 'line one\nline two\nline three', mime: 'text/plain', is_binary: false }),
-    } as Response);
+    mockGET.mockResolvedValue({
+      data: { content: 'line one\nline two\nline three', mime: 'text/plain', is_binary: false },
+      error: null,
+      response: new Response(null, { status: 200 }),
+    });
 
     renderPane({ selectedSha: 'abc123', selectedPath: 'src/foo.ts' });
 
@@ -65,13 +65,23 @@ describe('ArtifactPane', () => {
       expect(screen.getByText('line one')).toBeInTheDocument();
       expect(screen.getByText('line two')).toBeInTheDocument();
     });
+    expect(mockGET).toHaveBeenCalledWith(
+      '/api/orgs/{orgID}/sessions/{sessionID}/files',
+      expect.objectContaining({
+        params: {
+          path: { orgID: 'org-1', sessionID: 'sess-1' },
+          query: { commit: 'abc123', path: 'src/foo.ts' },
+        },
+      }),
+    );
   });
 
   it('renders line numbers', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ content: 'first\nsecond', mime: 'text/plain', is_binary: false }),
-    } as Response);
+    mockGET.mockResolvedValue({
+      data: { content: 'first\nsecond', mime: 'text/plain', is_binary: false },
+      error: null,
+      response: new Response(null, { status: 200 }),
+    });
 
     renderPane({ selectedSha: 'abc123', selectedPath: 'src/foo.ts' });
 
@@ -82,10 +92,11 @@ describe('ArtifactPane', () => {
   });
 
   it('shows binary placeholder for binary files', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ content: '', mime: 'application/octet-stream', is_binary: true }),
-    } as Response);
+    mockGET.mockResolvedValue({
+      data: { content: '', mime: 'application/octet-stream', is_binary: true },
+      error: null,
+      response: new Response(null, { status: 200 }),
+    });
 
     renderPane({ selectedSha: 'abc123', selectedPath: 'image.png' });
 
@@ -96,10 +107,11 @@ describe('ArtifactPane', () => {
   });
 
   it('shows error when fetch fails', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 404,
-    } as Response);
+    mockGET.mockResolvedValue({
+      data: null,
+      error: { message: 'HTTP 404' },
+      response: new Response(null, { status: 404 }),
+    });
 
     renderPane({ selectedSha: 'abc123', selectedPath: 'missing.ts' });
 
@@ -109,7 +121,7 @@ describe('ArtifactPane', () => {
   });
 
   it('shows error when fetch throws', async () => {
-    vi.mocked(fetch).mockRejectedValue(new Error('network error'));
+    mockGET.mockRejectedValue(new Error('network error'));
 
     renderPane({ selectedSha: 'abc123', selectedPath: 'foo.ts' });
 
@@ -119,10 +131,11 @@ describe('ArtifactPane', () => {
   });
 
   it('selects a line on click and calls onrangeselect', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ content: 'alpha\nbeta\ngamma', mime: 'text/plain', is_binary: false }),
-    } as Response);
+    mockGET.mockResolvedValue({
+      data: { content: 'alpha\nbeta\ngamma', mime: 'text/plain', is_binary: false },
+      error: null,
+      response: new Response(null, { status: 200 }),
+    });
 
     const onrangeselect = vi.fn();
     renderPane({ selectedSha: 'abc123', selectedPath: 'foo.ts', onrangeselect });
@@ -138,10 +151,11 @@ describe('ArtifactPane', () => {
   });
 
   it('shows sha badge in file header', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ content: 'hello', mime: 'text/plain', is_binary: false }),
-    } as Response);
+    mockGET.mockResolvedValue({
+      data: { content: 'hello', mime: 'text/plain', is_binary: false },
+      error: null,
+      response: new Response(null, { status: 200 }),
+    });
 
     renderPane({ selectedSha: 'abc1234567890', selectedPath: 'foo.ts' });
 
@@ -151,10 +165,11 @@ describe('ArtifactPane', () => {
   });
 
   it('displays file path in header', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ content: 'code', mime: 'text/plain', is_binary: false }),
-    } as Response);
+    mockGET.mockResolvedValue({
+      data: { content: 'code', mime: 'text/plain', is_binary: false },
+      error: null,
+      response: new Response(null, { status: 200 }),
+    });
 
     renderPane({ selectedSha: 'abc123', selectedPath: 'src/components/Foo.svelte' });
 
@@ -167,16 +182,17 @@ describe('ArtifactPane', () => {
 
   it('stale-response is not written: selecting B while A is in-flight shows B content', async () => {
     // Deferred promise for file A (slow response).
-    let resolveA!: (r: Response) => void;
-    const fetchA = new Promise<Response>((res) => { resolveA = res; });
+    let resolveA!: (r: unknown) => void;
+    const fetchA = new Promise<unknown>((res) => { resolveA = res; });
 
     // File B resolves immediately.
     const fetchB = Promise.resolve({
-      ok: true,
-      json: async () => ({ content: 'content-of-B', mime: 'text/plain', is_binary: false }),
-    } as Response);
+      data: { content: 'content-of-B', mime: 'text/plain', is_binary: false },
+      error: null,
+      response: new Response(null, { status: 200 }),
+    });
 
-    vi.mocked(fetch)
+    mockGET
       .mockReturnValueOnce(fetchA)   // first call: file A
       .mockReturnValueOnce(fetchB);  // second call: file B
 
@@ -199,9 +215,10 @@ describe('ArtifactPane', () => {
     // Now resolve A's deferred promise (stale). Because the signal was aborted,
     // neither content nor error should be written.
     resolveA({
-      ok: true,
-      json: async () => ({ content: 'content-of-A', mime: 'text/plain', is_binary: false }),
-    } as Response);
+      data: { content: 'content-of-A', mime: 'text/plain', is_binary: false },
+      error: null,
+      response: new Response(null, { status: 200 }),
+    });
 
     // Give microtasks a tick to flush; A's then-callback should short-circuit.
     await new Promise((r) => setTimeout(r, 0));

@@ -14,38 +14,20 @@ import (
 	"jamsesh/internal/api/openapi"
 	"jamsesh/internal/db/store"
 	"jamsesh/internal/portal/deperr"
-	"jamsesh/internal/portal/tokens"
+	"jamsesh/internal/portal/handlerauth"
 )
 
 // GetSession — GET /api/orgs/{orgID}/sessions/{sessionID}
 func (h *Handler) GetSession(ctx context.Context, req openapi.GetSessionRequestObject) (openapi.GetSessionResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
-	if !ok {
-		return openapi.GetSession401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
-	}
-
 	orgID := req.OrgID
 	sessionID := req.SessionID
 
-	// Verify org membership.
-	if _, err := h.store.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.GetSession403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this org",
-				},
-			}, nil
+	_, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get: session member: %w", fail.Err))
 		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get: org member: %w", err))
+		return getSessionFail(fail), nil
 	}
 
 	sess, err := h.store.GetSession(ctx, orgID, sessionID)
@@ -59,23 +41,6 @@ func (h *Handler) GetSession(ctx context.Context, req openapi.GetSessionRequestO
 			}, nil
 		}
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get: %w", err))
-	}
-
-	// Verify caller is a session member (in addition to org member).
-	if _, err := h.store.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.GetSession403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "session.not_member",
-					Message: "not a member of this session",
-				},
-			}, nil
-		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: get: session member: %w", err))
 	}
 
 	members, _ := h.store.ListSessionMembers(ctx, store.ListSessionMembersParams{
@@ -92,33 +57,15 @@ func (h *Handler) GetSession(ctx context.Context, req openapi.GetSessionRequestO
 // and annotates each with its collaboration mode (per-ref override from
 // ref_modes table, or session default_mode).
 func (h *Handler) ListSessionRefs(ctx context.Context, req openapi.ListSessionRefsRequestObject) (openapi.ListSessionRefsResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
-	if !ok {
-		return openapi.ListSessionRefs401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
-	}
-
 	orgID := req.OrgID
 	sessionID := req.SessionID
 
-	// Verify org membership.
-	if _, err := h.store.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.ListSessionRefs403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this org",
-				},
-			}, nil
+	_, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list refs: session member: %w", fail.Err))
 		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list refs: org member: %w", err))
+		return listSessionRefsFail(fail), nil
 	}
 
 	// Fetch the session for default_mode.
@@ -133,23 +80,6 @@ func (h *Handler) ListSessionRefs(ctx context.Context, req openapi.ListSessionRe
 			}, nil
 		}
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list refs: get session: %w", err))
-	}
-
-	// Verify caller is a session member.
-	if _, err := h.store.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.ListSessionRefs403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "session.not_member",
-					Message: "not a member of this session",
-				},
-			}, nil
-		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: list refs: session member: %w", err))
 	}
 
 	// Load all per-ref mode overrides for this session.
@@ -218,34 +148,16 @@ func (h *Handler) ListSessionRefs(ctx context.Context, req openapi.ListSessionRe
 // Assembles a plain-text turn-start digest from digest-relevant events since
 // cursor. Returns {text, next_cursor} where next_cursor is the max seq seen.
 func (h *Handler) GetSessionDigest(ctx context.Context, req openapi.GetSessionDigestRequestObject) (openapi.GetSessionDigestResponseObject, error) {
-	acc, ok := tokens.AccountFromContext(ctx)
-	if !ok {
-		return openapi.GetSessionDigest401JSONResponse{
-			UnauthorizedJSONResponse: openapi.UnauthorizedJSONResponse{
-				Error:   "auth.invalid_token",
-				Message: "invalid token",
-			},
-		}, nil
-	}
-
 	orgID := req.OrgID
 	sessionID := req.SessionID
 	sinceSeq := req.Params.Since // zero means "from beginning"
 
-	// Verify org membership.
-	if _, err := h.store.GetOrgMember(ctx, store.GetOrgMemberParams{
-		OrgID:     orgID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.GetSessionDigest403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "auth.insufficient_permission",
-					Message: "not a member of this org",
-				},
-			}, nil
+	_, _, fail, ok := handlerauth.RequireSessionMember(ctx, h.store, orgID, sessionID)
+	if !ok {
+		if fail.Err != nil {
+			return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: digest: session member: %w", fail.Err))
 		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: digest: org member: %w", err))
+		return getSessionDigestFail(fail), nil
 	}
 
 	sess, err := h.store.GetSession(ctx, orgID, sessionID)
@@ -259,23 +171,6 @@ func (h *Handler) GetSessionDigest(ctx context.Context, req openapi.GetSessionDi
 			}, nil
 		}
 		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: digest: get session: %w", err))
-	}
-
-	// Verify caller is a session member.
-	if _, err := h.store.GetSessionMember(ctx, store.GetSessionMemberParams{
-		OrgID:     orgID,
-		SessionID: sessionID,
-		AccountID: acc.ID,
-	}); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return openapi.GetSessionDigest403JSONResponse{
-				ForbiddenJSONResponse: openapi.ForbiddenJSONResponse{
-					Error:   "session.not_member",
-					Message: "not a member of this session",
-				},
-			}, nil
-		}
-		return nil, deperr.WrapDBIfTransient(fmt.Errorf("sessions: digest: session member: %w", err))
 	}
 
 	const digestEventLimit = 500
