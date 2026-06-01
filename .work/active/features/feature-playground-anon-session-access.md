@@ -1,14 +1,14 @@
 ---
 id: feature-playground-anon-session-access
 kind: feature
-stage: implementing
+stage: review
 tags: [playground, auth]
 parent: null
 depends_on: []
 release_binding: null
 gate_origin: null
 created: 2026-06-01
-updated: 2026-05-31
+updated: 2026-06-01
 ---
 
 # Anonymous playground participants as first-class session members
@@ -342,3 +342,23 @@ async function fetchTicket(sessionId: string): Promise<string | null> {
 - The 401 middleware currently treats `auth.*` failures as durable sign-out.
   Missing the playground exception would preserve the login bounce even after
   persistence is added.
+
+## Implementation Summary
+
+- Concrete session-resource endpoints now authorize with session membership
+  rather than org membership, keeping anonymous playground accounts out of
+  `org_members` while allowing their own session refs, digest, files, and ref
+  mode writes.
+- The SPA persists playground context in browser-scoped, session-keyed storage
+  with `expiresAt` validation and restores it before the auth gate on
+  org-scoped playground session routes.
+- Playground 401s clear playground context and route to join/ended states
+  without durable sign-out.
+- Artifact file fetches use the shared typed client, and WebSocket ticket
+  fetches use explicit session-specific bearer selection.
+
+## Verification
+
+- `go test ./internal/portal/sessions`
+- `npm test -- --run src/lib/auth.test.ts src/lib/api/client.test.ts src/lib/components/ArtifactPane.test.ts src/App.test.ts src/lib/screens/SessionViewShell.test.ts src/lib/ws.test.ts`
+- `npm run check` (0 errors, 1 pre-existing Svelte warning in `ModeSwitchDialog.svelte`)
