@@ -1,7 +1,7 @@
 ---
 id: feature-playground-anon-session-access
 kind: feature
-stage: review
+stage: done
 tags: [playground, auth]
 parent: null
 depends_on: []
@@ -362,3 +362,17 @@ async function fetchTicket(sessionId: string): Promise<string | null> {
 - `go test ./internal/portal/sessions`
 - `npm test -- --run src/lib/auth.test.ts src/lib/api/client.test.ts src/lib/components/ArtifactPane.test.ts src/App.test.ts src/lib/screens/SessionViewShell.test.ts src/lib/ws.test.ts`
 - `npm run check` (0 errors, 1 pre-existing Svelte warning in `ModeSwitchDialog.svelte`)
+
+## Review (2026-06-01)
+
+**Verdict**: Approve
+
+**Blockers**: none
+**Important**: none
+**Nits**: none
+
+**Notes**: Deep substrate feature review. Covered correctness, tests, design
+alignment, lightweight auth/security, public contract behavior, foundation-doc
+alignment, and browser/WS lifecycle risks. Fresh-context review is deferred to
+the autopilot final peer-review loop rather than duplicated here. Child stories
+are approved and done.
