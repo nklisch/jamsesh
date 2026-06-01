@@ -32,8 +32,8 @@ updated: 2026-06-01
 
 - Shipped: 2026-06-01
 - Mapping: tag-based
-- Version commit: pending (`release-prep: v0.5.1`)
-- Tag: pending `v0.5.1`
+- Version commit: `02eb36d3` (`release-prep: v0.5.1`)
+- Tag: `v0.5.1` pushed to `origin`
 - Items shipped: 4 work items plus this release record
 - Gates run: skipped by maintainer request
 - Gate outcomes: not applicable for this patch release
