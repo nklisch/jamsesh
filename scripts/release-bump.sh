@@ -223,7 +223,7 @@ run git -C "$REPO_ROOT" tag -a "$VERSION" -m "Release ${VERSION}"
 info "pushing main…"
 run git -C "$REPO_ROOT" push origin main
 
-info "pushing tag $VERSION…"
+info "pushing tag ${VERSION}…"
 run git -C "$REPO_ROOT" push origin "$VERSION"
 
 info "done — $VERSION is tagged and pushed; watch CI with: gh run watch"
