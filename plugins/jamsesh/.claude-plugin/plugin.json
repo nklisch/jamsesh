@@ -1,7 +1,7 @@
 {
   "$schema": "https://schemas.anthropic.com/claude-plugin/manifest.json",
   "name": "jamsesh",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Agent-in-the-loop human jam sessions \u2014 small teams jam together (typically over voice) while each person drives their own Claude Code agent; every agent stays aware of the whole session via live commits and comments.",
   "author": {
     "name": "jamsesh maintainers",
