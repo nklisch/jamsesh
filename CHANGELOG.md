@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.5.2
+
+Released 2026-06-02. Patch release fixing the plugin's MCP server config so the
+four jamsesh MCP tools load. Full release gates were skipped by maintainer
+request.
+
+### Fixes
+
+- The plugin now ships its MCP server config at the plugin root
+  (`plugins/jamsesh/.mcp.json`) with `headersHelper` as a string command.
+  Previously it was an array, which Claude Code rejects at startup
+  (`headersHelper: expected string, received array`), silently skipping the
+  entire jamsesh MCP server — so `post_comment`, `resolve_comment`, `fork`, and
+  `query_session_state` were never available. The helper path now uses
+  `${CLAUDE_PLUGIN_ROOT}/bin/jamsesh mcp-headers`, resolving correctly
+  regardless of install location, and the stale non-loading project-root
+  `.mcp.json` was removed.
+
 ## v0.5.1
 
 Released 2026-06-01. Patch release for anonymous playground session access.
