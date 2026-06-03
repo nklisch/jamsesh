@@ -3,7 +3,7 @@
     "jamsesh": {
       "type": "streamable-http",
       "url": "${JAMSESH_PORTAL_URL}/mcp",
-      "headersHelper": ["plugins/jamsesh/bin/jamsesh", "mcp-headers"]
+      "headersHelper": "${CLAUDE_PLUGIN_ROOT}/bin/jamsesh mcp-headers"
     }
   }
 }
